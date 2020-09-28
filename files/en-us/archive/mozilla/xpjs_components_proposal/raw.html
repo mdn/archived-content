@@ -1,0 +1,63 @@
+<div class="warning">
+<p>This is a proposal for a system that got implemented, but it may differ from the actual implementation. See the <a class='\"external\"' href='\"http://www.mozilla.org/scriptable/js-components-status.html\"'>status document</a> for more recent info on the status of this proposal.</p>
+</div>
+
+<p>Draft 1.0</p>
+
+<h3 id="What_are_XPJS_Components.3F" name="What_are_XPJS_Components.3F">What are XPJS Components?</h3>
+
+<p>XPJS Components is a (cheesy) name for a system to support xpcom components written in JavaScript. Now, you might ask: "Isn't that what <a class="external" href="http://www.mozilla.org/scriptable/index.html">XPConnect</a> does?" And I would answer that XPConnect is necessary, but not sufficient to the task. XPConnect provides the mechanisms for communication between native and JS xpcom components, but it does not provide all of the infrastructure to register and instantiate JS components outside of the limitations of the browser window. XPJS will provide that infrastructure.</p>
+
+<h3 id="So_what_does_this_mean.3F" name="So_what_does_this_mean.3F">So what does this mean?</h3>
+
+<p>The XPJS Component system will support implementing xpcom services, factories, and components in JavaScript. It will support service and factory registration. These components will be independent of web content and browser windows. They will run from the user's disk just like native components.</p>
+
+<h3 id="How_will_it_work.3F" name="How_will_it_work.3F">How will it work?</h3>
+
+<p>The overriding principle is to make this work as much like native components as possible. XJS Components will 'live' in<em>.js</em> files. Just as with native component modules each of these .js files will be expected to have the functions:</p>
+
+<ul>
+ <li>NSRegisterSelf</li>
+ <li>NSGetFactory</li>
+ <li>NSUnregisterSelf (optional)</li>
+ <li>NSCanUnload (optional)</li>
+</ul>
+
+<p>Each .js file might implement one or more components.</p>
+
+<p>We will have one native module - called the XPJSManager - which holds this system together. The XPJSManager is in charge of loading these .js files, helping them register themselves, and acting as an intermediary between the xpcom component manager and the JS code.</p>
+
+<p>XJS Components are not run in browser windows. Each .js file (let's call it a module) is started up and run in the context of a relatively 'raw' JS global object. The standard (non-DOM) JS classes will be available. The xpconnect<em>Components</em> object will be available. And some additional yet to be defined objects may be available. The xpconnect<em>Components</em> object allows access to the whole repository of native and JS xpcom components, so this is not as isolated an environment as it might at first sound.</p>
+
+<p>A 'load' or 'import' function will also be provided to let the JS code import other .js files where libraries of code might be stored. This is akin to 'static' libraries. Accessing other components/services via xpcom/xpconnect is more akin to 'dynamic' libraries.</p>
+
+<p>When a XPJS Component module is first installed - or at autoregistration time - the XPJSManager will load the .js file into a fresh JS environment, let its top level script run to do whatever initialization it wants to do, and then it will call the module's NSRegisterSelf function (passing the filespec of the .js file). At this point the module will use the (new) methods on the Components object to register itself with the component manager as a factory module for one or more classid or progid.</p>
+
+<p>This registration function that the JS code calls (e.g. Components.RegisterComponentSpec) will be provided by the XPJSManager. The XPJSManager will receive this call from the JS code, store the mapping of clsid to .js filespec in the registry for its own use later, and then call the real component manager to do the registration. However, the XPJSManager will pass the component manager its *own* filespec.</p>
+
+<p>So, at some future point some chunk of code will ask the component manager to create an object instance for some clsid (or progid). The component manager will load up the XPJSManager's module and call the native NSGetFactory it finds there. That native NSGetFactory function will check the information it stored in the registry to see that the JS factory for the given clsid is in a given .js file. It will load that .js file (if not already loaded) and call the NSGetFactory function.</p>
+
+<p>Our friend XPConnect will convert the JS object returned from the JS module's NSGetFactory function into an xpcom object. The component manager (and anyone else with a reference to that factory) can then call the factory's CreateInstance method at will.</p>
+
+<p>The JS module is free to implement factories and components and services that the factories construct on command. Any code anywhere and implemented in any language can get to these things via the component and service managers.</p>
+
+<p>The XPJSManager is loosely in charge of the lifetime of each XPJS module. JavaScript is garbage collected and one can not force an object to be deleted or the compiled code to be unloaded [except by deleting the JSRuntime; i.e. erasing the entire JS universe]. In C if a module gets unloaded when there are still references to objects created by the module then a crash is likely to happen soon after. JS does not have this problem. If the XPJSManager is asked to trim itself back (by whatever means) it will call the NSCanUnload method (if present) on each module. It the module OKs it then the XPJSManager will release its root of the module's global object and release any hold over the objects in the module. Any subsequent requests from the component manager that would result in NSGetFactory calls into the module will force the XPJSManager to load up a new instance of the .js file and start over. So, these XPJS Component modules are safely unloadable, but have the power (like native modules) to veto any attempt.</p>
+
+<h3 id="So_when_will_it_be_ready.3F" name="So_when_will_it_be_ready.3F">So when will it be ready?</h3>
+
+<p>I was thinking that I'd get on this pretty soon. I think that it is all very straightforward.</p>
+
+<p>Comments and suggestions welcome!</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: <a class="link-mailto" href="mailto:jband@netscape.com">John Bandhauer</a></li>
+ <li>Last Updated Date: 1 July 1999</li>
+</ul>
+</div>
+
+<div class="noinclude"> </div>
+
+<p> </p>

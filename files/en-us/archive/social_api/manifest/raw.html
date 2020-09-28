@@ -1,0 +1,112 @@
+<p>A social service manifest is a <a href="/en-US/docs/JSON" title="/en-US/docs/JSON">JSON</a> file that describes to the browser how to instantiate a <a href="/en-US/docs/Social_API/Glossary#Service_worker" title="/en-US/docs//Social_API/Glossary#Service_worker">service worker</a> for a <a href="/en-US/docs/Social_API/Glossary#Social_service_provider" title="/en-US/docs//Social_API/Glossary#Social_service_provider">service provider</a>.  The manifest is installed through a web activation page located on the providers website, or from a directory service such as AMO.  You can see an example of the <a href="https://github.com/mixedpuppy/socialapi-demo/blob/gh-pages/index.html" title="https://github.com/mixedpuppy/socialapi-demo/blob/gh-pages/index.html">manifest and activation</a> on the <a href="https://github.com/mixedpuppy/socialapi-demo/" title="https://github.com/mixedpuppy/socialapi-demo/">github demo project</a>.</p>
+
+<h2 id="Service_discovery">Service discovery</h2>
+
+<p>Services are expected to promote their providers to their users either through their own website or through Mozilla Marketplace.  You are expected to follow <a href="/en-US/docs/Social_API/Criteria" title="/en-US/docs/Social_API/Criteria">criteria we have for SocialAPI providers in Firefox</a>.</p>
+
+<h2 id="Service_activation">Service activation</h2>
+
+<p>Activating your service from your website is available starting in Firefox 23.</p>
+
+<p>A Service is described by a small JSON manifest.  This manifest can be sent to the browser by creating and dispatching the <code>ActivateSocialFeature</code> DOM event.  This event must be user initiated for the browser to accept the data.  The target element of the event must have a <code>data-service</code> attribute containing the serialized manifest.  Details of the manifest contents are below. </p>
+
+<p>Once the user clicks the activate button, they will be presented with an installation panel to enable your provider.  If they choose to enable your provider, they will then see an explanatory panel that highlights the new Social toolbarbutton as well as indicates how they may manage their social providers through the Add-ons Manager.</p>
+
+<p>Here is an example of providing a button on your webpage to allow users to activate your provider:</p>
+
+<pre>&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;Demo Social Service&lt;/title&gt;
+&lt;/head&gt;
+&lt;script&gt;
+var loc = location.href;
+var baseurl = loc.substring(0,loc.lastIndexOf('/'));
+
+var data = {
+  // currently required
+  "name": "Demo Social Service",
+  "iconURL": baseurl+"/firefox16.png",
+  "icon32URL": baseurl+"/firefox32.png",
+  "icon64URL": baseurl+"/firefox64.png",
+
+  // the URL of the contents for the share panel
+  "shareURL": baseurl+"/share.html?url=%{url}",
+
+  // icons should be 32x32 pixels
+  "markedIcon": baseurl+"/unchecked.jpg",
+  "unmarkedIcon": baseurl+"/checked.jpg",
+
+  // should be available for display purposes
+  "description": "A short paragraph about this provider",
+  "author": "Shane Caraveo, Mozilla",
+  "homepageURL": "https://github.com/mixedpuppy/socialapi-demo/",
+
+  // optional
+  "version": "1.0"
+}
+
+function activate(node) {
+  var event = new CustomEvent("ActivateSocialFeature");
+  node.setAttribute("data-service", JSON.stringify(data));
+  node.dispatchEvent(event);
+}
+&lt;/script&gt;
+&lt;body&gt;
+  &lt;button onclick="activate(this)" title="activate the demo provider"&gt;Activate The Demo Provider&lt;/button&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+</pre>
+
+<h2 id="Manifest_contents">Manifest contents</h2>
+
+<p>At a minimum, a social service manifest must contain a <code>services</code> object property that contains a <code>social</code> object property. All URLs in the manifest should be HTTPS URLs, though DATA URLs are currently supported for images.  The <code>social</code> object may contain the following values:</p>
+
+<dl>
+ <dt id="name_property"><code>name</code></dt>
+ <dd>The name of the service.</dd>
+ <dt id="iconURL"><code>iconURL</code>, <code>icon32URL</code>, <code>icon64URL</code></dt>
+ <dd>The URL of an icon to use for the service in the user interface.  Starting with Firefox 22, all three sizes must be present.</dd>
+ <dt id="workerURL"><code>workerURL</code> <span class="inlineIndicator optional optionalInline">Optional</span> <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 48 / Thunderbird 48 / SeaMonkey 2.45)">Obsolete since Gecko 48</span></dt>
+ <dd>The URL of a JavaScript file that defines the social service worker for the service. <em><strong>optional, necessary if using statusURL to provide notifications</strong></em></dd>
+ <dt id="sidebarURL"><code>sidebarURL</code> <span class="inlineIndicator optional optionalInline">Optional</span> <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 51 / Thunderbird 51 / SeaMonkey 2.48)">Obsolete since Gecko 51</span></dt>
+ <dd>The URL of an HTML file that defines the <a href="/en-US/docs/Social_API/Glossary#Sidebar" title="/en-US/docs/Social_API/Glossary#Sidebar">sidebar</a> used by the service. <em><strong>The manifest must contain at least one of sidebarURL, shareURL, statusURL, markURL.</strong></em></dd>
+ <dt><code>shareURL</code> </dt>
+ <dd>The URL of an HTML file that defines a share endpoint used by the service.<strong> </strong><strong><em>required</em></strong></dd>
+ <dt><code>statusURL</code> <span class="inlineIndicator optional optionalInline">Optional</span> <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 51 / Thunderbird 51 / SeaMonkey 2.48)">Obsolete since Gecko 51</span></dt>
+ <dd>The URL of an HTML file that defines a status or notifications endpoint used by the service. [Status buttons available as of Fx26 or 27] <em><strong>The manifest must contain at least one of sidebarURL, shareURL, statusURL, markURL.</strong></em></dd>
+ <dt><code>markURL</code>  <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 51 / Thunderbird 51 / SeaMonkey 2.48)">Obsolete since Gecko 51</span></dt>
+ <dd>The URL of an HTML file that defines a social bookmark endpoint used by the service. [Social Bookmarks available as of Fx26] <em><strong>The manifest must contain at least one of sidebarURL, shareURL, statusURL, markURL.</strong></em></dd>
+ <dt><code>markedIcon</code> <span class="inlineIndicator optional optionalInline">Optional</span> <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 51 / Thunderbird 51 / SeaMonkey 2.48)">Obsolete since Gecko 51</span></dt>
+ <dd>The URL of a 32x32px PNG icon that is shown in the social bookmark toolbar button as the marked state [Social Bookmarks available as of Fx26]  <em><strong>required if using markURL</strong></em></dd>
+ <dt><code>unmarkedIcon</code> <span class="inlineIndicator optional optionalInline">Optional</span> <span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 51 / Thunderbird 51 / SeaMonkey 2.48)">Obsolete since Gecko 51</span></dt>
+ <dd>The URL of a 32x32px PNG icon that is shown in the social bookmark toolbar button as the default or unmarked state [Social Bookmarks available as of Fx26]  <em><strong>required if using markURL</strong></em></dd>
+ <dt><code>description</code></dt>
+ <dd>A short description of the provider service.</dd>
+ <dt><code>author</code></dt>
+ <dd>An author or company name.</dd>
+ <dt><code>homepageURL</code></dt>
+ <dd>The URL of an HTML page on the providers website that allows users to activate the provider.</dd>
+ <dt><code>version</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The release version of this provider; useful for supporting upgrades.</dd>
+</dl>
+
+<h2 id="Example">Example</h2>
+
+<pre class="brush:js;">{
+  "name": "Example Social Service",
+  "iconURL": "/icon.png",
+  "icon32URL": "/icon32.png",
+  "icon64URL": "/icon64.png",
+  "workerURL": "/worker.js",
+  "sidebarURL": "/sidebar.htm",
+  "shareURL": "/share.htm?url=%{url}",
+  "statusURL":"/statusPanel.html",
+  "markURL": "/mark.html?url=%{url}",
+  "markedIcon": "/unchecked.jpg",
+  "unmarkedIcon": "/checked.jpg",
+  "description": "A short description of the service.",
+  "author": "Your name or company",
+  "homepageURL": "/index.html",
+  "version": "1.0"
+}</pre>

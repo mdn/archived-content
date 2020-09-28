@@ -1,0 +1,78 @@
+---
+title: Infallible memory allocation
+slug: Mozilla/Infallible_memory_allocation
+tags:
+  - Guide
+  - NeedsRelocation
+  - memory
+---
+<div></div>
+
+<p>There's ongoing work to implement <strong>infallible memory allocators</strong>. These are memory allocation routines that never return <code>null</code>; that is, they always successfully return the requested block of memory. This is in contrast to a traditional, fallible memory allocator that can return <code>null</code> indicating that the request failed.</p>
+
+<p>Currently, while code is transitioned to be compatible with infallible memory allocators, you have to explicitly decide whether to use infallible allocation or not. Eventually, however, the generic memory allocators (<code>malloc() </code>and<code> realloc()</code>) will become infallible.</p>
+
+<h2 id="How_can_memory_allocation_be_infallible">How can memory allocation be infallible?</h2>
+
+<p>The term "infallible" means that your memory allocation request is guaranteed to succeed: your code can never see a failed request, and so doesn't need to check for failure.</p>
+
+<p>Inside the allocation routine, the situation is different. Under extreme memory conditions, it's possible that the allocation will fail; however, the allocation routine will not, in this scenario, return to your code. Instead, the application will terminate. This should be rare, because the memory management system will do everything it can to find the memory you've asked for.</p>
+
+<h2 id="Choosing_a_memory_allocator">Choosing a memory allocator</h2>
+
+<p>As you write new code that needs to allocate memory, there are some simple rules to follow to help you decide whether to use a fallible or an infallible memory allocator:</p>
+
+<ul>
+ <li>If you're allocating what may be a large chunk of memory, you should allocate the memory fallibly (using <code>malloc()</code> for example), and check the result to be sure it's not <code>null</code>. You should do this for large memory allocations because in extremely low memory conditions, as described in <a href="/en-US/docs/Infallible_memory_allocation#How_can_memory_allocation_be_infallible.3f" title="Infallible memory allocation#How can memory allocation be infallible.3f">How can memory allocation be infallible?</a>, the application may terminate if an infallible allocator can't find the memory you requested.</li>
+ <li>If you don't know whether or not the memory will be large, use the standard <code>malloc()</code> routine. Be sure to check the result for <code>null</code>. Be warned that any allocation that's controlled by the user or web content may grow bigger than you expect; people and pages do surprising things all the time!</li>
+ <li>When instantiating objects, the <code>new</code> operator creates them infallibly by default. If you want to allocate them fallibly, use the syntax <code>new (fallible) Foo()</code>.</li>
+ <li>When in doubt, use the infallible allocator and don't <code>null</code> check.</li>
+ <li>
+  <p><code>NS_Alloc()</code> is also infallible.</p>
+ </li>
+</ul>
+
+<h2 id="Explicitly_infallible_memory_allocators">Explicitly infallible memory allocators</h2>
+
+<p>The following memory allocators are explicitly infallible, and will remain so; they are guaranteed to return a valid memory pointer.</p>
+
+<pre>p = moz_xmalloc();
+p = moz_xcalloc();
+p = moz_xrealloc();
+p = moz_xstrdup();
+</pre>
+
+<pre>f = new Foo();
+fArray = new Foo[];
+</pre>
+
+<pre>n = ::operator new(...);
+nArray = ::operator new[](...);
+</pre>
+
+<h2 id="Explicitly_fallible_memory_allocators">Explicitly fallible memory allocators</h2>
+
+<p>These memory allocators are explicitly fallible, and will remain so. When using these, you must check to ensure the resulting value isn't <code>null</code> before attempting to use the returned memory.</p>
+
+<pre>p = malloc();
+p = realloc();
+</pre>
+
+<pre>namespace mozilla {
+  f = new (fallible) Foo();
+  fArray = new (fallible) Foo[];
+}
+</pre>
+
+<pre>namespace mozilla {
+  n = ::operator new(..., fallible);
+  nArray = ::operator new[](..., fallible);
+}
+</pre>
+
+<p>See also</p>
+
+<ul>
+ <li><a href="/en-US/docs/Choosing_the_right_memory_allocator" title="Choosing the right memory allocator">Choosing the right memory allocator</a></li>
+ <li><a href="/en-US/docs/NS_Alloc" title="NS Alloc"><code>NS_Alloc()</code></a></li>
+</ul>

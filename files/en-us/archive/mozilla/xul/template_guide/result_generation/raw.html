@@ -1,0 +1,64 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Rule_Compilation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/RDF_Query_Syntax">Next  »</a></p>
+</div>
+<h3 id="RDF" name="RDF">RDF</h3>
+<p>In this section, we'll look at generating template output using RDF datasources. First, however, some background.</p>
+<p>RDF, in mathematical terms, is a labeled directed graph. That means that RDF is a graph of nodes and arrows between them where each node and arrow has some label. Since it's a graph, arrows can point all over the place and nodes can have any number of arrows pointing out of them and pointing at them. And also because it is a graph, there is no real starting point or root node so you can just start anywhere. In the picture below, you can see that node A at the top has arcs pointing to B, C and D. Similarly, C has an arc pointing to D. You could have arcs pointing elsewhere--for example, node D could have an arc pointing back to A. To navigate around, you could start at node A and navigate around the graph following the arrows to B, C or D. Or you could start at B and go to A and then go to C and D, etc. No requirement exists to follow the arrows in the direction they point; you can easily go the other way (though in only one direction within a given series of iterations). The picture was generated from the W3C's <a class="external" href="http://www.w3.org/RDF/Validator/">RDF validator</a>, a good place to go to check if your RDF is valid.</p>
+<p><img alt="Image:Template-guide-p2.png" src="/files/394/Template-guide-p2.png"></p>
+<p>The text in red are the labels for the arrows, called predicates. In this example, all the arrows have the same label. Usually, this won't be the case. Templates provide a means of navigating around using only arrows with specific labels. Here is one serialization of RDF/XML for this graph, though there are many others.</p>
+<pre>&lt;?xml version="1.0"?&gt;
+&lt;rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:rel="http://www.xulplanet.com/rdf/"&gt;
+
+  &lt;rdf:Description rdf:about="http://www.xulplanet.com/rdf/A"&gt;
+    &lt;rel:relatedItem rdf:resource="http://www.xulplanet.com/rdf/B"/&gt;
+    &lt;rel:relatedItem rdf:resource="http://www.xulplanet.com/rdf/C"/&gt;
+    &lt;rel:relatedItem rdf:resource="http://www.xulplanet.com/rdf/D"/&gt;
+  &lt;/rdf:Description&gt;
+
+  &lt;rdf:Description rdf:about="http://www.xulplanet.com/rdf/C"&gt;
+    &lt;rel:relatedItem rdf:resource="http://www.xulplanet.com/rdf/D"/&gt;
+  &lt;/rdf:Description&gt;
+
+&lt;/rdf:RDF&gt;
+</pre>
+<p>For a XUL template query, you first need to select a starting point in the RDF graph. Once you have selected a starting point, you use a number of statements which indicate where to go next when navigating the graph. Eventually, you will end up with a set of nodes you consider the endpoints of your query. These become the results and content would be generated for each of these results. Say you start at A. You could navigate to B, C and D and generate three blocks of output by following the arrows forward. Or, you could start at D and follow two arrows back (and only following arrows backwards). This will get one result, A. Look at the graph to see if you can see why one result would be generated in this case.</p>
+<p>In XUL template terminology, the starting point is called the container or reference point and the endpoint is called the member. It is so called because it is most common to gather the list of the members, or children, of a container. But this doesn't have to be the case. Any starting point and ending points will do.</p>
+<p>Nodes in RDF are identified by a string value. There are two types of nodes in RDF, resources which usually represent 'things', and literals which are values like the names, dates or sizes of those things, and so on. A literal's value is, for example, the name of the thing, such as 'Fred'. A resource's value is a URI which for your own RDF data you can just make up (though if you plan to use your model with others, it should be unique, preferably a URL for a site you own, so as to avoid future conflicts with mixing of other types). We'll use the URI of the resource nodes in a template. In the image, the resource URI's are the blue labels of each node. There are no literals in this example, but we'll see some later.</p>
+<p>Let's say we want the starting point to be A from the above example graph. We will use A's URI (<span class="nowiki">http://www.xulplanet.com/rdf/A</span>) as the reference starting point. In a XUL template, you specify the starting point using the 'ref' attribute. Here is an example:</p>
+<pre>&lt;vbox datasources="http://www.xulplanet.com/ds/sample.rdf"
+         ref="http://www.xulplanet.com/rdf/A" flex="1"&gt;
+</pre>
+<p>This is an indicator that we want to construct a XUL template using the reference point with the URI <span class="nowiki">'http://www.xulplanet.com/rdf/A'</span>.</p>
+<h3 id="Query_Processing" name="Query_Processing">Query Processing</h3>
+<p>A query for an RDF datasource consists of a number of statements, placed as children of the <code><a href="/en-US/docs/Mozilla/Tech/XUL/query" title="query">query</a></code> element. During query processing, the template builder builds up a network of information such as:</p>
+<ul>
+  <li>possible results that are available</li>
+  <li>where content should be generated</li>
+  <li>information that indicates what to do when the RDF datasource changes</li>
+</ul>
+<p>This network of information remains for the lifetime of the template, or until it is rebuilt. The template builder uses a method based on the <a class="external" href="http://en.wikipedia.org/wiki/Rete_algorithm">RETE algorithm</a> to match data. This allows for a fairly efficient means of updating results when, for instance, a new statement is added to the RDF graph. Rather than rebuild the entire template, the algorithm allows only specific parts of the network of information to be re-examined. A similar method can be used when removing RDF statements.</p>
+<p>While the information network created by the template builder contains a number of different pieces of necessary information, for the purposes of this discussion, we will only be interested in the list of possible results. The builder begins with a single possible result, called the seed. The builder processes each of a query's statements in sequence. To do this for a particular statement, the builder iterates over the possible results found so far and either accepts each result or rejects each result. For the first statement, only the seed will be available as a possible result. At each step, new possible results may be added, or more information pertaining to an existing result may be added to the network. Naturally, a rejected result will be removed. Once all results have been examined, the builder moves on to the next statement in the query. Once all statements have been analyzed, any results which still remain go on to become matches. The matches are the endpoints and will cause content to be generated. So, to summarize:</p>
+<ol>
+  <li>Start out with a one possible result as the seed</li>
+  <li>Iterate over the results determined so far and augment them with additional data</li>
+  <li>Add any new possible results</li>
+  <li>Remove any rejected results</li>
+  <li>Repeat steps 2 to 4 for each query statement</li>
+  <li>Once done, all remaining results become matches</li>
+</ol>
+<p>Each possible result is made up of a set of variable-value pairs. For instance, a result would look something like the following:</p>
+<pre>(?name = Fred, ?age = 5)
+</pre>
+<p>This result has two variables, ?name with the value 'Fred' and ?age with the value 5. Variables begin with a question mark, and values are RDF resources or literals. Here we will use strings for the values so they are easier to read. If we had two results, they might look like this:</p>
+<pre>(?name = Fred, ?age = 5)
+(?name = Mary, ?age = 12)
+</pre>
+<p>This is how we'll represent the potential results in this and the following discussions.</p>
+<p>Later, we might have a statement which removes all Male results. So, our results after this might look like the following:</p>
+<pre>(?name = Mary, ?age = 12, ?gender = Female)
+</pre>
+<p>This statment has removed Fred from the potential results and added the ?gender variable for Mary. This is typical of how a query statement works, by adding additional variables to a result and filtering out those that don't match a particular value. If this were the last statement, Mary would go on to become a match to be displayed.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Rule_Compilation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/RDF_Query_Syntax">Next  »</a></p>
+</div>

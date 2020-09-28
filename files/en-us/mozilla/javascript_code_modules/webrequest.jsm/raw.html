@@ -1,0 +1,867 @@
+<div class="note">
+<p>The WebRequest module is new in Firefox 41.</p>
+</div>
+
+<p><span class="seoSummary">The WebRequest module provides an API to add event listeners for the various stages of making an HTTP request</span>. The event listener receives detailed information about the request, and can modify or cancel the request.</p>
+
+<p>You can use this API to implement a content policy in an add-on (for example, an ad or script blocker). Previously you would use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContentPolicy">nsIContentPolicy</a></code> for this, but <a href="/en-US/Firefox/Multiprocess_Firefox/Limitations_of_chrome_scripts#nsIContentPolicy">in multiprocess Firefox you can't use nsIContentPolicy in the chrome process</a>. More generally, you can also use this API instead of <a href="/en/docs/Observer_Notifications#HTTP_requests">HTTP request observers</a>. You can use WebRequest.jsm in either the chrome or content processes.</p>
+
+<p>The WebRequest API is modeled on Chrome's <a href="https://developer.chrome.com/extensions/webRequest">webRequest extension API</a>, which makes it easier to write cross-browser add-on code. There are some differences between this API and Chrome's, though: see <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Chrome_incompatibilities">Chrome incompatibilities</a> for the details.</p>
+
+<h2 id="Usage">Usage</h2>
+
+<p>To import WebRequest, use code like:</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});</pre>
+
+<p>The <code>WebRequest</code> object has the following properties, each of which corresponds to a specific stage in executing a web request:</p>
+
+<ul>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onBeforeRequest">onBeforeRequest</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onBeforeSendHeaders">onBeforeSendHeaders</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onSendHeaders">onSendHeaders</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onHeadersReceived">onHeadersReceived</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onResponseStarted">onResponseStarted</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onCompleted">onCompleted</a></code></li>
+</ul>
+
+<p>Each of these objects defines two functions:</p>
+
+<ul>
+ <li><code>addListener(callback, filter, opt_extraInfoSpec)</code></li>
+ <li><code>removeListener(callback)</code></li>
+</ul>
+
+<h3 id="Adding_listeners">Adding listeners</h3>
+
+<p>Use <code>addListener</code> to add a listener to a particular event. It takes one mandatory argument and two optional arguments, as detailed below.</p>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>callback</code></td>
+   <td>Function</td>
+   <td>
+    <p>The <code>callback</code> argument is a function to be called when the event is triggered.</p>
+
+    <p>It's passed an object whose structure will vary depending on the event you're listening to: see the <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Events">event-specific documentation for details</a>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>filter</code></td>
+   <td>Object</td>
+   <td>The optional <code>filter</code> argument is used to restrict the requests for which the listener callback will be invoked. See <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Filtering">Filtering</a>.</td>
+  </tr>
+  <tr>
+   <td><code>opt_extraInfoSpec</code></td>
+   <td>Array of String</td>
+   <td>
+    <p>The optional <code>opt_extraInfoSpec</code> argument lets you pass extra instructions for the handling of events.</p>
+
+    <p>The instructions you can pass here vary depending on the event you're listening to: see the <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Events">event-specific documentation for details</a>.</p>
+
+    <p>In particular, <code>"blocking"</code> may be passed to several event types, and will make the event dispatch synchronous, so the browser will wait for the event listener to return before continuing with the request. This then enables the event listener to modify or cancel the request. See <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_canceling_requests">Modifying &amp; canceling requests</a>.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Examples">Some examples of using <code>addListener()</code>.</a></p>
+
+<p>To remove a listener for an event, call <code>removeListener</code> on the event in question, passing it the listener to remove.</p>
+
+<h3 id="Filtering">Filtering</h3>
+
+<p>The <code>filter</code> argument is the second argument to <code>addListener()</code>. If you don't pass <code>filter</code>, then the listener is invoked for every web request the browser makes that triggers that particular event.</p>
+
+<p><code>filter</code> is an object that may contain up to two properties: <code>urls</code> and <code>types</code>.</p>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>urls</code></td>
+   <td>MatchPattern</td>
+   <td>Only invoke the listener for URLs that match one of the patterns.</td>
+  </tr>
+  <tr>
+   <td><code>types</code></td>
+   <td>Array of Strings.</td>
+   <td>An array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource types</a>. Only invoke the listener for resource types that match one of the types given.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>To specify match patterns, first import the "MatchPattern.jsm" module, then construct a <code>MatchPattern</code>. The <code>MatchPattern</code> constructor accepts:</p>
+
+<ul>
+ <li><em>either</em>: a string defining a single pattern</li>
+ <li><em>or</em>: an array of such strings</li>
+</ul>
+
+<pre class="brush: js line-numbers  language-js"><code class="language-js">Cu<span class="punctuation token">.</span><span class="keyword token">import</span><span class="punctuation token">(</span><span class="string token">"resource://gre/modules/MatchPattern.jsm"</span><span class="punctuation token">)</span><span class="punctuation token">;</span>
+
+<span class="keyword token">let</span> pattern <span class="operator token">=</span> <span class="keyword token">new</span> <span class="class-name token">MatchPattern</span><span class="punctuation token">(</span><span class="string token">"https:/developer.mozilla.org/*"</span><span class="punctuation token">)</span><span class="punctuation token">;</span>
+</code></pre>
+
+<pre class="brush: js line-numbers  language-js"><code class="language-js">Cu<span class="punctuation token">.</span><span class="keyword token">import</span><span class="punctuation token">(</span><span class="string token">"resource://gre/modules/MatchPattern.jsm"</span><span class="punctuation token">)</span><span class="punctuation token">;</span>
+
+<span class="keyword token">let</span> pattern <span class="operator token">=</span> <span class="keyword token">new</span> <span class="class-name token">MatchPattern</span><span class="punctuation token">(</span><span class="punctuation token">[</span><span class="string token">"https://mozorg.cdn.mozilla.net/*"</span><span class="punctuation token">,</span>
+                               <span class="string token"> "https://mdn.mozillademos.org/*"</span><span class="punctuation token">,</span>
+                               <span class="string token"> "https://developer.cdn.mozilla.net/*"</span><span class="punctuation token">]</span><span class="punctuation token">)</span><span class="punctuation token">;</span>
+</code></pre>
+
+<p>See the <a href="/en-US/Add-ons/WebExtensions/Match_patterns">match patterns article</a> for details on the syntax of the strings you supply. If you supply an array of strings, then a URL matches if it matches any of the strings.</p>
+
+<p><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Filtering_2">See some examples of using <code>filter</code>.</a></p>
+
+<h3 id="Modifying_canceling_requests">Modifying &amp; canceling requests</h3>
+
+<p>You can use the WebRequest API to modify and cancel network requests. What exactly you're able to do to a network request depends on the stage at which you have intercepted the request: that is, the WebRequest event that your listener is attached to. For example, it obviously doesn't make sense to cancel a network request after it has completed.</p>
+
+<p>The general approach to modifying and canceling requests is this:</p>
+
+<ul>
+ <li>first, pass an array containing the string <code>"blocking"</code> as the third argument to your <code>addListener()</code> call. This tells the browser to wait for your event listener to return before continuing with the request.</li>
+ <li>next, return an object from the listener that contains instructions for what the browser should do with this request.</li>
+</ul>
+
+<p>There are four things you can do with a request:</p>
+
+<ul>
+ <li>cancel it</li>
+ <li>redirect it</li>
+ <li>modify request headers</li>
+ <li>modify response headers.</li>
+</ul>
+
+<p>To perform one of these operations, include a property with the appropriate name in the object returned from the listener, and assign it the desired value, as detailed in the table below:</p>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Operation</th>
+   <th scope="col">Available in</th>
+   <th scope="col">Return property</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>Cancel</td>
+   <td><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onBeforeRequest">onBeforeRequest</a></code></td>
+   <td>
+    <p><code>cancel</code></p>
+
+    <p>Boolean value set to <code>true</code>.<a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Canceling"> See some examples of canceling requests.</a></p>
+   </td>
+  </tr>
+  <tr>
+   <td>Redirect</td>
+   <td><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onBeforeSendHeaders">onBeforeSendHeaders</a></code></td>
+   <td>
+    <p><code>redirectUrl</code></p>
+
+    <p>String set to the URL to redirect the request to.<a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Redirecting"> See some examples of redirection.</a></p>
+   </td>
+  </tr>
+  <tr>
+   <td>Modify request headers</td>
+   <td><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onBeforeSendHeaders">onBeforeSendHeaders</a></code></td>
+   <td>
+    <p><code>requestHeaders</code></p>
+
+    <p>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>Modify response headers</td>
+   <td><code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#onHeadersReceived">onHeadersReceived</a></code></td>
+   <td>
+    <p><code>responseHeaders</code></p>
+
+    <p>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>See some examples of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Canceling">canceling</a>, <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Redirecting">redirecting</a>, and <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_headers">modifying request headers</a>.</p>
+
+<h2 id="Events">Events</h2>
+
+<p>The events exported by WebRequest.jsm are triggered at the various stages of making a request.</p>
+
+<p>This section describes the stage corresponding to each event. It also documents two data structures that vary from one event to another:</p>
+
+<ul>
+ <li>the <code>opt_extraInfoSpec</code> argument to <code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Adding_listeners">addListener()</a></code></li>
+ <li>the properties of the argument passed to the listener.</li>
+</ul>
+
+<h3 id="onBeforeRequest">onBeforeRequest</h3>
+
+<p>This event is triggered when a request is about to be made, and before headers are available. This is a good place to listen if you want to <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Canceling">cancel the request</a>.</p>
+
+<h4 id="opt_extraInfoSpec_values">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"blocking"</code></td>
+   <td>Make the browser wait until the listener returns. Use this if you want to cancel the request. <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Canceling">See some examples of canceling requests.</a></td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or null if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="onBeforeSendHeaders">onBeforeSendHeaders</h3>
+
+<p>This event is triggered before sending any HTTP data, but after all HTTP headers are available. This is a good place to listen if you want to <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_headers">modify HTTP headers</a>.</p>
+
+<h4 id="opt_extraInfoSpec_values_2">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"blocking"</code></td>
+   <td>Make the browser wait until the listener returns. Use this if you want to redirect the request or modify request headers. See examples of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Redirecting">redirecting</a> and <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_headers">modifying request headers</a>.</td>
+  </tr>
+  <tr>
+   <td style="width: 20%;"><code>"requestHeaders"</code></td>
+   <td>Include request headers in the argument passed to the listener. See <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_headers">Modifying headers</a> for an example using this.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument_2">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or <code>null</code> if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+  <tr>
+   <td><code>method</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Web/HTTP#HTTP_request_methods">HTTP method</a> to be used (GET, POST, etc).</td>
+  </tr>
+  <tr>
+   <td><code>requestHeaders</code></td>
+   <td>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</td>
+   <td>
+    <p>The HTTP request headers that will be sent.</p>
+
+    <p>This is only included if you set <code>"requestHeaders"</code> in the <code>opt_extraInfoSpec</code> argument.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="onSendHeaders">onSendHeaders</h3>
+
+<p>Triggered just before sending headers. If you modified headers in <code>onBeforeSendHeaders</code>, you'll see the modified version here. Note that you can't pass <code>"blocking"</code> for this event, so you can't modify or cancel the request from this event: it's informational only.</p>
+
+<h4 id="opt_extraInfoSpec_values_3">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"requestHeaders"</code></td>
+   <td>Include request headers in the argument passed to the listener.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument_3">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or <code>null</code> if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+  <tr>
+   <td><code>method</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Web/HTTP#HTTP_request_methods">HTTP method</a> to be used (GET, POST, etc).</td>
+  </tr>
+  <tr>
+   <td><code>requestHeaders</code></td>
+   <td>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</td>
+   <td>
+    <p>The HTTP request headers that will be sent.</p>
+
+    <p>This is only included if you set <code>"requestHeaders"</code> in the <code>opt_extraInfoSpec</code> argument.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="onHeadersReceived">onHeadersReceived</h3>
+
+<p>Triggered once response headers have been received. You can use this event to modify HTTP response headers.</p>
+
+<h4 id="opt_extraInfoSpec_values_4">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"blocking"</code></td>
+   <td>Make the browser wait until the listener returns. Use this if you want to modify response headers. See <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Modifying_canceling_requests">Modifying and canceling requests</a>.</td>
+  </tr>
+  <tr>
+   <td style="width: 20%;"><code>"responseHeaders"</code></td>
+   <td>Include response headers in the argument passed to the listener.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument_4">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or <code>null</code> if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+  <tr>
+   <td><code>method</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Web/HTTP#HTTP_request_methods">HTTP method</a> to be used (GET, POST, etc).</td>
+  </tr>
+  <tr>
+   <td><code>responseHeaders</code></td>
+   <td>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</td>
+   <td>
+    <p>The HTTP response headers that were received.</p>
+
+    <p>This is only included if you set <code>"responseHeaders"</code> in the <code>opt_extraInfoSpec</code> argument.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>statusCode</code></td>
+   <td>Number</td>
+   <td><a href="/en-US/docs/Web/HTTP/Response_codes">HTTP response code</a>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="onResponseStarted">onResponseStarted</h3>
+
+<p>Triggered once the browser has started to receive the response body. Note that you can't pass <code>"blocking"</code> for this event, so you can't modify or cancel the request from this event: it's informational only.</p>
+
+<h4 id="opt_extraInfoSpec_values_5">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"responseHeaders"</code></td>
+   <td>Include response headers in the argument passed to the listener.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument_5">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or <code>null</code> if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+  <tr>
+   <td><code>method</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Web/HTTP#HTTP_request_methods">HTTP method</a> used (GET, POST, etc).</td>
+  </tr>
+  <tr>
+   <td><code>responseHeaders</code></td>
+   <td>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</td>
+   <td>
+    <p>The HTTP response headers that were received.</p>
+
+    <p>This is only included if you set <code>"responseHeaders"</code> in the <code>opt_extraInfoSpec</code> argument.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>statusCode</code></td>
+   <td>Number</td>
+   <td><a href="/en-US/docs/Web/HTTP/Response_codes">HTTP response code</a>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="onCompleted">onCompleted</h3>
+
+<p>Triggered when the response has been received. Note that you can't pass <code>"blocking"</code> for this event, so you can't modify or cancel the request from this event: it's informational only.</p>
+
+<h4 id="opt_extraInfoSpec_values_6">opt_extraInfoSpec values</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td style="width: 20%;"><code>"responseHeaders"</code></td>
+   <td>Include response headers in the argument passed to the listener.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Listener_argument_6">Listener argument</h4>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <td><code>url</code></td>
+   <td>String</td>
+   <td>Target of the request.</td>
+  </tr>
+  <tr>
+   <td><code>windowId</code></td>
+   <td>Number</td>
+   <td>The ID of the window making the request, as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils">outerWindowID</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>parentWindowId</code></td>
+   <td>Number</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Resource_types">resource type</a>.</td>
+  </tr>
+  <tr>
+   <td><code>browser</code></td>
+   <td>Object</td>
+   <td>The XUL <code><a href="/en-US/docs/XUL/browser">browser</a></code> into which the resource will be loaded, or <code>null</code> if the resource will not be loaded into a XUL browser.</td>
+  </tr>
+  <tr>
+   <td><code>method</code></td>
+   <td>String</td>
+   <td>The <a href="/en-US/docs/Web/HTTP#HTTP_request_methods">HTTP method</a> used (GET, POST, etc).</td>
+  </tr>
+  <tr>
+   <td><code>responseHeaders</code></td>
+   <td>Array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#HTTP_headers">HTTP headers</a>.</td>
+   <td>
+    <p>The HTTP response headers that were received.</p>
+
+    <p>This is only included if you set <code>"responseHeaders"</code> in the <code>opt_extraInfoSpec</code> argument.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>statusCode</code></td>
+   <td>Number</td>
+   <td><a href="/en-US/docs/Web/HTTP/Response_codes">HTTP response code</a>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Types">Types</h2>
+
+<h3 id="Resource_types">Resource types</h3>
+
+<p>The resource type string identifies the kind of resource being fetched. It's used in two places:<a href="/en-US/docs/Mozilla/JavaScript_code_modules/WebRequest.jsm#Filtering"> filtering requests by type</a>, and as the <code>type</code> property of the argument passed to the listener.</p>
+
+<p>The following types are supported:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>"main_frame"</code></td>
+  </tr>
+  <tr>
+   <td><code>"sub_frame"</code></td>
+  </tr>
+  <tr>
+   <td><code>"stylesheet"</code></td>
+  </tr>
+  <tr>
+   <td><code>"script"</code></td>
+  </tr>
+  <tr>
+   <td><code>"image"</code></td>
+  </tr>
+  <tr>
+   <td><code>"object"</code></td>
+  </tr>
+  <tr>
+   <td><code>"xmlhttprequest"</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="HTTP_headers">HTTP headers</h3>
+
+<p>HTTPs headers are represented as objects with two properties, <code>name</code> and <code>value</code>:</p>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col" style="width: 20%;">Name</th>
+   <th scope="col" style="width: 20%;">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>name</code></td>
+   <td>String</td>
+   <td>Header name, for example <code>"Content-Type"</code></td>
+  </tr>
+  <tr>
+   <td><code>value</code></td>
+   <td>String</td>
+   <td>Header value, for example <code>"image/png"</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Chrome_incompatibilities">Chrome incompatibilities</h2>
+
+<p>Although this API is modeled on <a href="https://developer.chrome.com/extensions/webRequest">Chrome's webRequest extension API</a>, there are some differences. We're working on addressing them, though.</p>
+
+<ul>
+ <li>filtering by <code>windowId</code> and <code>tabId</code> is not supported.</li>
+ <li>the <code>onAuthRequired</code>, <code>onBeforeRedirect</code>, and <code>onErrorOccurred</code> events are not supported.</li>
+ <li>the <code>"requestBody"</code> instruction in <code>opt_extraInfoSpec</code> is not supported.</li>
+ <li>redirection is not allowed in <code>onBeforeRequest</code> or <code>onHeadersReceived</code>, but is allowed in <code>onBeforeSendHeaders</code>. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1176092">bug 1176092</a>.</li>
+ <li><code>handlerBehaviorChanged()</code> is not supported.</li>
+ <li><code>requestId</code> is not included in the argument passed to the listener.</li>
+</ul>
+
+<h2 id="Examples">Examples</h2>
+
+<h3 id="Basic_examples">Basic examples</h3>
+
+<p>This example just logs the URL for every request initiated:</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+
+WebRequest.onBeforeRequest.addListener(logURL);
+
+function logURL(e) {
+  console.log("Loading: " + e.url);
+}</pre>
+
+<h3 id="Filtering_2">Filtering</h3>
+
+<p>This example logs URLs for requests under "https://developer.mozilla.org/":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern("https:/developer.mozilla.org/*");
+
+
+WebRequest.onBeforeRequest.addListener(logURL, {urls: pattern});
+
+function logURL(e) {
+  console.log("Loading: " + e.url);
+}</pre>
+
+<p>This listener will be invoked for requests matching any of the three patterns, where the resource type is "stylesheet" or "image":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern(["https://mozorg.cdn.mozilla.net/*",
+                                "https://mdn.mozillademos.org/*",
+                                "https://developer.cdn.mozilla.net/*"]);
+
+WebRequest.onBeforeRequest.addListener(listener, {
+                                         urls: pattern,
+                                         types: ["image", "stylesheet"]
+                                       });
+
+function listener(e) {
+  console.log("Matched: " + e.url);
+}</pre>
+
+<h3 id="Canceling">Canceling</h3>
+
+<p>This example cancels requests to load content from "http://example.org/":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern("http://example.org/*");
+
+WebRequest.onBeforeRequest.addListener(cancelRequest,
+                                       {urls: pattern},
+                                       ["blocking"]);
+
+function cancelRequest(e) {
+  console.log("Canceling: " + e.url);
+  return {cancel: true};
+}</pre>
+
+<p>This code cancels requests for images that are made to URLs under "https://mdn.mozillademos.org/":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern("https://mdn.mozillademos.org/*");
+
+WebRequest.onBeforeRequest.addListener(cancelImages,
+                                       {
+                                         urls: pattern,
+                                         types: ["image"]
+                                       },
+                                       ["blocking"]);
+
+function cancelImages(e) {
+  console.log("Canceling: " + e.url);
+  return {cancel: true};
+}</pre>
+
+<h3 id="Redirecting">Redirecting</h3>
+
+<p>This code replaces, by redirection, all network requests for images that are made to URLs under "https://mdn.mozillademos.org/":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern("https://mdn.mozillademos.org/*");
+
+WebRequest.onBeforeSendHeaders.addListener(redirect,
+                                           {
+                                             urls: pattern,
+                                             types: ["image"]
+                                           },
+                                           ["blocking"]);
+
+function redirect(e) {
+  console.log("Redirecting: " + e.url);
+  return {redirectUrl: "https://38.media.tumblr.com/tumblr_ldbj01lZiP1qe0eclo1_500.gif"}; }</pre>
+
+<h3 id="Modifying_headers">Modifying headers</h3>
+
+<p>This code changes the <a href="/en-US/docs/Web/HTTP/Content_negotiation#The_User-Agent.3A_header">User Agent header</a> so the browser identifies itself as IE 11, but only when visiting pages under "http://useragentstring.com/":</p>
+
+<pre class="brush: js">let {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
+Cu.import("resource://gre/modules/MatchPattern.jsm");
+
+let pattern = new MatchPattern("http://useragentstring.com/*");
+
+let ua = "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko";
+
+WebRequest.onBeforeSendHeaders.addListener(changeUserAgent,
+                                           {
+                                             urls: pattern
+                                           },
+                                           ["blocking", "requestHeaders"]);
+
+function changeUserAgent(e) {
+  for (let header of e.requestHeaders) {
+    if (header.name == "User-Agent") {
+      header.value = ua;
+    }
+  }
+  return {requestHeaders: e.requestHeaders};
+}</pre>
+
+<p> </p>

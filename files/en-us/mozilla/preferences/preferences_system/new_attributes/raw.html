@@ -1,0 +1,68 @@
+<p> </p>
+
+<p>Widgets inside a <code><a href="/en-US/docs/XUL/prefwindow">&lt;prefwindow&gt;</a></code> may have the following attributes (in addition to the standard attributes).</p>
+
+<h3 id="preference" name="preference">preference</h3>
+
+<p>Specifies id of the linked <code><a href="/en-US/docs/XUL/preference">&lt;preference&gt;</a></code> element. The <code>value</code> of the preference and of the widget will be kept synchronized.</p>
+
+<p>For example, the following example makes the textbox automatically initialize its <code>value</code> from the extensions.example.mypref preference, when the pane is loaded. And the other way round, when user changes the value of the textbox, the value of the <code>&lt;preference&gt;</code> element is updated, and will be written to the preferences system when appropriate.</p>
+
+<pre class="eval">&lt;preference id="my_pref" name="extensions.example.mypref" type="unichar"/&gt;
+&lt;textbox preference="my_pref"/&gt;
+</pre>
+
+<h3 id="preference-editable" name="preference-editable">preference-editable</h3>
+
+<p>By default, the <code><a href="/en-US/docs/XUL/preference">&lt;preference&gt;</a></code> element will automatically modify the value of a few standard widgets: checkbox, colorpicker, radiogroup, textbox, listitem, listbox, and menulist.</p>
+
+<p>If you wish it to update the value of an element with different local name, for example your own XBL widget, you need to set the <code>preference-editable="true"</code> attribute on it.</p>
+
+<p>For your widget to modify the <code>&lt;preference&gt;</code>'s value, you need to make sure a <code>change</code>, <code>command</code>, or <code>input</code> event is fired after the widget's value changes.</p>
+
+<p><span class="comment">bug # or any testcases ? Note: this does not currently work on the tree widget. It may not work on anything so far (the API says it is to be available in version 1.8).</span></p>
+
+<h3 id="onsyncfrompreference.2Fonsynctopreference" name="onsyncfrompreference.2Fonsynctopreference">onsyncfrompreference/onsynctopreference</h3>
+
+<p>Often you will have UI whose construction does not map easily to a given preference type. For example, you may have a checkbox that is checked when an integer preference value is 3 and not when it's 2. To initialize this UI element you can't rely on the default initialization routine, since both values are meaningless to the checkbox element. You need to write translation functions to translate the preference value into an initialization value for the UI element, and to translate the UI element's value into something to write to the preferences file. This is what onsyncfrompreference/onsynctopreference are for.</p>
+
+<p><code>onsyncfrompreference</code> is called when an element is initialized from preferences. Specifically, when the value of a preference element is loaded, all the elements using that preference will have their <span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">onsyncfrompreference </span><span style="line-height: 1.5;">handler called.</span></p>
+
+<div class="warning">Be careful when writing <span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">onsyncfrompreference </span><span style="line-height: 1.5;">handlers.  </span><span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">&lt;preference&gt; </span><span style="line-height: 1.5;">elements defined after the preference<em> <strong>element</strong></em>  being dealt with will not yet have their </span><span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">value</span><span style="line-height: 1.5;"> set, so referring to them from the handler will lead to a null result. Reorder the </span><span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">&lt;preference&gt; </span><span style="line-height: 1.5;">elements or directly fetch the preference value via </span><span style="font-family: 'Courier New','Andale Mono',monospace; line-height: normal;">Services.prefs</span></div>
+
+<p><span style="line-height: 1.5;">If you supply an implementation of this event, your implementation will be invoked during initialization and you can return the value with which to initialize the UI element with, or </span><code style="font-size: 14px;">undefined</code><span style="line-height: 1.5;"> to tell the preferences system to initialize the UI element with the default value (i.e. to attempt to initialize with the preference value). In the above example, you might write the checkbox like this:</span></p>
+
+<pre>&lt;checkbox preference="foo.bar" onsyncfrompreference="return onsyncfrompreference();"/&gt;
+
+.. script:
+function onsyncfrompreference()
+{
+  var preference = document.getElementById("foo.bar");
+  // .value === undefined means the preference is set to the default value
+  var actualValue = preference.value !== undefined ?
+                      preference.value : preference.defaultValue;
+  // actualValue may be |null| here if the pref didn't have the default value.
+  return preference.value == 3;
+
+  // If foo.bar was boolean and we wanted to use its value to initialize
+  // the checkbox, we could still implement this method if we wanted to
+  // perform any other initialization actions at this time.
+}
+</pre>
+
+<p><code>onsynctopreference</code> is called when preferences are being written - the preferences system asks each element to translate its current state into a value suitable for writing to the specified preference. You can return a special value or <code>undefined</code> to tell the preferences system to use its standard means for obtaining the value. In the above example:</p>
+
+<pre>&lt;checkbox preference="foo.bar" onsynctopreference="return onsynctopreference();"/&gt;
+.. script:
+function onsynctopreference()
+{
+  var checkbox = document.getElementById("checkbox");
+  return checkbox.checked ? 3 : 2;
+}
+
+// If foo.bar was boolean and we wanted to use its value to write to
+// preferences, we could still implement this method if we wanted to
+// perform any other initialization actions at this time.
+</pre>
+
+<p>{{ Preferences_System_TOC() }}</p>

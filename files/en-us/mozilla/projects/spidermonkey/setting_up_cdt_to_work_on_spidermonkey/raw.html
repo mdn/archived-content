@@ -1,0 +1,63 @@
+<div>{{SpiderMonkeySidebar("Getting_started")}}</div>
+
+<div class="summary">
+<p><a class="external" href="https://wiki.eclipse.org/CDT">Eclipse's CDT</a> has <a class="external" href="http://wiki.eclipse.org/CDT/User/NewIn81">some pretty decent features</a> that make it an attractive environment to work in when you are interested in getting code hints, autocompletion, function, and field usage information and general IDE goodness for C/C++. There is a <a href="/en/Eclipse_CDT" title="en/Eclipse_CDT">guide for setting up CDT to work with the Mozilla codebase</a>, but it does not cover setting things up for just SpiderMonkey instead of the whole Mozilla codebase. Hence, here is a short-ish guide for doing just that.</p>
+</div>
+
+<h2 id="Step_1_-_Preparing_a_SpiderMonkey_build">Step 1 - Preparing a SpiderMonkey build</h2>
+
+<p>For CDT to index all code, SpiderMonkey has to be built with debug information. The full process of and requisites for doing so are <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/Build_Documentation#Advanced_build" title="En/SpiderMonkey/Build_Documentation#Advanced_build">described here</a>. Please follow those instructions up until the point of invoking <code>configure</code>.</p>
+
+<p>The initial build was in clang, so the modified build commands look like this:</p>
+
+<pre><code><span class="line">mkdir _DBG.OBJ
+</span><span class="line">cd _DBG.OBJ
+</span><span class="line">CC='clang -Qunused-arguments -fcolor-diagnostics' CXX='clang++ -Qunused-arguments -fcolor-diagnostics' \
+    ../configure --enable-debug --disable-optimize --enable-debug-symbols</span></code>
+</pre>
+
+<div class="note"><strong>Note:</strong> If you want to use ccache, you can enable it by adding <code>--with-ccache</code> to the arguments list. Due to <a class="link-https" href="https://bugs.eclipse.org/bugs/show_bug.cgi?id=378984">a bug in CDT</a>, you have to make a small change to CDT's build configuration as explained in Step 3 below for that to work, though.</div>
+
+<h2 id="Step_2_-_Installing_Eclipse_and_setting_up_the_project">Step 2 - Installing Eclipse and setting up the project</h2>
+
+<p>The following run-down is a condensed and updated version of what is explained in much more detail <a href="/en-US/docs/Mozilla/Developer_guide/Eclipse/Eclipse_CDT" title="en/Eclipse_CDT">for the entire Mozilla codebase</a>. Luckily, improvements in CDT have reduced the basic process to manageable five steps:</p>
+
+<ol>
+ <li>Download and extract "Eclipse IDE for C/C++ Developers" from the <a class="external" href="https://www.eclipse.org/downloads/">Eclipse downloads page</a>.</li>
+ <li>Start Eclipse and create a workspace somewhere.</li>
+ <li>Select "New &gt; Makefile Project with Existing Code" from the "File" menu.</li>
+ <li>Give the project a name that you like ("SpiderMonkey" has a nice ring to it) and use the "Browser…" button to select your checkout's <code>js/src</code> folder for the "Existing Code Location".</li>
+ <li>Choose the correct toolchain for your platform (i.e. MacOS X GCC on Mac) and click "Finish".</li>
+</ol>
+
+<p>At this point, the indexer starts running and already produces a pretty decent index of much of SpiderMonkey. Still, there are a quite a few things that CDT does not pick up yet: For everything to be indexed, CDT has to be aware of the project's build details.</p>
+
+<h2 id="Step_3_-_Index_all_the_code">Step 3 - Index all the code</h2>
+
+<p>To let CDT know about the build, it has to invoke make itself (or, as is done in the guide for the whole Mozilla codebase on MDN, read a log of the build), which can be setup with these simple steps:</p>
+
+<ol>
+ <li>Open the project's properties by selecting its root and clicking "Properties" in the "File" menu and select "C/C++ Build".</li>
+ <li>Under the "Builder Settings" group tab, deactivate "Use default build command".</li>
+ <li>Instead, change "Build command" to read <code>make -w</code> (this is required because CDT needs detailed information about which directories <code>make</code> operates on, which using <code>-w</code> causes <code>make</code> to provide).</li>
+ <li>Change the "Build location" to the build directory configured in Step 1. For me, that means changing "Build directory" to read <code>${workspace_loc:/SpiderMonkey/_DBG.OBJ}.</code></li>
+ <li>Under "Behavior", make sure that "Enable parallel build" is <em>deactivated</em>, as CDT’s indexer will freak out otherwise.</li>
+ <li>Remove "all" from "Build (Incremental build)".</li>
+ <li>Deactivate "Clean" so that your builds do not take ages.</li>
+ <li>If you want to use ccache: Select "C/C++ General", then "Preprocessor Include Patterns". Under the "Providers" group tab, select "CDT GCC Build Output Parser" and add the string <code><span style="background-color: #00080f;">|(ccache)</span></code> to the end of the "Compiler command pattern" text input.</li>
+ <li>Start the build by selecting "Build All" from the "Project" menu.</li>
+ <li>Start the indexer by either:
+  <ol>
+   <li>Selecting "Index &gt; Rebuild" from the project's context menu located in the Project Explorer window, or</li>
+   <li>Selecting "C/C++ Index &gt; Rebuild" from the "Project" menu.</li>
+  </ol>
+ </li>
+</ol>
+
+<p>And that is pretty much it: large parts of SpiderMonkey should now be indexed. Unfortunately, there are also large parts that are not properly indexed, leading to errors and warnings being shown for perfectly valid code, but I find that the parts that <em>do</em> work do so nicely enough to make it totally worth it.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/Build_Documentation" title="en/SpiderMonkey/Build_Documentation">SpiderMonkey Build Documentation</a></li>
+</ul>

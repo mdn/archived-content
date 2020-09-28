@@ -1,0 +1,377 @@
+---
+title: Examples
+slug: Mozilla/JavaScript_code_modules/Promise.jsm/Examples
+---
+<h2 id="How_to_throw_reject">How to throw reject</h2>
+
+<p>If you have a function that is a promise, and want to end it and throw a reject, you can throw an Error.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/osfile.jsm")
+
+let path = OS.Path.join(OS.Constants.Path.tmpDir, "file.txt");
+
+let promise = OS.File.exists(path);
+
+let newPromise = promise.then(function onFulfill(aExists) {
+  if (aExists) {
+    console.log("You have file.txt in your temporary directory.");
+  } else {
+    throw new Error("You don't have file.txt in your temporary directory.");
+  }
+});
+
+// Unexpected errors should always be reported at the end of a promise chain.
+let lastPromise = newPromise.then(function onFulfill(){
+
+})
+.catch(function onReject(aRejectReason) {
+     console.warn('newPromise failed with reason: ', aRejectReason);
+});</pre>
+
+<h2 id="Using_a_promise_returned_by_a_function_(verbose)">Using a promise returned by a function (verbose)</h2>
+
+<p>This example uses a verbose syntax, showing all the involved promises.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/osfile.jsm")
+
+let path = OS.Path.join(OS.Constants.Path.tmpDir, "file.txt");
+
+let promise = OS.File.exists(path);
+
+let newPromise = promise.then(function onFulfill(aExists) {
+  if (aExists) {
+    console.log("You have file.txt in your temporary directory.");
+  } else {
+    console.log("You don't have file.txt in your temporary directory.");
+  }
+});
+
+// Unexpected errors should always be reported at the end of a promise chain.
+let lastPromise = newPromise.then(null, Components.utils.reportError);
+</pre>
+
+<p>In this case, if the file existence check succeeds, the <code>onFulfill</code> callback is invoked. When the callback finishes execution, <code>newPromise</code> will be fulfilled with an <code>undefined</code> fulfillment value, because the callback does not return any value. When <code>newPromise</code> is fulfilled, nothing happens, because no fulfillment callback is specified and the return value of the last <code>then</code> method is ignored.</p>
+
+<p>If the file existence check fails, for example because access is denied, <code>promise</code> is rejected with an <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error"><code>OS.File.Error</code></a> instance. This state will propagate to <code>newPomise</code>, and <a href="/en-US/docs/Components.utils.reportError" title="/en-US/docs/Components.utils.reportError"><code>Components.utils.reportError</code></a> will report all the details of the exception to the console.</p>
+
+<h2 id="Using_a_promise_returned_by_a_function_(compact)">Using a promise returned by a function (compact)</h2>
+
+<p>The same code as the previous example is usually written with a more compact syntax:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/osfile.jsm")
+
+let path = OS.Path.join(OS.Constants.Path.tmpDir, "file.txt");
+
+OS.File.exists(path).then(exists =&gt; {
+  console.log(exists ? "You have file.txt in your temporary directory."
+                     : "You don't have file.txt in your temporary directory.");
+}).then(null, Components.utils.reportError);</pre>
+
+<h2 id="Chaining_promises">Chaining promises</h2>
+
+<p>The promise returned by <code>then</code> eventually assumes the state of the promise returned by the callback. This can be used for chaining:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/osfile.jsm")
+
+OS.File.getCurrentDirectory().then(currentDir =&gt; {
+  let path = OS.Path.join(currentDir, ".mozconfig");
+
+  return OS.File.exists(path).then(exists =&gt; {
+    console.log(exists ? "You have .mozconfig in " + currentDir
+                       : "You don't have .mozconfig in " + currentDir);
+  });
+}).then(null, Components.utils.reportError);</pre>
+
+<h2 id="Parallel_promise_(THIS_EXAMPLE_NEEDS_MORE_WORK)">Parallel promise (THIS EXAMPLE NEEDS MORE WORK)</h2>
+
+<p>So when chaining promises, consequent promises run after the previous promise completes. Now what if we want to run multiple promises and then return when all are done? This is accomplished by using <code>Promise.all</code>, this feature requires <code>Promise.jsm</code>.</p>
+
+<pre class="brush: js">const {Cu} = require("chrome");
+const {TextDecoder, TextEncoder, OS} = Cu.import("resource://gre/modules/osfile.jsm", {});
+
+/* files: An array of file paths */
+function readTextFiles(files) {
+  let promises = [],
+      decoder = new TextDecoder();
+  for (let i = 0; i &lt; files.length; i++) {
+    let promise = OS.File.read(files[i])
+    promise = promise.then(function onSuccess(array) {
+      return decoder.decode(array);
+    });
+    promises.push(promise);
+  }
+  return Promise.all(promises);
+}
+
+let folder = "/path/to/folder";
+let promise = readTextFiles([
+  OS.Path.join(folder, "read.me"),
+  Os.Path.join(folder, "home.html")
+]);
+promise.then(
+  function onSuccess(filesContent) {
+    // filesContent is an array of strings; each string is the content of one file.
+    console.log(filesContent);
+  },
+  function onFail() {
+    console.error("Failed to load all files");
+  }
+);
+</pre>
+
+<p>See also the ask.m.o topic: <a href="https://ask.mozilla.org/question/413/doing-multiple-promises-in-function-in-pareallel-how-return-when-last-done/">Doing multiple promises in function in pareallel, how return when last done?</a></p>
+
+<h2 id="Simple_Example_User_Defined_Promise_Function_2">Simple Example User Defined Promise Function 2</h2>
+
+<p>Whenever you want to make a function a promise. Always wrap that function in a try catch and make that catch return Promise.reject(ex) otherwise it will not trigger the rejection function of the promise.then. This way if any error happens it will reject the promise. In the example below we try alerting an undefined variable.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+var myPromise = myUserDefinedPromise();
+myPromise.then(
+  function(aSuccessReason) {
+    alert('myPromise was SUCCESFUL and reason was = "' + aSuccessReason + '"');
+  },
+  function(aRejectReason) {
+    alert('myPromise FAILED for reason = "' + uneval(aRejectReason) + '"');
+  }
+);
+
+function myUserDefinedPromise() {
+  try {
+    //var myVarIsCommented = 'hi'; // I commented this out s oit is undefined, this will cause rejected
+    alert(myVarIsCommented);
+
+    return Promise.resolve('yay success'); // this makes the success function trigger with aSuccessReason being 'yay success' but because I commented out the var 2 lines above, it will error out on the alert(myVarIsCommented) and never get to this success line. uncommet the var 2 lines above to see the promise succesfully return
+  } catch(ex) {
+    return Promise.reject(ex);
+  }
+}</pre>
+
+<p>Copy and paste this code and the rejection will take place. Uncomment the line `//var myVarIsCommented.....` and the promise will complete succesfully. Now replace the `alert(myVarIsCommented)` with `throw new Error('i feel like rejecting this promise')` like this:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+var myPromise = myUserDefinedPromise();
+myPromise.then(
+  function(aSuccessReason) {
+    alert('myPromise was SUCCESFUL and reason was = "' + aSuccessReason + '"');
+  },
+  function(aRejectReason) {
+    alert('myPromise FAILED for reason = "' + uneval(aRejectReason) + '"');
+  }
+);
+
+function myUserDefinedPromise() {
+  try {
+    var myVarIsCommented = 'hi';
+    alert(myVarIsCommented);
+    throw new Error('i feel like rejecting this promise');
+    return Promise.resolve('yay success'); // this makes the success function trigger with aSuccessReason being 'yay success' but because I commented out the var 2 lines above, it will error out on the throw and never get to this success line becuase i throw an error on the line before this
+  } catch(ex) {
+    return Promise.reject(ex);
+  }
+}</pre>
+
+<p>In this example even though the variable is defined, the proimse is rejected because I threw an error.</p>
+
+<p>This copy/paste code here will complete succesfully:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+var myPromise = myUserDefinedPromise();
+myPromise.then(
+  function(aSuccessReason) {
+    alert('myPromise was SUCCESFUL and reason was = "' + aSuccessReason + '"');
+  },
+  function(aRejectReason) {
+    alert('myPromise FAILED for reason = "' + uneval(aRejectReason) + '"');
+  }
+);
+
+function myUserDefinedPromise() {
+  try {
+    var myVarIsCommented = 'hi';
+    alert(myVarIsCommented);
+    // throw new Error('i feel like rejecting this promise');
+    return Promise.resolve('yay success'); // this takes place
+  } catch(ex) {
+    return Promise.reject(ex);
+  }
+}</pre>
+
+<p>You MUST return `Promise.resolve` in order to make the promise complete successfuly. If you do not then it will not understand itis a promise. This is improper usage:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+var myPromise = myUserDefinedPromise();
+myPromise.then(
+  function(aSuccessReason) {
+    alert('myPromise was SUCCESFUL and reason was = "' + aSuccessReason + '"');
+  },
+  function(aRejectReason) {
+    alert('myPromise FAILED for reason = "' + uneval(aRejectReason) + '"');
+  }
+);
+
+function myUserDefinedPromise() {
+  return 'i didnt do a Promise.resolve so this will not understand that myPromise is a promise';
+}
+// creates this error:
+/*
+Exception: myPromise.then is not a function
+@Scratchpad/5:8:1
+WCA_evalWithDebugger@resource://gre/modules/commonjs/toolkit/loader.js -&gt; resource://gre/modules/devtools/server/actors/webconsole.js:1069:7
+WCA_onEvaluateJS@resource://gre/modules/commonjs/toolkit/loader.js -&gt; resource://gre/modules/devtools/server/actors/webconsole.js:734:9
+DSC_onPacket@resource://gre/modules/commonjs/toolkit/loader.js -&gt; resource://gre/modules/devtools/server/main.js:1098:9
+LDT_send/&lt;@resource://gre/modules/devtools/dbg-client.jsm -&gt; resource://gre/modules/devtools/server/transport.js:279:11
+makeInfallible/&lt;@resource://gre/modules/commonjs/toolkit/loader.js -&gt; resource://gre/modules/devtools/DevToolsUtils.js:84:7
+*/</pre>
+
+<h2 id="Intermediate_of_User_Defined_Promise_Function_1">Intermediate of User Defined Promise Function 1</h2>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+// This function creates and returns a new promise.
+function promiseValueAfterTimeout(aValue, aTimeout)
+{
+  let deferred = Promise.defer();
+
+  try {
+    // An asynchronous operation will trigger the resolution of the promise.
+    // In this example, we don't have a callback that triggers a rejection.
+    setTimeout(function () {
+      deferred.resolve('rawr my success value');
+    }, aTimeout);
+  } catch (ex) {
+    // Generally, functions returning promises propagate exceptions through
+    // the returned promise, though they may also choose to fail early.
+    deferred.reject(ex);
+  }
+
+  // We don't return the deferred to the caller, but only the contained
+  // promise, so that the caller cannot accidentally change its state.
+  return deferred.promise;
+}
+
+// This code uses the promise returned be the function above.
+let promise = promiseValueAfterTimeout("Value", 1000);
+
+let newPromise = promise.then(function onFulfill(aValue) {
+  console.log("Fulfilled with this value: " + aValue);
+}, function onReject(aReason) {
+  console.log("Rejected with this reason: " + aReason);
+});
+
+// Unexpected errors should always be reported at the end of a promise chain.
+newPromise.then(null, Components.utils.reportError);</pre>
+
+<div class="note"><strong>Note:</strong> More examples for consuming promises are available in the <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise">Promise object documentation</a>.</div>
+
+<h2 id="Make_user_defined_promise_return_after_multiple_images_finish_loading_(Promise.all_and_Promise.defer)">Make user defined promise return after multiple images finish loading (Promise.all and Promise.defer)</h2>
+
+<p>This example shows how to use Promise.all to wait to create multiple promises with Promise.defer() and return at the end of it.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Promise.jsm");
+
+var myPromise = myUserDefinedPromise();
+myPromise.then(
+  function(aSuccessReason) {
+    alert('myPromise was SUCCESFUL and reason was = "' + aSuccessReason + '"');
+  },
+  function(aRejectReason) {
+    alert('myPromise FAILED for reason = "' + uneval(aRejectReason) + '"');
+  }
+);
+
+function myUserDefinedPromise() {
+  try {
+    var mySubPromises = [];
+
+    var imagePaths = ['http://www.mozilla.org/media/img/firefox/favicon.png', 'https://developer.cdn.mozilla.net/media/redesign/img/favicon32.png'];
+    [].forEach.call(imagePaths, function(path) {
+      let myImage = new Image();
+      let loadThisImagePromise = Promise.defer();
+      mySubPromises.push(loadThisImagePromise.promise);
+      myImage.onload = function() {
+        loadThisImagePromise.resolve('Succesfully loaded image at path = "' + path + '" the width of this image is = "' + this.naturalWidth + '".');
+        if (!this.naturalWidth) {
+          loadThisImagePromise.reject('Image loaded but it has 0 width at path = "' + path + '" the naturalWidth was 0');
+        }
+      }
+      myImage.onerror = function(e) {
+        loadThisImagePromise.reject('An error occured while loading path = "' + path + '". The error = ' + uneval(e));
+      }
+      myImage.onabort = function(e) {
+        loadThisImagePromise.reject('Image load was aborted loading path = "' + path + '".');
+      }
+      myImage.src = path;
+    });
+
+    return Promise.all(mySubPromises);
+  } catch(ex) {
+    return Promise.reject(ex);
+  }
+}</pre>
+
+<p>To test and see what happens when you get an error. Change the array in the code above. Change this line:</p>
+
+<pre class="brush: js">    var imagePaths = ['http://www.mozilla.org/media/img/firefox/favicon.png', 'https://developer.cdn.mozilla.net/media/redesign/img/favicon32.png'];</pre>
+
+<p>Change it to:</p>
+
+<pre class="brush: js">    var imagePaths = ['http://www.mozilla.org/media/img/firefox/favicon.png', 'https://developer.cdn.mozilla.net/media/redesign/img/favicon32.png', 'blah blah'];</pre>
+
+<p>I added 'blah blah' to that array, it will cuase the whole promise to reject.</p>
+
+<h2 id="sect1"> </h2>
+
+<h2 id="The_case_of_unhandled_rejections">The case of unhandled rejections</h2>
+
+<p>One of the difficult problems with promises is locating uncaught rejections.</p>
+
+<div class="warning">
+<p><strong>Warning:</strong> When consuming promises, you should always handle or report errors (rejection reasons). See <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise#Handling_errors_and_common_pitfalls" title="#Handling_errors_and_common_pitfalls">handling errors and common pitfalls</a>.</p>
+</div>
+
+<p>Rejection handlers provide information about the exact error time and location, but the handlers may sometimes be forgotten. Consider the following cases:</p>
+
+<pre style="text-align: justify;" class="brush: js">function f() {
+  return Promise.reject(new Error("BOOM!")); // If nobody catches the error, how will it be reported?
+}
+
+
+function g() {
+  return Promise.resolve().then(function() {
+    throw new Error("BOOM!"); // If nobody catches the error, how will it be reported?
+  });
+}
+
+function h() {
+  Promise.reject(new Error("BOOM!"); // Oops, we forgot to return the promise, nobody can catch it!
+}
+</pre>
+
+<p>We adopt the following strategy: if a promise is rejected at the time of its garbage-collection <strong>and</strong> if the promise is at the end of a promise chain (i.e. <code>thatPromise.then</code> has never been called), then we print a warning.</p>
+
+<div class="note"><strong>Note:</strong> This warning is generated some time after the error occurred, and may provide less information about the error location. It generally indicates the need to insert a proper error handler. When a proper rejection handler is used, it effectively replaces this delayed reporting.</div>
+
+<pre class="brush: js">let deferred = Promise.defer();
+let p = deferred.promise.then();
+deferred.reject(new Error("I am an uncaught error"));
+deferred = null;
+p = null;</pre>
+
+<p><br>
+ In this snippet, since <code>deferred.promise</code> is not the last in the chain, no error will be reported for that promise. However, since <code>p</code> is the last promise in the chain, the error will be reported for <code>p</code>.<br>
+ <br>
+ Note that this may, in some cases, cause an error to be reported more than once. For instance, consider:</p>
+
+<pre class="brush: js">let deferred = Promise.defer();
+let p1 = deferred.promise.then();
+let p2 = deferred.promise.then();
+deferred.reject(new Error("I am an uncaught error"));
+p1 = p2 = deferred = null;</pre>
+
+<p><br>
+ In this snippet, the error is reported both at <code>p1</code> and at <code>p2</code>.</p>

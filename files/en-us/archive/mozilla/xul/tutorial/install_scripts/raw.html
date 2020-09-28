@@ -1,0 +1,91 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Creating_an_Installer" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Additional_Install_Features">Next  »</a></p>
+</div>
+<p>This section describes the install script.</p>
+<h3 id="Creating_an_Install_Script">Creating an Install Script</h3>
+<div class="note">
+  <strong>Note</strong>: For Firefox Extensions, <code>install.js</code> are no longer used. You should create a <code><a href="/en-US/docs/Install_Manifests" title="Install_Manifests">install.rdf</a></code> instead.</div>
+<p>You will usually want some form of control over your install process. For example, you may wish to check versions of files and only install updated files, or perhaps you wish to apply patches to existing files. The install script is even flexible enough to allow you to uninstall files. For this reason, installers include an install script to handle the installation process.</p>
+<p>The installer script must be called install.js and must be placed at the top level of the installer archive. The script will contain JavaScript code which calls a number of install functions.</p>
+<p>In an HTML document, or a XUL document, the window object is the root global object. That means that you can call the methods of the window object with the qualifier before it, which means that <code>window.open()</code> can simply be written <code>open()</code>. In an install script, there is no associated window, however the global object will be an <em>Install</em> object which contains a number of functions to customize the install process. Some of the Install object's functions will be described below.</p>
+<p>The install script should take the following steps:</p>
+<ol>
+  <li>Initialize the installation by specifying what package and version is being installed.</li>
+  <li>Use the Install functions to indicate what files and directories need to be installed. You can also set files to be moved and deleted.</li>
+  <li>Start the process of installing the necessary files.</li>
+</ol>
+<p>It is important to note that during step two, you only indicate which files should be installed and any other operations you wish to have happen. No files get copied until step three. Because of this, you can easily specify a number of files to be installed, come across some kind of error, and abort the whole process without modifying the user's system.</p>
+<h3 id="The_Component_Registry">The Component Registry</h3>
+<p>Mozilla maintains a file which is a registry of all the components that are currently installed. Components include new chrome packages, skins and plugins. When a new component is installed, the registry gets updated. The registry also stores the set of files and version information about the installed components. That way, it is easier to check if a version of your component is already present and only update it if necessary.</p>
+<p>The component registry works somewhat like the Windows registry does. It consists of a hierarchy of keys and values. You don't need to know much about it to create XUL applications unless you are creating your own <a href="/en-US/docs/XUL_Tutorial/XPCOM_Interfaces" title="XUL_Tutorial/XPCOM_Interfaces">XPCOM</a> components.</p>
+<p>What you do need to know for an installation is that the registry stores a set of information about your application, such as the file list and versions. All of this information is stored in a key (and within subkeys) that you provide in the installation script (in step 1 mentioned above).</p>
+<p>This key is structured as directory-like path of the following form:</p>
+<pre>/Author/Package Name
+</pre>
+<p>Replace the word Author with your name and replace the Package Name with the name of the package that you are installing. For example:</p>
+<pre>/Xulplanet/Find Files
+
+/Netscape/Personal Security Manager
+</pre>
+<p>The first example is what we'll use for the find files dialog. The second is the key used for the Personal Security Manager.</p>
+<h3 id="Install_Initialization">Install Initialization</h3>
+<p>The Install object has a function, <code>initInstall()</code> which can be used to initialize for the installation. It should be called at the beginning of your installation script. The syntax of this function is as follows:</p>
+<pre>initInstall( ''packageName'' , ''regPackage'' , ''version'' );</pre>
+<p>An example</p>
+<pre>initInstall("Find Files","/Xulplanet/Find Files","0.5.0.0");</pre>
+<ul>
+  <li>The first argument is the name of the package in user-readable form.</li>
+  <li>The second argument is the registry key used to hold the package information as described earlier.</li>
+  <li>The third argument is the version of the package being installed.</li>
+</ul>
+<p>Next, we need to set the directory where the files will be installed. There are two ways to do this.</p>
+<ul>
+  <li>The simple method assigns an install directory and installs all files into it.</li>
+  <li>The second method allows you to assign a destination on a per-file (or directory) basis. The first method is described below.</li>
+</ul>
+<p>The function <code>setPackageFolder()</code> assigns an installation directory. For the find files dialog, we will install the files into the chrome directory. (We could actually put them anywhere though.) The <code>setPackageFolder()</code> takes one argument, the directory to install to. For maximum portability, you can't specify a string name for the directory. Instead, you specify an identifier of a known directory and get subdirectories of it. Thus, if your application needed to install some system libraries, you don't need to know the name of those directories.</p>
+<p>The directory identifiers are listed on <a href="/en-US/docs/XPInstall_API_Reference/Install_Object/Methods/getFolder">this page</a>. For the chrome directory, the directory identifier is 'Chrome'. The <code>getFolder()</code> function can be used to get one of these special directories. This function takes two arguments, the first is the identifier and the second is a subdirectory. For example:</p>
+<pre>findDir = getFolder("Chrome","findfile");
+setPackageFolder(findDir);
+</pre>
+<p>Here, we get findfile folder in the Chrome folder and pass it directly to the <code>setPackageFolder()</code> function. The second argument to <code>getFolder()</code> is the subdirectory which we are going to install into, which doesn't have to exist. You can leave this argument out entirely if you don't need one.</p>
+<h3 id="Setting_Install_Files" name="Setting_Install_Files">Setting Install Files</h3>
+<p>Next, you need to specify which files should be installed. This involves the use of two functions, <code>addDirectory()</code> and <code>addFile()</code>. The <code>addDirectory()</code> function tells the installer that a directory from the XPI archive (and all of its contents) should be installed to a particular location. The <code>addFile()</code> is similar but for a single file.</p>
+<p>Both the <code>addDirectory()</code> and <code>addFile()</code> functions have various forms. The simplest takes only one argument, the directory from the installer to install to the assigned installation directory.</p>
+<pre class="eval">addDirectory ( <em>dir</em> );
+addFile ( <em>dir</em> );
+
+<strong>Example:</strong>
+
+addDirectory("findfile");
+</pre>
+<p>The example above will specify that the findfile directory from the installer archive should be installed. We can call these functions multiple times to install other files.</p>
+<p>Next, we'll want to register the find files in the chrome system so that it can be used with a chrome URL. This can be done with the <code>registerChrome()</code> function. It takes two arguments, the first is the type of chrome to register (content, skin or locale). The second is the directory containing the contents.rdf file to register. Because the find files dialog contains content, a skin file and a locale file, <code>registerChrome()</code> will need to be called three times.</p>
+<pre>registerChrome(Install.CONTENT | Install.DELAYED_CHROME, getFolder(findDir, "content"));
+registerChrome(Install.SKIN | Install.DELAYED_CHROME, getFolder(findDir, "skin"));
+registerChrome(Install.LOCALE | Install.DELAYED_CHROME, getFolder(findDir, "locale"));
+</pre>
+<p>The DELAYED_CHROME flag is used to indicate that the chrome should be installed the next time Mozilla is run.</p>
+<h3 id="Installation_Completion">Installation Completion</h3>
+<p>The <code>addDirectory()</code> and <code>addFile()</code> functions don't copy any files. They only state which files should be installed. Similarly, <code>registerChrome()</code> only states that chrome should be registered. To complete the process and begin copying files, call the <code>performInstall()</code> function. It takes no arguments.</p>
+<p>The final script for installing the find files component is shown below:</p>
+<div class="highlight">
+  <p><a href="https://developer.mozilla.org/samples/xultu/examples/ex_xpiscript_1.js.txt">Source</a></p>
+  <pre>initInstall("Find Files","/Xulplanet/Find Files","0.5.0.0");
+
+findDir = getFolder("Chrome","findfile");
+setPackageFolder(findDir);
+
+addDirectory("findfile");
+
+registerChrome(Install.CONTENT | Install.DELAYED_CHROME, getFolder(findDir, "content"));
+registerChrome(Install.SKIN | Install.DELAYED_CHROME, getFolder(findDir, "skin"));
+registerChrome(Install.LOCALE | Install.DELAYED_CHROME, getFolder(findDir, "locale"));
+
+performInstall();
+</pre>
+</div>
+<p>Next, we'll look at some <a href="/en-US/docs/XUL_Tutorial/Additional_Install_Features" title="XUL_Tutorial/Additional_Install_Features">additional install functions</a>.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Creating_an_Installer" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Additional_Install_Features">Next  »</a></p>
+</div>

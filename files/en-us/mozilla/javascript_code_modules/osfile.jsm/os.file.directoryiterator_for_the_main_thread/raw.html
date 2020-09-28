@@ -1,0 +1,608 @@
+<p>This document presents the mechanisms for walking the contents of a directory <em>from the main thread</em>. For other uses of OS.File and OS.File.DirectoryIterator, please see the <a href="/en-US/docs/JavaScript_OS.File" title="/en-US/docs/JavaScript_OS.File">main document on OS.File</a>.</p>
+
+<h2 id="Using_OS.File.DirectoryIterator">Using OS.File.DirectoryIterator</h2>
+
+<h3 id="Example_Finding_the_subdirectories_of_a_directory_using_an_iterator_(TBD)">Example: Finding the subdirectories of a directory using an iterator (TBD)</h3>
+
+<p>The following snippet walks through the content of a directory, selecting subdirectories:</p>
+
+<pre>// Open iterator
+let iterator = new OS.File.DirectoryIterator(somePath);
+let subdirs = [];
+// Iterate through the directory
+let promise = iterator.forEach(
+  function onEntry(entry) {
+    if (entry.isDir) {
+      subdirs.push(entry);
+    }
+  }
+);
+
+// Finally, close the iterator
+promise.then(
+  function onSuccess() {
+    iterator.close();
+    return subdirs;
+  },
+  function onFailure(reason) {
+    iterator.close();
+    throw reason;
+  }
+);
+</pre>
+
+<p>Or a variant using <a href="http://taskjs.org/" title="http://taskjs.org/">Task.js</a> (or at least <a href="http://dxr.mozilla.org/mozilla-central/toolkit/content/Task.jsm.html" title="http://dxr.mozilla.org/mozilla-central/toolkit/content/Task.jsm.html">the subset already present on mozilla-central</a>):</p>
+
+<pre class="brush: js">Task.spawn(function() {
+  let iterator = new OS.File.DirectoryIterator(somePath);
+  let subdirs = [];
+  // Loop through all entries
+  // (the loop ends with an exception).
+  while (true) {
+    let entry = yield iterator.next();
+    subdirs.push(entry);
+  }
+}).then(
+  null,
+  // Finally, clean up
+  function onFailure(reason) {
+    iterator.close();
+    if (reason != StopIteration) {
+      throw reason;
+    }
+  }
+);
+</pre>
+
+<h3 id="Example_Sorting_files_by_last_modification_date">Example: Sorting files by last modification date</h3>
+
+<p>The following takes advantage of feature detection to minimize file I/O:</p>
+
+<pre class="brush: js">let iterator = new OS.File.DirectoryIterator(somePath);
+let entries = [];
+let promise = iterator.forEach(
+  function onEntry(entry) {
+    if ("winLastWriteDate" in entry) {
+      // Under Windows, additional information allows us to sort files immediately
+      // without having to perform additional I/O.
+      entries.push({entry: entry, creationDate: entry.winCreationDate});
+    } else {
+      // Under other OSes, we need to call OS.File.stat
+      return OS.File.stat(entry.path).then(
+        function onSuccess(info) {
+          entries.push({entry:entry, creationDate: info.creationDate});
+        }
+      );
+    }
+  }
+);
+promise.then(
+  function onSuccess() {
+    // Close the iterator, sort the array, return it
+    iterator.close();
+    return entries.sort(function compare(a, b) {
+      return a.creationDate - b.creationDate;
+    });
+  },
+  function onFailure(reason) {
+     // Close the iterator, propagate any error
+    iterator.close();
+    throw reason;
+  }
+);
+
+</pre>
+
+<p>Or a variant using <a href="http://taskjs.org/" title="http://taskjs.org/">Task.js</a> (or at least <a href="http://dxr.mozilla.org/mozilla-central/toolkit/content/Task.jsm.html" title="http://dxr.mozilla.org/mozilla-central/toolkit/content/Task.jsm.html">the subset already present on mozilla-central</a>):</p>
+
+<pre class="brush: js">let iterator = new OS.File.DirectoryIterator(somePath);
+let entries = [];
+Task.spawn(function(){
+  while (true) {
+    let entry = yield iterator.next();
+    if ("winLastWriteDate" in entry) {
+      // Under Windows, additional information allows us to sort files immediately
+      // without having to perform additional I/O.
+      entries.push({entry: entry, creationDate: entry.winCreationDate});
+    } else {
+      // Under other OSes, we need to call OS.File.stat
+      let info = yield OS.File.stat(entry.path);
+      entries.push({entry:entry, creationDate: info.creationDate});
+    }
+  }
+}).then(
+  null,
+  // Clean up and return
+  function onFailure(reason) {
+    iterator.close();
+    if (reason != StopIteration) {
+      throw reason;
+    }
+    return entries.sort(function compare(a, b) {
+      return a.creationDate - b.creationDate;
+    });
+  }
+);
+</pre>
+
+<h3 id="Example_Iterating_through_all_child_entries_of_directory">Example: Iterating through all child entries of directory</h3>
+
+<div class="note">
+<p>This example uses the Deferred function from here: <a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Deferred#Backwards_and_forwards_compatible_helper">Deferred</a>. Add-SDK devs should use the core/promise defer. For example <code>var deferred_enumChildEntries = new Deferred();</code> should be replaced with <code>var deferred-enumChildEntries = require('core/promise').defer()</code>, see here: <a href="/en-US/Add-ons/SDK/Low-Level_APIs/core_promise#defer">core/promise :: defer</a>. Also, the <code>Promise.all</code> for Addon-SDK developers should also be replaced with<a href="/en-US/Add-ons/SDK/Low-Level_APIs/core_promise#all"> core/promise :: all</a>, for example, the code below of <code>var promiseAll_itrSubdirs = Promise.all(promiseArr_itrSubdirs);</code> should be rewritten as <code>var promiseAll_itrSubdirs = require('sdk/core/promise').all(promiseArr_itrSubdirs);</code>.</p>
+</div>
+
+<p>The following function, <code>enumChildEntries</code> takes in a parameter of directory path and a callback known as delegate. It will go throgh all subdirectories and files contained till it reaches max_depth. The depth argument is for use by the function to track recursion. If the delegate returns true, it stops enumerating children.</p>
+
+<pre>function enumChildEntries(pathToDir, delegate, max_depth, runDelegateOnRoot, depth) {
+	// IMPORTANT: as dev calling this functiopn `depth` arg must ALWAYS be undefined (dont even set it to 0 or null, must completly omit setting it, or set it to undefined). this arg is meant for internal use for iteration
+	// `delegate` is required
+	// pathToDir is required, it is string
+	// max_depth should be set to null/undefined if you want to enumerate till every last bit is enumerated. paths will be iterated to including max_depth.
+	// if runDelegateOnRoot, then delegate runs on the root path with depth arg of -1
+	// this function iterates all elements at depth i, then after all done then it iterates all at depth i + 1, and then so on
+	// if arg of `runDelegateOnRoot` is true then minimum depth is -1 (and is of the root), otherwise min depth starts at 0, contents of root
+	// if delegate returns true, it will stop iteration
+	// if set max_depth to 0, it will just iterate immediate children of pathToDir, unlesss you set runDelegateOnRoot to true, then it will just run delegate on the root
+	var deferredMain_enumChildEntries = new Deferred();
+
+	if (depth === undefined) {
+		// at root pathDir
+		depth = 0;
+		if (runDelegateOnRoot) {
+			var entry = {
+				isDir: true,
+				name: OS.Path.basename(pathToDir),
+				path: pathToDir
+			};
+			var rez_delegate = delegate(entry, -1);
+			if (rez_delegate) {
+				deferredMain_enumChildEntries.resolve(entry);
+				return deferredMain_enumChildEntries.promise; // to break out of this func, as if i dont break here it will go on to iterate through this dir
+			}
+		}
+	} else {
+		depth++;
+	}
+
+	if ((max_depth === null || max_depth === undefined) || (depth &lt;= max_depth)) {
+		var iterrator = new OS.File.DirectoryIterator(pathToDir);
+		var subdirs = [];
+		var promise_batch = iterrator.nextBatch();
+		// :TODO: iterrator.close() somewhere!! maybe here as i dont use iterrator anymore after .nextBatch()
+		promise_batch.then(
+			function(aVal) {
+				iterrator.close();
+				console.log('Fullfilled - promise_batch - ', aVal);
+				// start - do stuff here - promise_batch
+				for (var i = 0; i &lt; aVal.length; i++) {
+					if (aVal[i].isDir) {
+						subdirs.push(aVal[i]);
+					}
+					var rez_delegate_on_child = delegate(aVal[i], depth);
+					if (rez_delegate_on_child) {
+						deferredMain_enumChildEntries.resolve(aVal[i]);
+						return/* deferredMain_enumChildEntries.promise -- im pretty sure i dont need this, as of 040115*/; //to break out of this if loop i cant use break, because it will get into the subdir digging, so it will not see the `return deferredMain_enumChildEntries.promise` after this if block so i have to return deferredMain_enumChildEntries.promise here
+					}
+				}
+				// finished running delegate on all items at this depth and delegate never returned true
+
+				if (subdirs.length &gt; 0) {
+					var promiseArr_itrSubdirs = [];
+					for (var i = 0; i &lt; subdirs.length; i++) {
+						promiseArr_itrSubdirs.push(enumChildEntries(subdirs[i].path, delegate, max_depth, null, depth)); //the runDelegateOnRoot arg doesnt matter here anymore as depth arg is specified
+					}
+					var promiseAll_itrSubdirs = Promise.all(promiseArr_itrSubdirs);
+					promiseAll_itrSubdirs.then(
+						function(aVal) {
+							console.log('Fullfilled - promiseAll_itrSubdirs - ', aVal);
+							// start - do stuff here - promiseAll_itrSubdirs
+							deferredMain_enumChildEntries.resolve('done iterating all - including subdirs iteration is done - in pathToDir of: ' + pathToDir);
+							// end - do stuff here - promiseAll_itrSubdirs
+						},
+						function(aReason) {
+							var rejObj = {name:'promiseAll_itrSubdirs', aReason:aReason};
+							rejObj.aExtra = 'meaning finished iterating all entries INCLUDING subitering subdirs in dir of pathToDir';
+							rejobj.pathToDir = pathToDir;
+							console.error('Rejected - promiseAll_itrSubdirs - ', rejObj);
+							deferredMain_enumChildEntries.reject(rejObj);
+						}
+					).catch(
+						function(aCaught) {
+							var rejObj = {name:'promiseAll_itrSubdirs', aCaught:aCaught};
+							console.error('Caught - promiseAll_itrSubdirs - ', rejObj);
+							deferredMain_enumChildEntries.reject(rejObj);
+						}
+					);
+				} else {
+					deferredMain_enumChildEntries.resolve('done iterating all - no subdirs - in pathToDir of: ' + pathToDir);
+				}
+				// end - do stuff here - promise_batch
+			},
+			function(aReason) {
+				iterrator.close();
+				var rejObj = {name:'promise_batch', aReason:aReason};
+				if (aReason.winLastError == 2) {
+					rejObj.probableReason = 'directory at pathToDir doesnt exist';
+				}
+				console.error('Rejected - promise_batch - ', rejObj);
+				deferredMain_enumChildEntries.reject(rejObj);
+			}
+		).catch(
+			function(aCaught) {
+				iterrator.close();
+				var rejObj = {name:'promise_batch', aCaught:aCaught};
+				console.error('Caught - promise_batch - ', rejObj);
+				deferredMain_enumChildEntries.reject(rejObj);
+			}
+		);
+	} else {
+		deferredMain_enumChildEntries.resolve('max depth exceeded, so will not do it, at pathToDir of: ' + pathToDir);
+	}
+
+	return deferredMain_enumChildEntries.promise;
+}
+
+//start - helper function
+function Deferred() {
+	if (Promise.defer) {
+		//need import of Promise.jsm for example: Cu.import('resource:/gree/modules/Promise.jsm');
+		return Promise.defer();
+	} else if (PromiseUtils.defer) {
+		//need import of PromiseUtils.jsm for example: Cu.import('resource:/gree/modules/PromiseUtils.jsm');
+		return PromiseUtils.defer();
+	} else {
+		/* A method to resolve the associated Promise with the value passed.
+		 * If the promise is already settled it does nothing.
+		 *
+		 * @param {anything} value : This value is used to resolve the promise
+		 * If the value is a Promise then the associated promise assumes the state
+		 * of Promise passed as value.
+		 */
+		this.resolve = null;
+
+		/* A method to reject the assocaited Promise with the value passed.
+		 * If the promise is already settled it does nothing.
+		 *
+		 * @param {anything} reason: The reason for the rejection of the Promise.
+		 * Generally its an Error object. If however a Promise is passed, then the Promise
+		 * itself will be the reason for rejection no matter the state of the Promise.
+		 */
+		this.reject = null;
+
+		/* A newly created Pomise object.
+		 * Initially in pending state.
+		 */
+		this.promise = new Promise(function(resolve, reject) {
+			this.resolve = resolve;
+			this.reject = reject;
+		}.bind(this));
+		Object.freeze(this);
+	}
+}
+// end - helper function
+</pre>
+
+<h5 id="Example_of_enumChildEntries"> Example of enumChildEntries</h5>
+
+<pre>/************ start usage **************/
+var totalEntriesEnummed = 0; //meaning total number of entries ran delegate on, includes root dir
+function delegate_handleEntry(entry) {
+  // return true to make enumeration stop
+  totalEntriesEnummed++;
+  console.info('entry:', entry);
+}
+
+var pathToTarget = OS.Constants.Path.desktopDir;
+var promise_enumEntries = enumChildEntries(pathToTarget, delegate_handleEntry, null /*to get all*/, false);
+promise_enumEntries.then(
+  function(aVal) {
+    // on resolve, aVal is undefined if it went through all possible entries
+    console.log('Fullfilled - promise_enumEntries - ', aVal);
+    console.info('totalEntriesEnummed:', totalEntriesEnummed)
+  },
+  function(aReason) {
+    console.error('Rejected - promise_enumEntries - ', aReason);
+    throw {rejectorOf_promiseName:'promise_enumEntries', aReason:aReason};
+  }
+).catch(
+  function(aCatch) {
+    console.error('Caught - promise_enumEntries - ', aCatch);
+    throw aCatch;
+  }
+);
+</pre>
+
+<h5 id="Another_Example">Another Example</h5>
+
+<pre>var delegate = function(aEntry, aDepth) {
+  console.info('aDepth:', aDepth, 'aEntry:', aEntry.name);
+}
+
+enumChildEntries(OS.Path.join(OS.Constants.Path.desktopDir, 'p'), delegate, null, true).then(
+  x =&gt; console.log('x:', x),
+  y =&gt; console.error('y:', y)
+).catch(
+  z =&gt; console.error('z:', z)
+);</pre>
+
+<h3 id="Example_Make_a_copy_of_a_directory_(uses_enumChildEntries_from_above)">Example: Make a copy of a directory<em> (uses <code>enumChildEntries</code> from above)</em></h3>
+
+<div class="note">
+<p>This example uses the Deferred function from here: <a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Deferred#Backwards_and_forwards_compatible_helper">Deferred</a>. Add-SDK devs should use the core/promise defer. For example <code>var deferred_enumChildEntries = new Deferred();</code> should be replaced with <code>var deferred-enumChildEntries = require('core/promise').defer()</code>, see here: <a href="/en-US/Add-ons/SDK/Low-Level_APIs/core_promise#defer">core/promise :: defer</a>. Also, the <code>Promise.all</code> for Addon-SDK developers should also be replaced with<a href="/en-US/Add-ons/SDK/Low-Level_APIs/core_promise#all"> core/promise :: all</a>, for example, the code below of <code>var promiseAll_itrSubdirs = Promise.all(promiseArr_itrSubdirs);</code> should be rewritten as <code>var promiseAll_itrSubdirs = require('sdk/core/promise').all(promiseArr_itrSubdirs);</code>.</p>
+</div>
+
+<p>The following function, <code>duplicateDirAndContents</code> uses the above function of <code>enumChildEntries</code> to duplicate a directory, can set how deep the copy should go.</p>
+
+<pre class="brush: js">// start - helper function for duplicateDirAndContents
+function escapeRegExp(text) {
+    if (!arguments.callee.sRE) {
+        var specials = ['/', '.', '*', '+', '?', '|', '(', ')', '[', ']', '{', '}', '\\'];
+        arguments.callee.sRE = new RegExp('(\\' + specials.join('|\\') + ')', 'g');
+    }
+    return text.replace(arguments.callee.sRE, '\\$1');
+}
+// end - helper function for duplicateDirAndContents
+
+</pre>
+
+<pre>function duplicateDirAndContents(pathToSrcDir, pathToDestDir, max_depth, targetDirExists) {
+	// returns promise
+	// copies all stuff at depth i, then does depth i + 1, then i + 2 depth, so on // does not start at depth i and if subdir found it doesnt start copying into that right away, it completes depth levels first, i should make this change in future though as enhancement
+	// if targetDirExists mark as true, else, set to false. if you set to true when it does not exist, then promise will reject due to failing to copy to non-existant dir. if it does exist, and you set it to false, then you are just wasting a couple extra function calls, function will complete succesfully though, as it tries to make the dir but it will not overwrite if already found
+
+	var deferred_duplicateDirAndContents = new Deferred();
+	var promise_duplicateDirAndContents = deferred_duplicateDirAndContents.promise;
+
+	var stuffToMakeAtDepth = [];
+	var smallestDepth = 0;
+	var largestDepth = 0;
+
+	var delegate_handleEntry = function(entry, depth) {
+		// return true to make enumeration stop
+		if (depth &lt; smallestDepth) {
+			smallestDepth = depth;
+		}
+		if (depth &gt; largestDepth) {
+			largestDepth = depth;
+		}
+		stuffToMakeAtDepth.push({
+			depth: depth,
+			isDir: entry.isDir,
+			path: entry.path
+		});
+	};
+
+	var promise_collectAllPathsInSrcDir = enumChildEntries(pathToSrcDir, delegate_handleEntry, max_depth, !targetDirExists);
+
+	promise_collectAllPathsInSrcDir.then(
+		function(aVal) {
+			console.log('Fullfilled - promise_collectAllPathsInSrcDir - ', aVal);
+			// start - do stuff here - promise_collectAllPathsInSrcDir
+			// start - promise generator func
+			var curDepth = smallestDepth;
+			var makeStuffsFor_CurDepth = function() {
+				var promiseAllArr_madeForCurDepth = [];
+				for (var i = 0; i &lt; stuffToMakeAtDepth.length; i++) {
+					if (stuffToMakeAtDepth[i].depth == curDepth) {
+						var copyToPath = stuffToMakeAtDepth[i].path.replace(new RegExp(escapeRegExp(pathToSrcDir), 'i'), pathToDestDir);
+						promiseAllArr_madeForCurDepth.push(
+							stuffToMakeAtDepth[i].isDir // if (stuffToMakeAtDepth[i].isDir) {
+							?
+								OS.File.makeDir(copyToPath)
+							: // } else {
+								OS.File.unixSymLink(stuffToMakeAtDepth[i].path, stuffToMakeAtDepth[i].path.replace(new RegExp(escapeRegExp(pathToSrcDir), 'i'), pathToDestDir))
+								//OS.File.copy(stuffToMakeAtDepth[i].path, copyToPath)
+							// }
+						);
+					}
+				}
+				var promiseAll_madeForCurDepth = Promise.all(promiseAllArr_madeForCurDepth);
+				promiseAll_madeForCurDepth.then(
+					function(aVal) {
+						//console.log('Fullfilled - promiseAll_madeForCurDepth - ', aVal);
+						// start - do stuff here - promiseAll_madeForCurDepth
+						if (curDepth &lt; largestDepth) {
+							curDepth++;
+							makeStuffsFor_CurDepth();
+						} else {
+							deferred_duplicateDirAndContents.resolve('all depths made up to and including:' + largestDepth);
+						}
+						// end - do stuff here - promiseAll_madeForCurDepth
+					},
+					function(aReason) {
+						var rejObj = {name:'promiseAll_madeForCurDepth', aReason:aReason};
+						console.error('Rejected - promiseAll_madeForCurDepth - ', rejObj);
+						deferred_duplicateDirAndContents.reject(rejObj);
+					}
+				).catch(
+					function(aCaught) {
+						var rejObj = {name:'promiseAll_madeForCurDepth', aCaught:aCaught};
+						console.error('Caught - promiseAll_madeForCurDepth - ', rejObj);
+						deferred_duplicateDirAndContents.reject(rejObj);
+					}
+				);
+			};
+			// end - promise generator func
+			makeStuffsFor_CurDepth();
+			// end - do stuff here - promise_collectAllPathsInSrcDir
+		},
+		function(aReason) {
+			var rejObj = {name:'promise_collectAllPathsInSrcDir', aReason:aReason};
+			console.error('Rejected - promise_collectAllPathsInSrcDir - ', rejObj);
+			deferred_duplicateDirAndContents.reject(rejObj);
+		}
+	).catch(
+		function(aCaught) {
+			var rejObj = {name:'promise_collectAllPathsInSrcDir', aCaught:aCaught};
+			console.error('Caught - promise_collectAllPathsInSrcDir - ', rejObj);
+			deferred_duplicateDirAndContents.reject(rejObj);
+		}
+	);
+
+	return promise_duplicateDirAndContents;
+}</pre>
+
+<h5 id="Example_Usage_of_duplicateDirAndContents">Example Usage of duplicateDirAndContents</h5>
+
+<pre class="brush: js">var pathToTarget = OS.Path.join(OS.Constants.Path.desktopDir, 'trgt folder');
+var pathToCreate = OS.Path.join(OS.Constants.Path.desktopDir, 'deep copied dir'); // does not have to exist, but if it doesnt, then make sure to pass last argument of duplicateDirAndContents of `targetDirExists` as false or null or undefined. dont pass true, otherwise you lied to it and it will reject as the destintation dir doesnt exist
+
+var promise_dupeTrgFol = duplicateDirAndContents(pathToTarget, pathToCreate, 0, false);
+promise_dupeTrgFol.then(
+    function(aVal) {
+        console.log('Fullfilled - promise_dupeTrgFol - ', aVal);
+        return 'promise for enumChildEntries completed succesfully';
+    },
+    function(aReason) {
+        var rejObj = {
+            promiseName: 'promise_dupeTrgFol',
+            aReason: aReason
+        };
+        console.error('Rejected - ' + rejObj.promiseName + ' - ', rejObj);
+    }
+).catch(
+    function(aCaught) {
+        console.error('Caught - promise_dupeTrgFol - ', aCaught);
+    }
+);</pre>
+
+<h2 id="Instances_of_OS.File.DirectoryIterator">Instances of OS.File.DirectoryIterator</h2>
+
+<h3 id="General_remark">General remark</h3>
+
+<div class="warning">
+<p>Instances of OS.File.DirectoryIterator use valuable system resources – typically the same resources as files. There is a limit to the total number of files and directory iterators that can be open at any given time. Therefore, you should make sure that these resources are released as early as possible. To do this, you should use method <a href="#OS.File.DirectoryIterator.prototype.close" title="#OS.File.DirectoryIterator.prototype.close">close</a>().</p>
+</div>
+
+<h3 id="Constructor">Constructor</h3>
+
+<pre class="brush: js">OS.File.DirectoryIterator(
+  in string path,
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments">Arguments</h5>
+
+<dl>
+ <dt>path</dt>
+ <dd>The complete path to a directory.</dd>
+ <dt>options</dt>
+ <dd>An object that may contain the following fields:</dd>
+ <dt style="margin-left: 40px;">winPattern</dt>
+ <dd style="margin-left: 40px;">(ignored on non-Windows platforms) This option accepts a pattern such as <code>"*.exe"</code> or <code>"*.txt"</code>. The iterator will only display items whose name matches this pattern.</dd>
+</dl>
+
+<h3 id="Method_overview">Method overview</h3>
+
+<table>
+ <tbody>
+  <tr>
+   <td>void <a href="#OS.File.DirectoryIterator.prototype.close" title="#OS.File.DirectoryIterator.prototype.close">close</a>()</td>
+  </tr>
+  <tr>
+   <td>promise&lt;void&gt; <a href="#OS.File.DirectoryIterator.prototype.forEach" title="#OS.File.DirectoryIterator.prototype.forEach">forEach</a>(in function callback)</td>
+  </tr>
+  <tr>
+   <td>promise&lt;Array&gt; <a href="#OS.File.DirectoryIterator.prototype.nextBatch" title="#OS.File.DirectoryIterator.prototype.nextBatch">nextBatch</a>([optional] in number length)</td>
+  </tr>
+  <tr>
+   <td>promise&lt;Entry&gt; <a href="#OS.File.DirectoryIterator.prototype.next" title="#OS.File.DirectoryIterator.prototype.next">next</a>()</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods">Methods</h3>
+
+<h4 id="close()">close()<a name="OS.File.DirectoryIterator.prototype.close"></a></h4>
+
+<p>Close the iterator, releasing the system resources it uses.</p>
+
+<pre class="brush: js">void close()</pre>
+
+<p>You should always call this method once you are done with an iterator. Calling this method several times is harmless. Calling this method while iterating through the directory is harmless but will stop the iteration.</p>
+
+<h4 id="forEach()">forEach()<a name="OS.File.DirectoryIterator.prototype.forEach"></a></h4>
+
+<p>Walk through the iterator</p>
+
+<pre class="brush: js">promise&lt;void&gt; forEach(
+  in function callback
+)</pre>
+
+<h5 id="Arguments_2">Arguments</h5>
+
+<h5 class="note" id="Promise_resolves_to">Promise resolves to</h5>
+
+<p class="note">Nothing - once the loop is complete</p>
+
+<h5 class="note" id="Promise_rejects_to">Promise rejects to</h5>
+
+<p class="note"> </p>
+
+<div class="note">
+<p><strong>Promise-based loop</strong></p>
+
+<p>Iteration takes place sequentially: the callback is called with the first file, then once the callback is complete with the second file, etc.</p>
+
+<p>It is often quite useful to be able to return a promise. If the callback returns a promise, the loop continues only once the callback is resolved.</p>
+If any of the callbacks throws an error or rejects a promise, the loop is stopped and rejects with the same error.</div>
+
+<dl>
+ <dt>callback</dt>
+ <dd>A function. It will be applied to each entry in the directory successively, with the following arguments:</dd>
+ <dt style="margin-left: 40px;">entry</dt>
+ <dd style="margin-left: 40px;">An instance of <a href="/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry" title="/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry">OS.File.DirectoryIterator.Entry</a>.</dd>
+ <dt style="margin-left: 40px;">index</dt>
+ <dd style="margin-left: 40px;">The index of the entry in the enumeration.</dd>
+ <dt style="margin-left: 40px;">iterator</dt>
+ <dd style="margin-left: 40px;">The iterator itself. You may stop the iteration by calling <code>iterator.close()</code>.</dd>
+ <dt class="note">OS.File.Error</dt>
+ <dd>In case of I/O error.</dd>
+ <dt>Anything else</dt>
+ <dd>In case one of the callbacks throws an error or rejects.</dd>
+</dl>
+
+<h4 id="nextBatch()">nextBatch()<a name="OS.File.DirectoryIterator.prototype.nextBatch"></a></h4>
+
+<p>Return several entries at once.</p>
+
+<pre class="brush: js">promise&lt;array&gt; nextBatch(
+  [optional] in number entries
+)</pre>
+
+<h5 id="Arguments_3">Arguments</h5>
+
+<dl>
+ <dt>entries</dt>
+ <dd>The number of entries to return at once. If unspecified, all entries.</dd>
+</dl>
+
+<h5 id="Promise_resolves_to_2">Promise resolves to</h5>
+
+<p>An array containing <code>entries</code> entries, or less if there are not enough entries left in the directory. Once iteration is complete, calls to <code>nextBatch</code> return the empty array.</p>
+
+<div class="note">
+<p><strong>Performance note</strong></p>
+
+<p>In some circumstances, you may wish to use this method instead of <a href="#OS.File.DirectoryIterator.prototype.forEach" title="#OS.File.DirectoryIterator.prototype.forEach">forEach</a> or <a href="#OS.File.DirectoryIterator.prototype.next" title="#OS.File.DirectoryIterator.prototype.next">next</a> for performance reasons, as it limits the number of synchronizations between threads.</p>
+</div>
+
+<h4 id="next()">next()<a name="OS.File.DirectoryIterator.prototype.next"></a></h4>
+
+<p>Return the next entry in the directory.</p>
+
+<pre class="brush: js">promise&lt;<a href="https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry" title="https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry">Entry</a>&gt; next()</pre>
+
+<h5 id="Promise_resolves_to_3">Promise resolves to</h5>
+
+<p>The next entry in the directory.</p>
+
+<h5 id="Promise_rejects_to_2">Promise rejects to</h5>
+
+<dl>
+ <dt>OS.File.Error</dt>
+ <dd>In case of file error.</dd>
+ <dt>StopIteration</dt>
+ <dd>If the method is called after the last entry has been returned. Note that this is the constant <code>StopIteration</code>, not a constructor.</dd>
+</dl>

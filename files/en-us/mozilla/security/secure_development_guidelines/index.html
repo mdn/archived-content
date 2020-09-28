@@ -1,0 +1,1103 @@
+---
+title: Secure Development Guidelines
+slug: Mozilla/Security/Secure_Development_Guidelines
+tags:
+  - Security
+---
+<p>The following content will likely see significant revision, though can be used as a reference for security best practices to follow when developing code for Mozilla.</p>
+
+<h3 id="Introduction">Introduction</h3>
+
+<ul>
+ <li>Provide developers with information on specific security issues</li>
+ <li>Cover common coding mistakes and</li>
+ <li>How they affect a product</li>
+ <li>How to avoid making them</li>
+ <li>How to mitigate them</li>
+ <li>Everything is oriented toward C/C++</li>
+</ul>
+
+<h3 id="Introduction_Gaining_Control">Introduction: Gaining Control</h3>
+
+<ul>
+ <li>Specifics about the underlying architecture, using x86 as an example</li>
+ <li>6 basic registers (EAX, EBX, ECX, EDX, EDI, ESI)</li>
+ <li>2 stack-related registers (ESP, EBP)
+  <ul>
+   <li>Mark top and bottom of current stack frame</li>
+  </ul>
+ </li>
+ <li>Status register (EFLAGS)
+  <ul>
+   <li>Contains various state information</li>
+  </ul>
+ </li>
+ <li>Instruction pointer (EIP)
+  <ul>
+   <li>Points to register being executed; can’t be modified directly</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Introduction_Gaining_Control_(2)">Introduction: Gaining Control (2)</h3>
+
+<ul>
+ <li>EIP is modified using call or jump instructions</li>
+ <li>Attacks usually rely on obtaining control over the EIP</li>
+ <li>Otherwise the attacker can try to control memory pointed to by an existing function pointer</li>
+ <li>A vulnerability is required to modify the EIP or sensitive memory</li>
+ <li>Saved return addr or function pointer get altered</li>
+</ul>
+
+<h3 id="Introduction_Gaining_Control_(3)">Introduction: Gaining Control (3)</h3>
+
+<ul>
+ <li>Common issues used to gain control
+  <ul>
+   <li>Buffer overflows</li>
+   <li>Format string bugs</li>
+   <li>Integer overflows/underflows</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Writing_Secure_Code_Input_Validation">Writing Secure Code: Input Validation</h2>
+
+<h3 id="Input_Validation">Input Validation</h3>
+
+<ul>
+ <li>Most vulnerabilities are a result of un-validated input</li>
+ <li>Always perform input validation</li>
+ <li>Could save you without knowing it</li>
+ <li>Examples:
+  <ul>
+   <li>If it doesn’t have to be negative, store it in an unsigned <em>int</em></li>
+   <li>If the input doesn’t have to be &gt; 512, cut it off there</li>
+   <li>If the input should only be [a-zA-Z0-9], enforce it</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Cross_Site_Scripting_(XSS)">Cross Site Scripting (XSS)</h3>
+
+<ul>
+ <li>XSS is a type of code injection attack</li>
+ <li>Typically occurs in web applications</li>
+ <li>Injection of arbitrary data into an HTML document from another site</li>
+ <li>Victim’s browser executes those HTML instructions</li>
+ <li>Could be used to steal user credentials</li>
+ <li>Think: webmail, online auction, CMS, online banking...</li>
+</ul>
+
+<h3 id="XSS_Example">XSS: Example</h3>
+
+<p>The following snippet of JavaScript:</p>
+
+<pre class="bz_comment_text" id="comment_text_0">document.write("Welcome to " + document.location);
+</pre>
+
+<p>... is exploitable (in some browsers) with a simple request such as: </p>
+
+<pre class="bz_comment_text" id="comment_text_0">http://www.victim.com?something=&lt;SCRIPT&gt;alert('Oops')&lt;/SCRIPT&gt;
+</pre>
+
+<p> </p>
+
+<h3 id="XSS_Prevention">XSS: Prevention</h3>
+
+<ul>
+ <li>Escape all dynamic input that will be sent back to the user</li>
+ <li>HTML encoding
+  <ul>
+   <li>&amp;amp; → &amp;</li>
+   <li>&amp;lt; → &lt;</li>
+   <li>&amp;gt; → &gt;</li>
+   <li>&amp;quot; → "</li>
+   <li>&amp;apos; → '</li>
+  </ul>
+ </li>
+ <li>URL encoding
+  <ul>
+   <li>% encoding</li>
+  </ul>
+ </li>
+ <li>Java/VBscript escaping
+  <ul>
+   <li>Depends on the context; in a single-quoted string, escaping ' would suffice</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="SQL_Injection">SQL Injection</h3>
+
+<ul>
+ <li>Occurs when un-trusted input is mixed with a SQL string</li>
+ <li>SQL is a language used to interact with databases</li>
+ <li>Code injection attack that is similar to XSS but targeted at SQL rather than HTML and JavaScript</li>
+ <li>If input is mixed with SQL, it could itself become an SQL instruction and be used to:
+  <ul>
+   <li>Query data from the database (passwords)</li>
+   <li>Insert value into the database (a user account)</li>
+   <li>Change application logic based on results returned by the database</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="SQL_Injection_Example">SQL Injection: Example</h3>
+
+<p><code>snprintf(str, sizeof(str),<br>
+          "SELECT * FROM account WHERE name ='%s'", name);<br>
+ sqlite3_exec(db, str, NULL, NULL, NULL);</code></p>
+
+<h3 id="SQL_Injection_Prevention">SQL Injection: Prevention</h3>
+
+<ul>
+ <li>Use parameterized queries</li>
+ <li>Insert a marker for every piece of dynamic content so data does not get mixed with SQL instructions</li>
+ <li>Example:<br>
+  <code>sqlite3_stmt *stmt;<br>
+  char *str = "SELECT * FROM account where name='?'";<br>
+  sqlite3_prepare_v2(db, str, strlen(str), &amp;stmt, NULL);<br>
+  <span style="color: red;">sqlite3_bind_text(stmt, 1, name, strlen(name), SQLITE_TRANSIENT);</span><br>
+  sqlite3_step(stmt);<br>
+  sqlite3_finalize(p_stmt);</code></li>
+</ul>
+
+<h2 id="Writing_Secure_Code_Arithmetic_Issues">Writing Secure Code: Arithmetic Issues</h2>
+
+<h3 id="Integer_OverflowsUnderflows">Integer Overflows/Underflows</h3>
+
+<ul>
+ <li>Overflows occur when an arithmetic operation attempts to create a numeric value that is larger than can be represented within the available storage space</li>
+ <li>MAX + 1 will be 0 and 0 – 1 will be MAX!</li>
+</ul>
+
+<table style="border: 1px solid rgb(0, 0, 0);">
+ <tbody>
+  <tr style="background-color: rgb(187, 187, 187); font-weight: 600;">
+   <td>Bits</td>
+   <td colspan="2">Maximum value that can be represented</td>
+   <td>Data type</td>
+  </tr>
+  <tr>
+   <td style="font-weight: 600;">8</td>
+   <td>2<sup>8</sup>-1</td>
+   <td>255</td>
+   <td>char</td>
+  </tr>
+  <tr>
+   <td style="font-weight: 600;">16</td>
+   <td>2<sup>16</sup>-1</td>
+   <td>65535</td>
+   <td>short</td>
+  </tr>
+  <tr>
+   <td style="font-weight: 600;">32</td>
+   <td>2<sup>32</sup>-1</td>
+   <td>4294967295</td>
+   <td>int</td>
+  </tr>
+  <tr>
+   <td style="font-weight: 600;">64</td>
+   <td>2<sup>64</sup>-1</td>
+   <td>18446744073709551615</td>
+   <td>long long</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Integer_OverflowsUnderflows_2">Integer Overflows/Underflows</h3>
+
+<ul>
+ <li>Example of an integer overflow</li>
+</ul>
+
+<p><code>int main() {<br>
+     unsigned int foo = <span style="color: rgb(255, 0, 0);">0xffffffff;</span><br>
+     printf(“foo: 0x%08x\r\n”, foo);<br>
+     <span style="color: rgb(255, 0, 0);">foo++;</span><br>
+     printf(“foo: 0x%08x\r\n”, foo);<br>
+ }</code></p>
+
+<h3 id="Integer_OverflowsUnderflows_3">Integer Overflows/Underflows</h3>
+
+<ul>
+ <li>Example of an integer underflow</li>
+</ul>
+
+<p><code>int main() {<br>
+     unsigned int foo = <span style="color: rgb(255, 0, 0);">0;</span><br>
+     printf(“foo: 0x%08x\r\n”, foo);<br>
+     <span style="color: rgb(255, 0, 0);">foo--;</span><br>
+     printf(“foo: 0x%08x\r\n”, foo);<br>
+ }</code></p>
+
+<h3 id="Integer_OverflowsUnderflows_4">Integer Overflows/Underflows</h3>
+
+<ul>
+ <li>Real-life example (bug <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=303213" class="link-https">303213</a>)</li>
+</ul>
+
+<p><code>JSBool js_str_escape(JSContext *cx, JSObject *obj, unsigned int argc, jsval *argv, jsval *rval){<br>
+   ...<br>
+     newchars = (jschar *) JS_malloc(cx, (<span style="color: rgb(255, 0, 0);">newlength + 1) * sizeof(jschar));</span><br>
+   ...<br>
+     for (i = 0, ni = 0; i &lt; length; i++) {<br>
+       if ((ch = chars[i]) &lt; 128 &amp;&amp; IS_OK(ch, mask)) {<br>
+         newchars[ni++] = ch;<br>
+         ...<br>
+       }<br>
+       ...<br>
+     }<br>
+   ...<br>
+ }</code></p>
+
+<h3 id="Integer_OverflowsUnderflows_Prevention">Integer Overflows/Underflows: Prevention</h3>
+
+<ul>
+ <li>Difficult to fix: You need to check every arithmetic operation with user input</li>
+ <li>Arithmetic libraries like SafeInt can help</li>
+</ul>
+
+<h3 id="Signedness_Issues">Signedness Issues</h3>
+
+<table style="border: 1px solid rgb(0, 0, 0);">
+ <tbody>
+  <tr style="background-color: rgb(187, 187, 187); font-weight: 600;">
+   <td>Bits</td>
+   <td>Data type</td>
+   <td>Range</td>
+  </tr>
+  <tr style="font-weight: 600;">
+   <td>8</td>
+   <td>signed char</td>
+   <td>-128 - +127</td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td>unsigned char</td>
+   <td>0 - +255</td>
+  </tr>
+  <tr style="font-weight: 600;">
+   <td>16</td>
+   <td>signed short</td>
+   <td>-32768 - +32767</td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td>unsigned short</td>
+   <td>0 - +65535</td>
+  </tr>
+  <tr style="font-weight: 600;">
+   <td>32</td>
+   <td>signed int</td>
+   <td>-2147483648 - +2147483647</td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td>unsigned int</td>
+   <td>0 - +4294967295</td>
+  </tr>
+  <tr style="font-weight: 600;">
+   <td>64</td>
+   <td>signed long long</td>
+   <td>-9223372036854775808 - +9223372036854775807</td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td>unsigned long long</td>
+   <td>0 - +18446744073709551615</td>
+  </tr>
+ </tbody>
+</table>
+
+<p><code>int vuln_funct(int size) {<br>
+     char buf[1024];<br>
+     if (<span style="color: rgb(255, 0, 0);">size &gt; sizeof(buf) - 1</span>) return -1;<br>
+ }</code></p>
+
+<h3 id="Signedness_Issues_2">Signedness Issues:</h3>
+
+<ul>
+ <li>Don’t mix signed and unsigned integers</li>
+ <li>Use unsigned integers for sizes, offsets, and indexes</li>
+</ul>
+
+<h3 id="Casting_and_Truncation">Casting and Truncation</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>void vuln_funct() {<br>
+     u_int32_t size1 = 0xffffffff;<br>
+     u_int16_t <span style="color: rgb(255, 0, 0);">size2 = size1</span>;<br>
+ <br>
+     void *ptr = malloc(<span style="color: rgb(255, 0, 0);">size2</span>);<br>
+     if (!ptr) exit(EXIT_FAILURE);<br>
+     memcpy(ptr, user_data, <span style="color: rgb(255, 0, 0);">size1</span>);<br>
+ }</code></p>
+
+<h3 id="Casting_Issues_Sign_Extension">Casting Issues: Sign Extension</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main() {<br>
+     int32_t new_size = 0;<br>
+     int8_t size = 0xFF;<br>
+ <br>
+     <span style="color: rgb(255, 0, 0);">new_size = size</span>;<br>
+ <br>
+     printf("0x%08x\r\n", new_size);<br>
+ }</code></p>
+
+<h3 id="Casting_Issues_Sign_Extension_Prevention">Casting Issues: Sign Extension Prevention</h3>
+
+<ul>
+ <li>Be careful with signed integers</li>
+ <li>Use unsigned integers for sizes, offsets, and indexes</li>
+</ul>
+
+<h3 id="Denial_of_Service_Divide_by_Zero">Denial of Service: Divide by Zero</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main() {<br>
+     int a, b;<br>
+ <br>
+     if (argc != 3) return 1;<br>
+ <br>
+     a = atoi(argv[1]);<br>
+     b = atoi(argv[2]);<br>
+ <br>
+     return <span style="color: rgb(255, 0, 0);">a/b</span>;<br>
+ }</code></p>
+
+<h3 id="Denial_of_Service_Divide_INT_MIN_by_-1">Denial of Service: Divide INT_MIN by -1</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main(int argc, char **argv) {<br>
+     int a, b;<br>
+ <br>
+     if (argc != 3) return 1;<br>
+ <br>
+     a = atoi(argv[1]);<br>
+     b = atoi(argv[2]);<br>
+ <br>
+     return <span style="color: rgb(255, 0, 0);">b ? a/b : 0</span>;<br>
+ }</code></p>
+
+<h2 id="Writing_Secure_Code_Memory_Management">Writing Secure Code: Memory Management</h2>
+
+<h3 id="String_Handling">String Handling</h3>
+
+<ul>
+ <li>C-style strings are byte arrays that end with a \0 byte</li>
+ <li>Some string handling functions won’t perform any kind of length checking, so don’t use them</li>
+ <li>Ensure your string is always \0 terminated!</li>
+</ul>
+
+<h3 id="Buffer_Bounds_Validations_(BBV)">Buffer Bounds Validations (BBV)</h3>
+
+<p><em>Thou shalt check the array bounds of all strings (indeed, all arrays), for surely where thou typest "foo" someone someday shall type "supercalifragilisticexpialidocious".</em></p>
+
+<h3 id="BBV_Stack_Overflow">BBV: Stack Overflow</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>void foo(char *bar) {<br>
+     char c[12];<br>
+     <span style="color: rgb(255, 0, 0);">strcpy(c, bar)</span>;<br>
+ }<br>
+ <br>
+ int main(int argc, char **argv) {<br>
+     foo(argv[1]);<br>
+ }</code></p>
+
+<h3 id="BBV_Stack_Overflow_2">BBV: Stack Overflow</h3>
+
+<p>Before the stack overflow</p>
+
+<p><img src="/@api/deki/files/2904/=before.png?size=webview" alt="before.png" style="height: 571px; width: 400px;" class="default internal"></p>
+
+<h3 id="BBV_Stack_Overflow_3">BBV: Stack Overflow</h3>
+
+<p>After the stack overflow</p>
+
+<p><img src="/@api/deki/files/2905/=after.png?size=webview" alt="after.png" style="height: 473px; width: 400px;" class="default internal"></p>
+
+<h3 id="BBV_Heap_Overflow">BBV: Heap Overflow</h3>
+
+<ul>
+ <li>Dynamic memory
+  <ul>
+   <li>malloc()</li>
+   <li>calloc()</li>
+   <li>HeapAlloc()</li>
+   <li>mmap()</li>
+  </ul>
+ </li>
+ <li>Not on the stack segment!</li>
+ <li>Most memory allocators use a linked list or binary tree</li>
+</ul>
+
+<h3 id="BBV_Off-by-One">BBV: Off-by-One</h3>
+
+<p>The array index starts at 0 not at 1</p>
+
+<ul>
+ <li>char array[1024];</li>
+ <li>array[0] = first element!</li>
+ <li>array[1023] = last element!</li>
+ <li><span style="color: rgb(255, 0, 0);">array[1024]</span> = 1 element outside the array!</li>
+</ul>
+
+<h3 id="BBV_Array_Indexing_Issues">BBV: Array Indexing Issues</h3>
+
+<ul>
+ <li>Always ensure that the index is within the bounds of the array</li>
+ <li>Never use signed integers as index
+  <ul>
+   <li>buf[strlen(buf) - 1] = '\0';</li>
+   <li>strlen() could return 0; resulting in a negative index!</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="BBV_Array_Indexing_Issues_2">BBV: Array Indexing Issues</h3>
+
+<ul>
+ <li>Always ensure that the index is within the bounds of the array</li>
+ <li>Never use signed integers as index
+  <ul>
+   <li>buf[strlen(buf) <span style="color: rgb(255, 0, 0);">- 1</span>] = '\0';</li>
+   <li>strlen() could return 0; resulting in a negative index!</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="BBV_Prevention">BBV: Prevention</h3>
+
+<ul>
+ <li>Check the bounds of your arrays</li>
+ <li>Use a safe and well-designed API</li>
+ <li>When using integers as array indexes, use caution</li>
+</ul>
+
+<h3 id="Format_String_Bugs">Format String Bugs</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main(int argc, char *argv[]) {<br>
+     if (argc &gt; 1) <span style="color: rgb(255, 0, 0);">printf(argv[1])</span>;<br>
+ }</code></p>
+
+<h3 id="Format_String_Bugs_Prevention">Format String Bugs: Prevention</h3>
+
+<ul>
+ <li>Easy to fix: Always use a format string specifier:</li>
+</ul>
+
+<p><code>int main(int argc, char *argv[]) {<br>
+     if (argc &gt; 1) printf("%s", argv[1]);<br>
+ }</code></p>
+
+<h3 id="Double_Free">Double Free</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>void* ptr = malloc(1024);<br>
+ if (error) {<br>
+     <span style="color: rgb(255, 0, 0);">free(ptr)</span>;<br>
+ }<br>
+ <span style="color: rgb(255, 0, 0);">free(ptr)</span>;</code></p>
+
+<h3 id="Double_Free_Prevention">Double Free: Prevention</h3>
+
+<ul>
+ <li>Set a pointer to NULL when it’s freed</li>
+ <li>Valgrind or malloc debugging can help detect those bugs</li>
+</ul>
+
+<h3 id="Use_After_Free">Use After Free</h3>
+
+<ul>
+ <li>Accessing data after a <code>free()</code> or <code>delete</code> can lead to undefined behavior</li>
+ <li>Some debug tools might be able catch some cases</li>
+</ul>
+
+<h3 id="Un-initialized_Data">Un-initialized Data</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main() {<br>
+     char *<span style="color: rgb(255, 0, 0);">uninitialized_ptr</span>;<br>
+     printf("0x%08x\r\n", uninitialized_ptr);<br>
+     return 0;<br>
+ }<br>
+ <br>
+ $ ./test<br>
+ <span style="color: red;">0x8fe0103</span></code></p>
+
+<h3 id="Un-initialized_Data_Prevention">Un-initialized Data: Prevention</h3>
+
+<p>Initialize your variables!</p>
+
+<h3 id="Memory_Leaks">Memory Leaks</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>void *p;<br>
+ size_t new_size;<br>
+ <br>
+ <span style="color: rgb(255, 0, 0);">p = realloc(p, new_size)</span>;<br>
+ if (p == NULL) {<br>
+     /* handle error */<br>
+ }</code></p>
+
+<h3 id="Memory_Leaks_Prevention">Memory Leaks: Prevention</h3>
+
+<p>Tools like Valgrind can help detect memory leaks</p>
+
+<h2 id="Writing_Secure_Code_Object_Management">Writing Secure Code: Object Management</h2>
+
+<h3 id="Reference_Counting_Issues">Reference Counting Issues</h3>
+
+<ul>
+ <li>Real-life example (bug <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=440230" class="link-https">440230</a>)</li>
+</ul>
+
+<p><code>void AddRef() {<br>
+     ++mRefCnt;<br>
+     NS_LOG_ADDREF(this, mRefCnt, "nsCSSValue::Array", sizeof(*this));<br>
+ }<br>
+ <br>
+ void Release() {<br>
+     --mRefCnt;<br>
+     NS_LOG_RELEASE(this, mRefCnt, "nsCSSValue::Array");<br>
+     <span style="color: red;">if (mRefCnt == 0)<br>
+         delete this</span>;<br>
+ }</code></p>
+
+<h3 id="Reference_Counting_Issues_Prevention">Reference Counting Issues: Prevention</h3>
+
+<ul>
+ <li>Use the largest data type available on your platform for your reference counter</li>
+ <li>Use a hard limit</li>
+</ul>
+
+<h3 id="ConstructorDestructor_Issues">Constructor/Destructor Issues</h3>
+
+<ul>
+ <li>If a constructor fails the destructor never gets called</li>
+ <li>This can lead to memory leaks</li>
+</ul>
+
+<h3 id="ConstructorDestructor_Issues_2">Constructor/Destructor Issues</h3>
+
+<ul>
+ <li>Example</li>
+</ul>
+
+<p><code>class foo {<br>
+     private:<br>
+         <span style="color: rgb(255, 0, 0);">char *ptr</span>;<br>
+     public:<br>
+         foo() {}<br>
+         ~foo() {<br>
+             if (ptr)<br>
+                 <span style="color: red;">free(ptr)</span>;<br>
+         }<br>
+ };</code></p>
+
+<h3 id="ConstructorDestructor_Issues_Prevention">Constructor/Destructor Issues: Prevention</h3>
+
+<p>Initialize the data members of an object in the constructor</p>
+
+<h2 id="Writing_Secure_Code_Miscellaneous">Writing Secure Code: Miscellaneous</h2>
+
+<h3 id="File_IO">File I/O</h3>
+
+<ul>
+ <li>A lot can go wrong because a lot can be done with file input and output
+  <ul>
+   <li>Filenames</li>
+   <li>Permissions</li>
+   <li>File handles and descriptors</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="File_IO_Filename">File I/O: Filename</h3>
+
+<ul>
+ <li>Divided in directories, subdirectories, and the file itself</li>
+ <li>‘/’ is separator; in Windows ‘\’ would work too<br>
+  <code>int openfile(char *file) {<br>
+      HANDLE fh;<br>
+      if (strstr(file, “\”))<br>
+          return -1;<br>
+      fh = CreateFileA(file, ...);<br>
+      WriteFile(fh, data, sizeofdata, NULL, NULL);<br>
+  }</code></li>
+ <li>Could be a normal file, directory, device, or link</li>
+ <li>Directory traversal (../../../../)</li>
+</ul>
+
+<h3 id="File_IO_File_Permissions">File I/O: File Permissions</h3>
+
+<ul>
+ <li>Should be set correctly</li>
+ <li>Be sure not to make world-writable files</li>
+ <li>Sensitive files shouldn’t be world readable</li>
+</ul>
+
+<h3 id="File_IO_File_Descriptors_and_Handles">File I/O: File Descriptors and Handles</h3>
+
+<ul>
+ <li>Could be a race if instances of fh are shared between threads</li>
+ <li>Fh inheritence: default in Unix, needs to be set in Windows <code>int main(int argc, char **argv, char **envp) {<br>
+      int fd = open("/etc/shadow", O_RDWR);<br>
+      setreuid(getuid(), getuid());<br>
+      excve("/bin/sh", argv, envp);<br>
+  }</code></li>
+ <li>suid root applications</li>
+</ul>
+
+<h3 id="File_IO_File_Descriptors_and_Handles_2">File I/O: File Descriptors and Handles</h3>
+
+<ul>
+ <li>Potential overflows when using select</li>
+ <li>fd_set struct, static length, holds a bitmask of fds</li>
+ <li>Manipulated with FD_SET, FD_ISSET, FD_CLR and FD_ZERO macros</li>
+ <li>fd_set’s size depends on the operating system</li>
+ <li>If the OS allows opening more fds, then fd_set can hold</li>
+ <li>Could overflow fd_set</li>
+</ul>
+
+<h3 id="File_IO_File_Descriptors_and_Handles_3">File I/O: File Descriptors and Handles</h3>
+
+<p>Good solution: dynamically allocate fd_set structs</p>
+
+<p><code>int main(void) {<br>
+     int i, fd;<br>
+     fd_set fdset;<br>
+     for( i = 0; i &lt; 2000; i++) {<br>
+         fd = open("/DEV/NULL", O_RDWR);<br>
+     }<br>
+     FD_SET(fd, &amp;fdset);<br>
+ }</code></p>
+
+<h3 id="File_IO_Race_Conditions">File I/O: Race Conditions</h3>
+
+<ul>
+ <li>Operating on files can often lead to race conditions since the file system is shared with other processes</li>
+ <li>You check the state of a file at one point in time and immediately after the state might have changed</li>
+ <li>Most file name operations suffer from these race conditions, but not when performed on file descriptors</li>
+</ul>
+
+<h3 id="File_IO_Race_Conditions_2">File I/O: Race Conditions</h3>
+
+<ul>
+ <li>Consider the following example</li>
+</ul>
+
+<p><code>int main(int argc, char **argv) {<br>
+     char *file = argv[1];<br>
+     int fd; struct stat statbuf;<br>
+     stat(file, &amp;statbuf);<br>
+     if (S_ISLINK(statbuf.st_mode)) {<br>
+         bailout(“symbolic link”);<br>
+     }<br>
+     else if (statbuf.st_uid != getuid) {<br>
+         bailout(“you don’t own the file”);<br>
+     }<br>
+     fd = open(file, O_RDWR);<br>
+     write(fd, argv[2], strlen(argv[2]));<br>
+ }</code></p>
+
+<h3 id="File_IO_Race_Conditions_3">File I/O: Race Conditions</h3>
+
+<ul>
+ <li>Previous example contains a race condition</li>
+ <li>The file may change between the call top stat() and open()</li>
+ <li>This opens the possibility of writing arbitrary content to any file</li>
+</ul>
+
+<h3 id="Race_Conditions">Race Conditions</h3>
+
+<ul>
+ <li>Occur when two separate execution flows share a resource and its access is not synchronized properly</li>
+ <li>Race condition types include
+  <ul>
+   <li>File (previously covered)</li>
+   <li>Thread (two threads share a resource but don’t lock it)</li>
+   <li>Signal</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Race_Conditions_2">Race Conditions</h3>
+
+<ul>
+ <li>Example</li>
+</ul>
+
+<p><code>char *ptr;<br>
+ void sighandler() {<br>
+     if (ptr)<br>
+         <span style="color: red;">free(ptr)</span>;<br>
+     _exit(0);<br>
+ }<br>
+  <br>
+ int main() {<br>
+     signal(SIGINT, sighandler);<br>
+     ptr = malloc(1000);<br>
+     if (!ptr)<br>
+         exit(0);<br>
+     ... do stuff ...<br>
+     free(ptr);<br>
+     ptr = NULL;<br>
+ }</code></p>
+
+<h3 id="Race_Conditions_3">Race Conditions</h3>
+
+<ul>
+ <li>Previous example is vulnerable to a signal race condition</li>
+ <li>What would happen if the application received a signal in the middle of free(ptr)?
+  <ul>
+   <li>It would lead to a double free</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Race_Conditions_Prevention">Race Conditions: Prevention</h3>
+
+<ul>
+ <li>Be very careful when working with threads, the file system, or signals</li>
+ <li>Track down shared resources and lock them accordingly</li>
+ <li>For signal handlers
+  <ul>
+   <li>Never use non-atomic operations</li>
+   <li>longjmp() is a sign of badness</li>
+   <li>Even exit() could cause problems, but _exit() is okay</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Deadlocks_and_Locking_Issues">Deadlocks and Locking Issues</h3>
+
+<ul>
+ <li>Locks are used when
+  <ul>
+   <li>Dealing with threads</li>
+   <li>Acquiring more than one lock to perform an action</li>
+  </ul>
+ </li>
+ <li>If a second thread acquires the same locks but in a different order, it causes denial of service since both threads will be waiting forever</li>
+</ul>
+
+<h3 id="Deadlocks_and_Locking_Issues_2">Deadlocks and Locking Issues</h3>
+
+<ul>
+ <li>Example</li>
+</ul>
+
+<p><code>func_a() {<br>
+     lock(lockA);<br>
+     lock(lockB);<br>
+     ... do something ...<br>
+     unlock(lockB);<br>
+     unlock(lockA);<br>
+ }<br>
+ <br>
+ func_b() {<br>
+     lock(lockB);<br>
+     lock(lockA);<br>
+     ... do something ...<br>
+     unlock(lockA);</code><br>
+ <code>    </code><code>unlock(lockB);<br>
+ }</code></p>
+
+<h2 id="Writing_Secure_Code_Good_Coding_Practices">Writing Secure Code: Good Coding Practices</h2>
+
+<h3 id="Banned_API_List">Banned API List</h3>
+
+<ul>
+ <li>Badly designed APIs can often lead to vulnerabilities</li>
+ <li>It’s too easy to use the API inappropriately</li>
+ <li>For example, consider the libc string handling APIs
+  <ul>
+   <li>Strcpy() performs no bounds checking</li>
+   <li>Strncpy() doesn’t always 0-terminate</li>
+   <li>Strncat() length parameter is very confusing</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Banned_API_List_2">Banned API List</h3>
+
+<ul>
+ <li>Examples of incorrect strncat usage
+  <ul>
+   <li>Buffer overflow<br>
+    <code>strncat(buffer, string, sizeof(buffer));</code></li>
+   <li>Off-by-one<br>
+    <code>strncat(buffer, string, sizeof(buffer) – strlen(string));</code></li>
+  </ul>
+ </li>
+ <li>Correct usage
+  <ul>
+   <li><code>strncat(buffer, string, sizeof(buffer) – strlen(string) – 1));</code></li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Banned_API_List_Recommendations">Banned API List: Recommendations</h3>
+
+<ul>
+ <li>Create wrappers or replacements for standard functions with a bad design</li>
+</ul>
+
+<table style="border: 1px solid rgb(0, 0, 0);">
+ <tbody>
+  <tr style="background-color: rgb(187, 187, 187); font-weight: 600;">
+   <td>Libc function name</td>
+   <td>Reason to ban it</td>
+  </tr>
+  <tr>
+   <td>strcpy, strcat, gets, sprintf, vsprintf</td>
+   <td>No bounds checking.</td>
+  </tr>
+  <tr>
+   <td>strncpy</td>
+   <td>Does not guarantee \0 termination.</td>
+  </tr>
+  <tr>
+   <td>strncat</td>
+   <td>Confusing size argument; can write 1 byte beyond the size.</td>
+  </tr>
+  <tr>
+   <td>snprintf, vsnprintf</td>
+   <td>Return value differs on various platforms.</td>
+  </tr>
+  <tr>
+   <td>alloca</td>
+   <td>Never use this. Calling <code>alloca()</code> with a user-controlled size == game over. Use <code>malloc()</code> instead.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Using_the_Mozilla_API">Using the Mozilla API</h3>
+
+<ul>
+ <li>Use C++ strings so C strings are possible</li>
+ <li>Mozilla C safe string handling APIs</li>
+ <li>Similar to libc str*cpy and str*cat</li>
+ <li>Some are potentially dangerous</li>
+</ul>
+
+<table style="border: 1px solid rgb(0, 0, 0);">
+ <tbody>
+  <tr style="background-color: rgb(187, 187, 187); font-weight: 600;">
+   <td>Function name</td>
+   <td>Comments</td>
+  </tr>
+  <tr>
+   <td>PL_strcpy, PL_strcat</td>
+   <td>These functions don't verify whether the destination buffer is large enough.</td>
+  </tr>
+  <tr>
+   <td>PL_strncpy</td>
+   <td>This function doesn't null terminate.</td>
+  </tr>
+  <tr>
+   <td>PL_strncat</td>
+   <td>This function is confusing because the size argument is the maximum number of bytes being appended, not the size of the buffer. This can lead to security bugs.</td>
+  </tr>
+  <tr>
+   <td>PL_strncpyz</td>
+   <td>This function copies a string and guarantees null termination.</td>
+  </tr>
+  <tr>
+   <td>PL_strcatn</td>
+   <td>The size argument for this function is the size of the buffer and it guarantees zero termination.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Using_the_Mozilla_API_2">Using the Mozilla API</h3>
+
+<ul>
+ <li>Mozilla C++ style strings are less prone to buffer overflows and 0-termination issues</li>
+ <li>Every string derived from the abstract base class nsAString</li>
+ <li>Common read-only methods
+  <ul>
+   <li>Length()</li>
+   <li>isEmpty()</li>
+   <li>Equals()</li>
+  </ul>
+ </li>
+ <li>Common methods for modifying the string
+  <ul>
+   <li>Assign()</li>
+   <li>Append()</li>
+   <li>Insert()</li>
+   <li>Truncate()</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Checking_Return_Values">Checking Return Values</h3>
+
+<ul>
+ <li>Often causes problems</li>
+ <li>Return value not handled</li>
+ <li>Certain cases not handled or interpreted incorrectly</li>
+ <li>Double meaning
+  <ul>
+   <li>malloc() can return a pointer or NULL, but NULL by itself is a valid address</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Checking_Return_Values_2">Checking Return Values</h3>
+
+<p><code>int main() {<br>
+     int fds[2];<br>
+     <span style="color: red;">pipe(fds)</span>;<br>
+     write(fds[0], "data", 4);<br>
+ }</code></p>
+
+<ul>
+ <li>The pipe() return value is not checked</li>
+ <li>If pipe() fails, fds is not initialized</li>
+ <li>Write to un-initialized file descriptor</li>
+</ul>
+
+<h3 id="Checking_Return_Values_3">Checking Return Values</h3>
+
+<ul>
+ <li>Check all return values—no matter how unlikely the API failure</li>
+ <li>For example:
+  <ul>
+   <li>close() can fail and leak file descriptor</li>
+   <li>setuid() can fail and privileges don’t get dropped</li>
+   <li>snprintf() can fail and result in return value -1</li>
+   <li>tmp = realloc(tmp, size) — realloc could fail and leak tmp</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Writing_Secure_Code_Exception_Handling">Writing Secure Code: Exception Handling</h2>
+
+<h3 id="Double_Freeing_Pointers">Double Freeing Pointers</h3>
+
+<ul>
+ <li>Double frees can occur in exception handling</li>
+ <li>They free data in try block and then free it again in the catch block</li>
+ <li>This is a common issue</li>
+</ul>
+
+<h3 id="Double_Freeing_Pointers_2">Double Freeing Pointers</h3>
+
+<p><code>char *ptr1 = NULL, *ptr2 = NULL;<br>
+ try {<br>
+     ptr1 = new char[1024];<br>
+     do_something();<br>
+     <span style="color: red;">delete ptr1</span>;<br>
+     do_something_else();<br>
+     ptr2 = new char[-1] // OOM<br>
+ } catch (...) {<br>
+     <span style="color: red;">delete ptr1</span>;<br>
+     delete ptr2;<br>
+ }</code></p>
+
+<ul>
+ <li>New will throw an exception — ptr1 is already freed in the try block then freed again in the catch block</li>
+</ul>
+
+<h3 id="Freeing_Un-initialized_Data">Freeing Un-initialized Data</h3>
+
+<ul>
+ <li>Free data in the catch block</li>
+ <li>Assumption is that it’s initialized in the try block</li>
+ <li>If the try block throws before the variable is initialized, the catch block will operate on un-intialized data</li>
+</ul>
+
+<h3 id="Freeing_Un-initialized_Data_2">Freeing Un-initialized Data</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main(){<br>
+     char *ptr;<br>
+     try {<br>
+         ptr = new char[-1]; // OOM<br>
+     } catch(...) {<br>
+         delete ptr;<br>
+     }<br>
+ }</code></p>
+
+<h3 id="Freeing_Un-initialized_Data_Prevention">Freeing Un-initialized Data: Prevention</h3>
+
+<ul>
+ <li>Be careful when freeing data in catch blocks</li>
+ <li>Make sure the try block can’t throw before data is initialized</li>
+ <li>Initialize variables when they’re declared; for example, set pointers to NULL</li>
+</ul>
+
+<h3 id="Memory_Leaks_2">Memory Leaks</h3>
+
+<ul>
+ <li>Usually occur when memory is allocated in a try block</li>
+ <li>After the allocation, something throws in the try block before memory is freed in the try block</li>
+ <li>The catch block does not foresee this and doesn't free the memory</li>
+</ul>
+
+<h3 id="Freeing_Un-initialized_Data_3">Freeing Un-initialized Data</h3>
+
+<ul>
+ <li>Example:</li>
+</ul>
+
+<p><code>int main(){<br>
+     char *p;<br>
+     try {<br>
+         p = new char [1000];<br>
+         ... code that might throw an exception ...<br>
+         delete p;<br>
+     } catch (...) {<br>
+         ...<br>
+     }<br>
+ }</code></p>
+
+<h3 id="Memory_Leaks_Prevention_2">Memory Leaks: Prevention</h3>
+
+<ul>
+ <li>Any acquired resource in a try block should be freed in a catch block (if the try block throws before the resource is freed)</li>
+ <li>Might be helpful to initialize variables
+  <ul>
+   <li>NULL for pointers</li>
+   <li>-1 for file descriptors</li>
+  </ul>
+ </li>
+</ul>

@@ -1,0 +1,254 @@
+<p>This page is maintained by Aaron Leventhal and by the <a href="#community">Mozilla Accessibility Community</a>. Feedback and constructive suggestions are encouraged.</p>
+<h3 id="1._Intro"><a id="Intro" name="Intro">1. Intro</a></h3>
+<p>This document is for people who wish to understand the architecture of Mozilla's accessibility API module, which provides support for platform accessibility APIs. Accessibility APIs are used by 3rd party software like screen readers, screen magnifiers, and voice dictation software, which need information about document content and UI controls, as well as important events like changes of focus. Mozilla supports two accessibility APIs: <dfn>Microsoft Active Accessibility (MSAA)</dfn> on Windows and <dfn>Accessibility Tool Kit (ATK)</dfn> on Linux and Unix. We do not currently support the Carbon accessibility model for Apple's OS X.</p>
+<p>Please note, the <a href="windows/msaa-server">documentation for implementing an <abbr title="Microsoft Active Accessibility">MSAA</abbr> server</a> has moved. You may also wish to read <a href="windows/at-apis">Gecko Info for Windows Accessibility Vendors</a>, a primer for vendors of 3rd party accessibility software, on how <abbr title="Microsoft Active Accessibility">MSAA</abbr> clients can utilize Gecko's support. If you're interested in Linux or UNIX accessibility, check out <a href="../projects/ui/accessibility/unix/">Mozilla's <abbr title="Accessibility Tool Kit">ATK</abbr> project page</a>.</p>
+<p>Readers of this document should be familiar with interfaces, the W3C DOM, XUL and the concept of a layout object tree.</p>
+<h3 id="2._Accessible_Nodes_and_Interfaces"><a id="Accessible_Nodes_and_Interfaces" name="Accessible_Nodes_and_Interfaces">2. Accessible Nodes and Interfaces</a></h3>
+<p>Every node in the DOM tree could be important to 3rd party assistive technology. Accessibility APIs on each operating system have built-in assumptions about what is the most important information, and how an accessibility server like Mozilla should use the API's programmatic interfaces to expose this information to an accessibility client (the assistive technology). Each platform's accessibility API has made different assumptions, although there are a number of common characteristics. For example, they all expose an accessible name, or text representation, of each object, and they all use an enumerated integer value from a finite list, to expose the role of an object. Examples of accessible role constants are ROLE_BUTTON, ROLE_CHECKBOX and ROLE_LIST, although they can have slightly different names and values in each API. In general, the accessibility APIs use similar concepts, but use different method, constant and interfaces names.</p>
+<p>Given that there is a fair amount of commonality between accessibility API toolkits, it made sense to write of the code in a cross platform manner, and then <a href="#Wrap_Classes">deal with the platform differences</a> on a consistent manner. The shared code makes itself available to the toolkit-specific code via generic XPCOM interfaces that return information about objects we want to expose. All focusable nodes, tables and text have accessibility interfaces. We call these objects "accessible nodes". Each of these accessible nodes supports at minimum the generic cross-platform accessibility interface <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/nsIAccessible.idl"> nsIAccessible</a> (which provides a text name, enumerated role identifier and a set of state flags) and sometimes additional interfaces. For example, tables support nsIAccessibleTable, text supports nsIAccessibleText and edit boxes support nsIEditableText., although this code has been moved into the <abbr title="Accessibility Tool Kit">ATK</abbr> specific directories because it is not currently used in Windows. We will not rule out the possibility of supporting some of the rich <abbr title="Accessibility Tool Kit">ATK</abbr> interfaces on Windows.</p>
+<p>The toolkit-specific classes then use these XPCOM interfaces to gather information about the objects they want to expose, make any necessary changes, and then expose the information using Microsoft COM on Windows, or through GTK2's <abbr title="Accessibility Tool Kit">ATK</abbr> API's on Linux and Unix.</p>
+<p>The assistive technology can then use this information in a number of ways. It can read in an entire document at once, look only pieces of a document related to recent events, or traverse the accessibility object model based on screen position.</p>
+<h4 id="Accessible_Tree_Contains_Only_a_Subset_of_Nodes_from_the_DOM_Tree"><a id="MSAA_tree_vs._DOM_tree" name="MSAA_tree_vs._DOM_tree">Accessible Tree Contains Only a Subset of Nodes from the DOM Tree</a></h4>
+<p>Not all DOM nodes are exposed through accessibility API toolkits -- only those objects deemed important by the developers of the toolkit. Mozilla keeps around its own tree of accessibility objects, which parallels the DOM tree, but is not a full representation.</p>
+<p style="text-align: center;"><img alt="a diagram showing that the MSAA tree is a subset of the DOM tree" src="https://mdn.mozillademos.org/files/6157/tree-relativity.gif" style="width: 696px; height: 506px; border-width: 1px; border-style: solid;"></p>
+<p>Above: a diagram showing that the <abbr title="Microsoft Active Accessibility">MSAA</abbr> tree is a subset of the DOM tree. The situation for other accessibility APIs is similar.</p>
+<p>The problem is, what happens if there are DOM nodes that the assistive technology vendors wants to know about, which are not exposed? Also, what if they want to get DOM information, like CSS rules, tag names and attributes, that <abbr title="Microsoft Active Accessibility">MSAA</abbr>'s IAccessible does not provide?</p>
+<p>On Windows, we solve this by supporting an additional interface beyond <abbr title="Microsoft Active Accessibility">MSAA</abbr>'s IAccesible, for every DOM node. <code>QueryInterface()</code> can be used to switch between the two interfaces. If there is no <abbr title="Microsoft Active Accessibility">MSAA</abbr> node for a DOM node, pAccessible-&gt;<code>QueryInterface(IID_IAccessible)</code> will return null. In addition, some vendors had asked us to provide information and support for pieces of text smaller than a text node (i.e. a word), and Mozilla supports ISimpleDOMText for this purpose.</p>
+<p>On <abbr title="Accessibility Tool Kit">ATK</abbr> there is no such interface to get actual DOM information. Sun Microsystems, the maintainers of Mozilla's <abbr title="Accessibility Tool Kit">ATK</abbr> support, believe the <abbr title="Accessibility Tool Kit">ATK</abbr> is rich enough to provide everything the assistive technologies on their platform will need.</p>
+<h4 id="Accessibility_API_Module_Directory_Structure"><a id="directories" name="directories">Accessibility API Module Directory Structure</a></h4>
+<p>General rules for the directory structure:</p>
+<ul>
+  <li>Interfaces, both internally-used cross-platform and toolkit-specific interfaces exist in <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/">accessible/public.</a></li>
+  <li>The implementations for each kind of object (document, text, table, edit box, button, etc.) exist in <a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/">accessible/src.</a></li>
+  <li>Code and interfaces for specific toolkits should go in the appropriate directoy. Toolkit specific implementations should have "Wrap" appended to the class name. For example, document specific code for each toolkit goes in nsDocAccessibleWrap: public nsDocAccessible.</li>
+</ul>
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Directory</th>
+      <th scope="col">Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/">accessible/public</a></td>
+      <td>common interfaces shared by all toolkits</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa">accessible/public/msaa</a></td>
+      <td>Custom COM interfaces that we use to extend <abbr title="Microsoft Active Accessibility">MSAA</abbr>'s IAccessible</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/atk">accessible/public/atk</a></td>
+      <td>Internal XPCOM <abbr title="Accessibility Tool Kit">ATK</abbr> interfaces</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/base/">accessible/src/base</a></td>
+      <td>common implementations shared by HTML and XUL implementations</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/html">accessible/src/html/</a></td>
+      <td>Document and HTML object implementations</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/xul/">accessible/src/xul/</a></td>
+      <td>User interface and XUL object implementations</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/msaa/">accessible/src/msaa/</a></td>
+      <td>Windows implementations</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/atk/">accessible/src/atk/</a></td>
+      <td><abbr title="Accessibility Tool Kit">ATK</abbr> implementations, may eventually be used on platforms other than Linux and UNIX</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/mac/">accessible/src/mac/</a></td>
+      <td>Empty implementations of platform-specific classes for OS X. These implementatiosn may be filled later.</td>
+    </tr>
+    <tr>
+      <td><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/other/">accessible/src/other/</a></td>
+      <td>Empty implementations of platform-specific classes so that builds don't fail on platforms currently not-supported</td>
+    </tr>
+  </tbody>
+</table>
+<h4 id="Where_We_Put_Toolkit-Specific_Code"><a id="Wrap_Classes" name="Wrap_Classes">Where We Put Toolkit-Specific Code</a></h4>
+<p>Because <abbr title="Accessibility Tool Kit">ATK</abbr> and <abbr title="Microsoft Active Accessibility">MSAA</abbr> are different accessibility API toolkits which share only about 75% of their code, there is a lot of toolkit-specific code that needs to live somewhere. In the past, this was accomplished through aggregation -- two separate trees of objects were kept, one in accessible/src and one in widget/src. However, because this would have caused a lot of difficulty when implementing the accessibility cache, the code was moved in to the "Wrap" classes in a source directory specific to each toolkit.</p>
+<p>Classes with "Wrap" in the name, such as nsTextAccessibleWrap and nsDocAccessibleWrap, inherit from cross-platform classes of similar name without "Wrap" in them. They may override some methods, such as Init() and Shutdown(), and add other methods to support interfaces needed only by the given toolkit. For example, nsAccessibleWrap implements the methods in IAccessible, but because it is also an nsAccessible, it only needs to call the nsIAccessible methods in "this" to get at the information it needs.</p>
+<h4 id="Class_Inheritence_Diagram_2"><a id="Class_Inheritence_Diagram" name="Class_Inheritence_Diagram">Class Inheritence Diagram</a></h4>
+<p>View the <a href="https://mdn.mozillademos.org/files/6155/Class_Inheritence_Diagram.html">Class Inheritence Diagram</a>.</p>
+<h3 id="3._Accessible_Tree_Construction_and_Traversal"><a id="Traversing_the_Tree" name="Traversing_the_Tree">3. Accessible Tree Construction and Traversal</a></h3>
+<p>The accessible tree is constructed on demand. The first request for an accessible is usually the accessible for document in one of the open windows, and the code in widget/src/gtk2 or widget/src/windows must return this doc accessible. Even if a child accessible of the document is asked for first, the doc accessible will be created first, because it is needed to cache any accessibles created within it.</p>
+<p>When the doc accessible is asked for, an event is fired which reaches the PresShell, which then uses the accessibility service singleton (<a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/nsIAccessibilityService.idl">nsIAccessibilityService</a>) to create the doc accessible and return it back to the widget code. The reason that the doc accessible is not created directly in the widget code where it's needed is that the widget code has no knowledge what nsIDOMNode is associated with the current window's document object. There must be a document for the current widget (nsWindow/nsIWidget) for the pres shell to create a doc accessible for it.</p>
+<p>One benefit of this approach is that accessibility.dll/libaccessibility.so does not need get loaded until the accessibility service gets used, and for most users it is never loaded.</p>
+<p>All other accessibles for the individual objects are created on demand as well. The assistive technology can choose to get the entire tree by using a depth- or breadth- first search, it can choose to get accessibles only based on events like focus, or it can get the accessible at a given point on the screen. No matter how the assistive technology client requests the data, the accessible for a given node is only created once. We use the accessibility cache to retrieve accessibles that have already been created for a given dom node.</p>
+<p>This tree traversal is accomplished via toolkit-specific calls which end up as calls into nsIAccessible methods GetAccParent(), GetAccNextSibling(), GetAccPreviousSibling(), GetAccFirstChild(), GetAccLastChild(), GetAccChildCount() and GetChildAt(childNum). The <abbr title="Accessibility Tool Kit">ATK</abbr> has more convenience methods than MSAA does for traversal - for example it is possible to go straight to the accessible for a specific row and column of a table, using nsIAccessibleTable::CellRefAt().</p>
+<p>The algorithm used to calculate the number of accessible children for an accessible node is expensive. We cannot assume that all of the accessible children will come from the direct children, grandchildren or even great-great-great-children of the current accessible's node. Therefore we have to iterate through the tree as if we were creating all of the accessible children, adding to the total as we go.</p>
+<p>To make this less expensive, once the child count or any child of an accessible is asked for, both the child count and the children are calculated at the same time and then cached, so that we can avoid doing these expensive operations more than once.</p>
+<p>The nsIAccessible GetAccBlah() traversal methods mentioned above all have default implementations in nsAccessible. These default implementations use a class called <a href="http://lxr.mozilla.org/seamonkey/ident?i=nsAccessibleTreeWalker">nsAccessibleTreeWalker</a> to do the real work. The nsAccessibleTreeWalker walks both the DOM and anonymous content in the document, and asks nsIAccessibilityService::GetAccessible() for an accessible for each node. If it's in the cache, that is returned. XUL elements are checked for support of the nsIAccessibleProvider interface, which can return an accessible. HTML elements ask the node's primary frame for an accessible via nsIFrame::GetAccessible(). If nsnull is returned than the tree walker checks the next node, in depth first order.</p>
+<h4 id="Calling_Sequence"><a id="Traversal_Calling_Sequence" name="Traversal_Calling_Sequence">Calling Sequence:</a></h4>
+<div class="attention" style="margin: 1em;">
+  <p>How an Accessible Node is Returned by nsIAccessible's Traversal Methods</p>
+  <div>
+    ATK/MSAA toolkit traversal method → nsAccessible traversal method → nsAccessibleTreeWalker method which traverses DOM &amp; anonymous content → nsIAccessibilityService::GetAccessible() with the content node → nsDocAccessible::GetCachedAccessNode() and returns if successful, or → nsIAccessibleProvider::GetAccessible() (if XUL) or → nsIFrame::GetAccessible() (if HTML), which either return nothing or → nsIAccessibilityService::Create[InsertTypeNameHere]Accessible() →<br>
+    operator new, which finally constructs the object.</div>
+</div>
+<p>Whether via nsIAccessibleProvider::GetAccessible() or nsIFrame::GetAccessible(), new accessibles are created by calling back to the accessibility service, and using a specific method for creating each type of accessible. For example, nsHTMLTableCellFrame::GetAccessible() will eventually call nsIAccessibilityService::CreateHTMLTableCellAccessible(), which uses |new nsHTMLTableCellAccessible(domNode, weakPresShell);</p>
+<h4 id="Special_Exception_Traversal_Overloading"><a id="Traversal_Overloading" name="Traversal_Overloading">Special Exception: Traversal Overloading</a></h4>
+<p>In some cases the necessary accessible children are not in the DOM subtree for a node. This is the case for:</p>
+<ul>
+  <li><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/html/nsHTMLImageAccessible.cpp">nsHTMLImageAccessible</a>: in MSAA an image accessible can have accessible children if it has an image map. The children are the image map areas, which are in a different part of the DOM tree.</li>
+  <li><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/html/nsHTMLSelectAccessible.cpp">nsHTMLComboboxAccessible</a>: an html combo box doesn't have a DOM node or anonymous content for its s textfield, button or list. In the future XBL form controls may be used, in which case there will be dom content for these sub-parts, and we will not need to override the traversal methods. That is why we don't need to override these traversal methods for nsXULComboboxAccessible (&lt;menulist&gt;).</li>
+  <li><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/base/nsOuterDocAccessible.cpp">nsOuterDocAccessible</a>: used for elements such as &lt;iframe&gt;, &lt;browser&gt; and &lt;editor&gt;, which spawn an entire new document, but don't actually have any child nodes in their own DOM.</li>
+  <li><a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/xul/nsXULTreeAccessiblecpp">nsXULTreeAccessible</a>: which does not have a DOM node for each tree item, a special interface is provided by the tree itself to get the text for each row, column in the tree.</li>
+</ul>
+<p>In all of these accessible implementations we override nsIAccessible::GetAccChildCount(), ::GetAccFirstChild() and ::GetAccLastChild(). In this way we avoid the normal nsAccessibleTreeWalker traversal methods and create whatever child accessibles we want. When there is no DOM node for each accessible, as is the case for nsHTMLComboboxAccessible and nsXULTreeItemAccessible, we also need to override the Shutdown() method, so that the children get removed from memory when the parent is shutdown. In that case we also override ::GetAccNextSibling(), ::GetAccPreviousSibling() for the DOM-less children; otherwise they do not know how to find each other.</p>
+<p>It is also useful to override these the child getters to return nothing, as we do in nsLeafAccessible, nsTextAccessible and other accessible implementations where we want to be sure to avoid children. Returning nothing for leaf and text objects also helps speed up tree construction and traversal.</p>
+<h3 id="4._Accessible_Events"><a id="Accessible_Events" name="Accessible_Events">4. Accessible Events</a></h3>
+<p>Accessible events are DOM events translated into the event mechanism of the given platform, using the enumerated event numbers listed in <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/nsIAccessibleEventReceiver.idl"> nsIAccessibleEventReceiver.idl</a>. The accessibility client can find out what kind of event occurred as well as what accessible node the event occured on.</p>
+<h4 id="Table_of_Gecko_Event_to_Accessible_Event_Translation"><a id="Examples_of_Gecko_Event_to_Accessible" name="Examples_of_Gecko_Event_to_Accessible">Table of Gecko Event to Accessible Event Translation</a></h4>
+<p>Accessible documents listen for DOM events on nodes within them, and consequently fire the appropriate accessible event. This happens in the <a href="http://lxr.mozilla.org/seamonkey/search?string=accessible%5C%3A%5C%3Ahandleevent"> HandleEvent()</a> method.</p>
+<p class="note">Note: <em>this chart is not complete, consult the HandleEvent() method to see the rest.</em></p>
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Gecko Events (or callback)</th>
+      <th scope="col">Event Type</th>
+      <th scope="col">Accessibility Event</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>focus, select</td>
+      <td>Standard HTML DOM event</td>
+      <td>EVENT_FOCUS</td>
+    </tr>
+    <tr>
+      <td>DOMMenuItemActive, DOMMenuBarActive</td>
+      <td>Mozilla DOM</td>
+      <td>EVENT_FOCUS</td>
+    </tr>
+    <tr>
+      <td>DOMNodeInserted</td>
+      <td>W3C DOM Mutation event</td>
+      <td>EVENT_CREATE (ATK) EVENT_REORDER (MSAA)</td>
+    </tr>
+    <tr>
+      <td>DOMSubtreeModified</td>
+      <td>W3C DOM Mutation event</td>
+      <td>EVENT_REORDER</td>
+    </tr>
+    <tr>
+      <td>DOMNodeRemoved</td>
+      <td>W3C DOM Mutation event</td>
+      <td>EVENT_DESTROY (ATK) EVENT_REORDER (MSAA)</td>
+    </tr>
+    <tr>
+      <td>CheckboxStateChange, RadioStateChange</td>
+      <td>Mozilla DOM</td>
+      <td>EVENT_STATE_CHANGE</td>
+    </tr>
+    <tr>
+      <td>popupshowing</td>
+      <td>Mozilla DOM</td>
+      <td>EVENT_MENUSTART</td>
+    </tr>
+    <tr>
+      <td>popuphiding</td>
+      <td>Mozilla DOM</td>
+      <td>EVENT_MENUEND</td>
+    </tr>
+    <tr>
+      <td>nsDocAccessible::ScrollPositionDidChange(), then nsDocAccessible::ScrollTimerCallback()</td>
+      <td>nsIScrollPositonListener and nsITimer callbacks</td>
+      <td>EVENT_SCROLLINGEND (quick timer is used to determine when scrolling pauses or stops, to avoid extra events being fired)</td>
+    </tr>
+    <tr>
+      <td>nsDocAccessible::OnStateChange(), :nsDocAccessible:OnLocationChange()</td>
+      <td>nsIWebProgressListener callback</td>
+      <td>EVENT_STATE_CHANGE (MSAA) EVENT_REORDER (ATK)</td>
+    </tr>
+  </tbody>
+</table>
+<h4 id="DOM_Mutation_Events_-_Multiple_Uses"><a id="DOM_Mutation_Events" name="DOM_Mutation_Events">DOM Mutation Events - Multiple Uses</a></h4>
+<p>DOM mutation events are a great thing. They are fired by Gecko whenever nodes in the document are created, moved or changed. Common reasons for these mutations are web page scripts, and user actions in the editor.</p>
+<p>We listen to DOM mutation events for several resons:</p>
+<ul>
+  <li>To broadcast document changes to the assistive technology client. However, on Windows there are <a href="windows/msaa-server#Crash_prone">crash issues with the automatic Windows-generated versions of EVENT_CREATE and EVENT_DESTROY</a>, so the MSAA client cannot listen to them. We fire the safer EVENT_REORDER in their place..</li>
+  <li>To see what parts of the <a href="#Accessible_Cache">accessibility cache</a> need to be invalidated. However, we are careful not to do this work for mutation events fired because the document is still loading.</li>
+</ul>
+<p>Currently (as of May 2003), we do not yet use DOMAttrModied to listen to attribute changes on a node. We need to listen to some attribute changes because they might signal the need to invalidate parts of our cache; for example, if the name or href attribute on an anchor element changes, or the usemap attribute of an img changes. These cases are not very likely, but we should try to think of real-world scenarios where it might happen. If we do this, the code would go into <a href="http://lxr.mozilla.org/seamonkey/search?string=Accessible::AttrModified">nsDocAccessible::AttrModified()</a>.</p>
+<h4 id="Unique_32-bit_Identifiers_in_MSAA_2"><a id="Unique_32-bit_Identifiers_in_MSAA" name="Unique_32-bit_Identifiers_in_MSAA">Unique 32-bit Identifiers in MSAA</a></h4>
+<p>In MSAA, we must hand out a unique 32 bit child number for each target accessible with the event. To get this value we currently take the pointer to the DOM node, turn it into an integer, and then negate it. When the MSAA client calls back for the accessible node using AccessibleObjectFromEvent(), Windows asks our doc accessible for a child with that child ID. This is handled in in <a href="http://lxr.mozilla.org/seamonkey/search?string=DocAccessibleWrap::get_accChi"> nsDocAccessibleWrap::get_accChild()</a>, where we check for a negative child number and then use the <a href="#Accessible_Cache">accessibility cache</a> to return the correct object.</p>
+<h3 id="5._Accessibility_Cache"><a id="Accessible_Cache" name="Accessible_Cache">5. Accessibility Cache</a></h3>
+<p>The accessibility module maintains a cache implemented as a series of hash tables -- one per document. The hash keys are the pointers to the DOM node for each accessible. In this way no accessible object should ever need to be created twice for any DOM node.</p>
+<h4 id="Why_We_Need_Accessibility_Cache"><a id="Purposes_of_the_Accessibility_Cache" name="Purposes_of_the_Accessibility_Cache">Why We Need Accessibility Cache</a></h4>
+<p>The accessibility cache has a number of purposes:</p>
+<ul>
+  <li><strong>Stability</strong>: because the Gecko DOM and layout teams want to avoid memory bloat where necessary, we could not afford to use 4 bytes on DOM or layout nodes to point back to accessible objects. Therefore, ownership is reversed -- accessible nodes own their dom objects. However, this creates instability when Mozilla wants to shut down but an assistive technology client still holds onto accessibles. These crashes occur when the assistive techology releases after some Gecko modules have already been unloaded, when the necessary destructors no longer exist in memory.</li>
+  <li><strong>Performance</strong>: by caching the accessible node for each DOM node in a hash table, we can hand back accessibles extremely quickly, and avoid recalculating and creating new accessibles every time one is requested for a certain DOM node. We also avoid calculating the children of an accessible twice, once for GetAccChildCount() and again when the specific children are requested.</li>
+  <li><strong>Events</strong>: we must ensure that the accessible for an event is not released before the accessible client has a chance to review its data. Also, MSAA clients need to access the event accessibles using the unique child ID we give it. When we get the child ID back, we can recreate the hash key needed to retrieve the accessible. Finally, because the MSAA client gets the same accessible for the event and for tree traversal each time, it can do comparisons with its own internal data model. For example, this allows the MSAA client to invalidate parts of its own cache or data model based on DOM mutation events.</li>
+</ul>
+<h4 id="Three_Levels_of_the_Accessibility_Cache_2"><a id="Three_Levels_of_the_Accessibility_Cache" name="Three_Levels_of_the_Accessibility_Cache">Three Levels of the Accessibility Cache</a></h4>
+<p>There are three levels in the accessibility cache:</p>
+<ul>
+  <li><strong>Global cache of doc accessibles</strong> (gGlobalDocAccessibleCache), used to get the accessible for any document.</li>
+  <li><strong>Per-document cache of accessibles</strong> A cache in each nsDocAccessible (mAccessNodeCache), containing all of the accessible nodes created so far for each document.</li>
+  <li><strong>Member variables in nsAccessible</strong> that keep track of the number of children (mAccChildCount), the parent (mParent), the first child (mFirstChild) and the next sibling (mNextSibling). If mNextSibling equals the magic value DEAD_END_ACCESSIBLE (void*)1, then there are known to be no more siblings. If mNextSiblings == nsnull, then there could still be more siblings.</li>
+</ul>
+<p>This architecture allows us to quickly wipe away an entire document's worth of cached nodes when a document goes away, simply by destroying the document accessible's cache.</p>
+<p>However, it takes two steps to get a DOM node's cached accessible. We must first get the document accessible from the global cache for the node's document, and then use that document accessible's specific cache to check for an entry for the dom node. This is not much of a problem because it is still much faster than creating a new accessible every time. This two step process is implemented in <a href="http://lxr.mozilla.org/seamonkey/search?string=GetCachedAccessible">nsAccessibilityService::GetCachedAccessible(domNode)</a>.</p>
+<p>The member variables keeping track of the number of children, parent, first child and next sibling allow us to have instant traversal around accessible nodes that have already been visited.</p>
+<h4 id="Role_of_nsAccessNode"><a id="nsAccessNodeName" name="nsAccessNodeName">Role of nsAccessNode</a></h4>
+<p>If you work mostly in the ATK sections of our accessibility module, you may wonder what the purpose of <a href="http://lxr.mozilla.org/seamonkey/find?string=nsaccessnode">nsAccessNode</a> is -- there are no ATK interfaces that use it. In fact, it exists because of our <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMNode.idl"> ISimpleDOMNode</a> extension to MSAA, which we implement on <a href="http://lxr.mozilla.org/seamonkey/source/accessible/src/msaa/nsAccessNodeWrap.cpp"> nsAccessNodeWrap</a>. ISimpleDOMNode is used by the assistive technology to get access to information about individual DOM nodes which may or may not be "accessible".</p>
+<p>Because an nsAccessNode can point to any DOM node, even DOM nodes that are not "accessible", it may or may not also be an nsAccessible. In other words, the lowest common denominator for objects we must cache is nsAccessNode.</p>
+<h4 id="nsAccessNodeInit()"><a id="Init" name="Init">nsAccessNode::Init()</a></h4>
+<p>When nsAccessibilityService::GetAccessible() gets a newly created accessible, it calls nsIAccessNode::Init() on the new object, which will add this to the cache for the doc accessible. Each nsAccessNode contains the dom node and weak pres shell for the object. The weak pres shell is used to create a hash key to get the doc accessible from gGlobalDocAccessibleCache. The dom node pointer is used to create the new hash key and add the nsIAccessNode* into the document accessible's mAccessNodeCache.</p>
+<p>The Init() method is also virtual, and many accessibles override it to do their own special initialization. If they do, they must also call their parent class' Init() method when finished.</p>
+<h4 id="nsAccessNodeShutdown()"><a id="Shutdown" name="Shutdown">nsAccessNode::Shutdown()</a></h4>
+<p>Shutdown() is used when the dom node for the given nsAccessNode/nsAccessible no longer exists. It can be called in a number of ways:</p>
+<ul>
+  <li><strong>In the destructor for nsWindow</strong>: when the document is destroyed, its window also goes away. If there is a newly loading document, it has its own separate window which has already been created and rendered into. In fact, for about a second two nsDocAccessible's exist for the same screen space - one for the old document about to be destroyed, and one for the loading document which hasn't been displayed yet. Side note: we do not fire the event indicating the new document is ready, until the new document is displayed.</li>
+  <li><strong>From a mutation event callback</strong> in nsDocAccessible, indicating that a node or subtree of nodes is changing or being removed. We iterate through all the dom nodes in the subtree, checking for nsIAccessNode entries in the cache for each dom node, shutting them down if they exist. This is better than just traversing the accessibles by using the member variables mFirstChild and mNextSibling, because that would miss nsAccessNode's that are not nsAccessible's.</li>
+  <li><strong>At program shutdown</strong>, when the nsAccessibilityService observes NS_XPCOM_SHUTDOWN_OBSERVER_ID, it iterates through the doc accessibles in gGlobalDocAccessibleCache and destroys all of the doc accessibles them.</li>
+</ul>
+<h4 id="Challenges_of_the_Accessibility_Cache_2"><a id="Challenges_of_the_Accessibility_Cache" name="Challenges_of_the_Accessibility_Cache">Challenges of the Accessibility Cache</a></h4>
+<p>There are some tricky issues when dealing with the accessibility cache:</p>
+<ul>
+  <li><strong>Remaining valid</strong>: changes in a given document, or the destruction of documents must update or shutdown parts of the cache. We use DOM mutation events to listen for document changes, and invalidate the appropriate part of each cache. We must be careful: if the DOM mutation events are incomplete, then our cache will not be a correct mirror of the DOM. If we do not shut down nodes that go away, we cause more memory footprint than necessary.</li>
+  <li><strong>Accessibles with no DOM node</strong>: Some accessible children are <a href="#Traversal_Overloading">generated by the accessible parent</a>, because they have no DOM node. These accessibles cannot be shutdown by traversing the DOM, because their cache entry is not based on their DOM node. Therefore, the parent that generates these accessibles must also be responsible for shutting them down when their Shutdown() method is called. This is currently implemented for nsHTMLComboboxAccessible as wells as nsXULTreeAccessible.</li>
+</ul>
+<h3 id="6._Future_Directions"><a id="Future_Directions" name="Future_Directions">6. Future Directions</a></h3>
+<p>In general, the Accessible API module work should now be coming to a conclusion. Unfortunately, we still are not fully working with any major screen reader, screen magnifier or voice dictation product on the market. We hope to change that soon, and are working with the major vendors (and Gnopernicus on Linux/UNIX) to achieve this.</p>
+<p>In any case, for the moment the only plans on Windows are for minor bug fixes based on feedback from assistive technology vendors. On Linux and UNIX, there probably needs to be more work done on folding in with the new architecture (such as more use of the "Wrap" classes).</p>
+<p>Something that could create more work would be a decision to support the Macintosh accessibility API, a new API being developed by Microsoft for future versions of Windows or some other new API developed for cross platform or small device use. Hopefully our general accessibility architecture will be able to support those APIs without major difficulties.</p>
+<h3 id="Join_the_Community"><a name="community">Join the Community</a></h3>
+<h4 id="Live_Chat">Live Chat</h4>
+<p>Both end users and developers are invited for discussion on the live IRC channel at <a href="irc://moznet/%23accessibility">irc.mozilla.org/#accessibility</a>. Since this is a worldwide effort, there is always a good chance to find someone to chat with there, day or night.</p>
+<h4 id="Newsgroup_and_Mailing_List">Newsgroup and Mailing List</h4>
+<p>We have two discussion lists, which can be read via a newsgroup reader, as a mailing list or via Google groups.</p>
+<table class="data" style="margin-left: auto; margin-right: auto;">
+  <thead>
+    <tr>
+      <th scope="col">Purpose</th>
+      <th scope="col">Newsgroup</th>
+      <th scope="col">Mailing list</th>
+      <th scope="col">Google group</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Developer discussion</td>
+      <td><a href="news://news.mozilla.org/mozilla.dev.accessibility">mozilla.dev.accessibility</a></td>
+      <td><a href="https://lists.mozilla.org/listinfo/dev-accessibility">subscribe/unsubscribe</a></td>
+      <td><a href="http://groups.google.com/group/mozilla.dev.accessibility">Google group</a></td>
+    </tr>
+    <tr>
+      <td>End user support</td>
+      <td><a href="news://news.mozilla.org/mozilla.support.accessibility">mozilla.support.accessibility</a></td>
+      <td><a href="https://lists.mozilla.org/listinfo/support-accessibility">subscribe/unsubscribe</a></td>
+      <td><a href="http://groups.google.com/group/mozilla.support.accessibility">Google group</a></td>
+    </tr>
+  </tbody>
+</table>
+<p> </p>

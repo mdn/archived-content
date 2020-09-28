@@ -1,0 +1,195 @@
+<h3 id="Overview" name="Overview"><span style="color: #ff0000;">The details on this page are obsolete.</span></h3>
+<h3 id="Overview" name="Overview">Overview</h3>
+<p>
+  <i>
+    Reflow</i>
+  is the process by which the geometry of the layout engine's formatting objects are computed. The HTML formatting objects are called
+  <i>
+    frames</i>
+  : a frame corresponds to the geometric information for (roughly) a single element in the content model; the frames are arranged into a hierarchy that parallels the containment hierarchy in the content model. A frame is rectangular, with width, height, and an offset from the parent frame that contains it.</p>
+<p>More than one frame may be needed to represent a single element from the content model; for example, text that wraps is broken into several frames, one per wrapped line. In this case, the
+  <i>
+    primary frame</i>
+  is the frame containing the first line of text, with
+  <i>
+    continuing frames</i>
+  (or
+  <i>
+    continuations</i>
+  ) created for subsequent lines.</p>
+<p>HTML uses a
+  <i>
+    flow based</i>
+  layout model, meaning that most of the time it is possible to compute the geometry in a single pass. Elements later "in the flow" typically do not affect the geometry of elements that are earlier "in the flow", so layout can proceed left-to-right, top-to-bottom through the document. There are exceptions to this rule: most notably, HTML tables may require more than one pass.</p>
+<p>The XUL box layout model, on the other hand, is
+  <i>
+    constraint based</i>
+  , meaning that geometric preferences and constraints of neighboring elements are taken into consideration before the elements' final geometry can be computed. The
+  <i>
+    box</i>
+  is the geometric primitive for the XUL layout model.</p>
+<p>All HTML reflow, including the
+  <i>
+    initial reflow</i>
+  , begins at the
+  <i>
+    root frame</i>
+  , which corresponds to the <code>&lt;html&gt;</code> element of the HTML document. Reflow proceeds recursively through some or all of the frame hierarchy, computing geometric information for each frame object that requires it. Reflow may have the side-effect of creating new continuation frames, for example, for a text frame when the text must be wrapped.</p>
+<p>Some reflows are
+  <i>
+    immediate</i>
+  in response to user or script actions; for example, resizing the window or changing the document's default font. These are dispatched directly from the presentation shell (e.g., <code>nsIPresShell::StyleChangeReflow</code>), and affect the entire frame tree. Other reflows are
+  <i>
+    incremental</i>
+  and are dealt with asynchronously; for example, when content streams in from the network. Incremental reflows are queued by the presentation shell for batched dispatch.</p>
+<h3 id="Reflow_State" name="Reflow_State">Reflow State</h3>
+<p>The
+  <i>
+    reflow state</i>
+  object, <code>nsHTMLReflowState</code>, is used to pass constraining information "down" from parent frames to child frames. For example, a <code>&lt;div&gt;</code> with a constrained width (e.g., set via the CSS <code>width</code> property) would note this in the reflow state object before flowing its children.</p>
+<p>When reflow begins, the
+  <i>
+    root reflow state</i>
+  is initialized with information about the top-level container for the document's presentation; e.g., the width and height of the application window. This is passed as an argument to the <code>Reflow</code> method of the root frame in the frame hierarchy.</p>
+<p>Each container frame constructs a
+  <i>
+    new</i>
+  reflow state object (based on
+  <i>
+    its</i>
+  container's reflow state object) in which the container will reflow its children. Most of the constraints in the new reflow state are computed when the state is created; for example, the available space in the new reflow state is computed by subtracting the container frame's border and padding from the parent reflow state's available space.</p>
+<h4 id="Reflow_Reason" name="Reflow_Reason">Reflow Reason</h4>
+<p>All reflows have a
+  <i>
+    reason</i>
+  , which is maintained in the reflow state object (and may mutate, as described below). The reflow reason controls how a frame reacts during a reflow, and is one of the following:</p>
+<ul>
+  <li><code>Initial</code>, for the very first time that the frame hierarchy is flowed. In this case, a frame knows that there is no residual state that can be used to simplify geometry computation.</li>
+  <li><code>Incremental</code>, when something in the frame tree changes; for example, when more content is read from the network, or some script manipulates the DOM. An incremental reflow is
+    <i>
+      targeted</i>
+    at a single frame in the frame hierarchy. During an incremental reflow, a frame can assume that none of the constraints computed "from above" (for example, available width) have changed; instead, something "within" the frame has changed, which may have bottom-up impact to the frame hierarchy.</li>
+  <li><code>Resize</code>, when the containing boundary for the frame hierarchy changes. During a resize reflow, the frame can assume that none of the frame's internal state (e.g., a text frame's text) has changed; instead, a top-down change in the layout constraints has occurred.</li>
+  <li><code>StyleChange</code>, when the entire frame hierarchy must be traversed to recover from stylistic change; for example, a change in the default font size.</li>
+  <li><code>Dirty</code>, when a container frame has consolidated several individual <code>Incremental</code> reflows that have been targeted at its child frames.</li>
+</ul>
+<p>Initial, incremental, resize, and style change reflows may each be performed as an immediate "global" reflow from the presentation shell:</p>
+<ul>
+  <li>An initial reflow is performed when the presentation shell is initialized to flow the shell's initial frame hierarchy.</li>
+  <li>Incremental reflows are dispatched
+    <i>
+      en masse</i>
+    when the presentation shell's incremental reflow queue is asynchronously serviced.</li>
+  <li>A resize reflow is performed when the presentation shell's dimensions change; e.g., because the user resized the shell's window.</li>
+  <li>A style change reflow is performed when the presentation shell's global stylistic information is changed; e.g., addition or removal of a style sheet, a change to the shell's default font.</li>
+</ul>
+<p>A dirty reflow is never performed directly from the presentation shell. Instead, a dirty reflow is detected when an incremental reflow reaches its
+  <i>
+    target frame</i>
+  , described below.</p>
+<h3 id="Reflow_Metrics" name="Reflow_Metrics">Reflow Metrics</h3>
+<p>The
+  <i>
+    reflow metrics</i>
+  object, <code>nsHTMLReflowMetrics</code>, is used to propagate information from child frames back to the parent. For example, the dimensions of each child frame of an unconstrained <code>&lt;div&gt;</code> would be passed back to the <code>&lt;div&gt;</code>'s frame via the <code>nsHTMLReflowMetrics</code> object.</p>
+<h3 id="Incremental_Reflow" name="Incremental_Reflow">Incremental Reflow</h3>
+<p>Although all of the reflow in Gecko attempts to re-use as much existing state as possible (and is in therefore some sense "incremental") an <code>Incremental</code> reflow corresponds to a reflow that is specifically targeted at an individual frame in the frame hierarchy. A frame requests a <code>Incremental</code> reflow (or one is requested on a frame's behalf) when something about the frame itself has changed.</p>
+<p><b>Scheduling</b>. To request (or
+  <i>
+    schedule</i>
+  ) an incremental reflow (e.g., in response to a change in the content model), a
+  <i>
+    reflow command</i>
+  object is created and passed to the presentation shell via the <code>nsIPresShell::AppendReflowCommand</code> method. The presentation shell does not process the command immediately. Instead, it queues the command, and processes it asynchronously along with other queued reflow commands
+  <i>
+    en masse</i>
+  .</p>
+<p><b>Coalescing</b>. As described below, the reflow command has a
+  <i>
+    type</i>
+  and a
+  <i>
+    target frame</i>
+  . Multiple reflow commands with the same type and target frame are
+  <i>
+    coalesced</i>
+  : the presentation shell simply refuses to add subsequent commands of the same type for the same frame to the queue. A caller may also
+  <i>
+    cancel</i>
+  a reflow command that is in the queue; e.g., if the target frame is destroyed.</p>
+<p><b>Dispatch</b>. The presentation shell processes the reflow queue by removing a single reflow command from the queue and
+  <i>
+    dispatching</i>
+  it to its target frame. <span class="highlightred">(But cf. the <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=129115">reflow tree</a> work, which will remove several commands from the queue at once.)</span> A
+  <i>
+    path</i>
+  is built from the target frame to the
+  <i>
+    root frame</i>
+  and stored in the reflow command. A
+  <i>
+    reflow state</i>
+  object is created with a
+  <i>
+    reflow reason</i>
+  of <code>Incremental</code>, the reflow command is stored in the state, and the <code>Reflow</code> method of the root frame is invoked.</p>
+<p><b>Processing</b>. The root frame notes the <code>Incremental</code> reflow reason specified in the reflow state, and inspects the path contained within the reflow command object. Specifically, it extracts the
+  <i>
+    next frame</i>
+  along the path from the reflow command object, creates its own reflow state, also with an <code>Incremental</code> reason, and invokes the <code>Reflow</code> method of the next frame.</p>
+<p>The incremental reflow proceeds recursively through the frame hierarchy. Each frame along the incremental reflow path (as specified in the reflow command object) extracts the
+  <i>
+    next frame</i>
+  and dispatches the reflow downward. In order to correctly dispatch the reflow to the child frame, the frame may need to perform some
+  <i>
+    state recovery</i>
+  ; for example, a block frame will traverse its line list to recover the space occupied by floated frames.</p>
+<p>At some point, the incremental reflow reaches the
+  <i>
+    target frame</i>
+  , at which point the reflow command's
+  <i>
+    type</i>
+  becomes significant.</p>
+<ul>
+  <li><code>ContentChanged</code> indicates that the content corresponding to the target frame has changed somehow; for example, the text associated with a text frame has been modified. <span class="highlightred">In reality, the only frame that responds to this sort of reflow is the block frame. The block frame treats this sort of change as a `full reflow' (i.e., as a resize). This makes me believe that we could probably eliminate this class altogether.</span></li>
+  <li><code>StyleChanged</code> indicates that the stylistic information corresponding to the target frame has changed; for example, the font size has increased. This causes the frame to mutate the reflow state's
+    <i>
+      reason</i>
+    to <code>StyleChange</code>, which is propagated recursively to the entire subtree beneath the target frame.</li>
+  <li><code>ReflowDirty</code> indicates that container frame has decided to coalesce several incremental reflows targeted at its children into a single reflow. The container frame maintains the necessary state to determine which children must be reflowed.</li>
+  <li><code>UserDefined</code>, for "special situations". <span class="highlightred">Currently, this is only used by the
+    <i>
+      viewport frame</i>
+    to schedule a reflow to reflow all of the viewport's fixed-position frames. We should probably try to eliminate it.</span></li>
+</ul>
+<p>An incremental reflow may
+  <i>
+    damage</i>
+  other parts of the frame hierarchy; for example, changing the size of the font used in a specific paragraph may cause the paragraph to grow or shrink. A container must therefore propagate any damage that the incremental reflow of the child frame caused, possibly reflowing other children as well.</p>
+<h4 id="Dirty_Reflows" name="Dirty_Reflows">Dirty Reflows</h4>
+<p>If several incremental changes occur in the same part of the frame hierarchy, it is possible to have several <code>Incremental</code> reflows targeted at nearby frames. In this case, it is likely that the individual <code>Incremental</code> reflows will end up doing redundant work. For example, each keystroke typed into a text widget could generate a separate <code>Incremental</code> reflow targeted at the text frame. Were we to process each individually, the text widget would be flowed once for each keystroke, which would be wasteful if the latency of an individual reflow exceeds the speed at which text is being typed. The purpose of the <code>Dirty</code> reflow is to allow these individual reflows to be coalesced intelligently.</p>
+<p>A frame that decides it needs a dirty reflow sets the <code>NS_FRAME_IS_DIRTY</code> state bit on itself, and then calls the <code>ReflowDirtyChild</code> method on its parent frame. In <code>ReflowDirtyChild</code>, the parent frame sets the <code>NS_FRAME_HAS_DIRTY_CHILD</code> state bit on itself, and does any bookkeeping necessary to remember which child is dirty (for example, the block frame marks the linebox dirty that contains the child frame). The parent frame can then either decide to schedule a <code>ReflowDirty</code> <code>Incremental</code> reflow targeted at itself, or to delegate that responsibility to
+  <i>
+    its</i>
+  parent. If it decides to delegate, then it sets the <code>NS_FRAME_IS_DIRTY</code> state bit on itself and recursively calls <code>ReflowDirtyChild</code>.</p>
+<p>Eventually, the <code>ReflowDirty</code> <code>Incremental</code> reflow is dispatched, and arrives at the container frame that scheduled it. The target frame recovers its bookkeeping information (e.g., the block frame iterates through the dirty lineboxes), and reflows the dirty child frames.</p>
+<p><span class="highlightred">Isn't information lost if a <code>ReflowDirty</code> <code>Incremental</code> reflow coalesces different kinds of incremental reflows (e.g., a <code>ContentChanged</code> with a <code>StyleChanged</code>)?</span> No, because these kinds of reflows
+  <i>
+    aren't</i>
+  coalesced; instead, they're directly enqueued to the presentation shell's reflow queue.</p>
+<h3 id="HTML_and_XUL_Interaction" name="HTML_and_XUL_Interaction">HTML and XUL Interaction</h3>
+<p>As mentioned above, HTML and XUL have fundamentally different layout models, the former being a flow-based model, and the latter being a constraint based model. These differences are mediated by two adapter classes: <code>nsBoxFrame</code> and <code>nsBoxToBlockAdaptor</code>.</p>
+<h4 id="nsBoxFrame" name="nsBoxFrame">nsBoxFrame</h4>
+<p><code>nsBoxFrame</code> is an HTML frame that "wraps" a XUL box. Its purpose is to convert HTML reflows their box analog.</p>
+<h4 id="nsBoxToBlockAdaptor" name="nsBoxToBlockAdaptor">nsBoxToBlockAdaptor</h4>
+<p><code>nsBoxToBlockAdaptor</code> is a XUL box that wraps an HTML block frame, used to convert changes in the box layout into HTML reflows.</p>
+<div class="originaldocinfo">
+  <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+  <ul>
+    <li>Author(s): <a class="link-mailto" href="mailto:waterson@netscape.com">Chris Waterson</a></li>
+    <li>Last Updated Date: December 4, 2004</li>
+    <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+  </ul>
+</div>
+<p> </p>

@@ -1,0 +1,94 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Static_Content" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Containment_Properties">Next  »</a></p>
+</div>
+<p>When iterating over the children of an RDF container, there is a simpler query syntax which may used. It may also be used when iterating over only one predicate. Simple RDF graph navigation such as this is common, so the simpler syntax is usually used in this situation since it avoids extra tags, although the simple syntax is not more or less efficient, at least when a single query is involved. A simple query is equivalent to a query with only the content tag and a member tag, as well as optionally a set of triples from the child node. At its simplest, the simple query syntax is equivalent to the following:
+</p>
+<pre>&lt;query&gt;
+  &lt;content uri="?start"/&gt;
+  &lt;member container="?start" child="?photo"/&gt;
+&lt;/query&gt;
+</pre>
+<p>The template builder uses the simple query syntax whenever a template does not have a &lt;query&gt; element. If a &lt;query&gt; element is present, the full syntax is used instead. In the simple syntax, the builder will use the default query shown above, although the variable names are randomly generated.
+</p><p>Since the photos list iterates over the children of a container, we can use the simple syntax. Here is what it might look like:
+</p>
+<pre>&lt;template&gt;
+  &lt;vbox class="box-padded" uri="rdf:*"&gt;
+    &lt;image src="rdf:*"/&gt;
+    &lt;label value="rdf:http://purl.org/dc/elements/1.1/title"/&gt;
+  &lt;/vbox&gt;
+&lt;/template&gt;
+</pre>
+<p>There is no &lt;query&gt; or &lt;action&gt; element used. Instead, the builder uses a default query, and the action is placed directly inside the &lt;template&gt; element. You can see that this code is much simpler than the full syntax. To understand how this works, let's examine how the builder processes a simple query. First, it evaluates the default query as above, except that no variables are used, or at least, not ones that are used externally. In reality, the builder could be considered to convert a simple query into an extended query, so that it can be processed in the same way. After the default query statements are evaluated, the data network will look something like this:
+</p>
+<pre>(?1 = http://www.xulplanet.com/rdf/myphotos,
+ ?2 = http://www.xulplanet.com/ndeakin/images/t/palace.jpg)
+(?1 = http://www.xulplanet.com/rdf/myphotos,
+ ?2 = http://www.xulplanet.com/ndeakin/images/t/canal.jpg)
+(?1 = http://www.xulplanet.com/rdf/myphotos,
+ ?2 = http://www.xulplanet.com/ndeakin/images/t/obselisk.jpg)
+</pre>
+<p>The numbers are used here for the variable names, but they are really just randomly generated so you can't refer to them in any way. The member data, or results, are held in the variable represented here by '?2'. Three matches have been found so the content will be duplicated three times.
+</p><p>There are several attributes in the example XUL content above that have values prefixed with 'rdf:'. Since you can't declare variables in the simple syntax, a different way is used to grab RDF data. The 'rdf:' prefix means look up a predicate pointing out of the node for that result (the child or member node). For example, the label's value attribute has a value of <span class="nowiki">rdf:http://purl.org/dc/elements/1.1/title</span>'. This means look up the value of the predicate <span class="nowiki">http://purl.org/dc/elements/1.1/title</span>' pointing out of the current result. Of course, it should be obvious that this causes the value attribute to be set to the photo's title.
+</p><p>You can get other predicates in the same way, just by using the predicate uri and prefixing it with 'rdf:'. You can also combine two in one attribute by separating them with a space or a caret (^) just as you can with the full syntax. For example:
+</p>
+<pre>&lt;label value="rdf:http://purl.org/dc/elements/1.1/title http://www.xulplanet.com/rdf/country"/&gt;
+</pre>
+<p>The 'rdf:' form is really equivalent to the &lt;binding&gt; tag in the full syntax. The subject of the binding is the result member resource, the predicate is the string that comes after 'rdf:' and the object isn't necessary as the value is replaced directly in the attribute. As with bindings, the value is not required to match, so the data doesn't have to exist in the RDF graph. If one photo doesn't have a title, it will be replaced with an empty string.
+</p><p>The special value 'rdf:*' means the uri of the result resource, rather than referring to a predicate. It would be equivalent to ?photo variable in this example if the full syntax was used. You can see in the example that the value 'rdf:*' is used in two places, the uri attribute on the hbox and as the src attribute for the image.
+</p><p>Here is the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex19.xul">photos example</a> using the simple syntax. The filtering isn't shown in this example. It is still possible to do filtering using simple query and we'll look at this below.
+</p>
+<h3 id="Simple_Query_Conditions" name="Simple_Query_Conditions"> Simple Query Conditions </h3>
+<p>Simple queries also use a simpler way of handling <code>triple</code> elements to filter out unwanted results. It allows you to filter for results that have certain predicates with specific values. For instance, you may filter results that have a certain category or country. You can only filter on predicates pointing out of the member resource. That is, you cannot filter on predicates pointing into the member resource nor can you cannot filter based on predicates pointing out of other resources. For that, you need to use the full syntax.
+</p><p>The triples to check are specified using attributes on the <code><a href="/en-US/docs/Mozilla/Tech/XUL/rule" title="rule">rule</a></code> element (thus, a <code>rule</code> element should be used). The namespace of the attribute and the attribute name combine to form the predicate you wish to filter by and the value of the attribute will be the value to filter by. Any results that match the criteria are accepted and any that do not match are rejected. You can use multiple attributes to filter by several criteria. In this case, all of the criteria must match for the result to be accepted.
+</p><p>For example, to filter for photos with a specific country:
+</p>
+<pre>&lt;hbox id="photosList" datasources="template-guide-photos4.rdf"
+      ref="http://www.xulplanet.com/rdf/myphotos"
+      xmlns:r="http://www.xulplanet.com/rdf/"&gt;
+  &lt;template&gt;
+    &lt;rule r:country="http://www.daml.org/2001/09/countries/iso#IT"&gt;
+      &lt;vbox class="box-padded" uri="rdf:*"&gt;
+        &lt;image src="rdf:*"/&gt;
+        &lt;label value="rdf:http://purl.org/dc/elements/1.1/title"/&gt;
+      &lt;/vbox&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/hbox&gt;
+</pre>
+<p>This <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex20.xul">example</a> shows how a single attribute may be used to filter for only those results that have a country set to '<span class="nowiki">http://www.daml.org/2001/09/countries/iso#IT</span>'. Photos that do not have this country will not have any content generated for them. The attribute has a namespace that, when expanded, becomes '<span class="nowiki">http://www.xulplanet.com/rdf/country</span>'. This syntax is much like how predicates are the specifed in the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-photos4.rdf">RDF/XML</a>.
+</p><p>This form of attribute syntax on a rule is equivalent to a &lt;triple&gt; in the extended syntax. In fact, the builder will internally convert the attribute into the same compiled form that would be used for a &lt;triple&gt;. The equivalent triple for the above example might be:
+</p>
+<pre>&lt;triple subject="?photo"
+        predicate="http://www.xulplanet.com/rdf/country"
+        object="http://www.daml.org/2001/09/countries/iso#IT"/&gt;
+</pre>
+<h3 id="Adjusting_Simple_Query_Conditions" name="Adjusting_Simple_Query_Conditions"> Adjusting Simple Query Conditions </h3>
+<p>The simple syntax is limited in the kind of filtering it can do, however it is often sufficient for many purposes. Naturally, if you want to set a filter dynamically, as the photos example does with a menulist, you will need to set the attribute on the <code>rule</code> element and rebuild the template.
+</p>
+<pre>function applyFilter(country)
+{
+  var rule = document.getElementById("filterRule");
+  if (country){
+    rule.setAttributeNS("http://www.xulplanet.com/rdf/", "country", country);
+  }
+  else {
+    rule.removeAttributeNS("http://www.xulplanet.com/rdf/", "country");
+  }
+
+  document.getElementById("photosList").builder.rebuild();
+}
+</pre>
+<p>This version of the applyFilter function only needs to set or remove the attribute on the rule as necessary. Note that the namespace aware functions (with the suffix NS) need to be used to set or remove attributes with namespaces. This <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex20b.xul">example</a> assumes that the rule has been given an id of 'filterRule'. Note that the menulist itself must use the extended syntax since it doesn't iterate over the children of a resource.
+</p>
+<h3 id="Filtering_Using_Multiple_Tests" name="Filtering_Using_Multiple_Tests"> Filtering Using Multiple Tests </h3>
+<p>As mentioned earlier, you can filter by several criteria by using multiple attributes. For instance:
+</p>
+<pre>&lt;rule id="filterRule"
+      dc:title="Obelisk"
+      r:country="http://www.daml.org/2001/09/countries/iso#IT"&gt;
+</pre>
+<p>This rule filters on two criteria which must both match. Rules will apply all the attributes as conditions except for the id attribute, as well as some special attributes, which are ignored. These special attributes are useful when handling multiple rules, which will be the subject of a later topic.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Static_Content" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Containment_Properties">Next  »</a></p>
+</div>

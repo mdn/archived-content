@@ -1,0 +1,16 @@
+<p>Gecko maintains two separate representations of a document in memory: the content tree and the frame tree.  Changes to a document originate in the content tree (from DOM modification by scripting, insertion of elements from the parser, etc.) and are propogated to the layout tree through magic that primarily resides in <a class="external external-icon" href="https://dxr.mozilla.org/mozilla-central/source/layout/base/nsCSSFrameConstructor.cpp">https://dxr.mozilla.org/mozilla-central/source/layout/base/nsCSSFrameConstructor.cpp</a></p>
+
+<p>The frame constructor implements <a href="/nsIMutationObserver" title="nsIMutationObserver">nsIMutationObserver</a> which allows it to "watch" the content tree.  nsCSSFrameConstructor gets notified from the document's PresShell (which implements <a href="/nsIDocumentObserver" title="nsIDocumentObserver">nsIDocumentObserver</a> and observes the document) about all nodes in the document.  The frame constructor takes these notifications and does the following:</p>
+
+<ol>
+ <li>Dispatches "restyle events" which trigger the reprocessing of relevant CSS selectors and any restyling that needs to occur.</li>
+ <li>Adds and removes frames to make the frame tree a proper representation of the new content tree.</li>
+</ol>
+
+<h2 id="Restyling">Restyling</h2>
+
+<p>The RestyleTracker maintains a list of restyles to process.  Elements that need to be restyled are marked with flags (e.g ELEMENT_HAS_PENDING_RESTYLE) and are stored in the mPendingRestyles hashtable.  A list of restyle roots (places in the content tree where all descendants need to be restyled but nothing on the parent chain does) are also stored.  The restyles accumulated in the RestyleTracker are dispensed with from various method on the PresShell that involve reflow and flushing notifications.</p>
+
+<h2 id="Frame_Construction">Frame Construction</h2>
+
+<p>Regardless of whether content nodes are inserted/appended/deleted, frames can be created and destroyed, based on whatever is optimal for the changes in the content tree.  "Frame construction items" are queued for each change.  These items are then examined in relation to the location in the content tree that is being modified and either the relevant frames are created/destroyed or the logic moves up to the parent frame.  To give a trivial example of when this might be necessary, consider: "&lt;span&gt;Foo &lt;div&gt;&lt;/div&gt; Bar&lt;/span&gt;".  Separate frames are created for the pre and post-div parts of the &lt;span&gt;.  If the &lt;div&gt; is removed, the frame construction code merges those frames by examining the parent frame, destroying the two frames created for the &lt;span&gt;, and creating one unified frame for the text content.  Examples of this type of code are in WipeContainingBlock.  This code tries hard to avoid unnecessary frame tree modifications and is rather complicated as a result.</p>

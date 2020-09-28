@@ -1,0 +1,155 @@
+---
+title: XUL Event Propagation
+slug: Archive/Mozilla/XUL/XUL_event_propagation
+tags:
+  - DOM
+  - XUL
+---
+<p> </p>
+
+<p>This article describes the event model in <a href="/en/XUL" title="en/XUL">XUL</a> and features event propagation as a way to handle events in different places in the interface.</p>
+
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>XUL events were introduced in a very general way in a <a class="external" href="http://www.mozilla.org/docs/xul/xulnotes/xulnote_beasts.html#events">previous XULNote</a>. But to use events effectively in XUL, you must be aware of what the actual process for raising, listening to, and handling events is. Collectively, this process is referred to as the <em>event model</em>. Events are used for different purposes, but they play a particularly important role in creating interactive XUL-based user interfaces, since it is events that bring the information about user actions to the code behind the interface.</p>
+
+<p>The following image describes in a very basic way how the various actors in the event model interact with one another.</p>
+
+<p><img alt="The Event Model" class="internal" src="/@api/deki/files/677/=Event_model.png"></p>
+
+<p>The user clicks a button in the interface. This button responds to the user action by raising an event, a message meant to travel from one element within the interface to another. In this case, the event raised was the "click" event, but a variety of events can be raised by the button element. When the mouse moves over the button, for example, the "hover" event is raised. And sometimes elements raise different events for the pressing down of the click and the release. The events raised by a particular element are pre-determined.</p>
+
+<p>The click event is just a message. It's passive in that it doesn't look for a listener; it propagates or "bubbles up" the hierarchy of nodes within the interface until it is either handled in some way or passes out of the interface unhandled. Any element that is interested in the event -- any part of the interface, in other words, that needs to know about and respond to the user's click action on the button -- "handles" the event with an event handler, or chunk of code to be executed when the given event is "heard". The availability of event listeners is also somewhat pre-determined, though XUL provide generalized event listeners (i.e., oncommand event listeners) for most of the elements in the widget hierarchy. Event handlers are written by you, the developer of the interface.</p>
+
+<p>Very often, the event raised by the element is heard by the element itself and handled right there before it bubbles up any higher. This is the case in the example code in the diagram, where the onclick event listener for the button element handles the click event by displaying a simple alert dialog:</p>
+
+<pre class="eval">&lt;button value="Click Me" onclick="alert('Thank you')" /&gt;
+</pre>
+
+<p>The opposite of event bubbling is <em>event capturing</em>. Where event bubbling propagates an event from its target up higher into the node hiearchy, event capturing intercepts an event before it is received by other elements, even by the event target itself.</p>
+
+<p>The combination of basic these two basic event flow mechanisms, <a href="#Event_Bubbling">event bubbling</a> and <a href="#Event_Capturing">event capturing</a>, mean that events raised in the interface can be caught anywhere above the element that raised the event. This flexibility in the XUL event model is the focus of this article.</p>
+
+<h2 id="The_Widget_Hierarchy" name="The_Widget_Hierarchy">The Widget Hierarchy</h2>
+
+<p>Consider the following XUL file:</p>
+
+<pre>&lt;?xml version="1.0"?&gt;
+
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css"?&gt;
+
+&lt;window id="events"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  oncommand="alert('Window handler')"&gt;
+
+&lt;vbox&gt;
+&lt;vbox style="background-color: lightgrey;" oncommand="alert('Box handler')"&gt;
+
+  &lt;menu class="menu" label="File" oncommand="alert('Menu handler')"&gt;
+    &lt;menupopup&gt;
+        &lt;menuitem oncommand="alert('New item alert')" label="New" /&gt;
+        &lt;menuitem label="Open" /&gt;
+        &lt;menuitem oncommand="alert('Close handler')" label="Close" /&gt;
+    &lt;/menupopup&gt;
+  &lt;/menu&gt;
+
+  &lt;menu class="menu" label="Edit"&gt;
+    &lt;menupopup&gt;
+        &lt;menuitem oncommand="alert('Edit Source handler')" label="Edit Source" /&gt;
+        &lt;menuitem label="Reload" /&gt;
+        &lt;menuitem label="View Source" /&gt;
+     &lt;/menupopup&gt;
+   &lt;/menu&gt;
+
+&lt;/vbox&gt;
+&lt;spring flex="1" /&gt;
+&lt;/vbox&gt;
+&lt;/window&gt;
+</pre>
+
+<p>In this file, the lowest-down, or "leaf" elements are the menuitems. The hierarchy of the interface can be represented as follows:</p>
+
+<p><img alt="The Event Structure of the Sample XUL" class="internal" src="/@api/deki/files/678/=Event_struct.png"></p>
+
+<p>When one of these menuitems raises an event, any of the elements above it in the hierarchy can handle it. In the example above, when the menuitem raises the "command" event, indicating that it has been selected, the menupopup, the menu itself, the parent box, or the root window element itself can all take advantage of this.</p>
+
+<p><img alt="The Event Path of an Event Raised in a Menuitem in the Sample XUL" class="internal" src="/@api/deki/files/676/=Event_chain.png"></p>
+
+<h2 id="Event_Bubbling" name="Event_Bubbling">Event Bubbling</h2>
+
+<p>This availability of events in places other than their element of origin is known as "event propagation" or event bubbling. Event bubbling means you can handle events anywhere above the event-raising element in the hierarchy. If you cut and paste the source code from the example above into a separate file, you can see that the effect of these event handlers is to display as many as four different alert dialogs as the event bubbles up the hierarchy. For example, when you click the New menuitem from the File menu, the event handlers display alerts for "New item alert", "Menu handler", "Box handler", and "Window handler." Any or all of these event handler locations might be useful in your interface development. (<a class="internal" href="/@api/deki/files/2865/=bubble.xul" title="/@api/deki/files/2865/=bubble.xul"><em>See it happen</em></a>.)</p>
+
+<p>For an event to be useful somewhere higher up, however, it is very often necessary to determine which element below the handler actually raised the event. For example, if an event handler at the menu is handling an event raised by one of the menu items, then the menu should be able to identify the raising element and take the appropriate action, as in the following example, where a JavaScript function determines which menuitem was selected and responds appropriately:</p>
+
+<pre>&lt;script&gt;
+function doCMD(el) {
+  v = el.getAttribute("value");
+  if (v == "New") alert("New clicked");
+  else if (v == "Open") alert("Open clicked");
+  else alert("Close clicked");
+}
+&lt;/script&gt;
+...
+  &lt;menu class="menu" value="File" oncommand="doCMD(event.target)"&gt;
+    &lt;menupopup&gt;
+      &lt;menuitem oncommand="alert('New item alert')" value="New" /&gt;
+      &lt;menuitem value="Open" /&gt;
+      &lt;menuitem oncommand="alert('Close handler')" value="Close" /&gt;
+    &lt;/menupopup&gt;
+  &lt;/menu&gt;
+...
+</pre>
+
+<p>The event handler in the menu finds out which menuitem was actually clicked and takes different actions accordingly.</p>
+
+<h2 id="Event_Capturing" name="Event_Capturing">Event Capturing</h2>
+
+<p>Event capturing is the complement of event bubbling. When you register an event listener on an ancestor of the event target (i.e. any node above the event-raising element in the node hierarchy), you can use event capturing to handle the event in the ancestor before it is heard in the target itself or any of the intervening nodes.</p>
+
+<p><img alt="Capturing an Event" class="internal" src="/@api/deki/files/675/=Event_capture.png"></p>
+
+<p>In the diagram above, the alert dialog invoked by the menuitem itself is not displayed, since the root window element has used event capture to handle the event itself. In another example, an onload event handler for a XUL window can register a box element to capture all the click events that are raised from its child elements:</p>
+
+<pre>var bbox = document.getElementById("bigbox");
+if (bbox)
+  bbox.addEventListener("click", function() { alert('captured'); }, true);
+
+...
+
+&lt;box id="bigbox"&gt;
+  &lt;menu value="File"&gt;
+    &lt;menupopup&gt;
+      &lt;menuitem value="New" onclick="alert('not captured')" /&gt;
+      ...
+    &lt;menupopup&gt;
+  &lt;/menu&gt;
+&lt;/box&gt;
+</pre>
+
+<p> </p>
+
+<h2 id="Adding_an_Event_Listener" name="Adding_an_Event_Listener">Adding an Event Listener</h2>
+
+<p>In order to take advantage of event capturing (or event bubbling with elements that do not already have event listeners), you must add an event listener to the element that wants to capture events taking place below it. Any XUL element may use the DOM <a href="/en/DOM/element.addEventListener" title="en/DOM/element.addEventListener">addEventListener</a> method to register itself to capture events. The syntax for this in XUL is as follows:</p>
+
+<pre class="eval">element = document.getElementById(<em>"id of the element"</em>);
+element.addEventListener(<em>event name</em>, <em>event handler function</em>, <em>whether to register a capturing listener</em>);
+</pre>
+
+<p>The event handler code argument can be in-line code or a function. The last boolean parameter specifies whether the event listener wants to use event capturing, or be registered to listen for events that bubble up the hiearchy normally.</p>
+
+<p>Note: The DOM provides the <code>addEventListener</code> method for creating event listeners on nodes that do not otherwise supply them. But in XUL, almost every element includes an "oncommand" event listener attribute for getting events. <code>addEventListener</code> is the way to register event listeners for events other than the generalized "command" event, and the way to register a particular element for event capture, which preempts the regular flow of events.</p>
+
+<p>Original author: <a class="link-mailto" href="mailto:oeschger@netscape.com">Ian Oeschger</a><br>
+ Other Documents: <a class="external" href="http://www.w3.org/TR/2000/CR-DOM-Level-2-20000307/events.html">W3C DOM Events</a>, <a href="/en/XUL/Events" title="en/XUL/Events">Mozilla XUL Events</a></p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:oeschger@netscape.com">Ian Oeschger</a></li>
+ <li>Last Updated Date: January 18, 2002</li>
+ <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:oeschger@netscape.com">Ian Oeschger</a></li>
+</ul>
+</div>

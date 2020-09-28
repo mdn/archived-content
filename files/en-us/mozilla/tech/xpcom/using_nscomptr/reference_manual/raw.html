@@ -1,0 +1,601 @@
+<p>This section will help you if you're already familiar with <code>nsCOMPtr</code> but you need details. If you've never use <code>nsCOMPtr</code>s before, you might want to read the <a href="/en-US/docs/Using_nsCOMPtr/Getting_Started_Guide">Getting Started Guide</a> first. If you're trying to fix a broken build, the <a href="/en-US/docs/Using_nsCOMPtr/Frequently_Asked_Questions">FAQ</a> might lead you to the answer more quickly.</p>
+<h2 id="The_Basics" name="The_Basics">The Basics</h2>
+<h3 id="Design" name="Design">Design</h3>
+<p>An <code>nsCOMPtr</code> is designed to be a complete replacement for raw XPCOM interface pointers where they are used as owning references. Almost any place you could use a raw XPCOM interface pointer, you should be able to use an <code>nsCOMPtr</code>. An <code>nsCOMPtr</code> is the exact same size and shape as a raw XPCOM interface pointer. It can be used as a member variable without introducing bloat.</p>
+<p>Most of the work of being an owning reference can be done in the constructor, destructor, and assignment operators of <code>nsCOMPtr</code>. Whenever you `point' the <code>nsCOMPtr</code> at a different XPCOM object (by assignment or initialization), it must <code>Release</code> its old value, if any, and <code>AddRef</code> the new. At its own destructor time it must <code>Release</code> as well. <code>nsCOMPtr</code> only does exactly the work you would have done, if you always remembered to do the right thing.</p>
+<h3 id="Safety_Features" name="Safety_Features">Safety Features</h3>
+<h4 id="Type_Safeguards" name="Type_Safeguards">Type Safeguards</h4>
+<p>It is an invariant of <code>nsCOMPtr</code> that it holds the XPCOM-correct interface pointer for it's underlying type. For example, an <code>nsCOMPtr&lt;nsIFoo&gt;</code> will always hold the pointer that would be returned by <code>QueryInterface</code>, when querying an XPCOM object for its <code>nsIFoo</code> interface. In debug builds, if you subvert this invariant with one of the assignment forms that doesn't call <code>QueryInterface</code>, <code>nsCOMPtr</code> will assert at runtime in the bad assignment.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Given two un-related interfaces |nsIFoo| and |nsIBar|...
+nsIBar* bar = ...;
+// ...
+
+nsCOMPtr&lt;nsIFoo&gt; foo = bar;
+  // NS_ASSERTION: "QueryInterface needed"
+
+  // ...even assuming you can get the line to compile
+  //  (either by casting, or because the types are related by C  )
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>This invariant is relaxed for <code>nsCOMPtr&lt;nsISupports&gt;</code>. Like <code>nsISupports*</code> (or even <code>void*</code>), people generally use <code>nsCOMPtr&lt;nsISupports&gt;</code> to mean "any XPCOM interface." It would be annoying if <code>nsCOMPtr</code> forced you to <code>QueryInterface</code> to the XPCOM-correct <code>nsISupports</code> within an object in places where you don't care to know the exact type.</p>
+<h4 id="NULL-dereference_Safeguards" name="NULL-dereference_Safeguards"><code>NULL</code>-dereference Safeguards</h4>
+<p>An <code>nsCOMPtr</code> will also assert at runtime if you try to dereference it when it is void, e.g.,</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsCOMPtr&lt;nsIFoo&gt; foo;
+  // Note: default initialized to |0|
+
+foo-&gt;DoSomething();
+  // NS_PRECONDITION: "You can't dereference a NULL nsCOMPtr with operator-&gt;()"
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>A similar precondition intervenes on behalf of <code>operator*</code>.</p>
+<h4 id="Reference-Counting_Safeguards" name="Reference-Counting_Safeguards">Reference-Counting Safeguards</h4>
+<p>All of the operations that extract the underlying raw pointer out of an <code>nsCOMPtr</code> use a C trick to implement another safety feature. The pointer returned cannot be <code>AddRef</code>ed, <code>Release</code>d, or <code>delete</code>d.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsCOMPtr&lt;nsIFoo&gt; foo = ...;
+
+foo-&gt;AddRef();    // Error: |AddRef| is private
+delete foo.get();  // Error: |operator delete| is private
+NS_RELEASE(foo);   // Error: |Release| is private
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Of course, the most important safety feature provided by <code>nsCOMPtr</code> is that it <code>AddRef</code>s and <code>Release</code>s automatically at the appropriate times.</p>
+<h3 id="Casting" name="Casting">Casting</h3>
+<p>Never use old-style C/C++ casts on an <code>nsCOMPtr</code>. An old-style cast is guaranteed to compile, even if it can't do the right thing. Old-style casts degenerate into the equivalent of <code>reinterpret_cast</code> if no conversion is defined. Such a cast can easily by-pass <code>nsCOMPtr</code>s machinery, causing leaks, type mismatches, and other calamities.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Old-style C/C++   casts by-pass |nsCOMPtr|s machinery and cause leaks...
+
+nsresult rv;
+nsCOMPtr&lt;nsIFoo&gt; foo = ...;
+
+// ...
+rv = GetFoo( (nsIFoo**)&amp;foo );
+rv = GetFoo( &amp;(nsIFoo*)foo );
+  // Sure, they compile; but now you leak.
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>To help prevent this, we are trying to make the first form, above, illegal by making <code>operator&amp;</code> <code>private</code>. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=59414" title="FIXED: misuse of nsCOMPtr::operator&amp;">bug 59414</a>.</p>
+<h3 id="Implementation_Details_and_Debugging_Machinery" name="Implementation_Details_and_Debugging_Machinery">Implementation Details and Debugging Machinery</h3>
+<p>Although it is a class, <code>nsCOMPtr</code> has no virtual methods, and therefore, no vtable or vptr. Because a few key routines are factored out into a common non-template base class, the actual underlying pointer is stored as an <code>nsISupports*</code> (except in debug builds where <code>NSCAP_FEATURE_DEBUG_PTR_TYPES</code> is turned on). It is because of these factored routines that <code>nsCOMPtr</code> users must link with the XPCOM library.</p>
+<p>When <code>NSCAP_FEATURE_DEBUG_PTR_TYPES</code> is turned on, instead of holding its underlying pointer in a variable of type <code>nsISupports*</code>, the <code>nsCOMPtr</code> holds it in a pointer matching the underlying type. This allows source level debuggers to more easily "follow" the pointer. However, the routines that would normally be factored into a base class now must become template-specific inlines. There is no factored base class. This implies that the entire application must be compiled with the same setting of <code>NSCAP_FEATURE_DEBUG_PTR_TYPES</code>, else some parts will be expecting a base class and others will not. The app will not link.</p>
+<h3 id="Unit_Tests" name="Unit_Tests">Unit Tests</h3>
+<p>The unit tests for <code>nsCOMPtr</code> can be found in the file</p>
+<ul>
+  <li><code><a href="https://dxr.mozilla.org/mozilla-central/source//xpcom/tests/TestCOMPtr.cpp" rel="custom">/xpcom/tests/TestCOMPtr.cpp</a></code></li>
+</ul>
+<h2 id="Initialization_and_Assignment" name="Initialization_and_Assignment">Initialization and Assignment</h2>
+<h3 id="Built-in_forms" name="Built-in_forms">Built-in forms</h3>
+<p>Assignment into, or initialization of an <code>nsCOMPtr</code> is easy to understand. The <code>nsCOMPtr</code> <code>Release</code>s its old value, if any, and then assigns in the new value, <code>AddRef</code>ing it and/or calling <code>QueryInterface</code> as you direct by "annotating" the assignment with directives like <code>dont_AddRef</code>. This section describes each of the possibilities, though the directives can be more succinctly described in the table below.</p>
+<p>You can construct an <code>nsCOMPtr</code> from, or assign into it any of the following</p>
+<ul>
+  <li>the value <code>0</code></li>
+  <li>another <code>nsCOMPtr</code> of the same type</li>
+  <li>a raw XPCOM interface pointer of the same type</li>
+  <li>a raw XPCOM interface pointer of the same type, annotated with the <a href="#nsCOMPtr.3CT.3E_.3D_T.2A.2CnsCOMPtr.3CT.3E_.3D_dont_QueryInterface.28_T.2A_.29"><code>dont_QueryInterface</code></a> directive</li>
+  <li>a raw XPCOM interface pointer of the same type, annotated with the <a href="#nsCOMPtr.3CT.3E_.3D_dont_AddRef.28_T.2A_.29.2CnsCOMPtr.3CT.3E_.3D_getter_AddRefs.28_T.2A_.29"><code>dont_AddRef</code></a> directive or a synonym</li>
+  <li>any interface pointer (either <code>nsCOMPtr</code> or a raw XPCOM interface pointer) of any type, annotated with the <a href="#nsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A.2C_nsresult.2A_.29"><code>do_QueryInterface</code></a> directive</li>
+  <li>a <a href="#nsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A.2C_nsresult.2A_.29"><code>do_QueryReferent</code></a> directive</li>
+</ul>
+<p>The first three of these are simple and obvious. The fourth (applying the <code>dont_QueryInterface</code> directive) is a synonym for just assigning in a raw XPCOM interface pointer of the same type. The remaining directives provide some additional control in special situations. Additionally, you can construct an <code>nsCOMPtr</code> without supplying an initial value, in which case it is initialized to <code>0</code>. Just like a primitive pointer, an <code>nsCOMPtr</code> with the value <code>0</code> points to no object, and can be tested with expressions like <code>if (foo)</code> and <code>if (!foo)</code>.</p>
+<p>The directives mentioned above may make more sense in this table</p>
+<table>
+  <caption>
+    Table 1. Options for assigning into an <code>nsCOMPtr</code>.</caption>
+  <tbody>
+    <tr>
+      <td> </td>
+      <td>don't QI</td>
+      <td>QI</td>
+    </tr>
+    <tr>
+      <td><code>AddRef</code></td>
+      <td>
+        <p><a href="#nsCOMPtr.3CT.3E_.3D_T.2A.2CnsCOMPtr.3CT.3E_.3D_dont_QueryInterface.28_T.2A_.29">T*,<br>
+          <code>dont_QueryInterface(T*)</code></a></p>
+      </td>
+      <td>
+        <p><a href="#nsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A.2C_nsresult.2A_.29"><code>do_QueryInterface(nsISupports*)</code>,<br>
+          <code>do_QueryInterface(nsISupports*, nsresult*)</code></a> <a href="#nsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A.2C_nsresult.2A_.29"><code>do_QueryReferent(nsIWeakReference*)</code>,<br>
+          <code>do_QueryReferent(nsIWeakReference*, nsresult*)</code></a></p>
+      </td>
+    </tr>
+    <tr>
+      <td>don't <code>AddRef</code></td>
+      <td>
+        <p><a href="#nsCOMPtr.3CT.3E_.3D_dont_AddRef.28_T.2A_.29.2CnsCOMPtr.3CT.3E_.3D_getter_AddRefs.28_T.2A_.29"><code>dont_AddRef(T*)</code>,<br>
+          <code>getter_AddRefs(T*)</code></a></p>
+      </td>
+      <td>
+        <p><a href="#nsCOMPtr.3CT.3E_.3D_.2F.2A_call_QueryInterface_but_don.27t_AddRef_.2A.2F">n/a</a></p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>E.g., one of the possibilities for assigning into an <code>nsCOMPtr</code>, but you don't want to <code>AddRef</code> the pointer you are assigning (because it has already been <code>AddRef</code>ed for some reason) is <code>dont_AddRef(T*)</code> found at the intersection of "don't <code>AddRef</code>" and "don't QI". Here is a sample demonstrating the various positions these `annotations' can appear in, using <code>dont_AddRef</code></p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Controlling assignment into an |nsCOMPtr|...
+
+  // in constructors...
+nsCOMPtr&lt;nsIFoo&gt; foo1( dont_AddRef(rawFoo1Ptr) );
+nsCOMPtr&lt;nsIFoo&gt; foo2 = dont_AddRef(rawFoo2Ptr);
+  // Note that the function form (called `direct initialization') and the
+  //  assignment form (called `copy initialization') of a constructor have
+  //  subtly different meanings; prefer direct initialization.
+
+nsCOMPtr&lt;nsIFoo&gt; foo3;
+
+  // in a normal assignment...
+foo3 = dont_AddRef(rawFoo3Ptr);
+
+  // The annotations described in the table apply to both forms of constructor,
+  //  and to plain-old assignment
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Any of the annotations shown in the table can appear in all the positions demonstrated with <code>dont_AddRef</code>. The sections that follow describe each possibility.</p>
+<h4 id="nsCOMPtr.3CT.3E_.3D_T.2A.2CnsCOMPtr.3CT.3E_.3D_dont_QueryInterface.28_T.2A_.29" name="nsCOMPtr.3CT.3E_.3D_T.2A.2CnsCOMPtr.3CT.3E_.3D_dont_QueryInterface.28_T.2A_.29"><code>nsCOMPtr&lt;T&gt; = T*</code>,<br>
+  <code>nsCOMPtr&lt;T&gt; = dont_QueryInterface( T* )</code></h4>
+<p>The default behavior, shown in the table as <code>T*</code>, is to <code>AddRef</code> the new value, but not to call <code>QueryInterface</code> against it. This is what happens when no `annotation' is present, e.g.,</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsCOMPtr&lt;nsIFoo&gt; foo( aFooPtr ); // or
+foo = aFooPtr;
+  // ...will call |AddRef| but not |QueryInterface|
+
+  // A more explicit synonym for this is...
+nsCOMPtr&lt;nsIFoo&gt; foo( dont_QueryInterface(aFooPtr) ); // or
+foo = dont_QueryInterface(aFooPtr);
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>By using this form, you are promising that the pointer you are assigning in is already a pointer to the XPCOM-correct interface matching the <code>nsCOMPtr</code>s underlying type, in this case, <code>nsIFoo</code>.</p>
+<h4 id="nsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A.2C_nsresult.2A_.29" name="nsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryInterface.28_nsISupports.2A.2C_nsresult.2A_.29"><code>nsCOMPtr&lt;T&gt; = do_QueryInterface( nsISupports* )</code>,<br>
+  <code>nsCOMPtr&lt;T&gt; = do_QueryInterface( nsISupports*, nsresult* )</code></h4>
+<p>If you can't satisfy the above promise, you can `annotate' the assignment to tell the <code>nsCOMPtr</code> it needs to call <code>QueryInterface</code>, e.g.,</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(aBarPtr) ); // or
+foo = do_QueryInterface(aBarPtr);
+  // ..._will_ call |QueryInterface| (and therefore, |AddRef|)
+
+  // Of course, since you're calling |QueryInterface|, you might need the
+  //  error result...
+nsresult rv;
+nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(aBarPtr, &amp;rv) ); // or
+foo = do_QueryInterface(aBarPtr, &amp;rv);
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h4 id="nsCOMPtr.3CT.3E_.3D_dont_AddRef.28_T.2A_.29.2CnsCOMPtr.3CT.3E_.3D_getter_AddRefs.28_T.2A_.29" name="nsCOMPtr.3CT.3E_.3D_dont_AddRef.28_T.2A_.29.2CnsCOMPtr.3CT.3E_.3D_getter_AddRefs.28_T.2A_.29"><code>nsCOMPtr&lt;T&gt; = dont_AddRef( T* )</code>,<br>
+  <code>nsCOMPtr&lt;T&gt; = getter_AddRefs( T* )</code></h4>
+<p>Sometimes, you happen to have a pointer lying around that's already <code>AddRef</code>ed, but you want to put it into an <code>nsCOMPtr</code>. This often happens with getters that return the <code>AddRef</code>ed pointer as their result (rather than an <code>nsresult</code>); or in the efficiency transformations. <code>dont_AddRef</code> is the perfect remedy to situations like this.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsIFoo* temp;
+nsresult rv = GetFoo(&amp;temp);
+nsCOMPtr&lt;nsIFoo&gt; foo( dont_AddRef(temp) );
+  // |temp| has already been |AddRef|ed, but we want to manage it with an
+  //  |nsCOMPtr|.
+
+nsCOMPtr&lt;nsIFoo&gt; foo( getter_AddRefs(CreateAFoo()) );
+  // |getter_AddRefs| is a synonym for |dont_AddRef| that may look better to
+  //  you when applied to functions that return |AddRef|ed pointers
+
+nsCOMPtr&lt;nsIFoo&gt; foo( dont_AddRef(CreateAFoo()) );
+  // or, maybe you don't like it better...
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h4 id="nsCOMPtr.3CT.3E_.3D_.2F.2A_call_QueryInterface_but_don.27t_AddRef_.2A.2F" name="nsCOMPtr.3CT.3E_.3D_.2F.2A_call_QueryInterface_but_don.27t_AddRef_.2A.2F"><code>nsCOMPtr&lt;T&gt; = </code>/* call <code>QueryInterface</code> but don't <code>AddRef</code> */</h4>
+<p>You'll notice this quadrant of the table is marked "n/a". There is no explicit directive that means "call <code>QueryInterface</code>, but don't <code>AddRef</code> the result". This option corresponds to the situation where you are calling a getter that returns an object of the wrong type. It has already <code>AddRef</code>ed the object, so you don't want to, but you need to get a different interface out of it. Well, you can't have it. <code>QueryInterface</code> always <code>AddRef</code>s it's result, and there is no substitute for calling <code>QueryInterface</code> to get the right type. The solution is a two step process.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// ...
+
+  // The getter returns an already |AddRef|ed object (of the wrong type)...
+nsCOMPtr&lt;nsIBar&gt; bar( getter_AddRefs(CreateBar()) );
+  // ...which I must query for the right type
+nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(bar) );
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>One unfortunate trap that people fall into in this case is forgetting that their getter function <code>AddRef</code>ed the result. Which leads them to type in code that looks like this:</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(CreateBar()) );
+  // Oops!  The interface returned by |CreateBar| leaks.
+  //  You _must_ handle this case with the two step solution shown above.
+
+  // Seems unlikely, you say?  You're more likely to see it in a form like this
+nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(aList-&gt;ElementAt(i)) );
+  // |ElementAt|, like all good getters, |AddRefs| it's result
+  //  which would be dropped on the floor, after querying it for the needed
+  //  interface
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Bugzilla <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=8221" title="FIXED: MLK - Mem Leak's found with the scc wonder query - nsCOMPtr = do_QueryInterface..">bug 8221</a> is specifically about finding and fixing this particular kind of leak.</p>
+<h3 id="nsCOMPtr_helpers" name="nsCOMPtr_helpers"><code>nsCOMPtr</code> helpers</h3>
+<h4 id="nsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A.2C_nsresult.2A_.29" name="nsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A_.29.2CnsCOMPtr.3CT.3E_.3D_do_QueryReferent.28_nsIWeakReference.2A.2C_nsresult.2A_.29"><code>nsCOMPtr&lt;T&gt; = do_QueryReferent( nsIWeakReference* )</code>,<br>
+  <code>nsCOMPtr&lt;T&gt; = do_QueryReferent( nsIWeakReference*, nsresult* )</code></h4>
+<p><code>do_QueryReferent</code> exists to facilitate weak references based on <a href="/en-US/docs/Weak_reference"><code>nsIWeakReference</code></a>. An <code>nsIWeakReference</code> is an XPCOM object that acts as a proxy for another object. The <code>nsIWeakReference</code> and this other object have a special relationship. They know about each other, but neither holds an owning reference to the other. The two objects cooperate to ensure that neither ever holds a dangling pointer to the other. Holding an owning reference on the <code>nsIWeakReference</code> object allows you to get to this other object when you need to, but does not require it to go on living, just for you. To get to the object, you ask the <code>nsIWeakReference</code> object to <code>QueryInterface</code> it on your behalf. If the object still exists and supports the requested interface, you will (hopefully, temporarily) hold an owning reference to it.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+nsIWeakReference* weakPtr = ...;
+
+weakPtr-&gt;QueryReferent(
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h2 id="Using_an_nsCOMPtr.3CT.3E_as_a_T.2A" name="Using_an_nsCOMPtr.3CT.3E_as_a_T.2A">Using an <code>nsCOMPtr&lt;T&gt;</code> as a <code>T*</code></h2>
+<h3 id="Using_an_nsCOMPtr_as_a_pointer" name="Using_an_nsCOMPtr_as_a_pointer">Using an <code>nsCOMPtr</code> as a pointer</h3>
+<h3 id=".22In.22_Parameters" name=".22In.22_Parameters">"In" Parameters</h3>
+<h3 id=".22Out.22_Parameters:_getter_AddRefs" name=".22Out.22_Parameters:_getter_AddRefs">"Out" Parameters: <code>getter_AddRefs</code></h3>
+<p>Assignment into an <code>nsCOMPtr</code> is fairly easy to understand. The <code>nsCOMPtr</code> <code>Release</code>s its old value, if any, and then assigns in the new value, <code>AddRef</code>ing, and/or calling <code>QueryInterface</code> as you specified with the directives described above. These rules apply equally to the "assignment" that happens when copying parameters or function results that are declared to be <code>nsCOMPtr</code>s. If we want <code>nsCOMPtr</code>s to be a viable substitute for raw XPCOM interface pointers, however, we will need to deal with the issue of "out" parameters. Many XPCOM functions return interface pointers as results through parameters, e.g.,</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Getters can return interface pointers through "out" parameters...
+
+nsresult GetFoo( nsIFoo** );     // a standard getter
+nsresult GetFoo2( nsIFoo*&amp; );    // a non-standard getter
+nsresult GetSomething( void** ); // an "un-typed" getter
+  // Note: |QueryInterface| is an example of a "un-typed" getter
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>We must be able to pass <code>nsCOMPtr</code>s by pointer or reference, into routines for use as "out" parameters. The problem is that inside the getter there is no knowledge of <code>nsCOMPtr</code>s. It thinks it's getting a pointer (or a reference) to a raw XPCOM interface pointer. <code>nsCOMPtr</code>s smart assignment operators will not be called. The old value, if any, will be leaked.</p>
+<p>This is where the <code>getter_AddRefs( nsCOMPtr&amp; )</code> comes in. <code>getter_AddRefs</code> <code>Release</code>s the old value, if any, clears it out, and returns a pointer to it, allowing the getter to fill in your <code>nsCOMPtr</code> with a new <code>AddRef</code>ed value. We use <code>getter_AddRefs</code> as a sort of replacement for the <code>&amp;</code> that we would apply to a raw XPCOM interface pointer in these situations. <code>getter_AddRefs</code> packages up all the magic we normally get from <code>nsCOMPtr</code>s constructors and assignment operators.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// raw XPCOM interface pointers...
+
+nsIFoo* foo;
+
+GetFoo(&amp;foo);
+GetFoo2(foo);
+GetSomething((void**)&amp;foo);
+</pre>
+      </td>
+      <td>
+        <pre class="brush: cpp">
+// |nsCOMPtr|s...
+
+nsCOMPtr&lt;nsIFoo&gt; foo;
+
+GetFoo(getter_AddRefs(foo));
+GetFoo2(*getter_AddRefs(foo));
+GetSomething(getter_AddRefs(foo));
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Why not just overload <code>operator&amp;</code> to do this work? Several reasons: it would become inconvenient take the address of an <code>nsCOMPtr</code> in all other situations; the name "<code>getter_AddRefs</code>" enforces the notion that a certain behavior is required of the getter; and once upon a time, there was another possibility (as you're about to learn).</p>
+<p>Is there a <code>getter_doesnt_AddRef( nsCOMPtr&amp; )</code> for getters that return non-<code>AddRef</code>ed results through a parameter? No, there isn't. Once upon a time, there was, but it went away for three reasons:</p>
+<ul>
+  <li>It is against the rules of XPCOM for a getter to return a non-<code>AddRef</code>ed interface pointer through a parameter (if you see it, report a bug).</li>
+  <li><code>getter_doesnt_AddRef</code> had complex ramifications that ended up making <code>nsCOMPtr</code>s either bigger or slower than raw XPCOM interface pointers.</li>
+  <li>You can still call such a getter and put the result into an <code>nsCOMPtr</code> with a temporary, e.g.,</li>
+</ul>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Calling a getter that (illegally) doesn't |AddRef| its result...
+
+nsIFoo* temp;
+nsresult rv = GetFoo_WithoutAddRef(&amp;temp);
+  // Note to self: must report |GetFoo_WithoutAddRef| as a bug, all getters
+  //  must |AddRef|
+nsCOMPtr&lt;nsIFoo&gt; foo = temp;
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h3 id=".22In.2FOut.22_Parameters" name=".22In.2FOut.22_Parameters">"In/Out" Parameters</h3>
+<p>What about "in/out" parameters?</p>
+<h2 id="Efficiency_and_Correctness" name="Efficiency_and_Correctness">Efficiency and Correctness</h2>
+<h3 id="The_Costs_of_nsCOMPtr" name="The_Costs_of_nsCOMPtr">The Costs of <code>nsCOMPtr</code></h3>
+<p><code>nsCOMPtr</code> is tuned to be a viable replacement for raw XPCOM interface pointers, anywhere you would use one as an owning reference. <code>nsCOMPtr</code>s performance is generally slightly <i>more</i> efficient that raw pointers in space, and negligably less efficient in time. Performance concerns should not deter you from using <code>nsCOMPtr</code>. The patterns presented throughout this section will help you get the most out of <code>nsCOMPtr</code>.</p>
+<h4 id="Space" name="Space">Space</h4>
+<p>In general, <code>nsCOMPtr</code> <i>can</i> be more efficient in space than using raw XPCOM pointers. This is primarily because it factors its destructor, and the more complicated constructors and assignment operators. By following the optimization tips in this section, you will write code that generates fewer bytes of object than you might with raw pointers. Even if you don't follow these suggestions, your <code>nsCOMPtr</code> code may still end up smaller, or at worst only negligibly bulkier than the raw pointer version. See <a class="external" href="http://www.mozilla.org/projects/xpcom/nsCOMPtr/bloat.html">Code Bloat [LONG, summary at top</a>] for details, though the recommendations from that document are re-iterated here.</p>
+<h4 id="Time" name="Time">Time</h4>
+<p>[[More time-performance measurements are needed.]]</p>
+<p>In places where two or more subroutines calls are required, i.e., of <code>AddRef</code>, <code>Release</code>, and <code>QueryInterface</code>, some <code>nsCOMPtr</code> routines are factored, and hence, require additional time corresponding to invoking a subroutine. This time is negligable, especially in the face of work done by <code>QueryInterface</code>, and the work that may be done by <code>Release</code>.</p>
+<p>In all other cases, <code>nsCOMPtr</code> does only the work you would have done by hand. The bulk of the work for which an <code>nsCOMPtr</code> is used is dereferencing with <code>operator-&gt;</code>, just as it is with a primitive pointer. On every platform, this operation generates the exact same code, and takes the same time, as performing this operation on a raw XPCOM interface pointer. The destructor, which corresponds to client code calling <code>Release</code> against a raw XPCOM interface pointer, is factored, requiring the extra time required to invoke a subroutine call, though this is balanced against the cost already present in both cases of calling <code>Release</code> which may, in turn, invoke <code>delete</code> and the referents destructor. All <code>nsCOMPtr</code>s constructors and assignment operators are inline. The simple constructors, i.e., those that don't query, do only exactly the same work that you would do by hand. Any routines that call more than one of <code>AddRef</code>, <code>Release</code>, or <code>QueryInterface</code>, are factored, and hence have the additional cost of invoking a subroutine call.</p>
+<p>Only the fact that some routines are factored, thus introducing the overhead of an additional subroutine call, and that initialization cannot be by-passed, cause any extra run-time cost for <code>nsCOMPtr</code> over raw XPCOM interface pointers. Space and time trade-offs are finely balanced in <code>nsCOMPtr</code>. The factored routines are the direct result of bloat measurements.</p>
+<h3 id="Prefer_Construction_to_Assignment" name="Prefer_Construction_to_Assignment">Prefer Construction to Assignment</h3>
+<p>The most efficient way, in both time and space, to get a value into an <code>nsCOMPtr</code> is at construction time. Prefer construction over assignment whenever reasonable. Initialize member <code>nsCOMPtr</code>s in the member initialization clause of your constructor.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Initialize member |nsCOMPtr|s in the member initialization clause of your
+//  constructor...
+
+class Bar
+  {
+    public:
+      Bar( nsIFoo* initial_fooPtr );
+      // ...
+    private:
+      nsCOMPtr&lt;nsIFoo&gt; mFooPtr;
+  };
+
+Bar::Bar( nsIFoo* initial_fooPtr )
+    : mFooPtr(initial_fooPtr) // initialize it _here_
+  {
+    // not here
+  }
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Additionally, there is an optimization pattern using a temporary that converts assignment form to construction form.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Default construction, followed by
+//  assignment is not as efficient...
+
+nsCOMPtr&lt;nsIFoo&gt; foo;
+nsresult rv=GetFoo(getter_AddRefs(foo));
+
+
+
+
+
+</pre>
+      </td>
+      <td>
+        <pre class="brush: cpp">
+// ...as construction alone.
+
+nsIFoo* temp;
+nsresult rv=GetFoo(&amp;temp);
+nsCOMPtr&lt;nsIFoo&gt; foo=dont_AddRef(temp);
+
+  // Remember this `raw-pointer, call
+  //  getter, assign |dont_AddRef|'
+  //  pattern.  It  crops up in many
+  //  efficiency discussions.
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>In both cases you end up with <code>foo</code>, a valid <code>nsCOMPtr</code> whose value was set with the product of <code>GetFoo</code>, and <code>rv</code> the status returned by <code>GetFoo</code>. The case using the temporary, however, uses construction to put the value into the <code>nsCOMPtr</code>, which (though slightly more complicated in source) is more efficient than default construction followed by assignment, the course of events followed by the simpler example.</p>
+<h3 id="Prefer_Destruction_to_Assignment" name="Prefer_Destruction_to_Assignment">Prefer Destruction to Assignment</h3>
+<h3 id="Prefer_do_QueryInterface_to_calling_QueryInterface" name="Prefer_do_QueryInterface_to_calling_QueryInterface">Prefer <code>do_QueryInterface</code> to calling <code>QueryInterface</code></h3>
+<h3 id="Iterating" name="Iterating">Iterating</h3>
+<p>There is a very common idiom for iterating over data-structures with normal pointers, e.g.,</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Iterating with pointers to non-XPCOM objects...
+
+Node* p = ...;
+while ( p )
+  {
+    // ...
+    p = p-&gt;next;
+  }
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>One often sees this pattern expressed as a <code>for</code> loop, as well. Consider, however, what would happen if you were trying to do this with a raw XPCOM interface pointer.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Iterating with raw XPCOM interface pointers...
+
+nsIDOMNode* p = ...;
+while ( p )
+  {
+    // ...
+    p-&gt;GetNext(&amp;p);
+      // Trouble!  We overwrote |p| without |Release|ing it.
+  }
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Oops! We just failed to <code>Release</code> <code>p</code> before putting a new pointer into it. People do this a lot, and it turns out to be a big source of leaks in normal XPCOM code. Well, could we do this instead?</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Iterating with raw XPCOM interface pointers...
+
+nsIDOMNode* p = ...;
+while ( p )
+  {
+    // ...
+    NS_RELEASE(p);
+    p-&gt;GetNext(&amp;p);
+      // Trouble!  We tried to call a member function of a pointer
+      //  that may be dangling or |NULL|.
+  }
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Unfortunately, not. After the <code>Release</code>, <code>p</code> <i>could</i> be dangling. In fact, if you used the <code>NS_RELEASE</code> macro, <code>p</code> would be <code>NULL</code> by the time you got to the <code>GetNext</code> call.</p>
+<p>Now imagine that you've written the same thing with <code>nsCOMPtr</code>.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Iterating with |nsCOMPtr|s...
+
+nsCOMPtr&lt;nsIDOMNode&gt; p = ...;
+while ( p )
+  {
+    // ...
+    p-&gt;GetNext( getter_AddRefs(p) );
+      // Trouble!  We tried to call a member function through a |NULL| pointer.
+  }
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Using <code>nsCOMPtr</code> is exactly like using raw XPCOM interface pointers, here. <code>getter_AddRefs</code> <code>Release</code>s and clears out <code>p</code> before you assign into it, i.e., before <code>GetNext</code> is called. Which means that by the time we get around to calling <code>GetNext</code>, we are trying to call it through a <code>NULL</code> pointer. Unlike raw XPCOM interface pointers, <code>nsCOMPtr</code> will fire an <code>assert</code> instead of blindly trying to call <code>GetNext</code> through a <code>NULL</code> pointer.</p>
+<p>That's the problem. So what's the solution? If this were raw XPCOM interface pointers, we'd probably introduce a temporary. We can do the same thing with <code>nsCOMPtr</code>.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Safe iterating with raw XPCOM
+//  interface pointers...
+
+nsIDOMNode* p = ...;
+while ( p )
+  {
+    // ...
+
+      // Introduce a temporary so we
+      //  don't stomp on |p|
+    nsIDOMNode* temp = p;
+    temp-&gt;GetNext(&amp;p);
+    NS_RELEASE(temp);
+  }
+</pre>
+      </td>
+      <td>
+        <pre class="brush: cpp">
+// Safe iterating with |nsCOMPtr|...
+
+
+nsCOMPtr&lt;nsIDOMNode&gt; p = ...;
+while ( p )
+  {
+    // ...
+
+      // Introduce a temporary so we
+      //  don't stomp on |p|
+    nsCOMPtr&lt;nsIDOMNode&gt; temp = p;
+    temp-&gt;GetNext(getter_AddRefs(p));
+  }
+
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>Although the <code>nsCOMPtr</code> parallel is easy to understand, it suffers from doing one extra <code>AddRef</code> and one extra <code>Release</code> compared to the raw pointer scheme. A slight transformation makes the code uglier, but (possibly negligibly) more efficient.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        <pre class="brush: cpp">
+// Safe, efficient, iterating with |nsCOMPtr|...
+
+nsCOMPtr&lt;nsIDOMNode&gt; p = ...;
+while ( p )
+  {
+    // ...
+    nsIDOMNode* next;
+    p-&gt;GetNext(&amp;next);
+    p = dont_AddRef(next);
+  }
+
+  // Look!  It's our friend, the `raw pointer, call getter, assign
+  //  |dont_AddRef|' pattern.
+</pre>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h3 id="Writing_Getters" name="Writing_Getters">Writing Getters</h3>
+<h2 id="Compiler_Annoyances" name="Compiler_Annoyances">Compiler Annoyances</h2>

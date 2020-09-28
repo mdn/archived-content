@@ -1,0 +1,566 @@
+<div>{{IncludeSubnav("/en-US/docs/Archive/Marketplace")}}</div>
+
+<div class="blockIndicator deprecated">
+<p><strong>Marketplace feature removal</strong><br>
+ The functionality described on this page no longer works — Firefox Marketplace has discontinued support for Android, Desktop, Tablets, and payments (and other related functionality). For more information, read the <a href="https://wiki.mozilla.org/Marketplace/FutureofMarketplaceFAQ">Future of Marketplace FAQ</a>.</p>
+</div>
+
+<div class="summary">
+<p>The <a href="/en-US/docs/Web/API/window.navigator.mozPay">navigator.mozPay</a> API enables web pages to take payment for digital goods. <span class="seoSummary">This article explains how to use the <a href="/en-US/docs/Web/API/window.navigator.mozPay">navigator.mozPay</a> API and <a href="https://wiki.mozilla.org/WebAPI/WebPaymentProvider">Web Payment Provider</a> services to process in-app payments.</span></p>
+
+<div class="blockIndicator warning">
+<p>The <code><a href="/en-US/Marketplace/Monetization/In-app_payments_section/fxPay_iap">fxPay</a></code> library offers a complete abstraction around <code>mozPay</code> with a more concise, developer friendly API. Consider using <code>fxPay</code> before <code>mozPay</code>.</p>
+</div>
+</div>
+
+<h2 id="Overview">Overview</h2>
+
+<p>Here is an overview of how you add in-app payments to your app and process a transaction:</p>
+
+<ul>
+ <li>Log in to the <a href="https://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub.</a></li>
+ <li><a href="/en-US/Marketplace/Publishing/Submit/Overview">Upload an app</a>, set it up as paid/in-app, and generate an Application Key and an Application Secret.</li>
+ <li>From your app, initiate a payment by signing a <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JWT</a> request with your secret and calling <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay(...)</code></a>.</li>
+ <li>This starts a payment flow in a new window
+  <ul>
+   <li>The buyer logs in with their email address.</li>
+   <li>The buyer enters their PIN.</li>
+   <li>The buyer charges the purchase to their phone bill or credit card.</li>
+  </ul>
+ </li>
+ <li>Your app receives a JavaScript callback when the buyer closes the window.</li>
+ <li>Your app <strong>server</strong> receives a signed POST request with a Mozilla transaction ID indicating that the purchase was completed.</li>
+ <li>If the transaction succeeded, you receive money directly deposited to your bank account</li>
+</ul>
+
+<p>The <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a> API is currently only available on <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a>. You can test it with the <a href="/docs/Tools/Firefox_OS_Simulator">Firefox OS Simulator</a>.</p>
+
+<h2 id="Process_an_in-app_payment_step_by_step">Process an in-app payment: step by step</h2>
+
+<p>This section explains how set up an in-app payment for testing and production.</p>
+
+<h3 id="Obtain_a_payment_key_for_testing">Obtain a payment key for testing</h3>
+
+<p>When you log into the <a href="https://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub</a> you can visit the <a href="https://marketplace.firefox.com/developers/in-app-keys/">In-App Payment Keys</a> page to generate an Application Key and Application Secret for testing. This key will only allow you to <em>simulate</em> in-app payments but this is suitable for testing. You should try out some simulations before you submit your app for review to the Marketplace. Read on for instructions on how to simulate a payment.</p>
+
+<h3 id="Obtain_a_real_payment_key">Obtain a real payment key</h3>
+
+<p>When you submit your working app to the <a href="https://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub</a> you will be prompted to configure payments. Select the cost of your app (typically <strong>free</strong> in this case) then mark the option to accept in-app payments. After setting up your bank account details, visit the In-App Payments page to obtain an Application Key and Application Secret for making real payments.</p>
+
+<p>Store the Application Secret securely on your app server in a private settings file or something like that.</p>
+
+<div class="blockIndicator note"><strong>Important:</strong> Ensure that no one else can read your application secret. Never expose it to the client.</div>
+
+<h3 id="Set_up_an_application">Set up an application</h3>
+
+<p>Let's say you are building an adventure game <a href="/en-US/docs/Web/Apps">web app</a> and you want to offer a <em>Magical Unicorn</em> for purchase so that players can excel in the game. You want to charge $1.99 or €1.89 or whatever the user's preferred currency is. In the following sections you'll see how to set up a backend server and write frontend code to use <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a> to sell products.</p>
+
+<h3 id="Set_up_your_server_to_sign_JWTs">Set up your server to sign JWTs</h3>
+
+<p>A payment is initiated with a <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JSON Web Token (JWT)</a> and it must be created server side, not client side. This is because the secret key used for signing should never be publicly accessible. Continuing with the example of selling a Magical Unicorn for an adventure game, create a URL on your server like <code>/sign-jwt</code>. This should create a JSON object that defines the product name, the price point, etc. Consult the <a href="https://wiki.mozilla.org/WebAPI/WebPayment">Web Payment API spec</a> for complete documentation on the JWT format. Here is an example:</p>
+
+<pre class="brush: js">{
+  "iss": APPLICATION_KEY,
+  "aud": "marketplace.firefox.com",
+  "typ": "mozilla/payments/pay/v1",
+  "iat": 1337357297,
+  "exp": 1337360897,
+  "request": {
+    "id": "915c07fc-87df-46e5-9513-45cb6e504e39",
+    "pricePoint": 10,
+    "name": "Magical Unicorn",
+    "description": "Adventure Game item",
+    "icons": {
+      "64": "https://yourapp.com/img/icon-64.png",
+      "128": "https://yourapp.com/img/icon-128.png"
+    },
+    "productData": "user_id=1234&amp;my_session_id=XYZ",
+    "postbackURL": "https://yourapp.com/payments/postback",
+    "chargebackURL": "https://yourapp.com/payments/chargeback",
+    "defaultLocale": "en",
+    "locales": {
+      "de": {
+        "name": "Magisches Einhorn",
+        "description": "Adventure Game Artikel"
+      }
+    }
+  }
+}
+</pre>
+
+<p>Here is an overview of each field:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">JWT attribute</th>
+   <th scope="col">description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>iss</code> (issuer)</td>
+   <td>Application Key that you obtained from the <a href="http://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub</a>.</td>
+  </tr>
+  <tr>
+   <td><code>aud</code> (audience)</td>
+   <td>The payment provider you want to connect to. To use the production server, always set this to <code>marketplace.firefox.com</code>.</td>
+  </tr>
+  <tr>
+   <td><code>iat</code> (issued at time)</td>
+   <td>A UTC Unix timestamp of when the JWT was issued.</td>
+  </tr>
+  <tr>
+   <td><code>exp</code> (expiration)</td>
+   <td>A UTC Unix timestamp of when the JWT should expire.</td>
+  </tr>
+  <tr>
+   <td><code>nbf</code> (not before time)</td>
+   <td>A UTC Unix timestamp of the earliest time the JWT can be processed.</td>
+  </tr>
+  <tr>
+   <td><code>request.id</code></td>
+   <td>A unique ID for the product you are selling.</td>
+  </tr>
+  <tr>
+   <td><code>request.pricePoint</code></td>
+   <td>A valid <a href="/en-US/docs/Web/Apps/Publishing/App_pricing#Pricing_with_price_points" title="/en-US/docs/Web/Apps/Publishing/App_pricing#Pricing_with_price_points">price point</a>. This will be expanded to a price and currency at the time of purchase.</td>
+  </tr>
+  <tr>
+   <td><code>request.productData</code></td>
+   <td>Any optional string up to 255 characters. This allows you to reconcile application state when you receive a postback.</td>
+  </tr>
+  <tr>
+   <td><code>request.postbackURL</code></td>
+   <td>An absolute URL on your server that will receive postbacks. In a production environment, always use HTTPS URLs if possible.</td>
+  </tr>
+  <tr>
+   <td><code>request.chargebackURL</code></td>
+   <td>An absolute URL on your server that will receive chargebacks. In a production environment, always use HTTPS URLs if possible.</td>
+  </tr>
+  <tr>
+   <td><code>request.icons</code></td>
+   <td>
+    <p>An optional object describing icon URLs for the product you are selling. The keys are width/height pixel values (images must be square). <strong>Mozilla's Payment Provider will use your 64 pixel image</strong> on the payment confirmation page. If you don't specify a 64 pixel image, it will take the largest icon and resize it. The first time someone makes a payment they won't see the icon immediately because the Payment Provider is fetching it in the background; you should see it soon after. If you make changes to the icon, they could take up to 24 hours to appear.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>request.defaultLocale</code></td>
+   <td>A language tag (<a href="http://www.ietf.org/rfc/rfc4646.txt">RFC 4646</a>) to describe the default localization of your in-app product name and description. It is optional unless <code>locales</code> is also defined, in which case it is required.</td>
+  </tr>
+  <tr>
+   <td><code>request.locales</code></td>
+   <td>An optional object containing one or more localized fields to describe your in-app product. Each locale entry is keyed on a language tag (<a href="http://www.ietf.org/rfc/rfc4646.txt">RFC 4646</a>) and contains the attributes you want to replace. You can only override <code>name</code> and <code>description</code>. If <code>locales</code> is defined then <code>defaultLocale</code> must also be defined.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>In Python code (using <a href="https://github.com/progrium/pyjwt">PyJWT</a>), you could sign and encode the request dictionary shown above like this:</p>
+
+<pre class="brush: python">import jwt
+signed_request = jwt.encode(request_dict, application_secret, algorithm='HS256')
+</pre>
+
+<p>This code signs a JWT using the application secret and uses the HMAC SHA 256 algorithm. <strong>Currently, this is the only supported algorithm</strong>. When encoded, it will look something like this:</p>
+
+<pre>eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.IntcImF1ZFwiOiBcIm1hcmtldHBsYWNlLm1vemlsbGEub3JnXCIsIFwiaXNzXCI6IFwiQVBQLTEyM1wiLCBcInJlcXVlc3RcIjoge1wiY3VycmVuY3lcIjogXCJVU0RcIiwgXCJwcmljZVwiOiBcIjAuOTlcIiwgXCJuYW1lXCI6IFwiVmlydHVhbCAzRCBHbGFzc2VzXCIsIFwicHJvZHVjdGRhdGFcIjogXCJBQkMxMjNfREVGNDU2X0dISV83ODkuWFlaXCIsIFwiZGVzY3JpcHRpb25cIjogXCJWaXJ0dWFsIDNEIEdsYXNzZXNcIn0sIFwiZXhwXCI6IFwiMjAxMi0wMy0yMVQxMTowOTo1Ni43NTMxNDFcIiwgXCJpYXRcIjogXCIyMDEyLTAzLTIxVDEwOjA5OjU2LjgxMDQyMFwiLCBcInR5cFwiOiBcIm1vemlsbGEvcGF5bWVudHMvcGF5L3YxXCJ9Ig.vl4E31_5H3t5H_mM8XA69DqypCqdACVKFy3kXz9EmTI
+</pre>
+
+<p>The encoded/signed JWT can now be used by your app in its client code.</p>
+
+<h3 id="Set_up_a_purchase_button">Set up a purchase button</h3>
+
+<p>Now that you have a backend to produce a JWT for your product, here's an example of writing frontend code with <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a>. You would make a button somewhere in your app that lets players purchase the product. For example:</p>
+
+<pre class="brush: html">&lt;button id="purchase"&gt;Purchase Magical Unicorn&lt;/button&gt;
+</pre>
+
+<p>When the purchase button is clicked, your app should sign a <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JSON Web Token (JWT)</a> and call <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a>. Here is an example using <a href="http://jquery.com/">jQuery</a>:</p>
+
+<pre class="brush: js">$('#purchase button').click(function() {
+  // The purchase is now pending...
+  $.post('/sign-jwt', {})
+    .done(function(signedJWT) {
+      var request = navigator.mozPay([signedJWT]);
+      request.onsuccess = function() {
+        waitForPostback();
+      };
+      request.onerror = function() {
+        console.log('navigator.mozPay() error: ' + this.error.name);
+      }
+    })
+    .fail(function() {
+      console.error('Ajax post to /sign-jwt failed');
+    });
+});
+
+function waitForPostback() {
+  // Poll your server until you receive a postback with a JWT.
+  // If the JWT signature is valid then you can dispurse the Magical Unicorn
+  // product to your customer.
+  // For bonus points, use Web Sockets :)
+}
+</pre>
+
+<p>This code would make an Ajax request to a <code>/sign-jwt</code> URL on your own server. That URL would sign a JSON blob with product/price info and return a JWT in plain text. The Ajax handler would pass that JWT into <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a> and then wait until the Payment Provider POSTs a purchase confirmation to your server. If the signature on the posted JWT is valid you can deliver the virtual goods to your customer.</p>
+
+<h3 id="Processing_postbacks_on_the_server">Processing postbacks on the server</h3>
+
+<p>Before delivering your product, you need to wait for a purchase confirmation from the Marketplace; this is called a postback. The<code> marketplace.firefox.com</code> site sends a POST confirmation notice (a <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JWT</a>) to the <code>request.postbackURL</code> specified in the original payment request.  The postbackURL must be the URL for a server listening on either port 80 or port 443.</p>
+
+<p>The POST has a <code>Content-Type</code> of <code>application/x-www-form-urlencoded</code> and the JWT can be found in the <strong><code>notice</code></strong> parameter. In your server framework you'll probably access this with something like <strong>request.POST['notice']</strong>.</p>
+
+<p>This JWT notice contains all the payment request fields plus a transaction ID, and is signed with your application secret that was obtained from the <a href="https://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub</a>. You can fulfill the purchase when you receive a postback and validate the signature. If you get a JWT whose signature you cannot verify you should ignore it since it probably wasn't sent by the marketplace.</p>
+
+<p>The <a href="https://wiki.mozilla.org/WebAPI/WebPayment">Web Payment API spec</a> explains what postbacks look like in detail. The postback contains the original request and adds a new response parameter that contains a Mozilla specific transaction ID. Here is an example:</p>
+
+<pre class="brush: js">{
+  "iss": "marketplace.firefox.com",
+  "aud": APPLICATION_KEY,
+  "typ": "mozilla/payments/pay/postback/v1",
+  "exp": 1337370900,
+  "iat": 1337360900,
+  "request": {
+    "id": "915c07fc-87df-46e5-9513-45cb6e504e39",
+    "pricePoint": 10,
+    "name": "Magical Unicorn",
+    "description": "Adventure Game item",
+    "icons": {
+      "64": "https://yourapp.com/img/icon-64.png",
+      "128": "https://yourapp.com/img/icon-128.png"
+    },
+    "productData": "user_id=1234&amp;my_session_id=XYZ",
+    "postbackURL": "https://yourapp.com/payments/postback",
+    "chargebackURL": "https://yourapp.com/payments/chargeback",
+    "defaultLocale": "en",
+    "locales": {
+      "de": {
+        "name": "Magisches Einhorn",
+        "description": "Adventure Game Artikel"
+      }
+    }
+  },
+  "response": {
+    "transactionID": "ABCD84294ec6-7352-4dc7-90fd-3d3dd36377e9",
+    "price": {"amount": "0.99", "currency": "CAD"}
+  }
+}
+</pre>
+
+<p>Description of the postback object:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th scope="col">JWT attribute</th>
+   <th scope="col">description</th>
+  </tr>
+  <tr>
+   <td><code>iss</code> (issuer)</td>
+   <td>Marketplace notices are issued by <code>marketplace.firefox.com</code>.</td>
+  </tr>
+  <tr>
+   <td><code>aud</code> (audience)</td>
+   <td>Your application is the audience for the notice so this value will be your Application Key.</td>
+  </tr>
+  <tr>
+   <td><code>iat</code> (issued at time)</td>
+   <td>A UTC Unix timestamp of when the JWT was issued.</td>
+  </tr>
+  <tr>
+   <td><code>exp</code> (expiration)</td>
+   <td>A UTC Unix timestamp of when the JWT should expire.</td>
+  </tr>
+  <tr>
+   <td><code>nbf</code> (not before time)</td>
+   <td>A UTC Unix timestamp of the earliest time the JWT can be processed.</td>
+  </tr>
+  <tr>
+   <td><code>request</code></td>
+   <td>The request object is exactly the same as the one you defined when creating the purchase JWT.</td>
+  </tr>
+  <tr>
+   <td><code>response.transactionID</code></td>
+   <td>A transaction identifier specific to Mozilla's <a href="https://github.com/mozilla/webpay">Web Payment Provider.</a></td>
+  </tr>
+  <tr>
+   <td><code>response.price</code></td>
+   <td>An object describing the amount and currency that the customer actually used to make the purchase.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Here are some important notes about the postback:</p>
+
+<ul>
+ <li>The JWT is signed with your Application Secret</li>
+ <li>Your postback/chargeback URLs <strong>must be located either on port 80 or port 443</strong> of your web server. No other ports can be used. This is due to how Mozilla's firewall is configured.</li>
+</ul>
+
+<h3 id="Responding_to_postbacks">Responding to postbacks</h3>
+
+<p>Your application must respond to the postback with a plain text HTTP response including just the transaction ID. For example:</p>
+
+<pre>HTTP/1.1 200 OK
+Content-Type: text/plain
+
+ABCD84294ec6-7352-4dc7-90fd-3d3dd36377e9
+</pre>
+
+<h3 id="Processing_chargebacks_on_the_server">Processing chargebacks on the server</h3>
+
+<p>Marketplace will send you a chargeback notice (a POSTed <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JWT</a>) if something goes wrong while processing the transaction, such as insufficient funds in the buyer's account. Chargebacks will be delivered to the app just like postbacks but they might arrive later on. The POST has a <code>Content-Type</code> of <code>application/x-www-form-urlencoded</code> and the JWT can be found in the <code>notice</code> parameter.  The chargeback must be the URL for a server listening on either port 80 or port 443.</p>
+
+<p>Here is an example of what a decoded chargeback notice might look like:</p>
+
+<pre class="brush: js">{
+  "iss": "marketplace.firefox.com",
+  "aud": APPLICATION_KEY,
+  "typ": "mozilla/payments/pay/chargeback/v1",
+  "exp": 1337370900,
+  "iat": 1337360900,
+  "request": {
+    "id": "915c07fc-87df-46e5-9513-45cb6e504e39",
+    "pricePoint": 10,
+    "name": "Magical Unicorn",
+    "description": "Adventure Game item",
+    "icons": {
+      "64": "https://yourapp.com/img/icon-64.png",
+      "128": "https://yourapp.com/img/icon-128.png"
+    },
+    "productData": "user_id=1234&amp;my_session_id=XYZ",
+    "postbackURL": "https://yourapp.com/payments/postback",
+    "chargebackURL": "https://yourapp.com/payments/chargeback",
+    "defaultLocale": "en",
+    "locales": {
+      "de": {
+        "name": "Magisches Einhorn",
+        "description": "Adventure Game Artikel"
+      }
+    }
+  },
+  "response": {
+    "transactionID": "ABCD84294ec6-7352-4dc7-90fd-3d3dd36377e9",
+    "reason": "refund"
+  }
+}
+</pre>
+
+<p>Description of the chargeback object:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th scope="col">JWT attribute</th>
+   <th scope="col">description</th>
+  </tr>
+  <tr>
+   <td><code>iss</code> (issuer)</td>
+   <td>Marketplace notices are issued by <code>marketplace.firefox.com</code>.</td>
+  </tr>
+  <tr>
+   <td><code>aud</code> (audience)</td>
+   <td>Your application is the audience for the notice so this value will be your Application Key.</td>
+  </tr>
+  <tr>
+   <td><code>iat</code> (issued at time)</td>
+   <td>A UTC Unix timestamp of when the JWT was issued.</td>
+  </tr>
+  <tr>
+   <td><code>exp</code> (expiration)</td>
+   <td>A UTC Unix timestamp of when the JWT should expire.</td>
+  </tr>
+  <tr>
+   <td><code>nbf</code> (not before time)</td>
+   <td>A UTC Unix timestamp of the earliest time the JWT can be processed.</td>
+  </tr>
+  <tr>
+   <td><code>request</code></td>
+   <td>The request object is exactly the same as the one you defined when creating the purchase JWT.</td>
+  </tr>
+  <tr>
+   <td><code>response.transactionID</code></td>
+   <td>A transaction identifier specific to Mozilla's <a href="https://github.com/mozilla/webpay">Web Payment Provider.</a></td>
+  </tr>
+  <tr>
+   <td><code>response.reason</code></td>
+   <td>An object that describes the chargeback reason. This value will either be set to <code>refund</code> or <code>reversal.</code>
+    <ul>
+     <li>A <code>refund</code> means the payment was refunded either upon request of the customer or by an administrator.</li>
+     <li>A <code>reversal</code> is when a buyer asks the credit card issuer to reverse a transaction after it has been completed. The buyer might do this through the credit card company as part of a dispute.</li>
+    </ul>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<div class="blockIndicator note">
+<p><strong>NOTE</strong>: Refunds are not yet supported for in-app payments.</p>
+</div>
+
+<p>Your application must respond to the chargeback with a plain text HTTP response containing just the transaction ID. For example:</p>
+
+<pre>HTTP/1.1 200 OK
+Content-Type: text/plain
+
+ABCD84294ec6-7352-4dc7-90fd-3d3dd36377e9
+</pre>
+
+<h3 id="Postbackchargeback_errors">Postback/chargeback errors</h3>
+
+<p>If an application server responds to the HTTP request with a non-successful status code then Mozilla's Web Payment Provider will retry the URL several times. If it still doesn't receive a successful response, the app developer will be notified and the app may be temporarily disabled. If the application server does not respond to the postback or chargeback with the transaction ID then it is handled like an error and will be retried, etc.  If you are not seeing requests to your chargeback or postback URL's, make sure that your serve is listening on port 80 or 443.  Mozilla's IAP server will not contact you otherwise.</p>
+
+<h3 id="Use_HTTPS_postbackchargeback_URLs">Use HTTPS postback/chargeback URLs</h3>
+
+<p>When running your app in a production environment try to use secure HTTPS URLs if you have the means to do so. This will protect the postback data from being read by a third party when it transits from a Mozilla server to your app server. Using HTTPS is not mandatory to protect the integrity of the payment request, a JWT signature accomplishes that.</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> If you do not use secure HTTPS postback URLs, ensure your payment request <strong>does not contain personally identifiable information</strong> in case it is intercepted by a third party. For example, make sure your <em>productData</em> value does not reveal any sensitive user data. Mozilla never includes personally identifiable information in a payment request by default.</p>
+</div>
+
+<h3 id="Postbackchargeback_IPs">Postback/chargeback IPs</h3>
+
+<p>If you are correctly checking the JWT signature as decribed above then there is no need to whitelist IPs of the Firefox Marketplace servers that will send you postback/chargeback notices. However, if you wish to add an extra layer of protection (e.g. against key theft), the Marketplace will send you postback/chargeback notices from the following IP address(es). Any changes to these IP addresses will be announced on the <a href="https://lists.mozilla.org/listinfo/dev-marketplace">dev-marketplace mailing list</a>.</p>
+
+<pre>63.245.216.100</pre>
+
+<h3 id="Simulating_payments">Simulating payments</h3>
+
+<p>The intro mentioned how you can obtain a special application key and application secret from the <a href="https://marketplace.firefox.com/developers/">Firefox Marketplace Developer Hub</a> to simulate in-app payments while you are developing and testing your app. Use this secret to sign a custom JWT that looks like this:</p>
+
+<pre class="brush: js">{
+  "iss": APPLICATION_KEY,
+  "aud": "marketplace.firefox.com",
+  "typ": "mozilla/payments/pay/v1",
+  "iat": 1337357297,
+  "exp": 1337360897,
+  "request": {
+    "id": "915c07fc-87df-46e5-9513-45cb6e504e39",
+    "pricePoint": 10,
+    "name": "Magical Unicorn",
+    "description": "Adventure Game item",
+    "icons": {
+      "64": "https://yourapp.com/img/icon-64.png",
+      "128": "https://yourapp.com/img/icon-128.png"
+    },
+    "productData": "user_id=1234&amp;my_session_id=XYZ",
+    "postbackURL": "https://yourapp.com/payments/postback",
+    "chargebackURL": "https://yourapp.com/payments/chargeback",
+    "simulate": {
+      "result": "postback"
+    }
+  }
+}</pre>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th scope="col">JWT attribute</th>
+   <th scope="col">description</th>
+  </tr>
+  <tr>
+   <td><code>request.simulate</code></td>
+   <td>
+    <p>An object to describe what to simulate. Possible results:</p>
+
+    <ul>
+     <li><strong>postback</strong>: simulate a successful purchase</li>
+     <li><strong>chargeback</strong>: simulate a chargeback refund</li>
+    </ul>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>The additional <code>request.simulate</code> attribute tells the payment provider to simulate some result without charging any money. The user interface will not ask for a login or a PIN number either. You can use this while developing your app to make sure your buy button is hooked up correctly to <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a> and your server postback and chargeback URLs are functioning correctly.</p>
+
+<p>Here is an example that will simulate a successful purchase and send a signed notification to your postback URL:</p>
+
+<pre class="brush: js">{
+  ...
+  "request": {
+    ...
+    "simulate": {
+      "result": "postback"
+    }
+  }
+}</pre>
+
+<p>Here is how to simulate a chargeback refund:</p>
+
+<pre class="brush: js">{
+  ...
+  "request": {
+    ...
+    "simulate": {
+      "result": "chargeback",
+      "reason": "refund"
+    }
+  }
+}</pre>
+
+<p>A JWT notice is posted to your handler just like for a real purchase except you'll receive a randomly generated transactionID. It is okay to use non-HTTPS URLs for simulations.</p>
+
+<p>When you simulate a chargeback, keep in mind that the mozPay <code>onsuccess()</code> callback will be invoked since a chargeback is not an operational error.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note</strong>: Simulated payment JWTs should not be used in production because your customers would be able to obtain free products.</p>
+</div>
+
+<h2 id="Debugging_errors">Debugging errors</h2>
+
+<p>If you don't use the in-app payment API correctly, the payment screen will show an error that aims to help the user figure out what to do. The payment screen will also include an error code which aims to help you as the developer figure out what to do. You can use Mozilla's <a href="https://webpay.readthedocs.org/en/latest/services.html#error-legend">Error Legend API</a> to decipher error codes in your own language. For example, the error code <code>INVALID_JWT</code> means the JWT signature is invalid or the JWT is malformed.</p>
+
+<h2 id="Protect_the_application_secret">Protect the application secret</h2>
+
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> Ensure that no one else can read your Application Secret. <strong>Never expose it to the client.</strong></p>
+</div>
+
+<h3 id="Revoking_a_compromised_application_secret">Revoking a compromised application secret</h3>
+
+<p>In the rare chance that your application secret leaks out or becomes compromised, you need to revoke it as soon as possible. Here's how:</p>
+
+<ol>
+ <li>Log in to the <a href="https://marketplace.mozilla.org/">Firefox Marketplace</a>.</li>
+ <li>Navigate to <em>My Submissions</em> and locate your app.</li>
+ <li>Navigate to the <em>Manage In-App Payments</em> page, which is the same place where you generated your credentials.</li>
+ <li>Click the <em>Reset Credentials</em> button.</li>
+</ol>
+
+<p>After resetting your credentials, no one will be able to process payments with the old credentials. You will see a new application key and application secret that you can begin using immediately to continue processing payments in your app.</p>
+
+<p>If you need to report any other security issues, please <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Marketplace;component=Payments%2FRefunds">file a bug in the Payments/Refunds component</a>.</p>
+
+<h2 id="Code_libraries">Code libraries</h2>
+
+<p>Here are libraries specific to Mozilla's <a href="/en-US/docs/Web/API/window.navigator.mozPay"><code>navigator.mozPay</code></a>:</p>
+
+<ul>
+ <li>Python: <a href="https://mozpay.readthedocs.org/en/latest/">mozpay</a> module</li>
+ <li>node.js: <a href="https://github.com/mozilla/mozpay-js">mozpay</a> module</li>
+</ul>
+
+<p>To find a secure, up to date <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JSON Web Token</a> (JWT) library for your favorite language, see <a href="http://jwt.io/#libraries">jwt.io</a>.</p>
+
+<h2 id="Sample_code">Sample code</h2>
+
+<ul>
+ <li>Here is the source to <a href="https://github.com/jlongster/webfighter">Web Fighter</a>, a game that implements in-app payments in NodeJS. You can install it from the Marketplace <a href="https://marketplace.firefox.com/app/webfighter?src=search">here</a>.</li>
+ <li>Here is a diagnostics and testing app that shows how to sign JWT requests and write postback and chargeback verifier code in Python: <a href="https://github.com/kumar303/inapp-pay-test">In-app Payment Tester</a></li>
+</ul>
+
+<h2 id="Getting_help">Getting help</h2>
+
+<ul>
+ <li>You can discuss in-app payment related issues on the <a href="https://lists.mozilla.org/listinfo/dev-webapps">dev-webapps</a> mailing list or in the #payments channel on <a href="https://wiki.mozilla.org/IRC">irc.mozilla.org</a>.</li>
+ <li>You can file a <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Marketplace;component=Payments%2FRefunds">Marketplace bug</a> in the Payments/Refunds component if you find a bug</li>
+</ul>
+
+<h2 id="Similar_payment_systems">Similar payment systems</h2>
+
+<ul>
+ <li><a href="https://developers.google.com/commerce/wallet/digital/docs/">Google's In-App Payments API</a></li>
+ <li><a href="http://developer.apple.com/library/mac/#documentation/NetworkingInternet/Conceptual/StoreKitGuide/APIOverview/OverviewoftheStoreKitAPI.html">iOS in-app purchases</a></li>
+ <li><a href="http://developer.android.com/google/play/billing/billing_overview.html">Android in-App billing API</a></li>
+</ul>

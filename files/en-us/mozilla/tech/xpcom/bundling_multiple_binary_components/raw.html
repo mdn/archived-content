@@ -1,0 +1,32 @@
+<h3 id="Background">Background</h3>
+
+<p>Binary XPCOM components are sometimes required to implement low-level features for extensions. Since binary components are linked against a single Gecko SDK, a dependency to a particular version of Gecko is created. If the component uses only "frozen" XPCOM interfaces, there is a good chance the same binary component will work with different versions of Gecko (version 1.8 and 1.9, for example). The more likely case is that the component uses "unfrozen" interfaces and those interfaces can change between Gecko versions. This can create a difficult situation for extension developers trying to support multiple Gecko versions (Firefox 2 and 3, for example).</p>
+
+<h3 id="Possible_Solutions">Possible Solutions</h3>
+
+<p>This article covers two possible ways to make binary components support multiple version of Gecko:</p>
+
+<ul>
+ <li>Dynamic method loading</li>
+ <li>Stub loader</li>
+</ul>
+
+<h4 id="Dynamic_method_loading">Dynamic method loading</h4>
+
+<p>The idea with this approach is to figure out all the methods imported from Gecko and dynamically load the methods. Create small wrappers for calling the methods, as you may need to thunk parameters depending on how much has changed between Gecko versions. This means using something like LoadLibrary / GetProcAddress / FreeLibrary on Windows. Actually, NSPR has portable versions of those features that work across platforms.</p>
+
+<p>This approach uses only one binary for each platform (win/mac/linux) but creates complexity in the binaries - loading the methods and creating the wrappers. The costs get higher if you have many methods that need to be loaded.</p>
+
+<h4 id="Stub_loader">Stub loader</h4>
+
+<p>This approach involves using a stub loader component. The stub component is an XPCOM component itself and when registered by XPCOM, the code would sniff the runtime version and operating system Then the stub load the appropriate "real" XPCOM component for the current configuration. It's pretty simple to do and the concept can be used to <a href="/en/Using_Dependent_Libraries_In_Extension_Components" title="en/Using_Dependent_Libraries_In_Extension_Components">load third-party shared libraries</a> (DLL, so, dylib) used in XPCOM components. In this case, we would use the stub to load the right binary component instead. Some key points:</p>
+
+<ul>
+ <li>The real components have the same IIDs but have different filenames. One for each version of Gecko and OS platform.</li>
+ <li>The real components are <strong>not</strong> in the "components" folder, but are in a side folder ("libraries" in the sample).</li>
+ <li>The real components are manually loaded and registered using the stub ("kRealComponent" in the sample).</li>
+</ul>
+
+<p>This approach uses one binary component for each version of Gecko and platform, plus the stub loader component Therefore, to support 2 Gecko versions on three platforms, you need seven components (6 real components + 1 stub). On the other hand, this approach is much more simple than the dynamic loading approach.</p>
+
+<p>The stub component can be either binary or JavaScript, but it is far easier in JavaScript is cross-platform and does not have compile- or load- time compatibility problems. The Gears project contains an example of a <a class="external" href="http://code.google.com/p/gears/source/browse/trunk/gears/base/firefox/static_files/components/stub.js" title="http://code.google.com/p/gears/source/browse/trunk/gears/base/firefox/static_files/components/stub.js">JavaScript-based stub loader</a>.</p>

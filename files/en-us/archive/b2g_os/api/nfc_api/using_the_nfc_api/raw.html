@@ -1,0 +1,254 @@
+<p></p><div class="overheadIndicator nonStandard nonStandardHeader">
+      <p><strong><span title="This API has not been standardized."><i class="icon-warning-sign"> </i></span> Non-standard</strong><br>
+      This feature is not on a current W3C standards track, but it is supported on the Firefox OS platform. Although implementations may change in the future and it is not supported widely across browsers, it is suitable for use in code dedicated to Firefox OS apps.</p>
+      </div><p></p>
+
+<p></p><div class="warning">
+    <p style="text-align: center;">This API is available on <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a> for <a href="/en-US/docs/Mozilla/Firefox_OS/Security/Application_security#App_Types">privileged or certified applications</a> only.</p>
+</div><p></p>
+
+<div class="summary">
+<p>NFC (Near Field Communication) is a short range radio technology used to exchange data between mobile devices by tapping them together, or momentarily holding them close by. This article describes how to make use of the Web NFC functionality available in Firefox OS via the NFC API, including registering to use NFC and creating, receiving, and sharing data.</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: The NFC API landed as a certified/internal API in FirefoxOS v2.0, however it had several design problems and possibly security issues, so we refactored it and made it available as a priviledged API in FirefoxOS v2.2 (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1042851" title="FIXED: (meta) [NFC] Make NFC APIs available to privileged webapps">bug 1042851</a>). This documentation mainly covers the new version available in Firefox OS 2.2; for the Firefox OS 2.0 NFC API only P2P sharing is supported; you can grep the <a href="https://github.com/mozilla-b2g/gaia/tree/v2.0">Gaia 2.0 source code</a> for <code>onpeerready</code> to see how the API is used in Gaia apps there (Browser, Contacts, Music, Video, and Gallery.)</p>
+</div>
+
+<h2 id="Working_NFC_API_Examples">Working NFC API Examples</h2>
+
+<div class="note">
+<p><strong>Note</strong>: These have not been updated to use the shared <a href="https://github.com/mozilla-b2g/gaia/blob/f34ce82a840ad3c0aed3bfff18517b3f6a0eb37f/shared/js/nfc_utils.js">NFC Utils library</a> to handle formatting and parsing NDEF data. New code should use NFC Utils as a basic starting point.</p>
+</div>
+
+<p>The contacts app uses NFC P2P Functionality for sending and receiving vcards. Look at <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/communications/contacts/js/nfc.js">gaia/apps/communications/contacts/js/nfc.js</a>. In Firefox OS 2.2, there an app called <a href="https://github.com/mozilla-b2g/gaia/tree/master/dev_apps/nfc-api-test">nfc-api-test</a>, which contains all the samples for using NFC API.</p>
+
+<p>There are also multiple Gaia unit tests available for testing NFC functionality, for example <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/system/test/unit/nfc_handler_test.js">gaia/blob/master/apps/system/test/unit/nfc_handler_test.js</a>. Search the <a href="https://github.com/mozilla-b2g/gaia">Gaia repo</a> for more.</p>
+
+<h2 id="Registering_the_NFC_web_activity">Registering the NFC web activity</h2>
+
+<p>To use Web NFC, then first thing you need to do is register the <code>nfc-ndef-discovered</code> web activity in your app's <code>manifest.webapp</code>. For example, the following shows how you would use <code>url</code> as a filter for the Web Activity, if you just wanted to share URLs via NFC:</p>
+
+<pre class="brush: json">{
+    ...
+  "activities": {
+    "nfc-ndef-discovered": {
+      "filters": {
+        "type": "url",
+        "url": {
+          "required":true, "pattern":"https?:.{1,16384}", "patternFlags":"i"
+         }
+      }
+    }
+  }
+    ...
+}</pre>
+
+<p>You can then set the activity handler in the standard way:</p>
+
+<pre class="brush: js">navigator.mozSetMessageHandler('activity', handlerFunction);
+
+// Example handler to get the URL from the activity.
+function handlerFunction(activity)
+{
+  if (activity.source.data.type == 'url') {
+    var url = activity.source.data.url;
+  }
+}
+</pre>
+
+<p>It's very useful to import the shared NFC Utils into your application. In your main HTML file, you can add this to your html <a href="/en-US/docs/Web/HTML/Element/head" title="The HTML &lt;head> element provides general information (metadata) about the document, including its title and links to its scripts and style sheets."><code>&lt;head&gt;</code></a>:</p>
+
+<pre>&lt;script defer src="shared/js/nfc_utils.js"&gt;&lt;/script&gt;</pre>
+
+<div><a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/nfc_utils.js">Source link</a>.</div>
+
+<div> </div>
+
+<h2 id="Permissions">Permissions</h2>
+
+<p>Next, you need to set permissions in your <code>manifest.webapp</code>, as required by the app's NFC usage. For full read/write permissions, you need this:</p>
+
+<pre class="brush: json"> "permissions": {
+   "nfc": {}
+ }
+</pre>
+
+<p>Or if you just want to share information but not write anything:</p>
+
+<pre class="brush: json">"permissions": {
+   "nfc-share": {}
+ }</pre>
+
+<div class="note">
+<p><strong>Note</strong>: In FirefoxOS v2.0 the permission was <code>"nfc-read": {}</code> and <code>"nfc-write": {}</code>, depending on what you wanted to do. The permissions were changed as of Firefox OS 2.2, to make the transition to privileged status easier (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1048676" title='FIXED: B2G NFC: Add "nfc" and  "nfc-share" permissions.'>bug 1048676</a>.)</p>
+</div>
+
+<h2 id="Working_with_NFC_tags">Working with NFC tags</h2>
+
+<p>In this section we will cover possible ways to work with NFC tags.</p>
+
+<h3 id="Getting_a_MozNFCTag_object">Getting a MozNFCTag object</h3>
+
+<p>The first step is to get a <a href="/en-US/docs/Web/API/MozNFCTag" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCTag</code></a> object, which represents the physical tag. <a href="/en-US/docs/Web/API/MozNFCTag" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCTag</code></a> allows you to read NDEF data from the physical tag or write NDEF data onto the physical tag.</p>
+
+<pre class="brush: js">navigator.mozNfc.ontagfound = function (event) {
+  var tag = event.tag;
+  console.log(tag instanceof MozNFCTag); // should print true
+}
+</pre>
+
+<h3 id="Reading_a_MozNFCTag">Reading a MozNFCTag</h3>
+
+<p>Next, you need to read the <a href="/en-US/docs/Web/API/MozNFCTag" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCTag</code></a> object — this is done using the <a href="/en-US/docs/Web/API/MozNFCTag/readNDEF" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCTag.readNDEF()</code></a> method, which forms a <code>request</code>. <code>onsuccess</code>. This returns an array of <a href="/en-US/docs/Web/API/MozNDEFRecord" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNDEFRecord</code></a> objects.</p>
+
+<p><a href="/en-US/docs/Web/API/MozNDEFRecord" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNDEFRecord</code></a> is the object that implements NDEF — as defined in the NFC Forum specs. The data stored in the <a href="/en-US/docs/Web/API/MozNDEFRecord" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNDEFRecord</code></a> object is raw data represented by an unsigned byte array ( <a href="/en-US/docs/Web/API/Uint8Array" title="The documentation about this has not yet been written; please consider contributing!"><code>Uint8Array</code></a> ) , whereas the data received from the Web Activity handler is a JavaScript <a href="/en-US/docs/Web/API/DOMString" title="DOMString is a UTF-16 String. As JavaScript already uses such strings, DOMString is mapped directly to a String."><code>DOMString</code></a>. Hence, conversion is necessary.</p>
+
+<pre class="brush: js">// tag is an instance of MozNFCTag
+tag.readNDEF().then(records =&gt; {
+  // records should be an array of MozNDEFRecord.
+});</pre>
+
+<h3 id="Writing_data_to_an_NFC_tag">Writing data to an NFC tag</h3>
+
+<p>Here is an example of writing a URL on the NFC tag.</p>
+
+<pre class="brush: js">// using NfcUtils from shared/js/nfc_utils.js to create data to write on tag
+var tnf = NDEF.TNF_WELL_KNOWN;
+var type = NDEF.RTD_URI;
+var payload = NfcUtils.fromUTF8('\u0003mozilla.org');
+var ndefMSG = [new MozNDEFRecord({tnf: tnf, type: type, payload: payload})];
+
+// tag is an instance of MozNFCTag
+tag.writeNDEF().then(() =&gt; {
+  console.log('Data written to tag!');
+});</pre>
+
+<h2 id="Sending_data_to_peers_via_NFC">Sending data to peers via NFC</h2>
+
+<p>With your data ready to be sent, you can now get references to peers that come into range of your device, and choose to send them the data.</p>
+
+<h3 id="Registering_the_onpeerfound_callback_to_react_to_peers">Registering the onpeerfound callback to react to peers</h3>
+
+<p>When the content is ready to be shared, you need to register the <a href="/en-US/docs/Web/API/MozNfc/onpeeready" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNfc.onpeeready</code></a> callback, which will be called once another P2P device is in proximity.</p>
+
+<pre class="brush: js">navigator.mozNfc.onpeerfound = function (evt) {
+  ...
+};
+</pre>
+
+<h3 id="The_P2P_Sharing_UI_(CertifiedInternal_app_only)">The P2P Sharing UI (Certified/Internal app only)</h3>
+
+<p>When an NFCPeer comes into range, and your web app is in the foreground and has registered the <code>onpeerready</code> (needs nfc-share certified/internal permission) callback, the P2P Sharing UI will show the following:</p>
+
+<p><a href="https://wiki.mozilla.org/images/thumb/a/a3/2014-08-01-03-36-10.png/360px-2014-08-01-03-36-10.png"><img alt="P2P Sharing UI for Browser app" src="https://wiki.mozilla.org/images/thumb/a/a3/2014-08-01-03-36-10.png/360px-2014-08-01-03-36-10.png" style="height: 600px; width: 360px;"></a></p>
+
+<h3 id="Constructing_a_MozNFCPeer_object">Constructing a MozNFCPeer object</h3>
+
+<p>When a peer does come into range of your device , you can then get a <code>MozNFCPeer</code> object to represent the device receiving the data. This is done by grabbing the<code> peer</code> property stored in the event<code> object</code>, as indicated below:</p>
+
+<pre class="brush: js">navigator.mozNfc.onpeerfound = function (evt) {
+  var peer = evt.peer;
+  console.log(peer instanceof MozNFCPeer); // should print true;
+};</pre>
+
+<h3 id="Sending_an_NDEF_to_another_MozNFCPeer">Sending an NDEF to another MozNFCPeer</h3>
+
+<p>With your peer identified, you can now send the data to them via the <a href="/en-US/docs/Web/API/MozNFCPeer/sendNDEF" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCPeer.sendNDEF()</code></a> method:</p>
+
+<pre class="brush: js">// construct the NDEF records to send by creating an array of MozNDEFRecord objects.
+var request = peer.sendNDEF(ndefRecords);
+</pre>
+
+<h3 id="Sending_a_Blob_to_another_MozNFCPeer_by_NFC_handover_(CertifiedInternal_Only)">Sending a Blob to another MozNFCPeer by NFC handover (Certified/Internal Only)</h3>
+
+<p>You can also send a <a href="/en-US/docs/Web/API/Blob" title="A Blob object represents a file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system."><code>Blob</code></a> to your peer via <a href="/en-US/docs/Web/API/MozNFCPeer/sendFile" title="The documentation about this has not yet been written; please consider contributing!"><code>MozNFCPeer.sendFile()</code></a>.</p>
+
+<pre class="brush: js">// Send blob object.
+var request = peer.sendFile(blob);</pre>
+
+<p>Once the blob has made it over to the peer, you can then use it in any way you like. Say the blob was an audio sample:</p>
+
+<pre class="brush: js">request.result =  function(blob) {
+  var audio = document.createElement('audio');
+  document.querySelector('body').appendChild('audio');
+  var audioURL = window.URL.createObjectURL(blob);
+  audio.src = audioURL;
+  audio.play();
+}</pre>
+
+<h2 id="Specifications">Specifications</h2>
+
+<p>The NFC implementation in Gecko follows the <a href="http://members.nfc-forum.org/specs/">NFC Forum specifications</a>, as the <a href="http://w3c.github.io/nfc/proposals/common/nfc.html">current W3C NFC draft</a> doesn't fit all the needs we have for our platform.</p>
+
+<h2 id="Browser_compatibility">Browser compatibility</h2>
+
+<p></p><p></p><div class="htab">
+    <a id="AutoCompatibilityTable" name="AutoCompatibilityTable">
+    </a><ul><a id="AutoCompatibilityTable" name="AutoCompatibilityTable">
+        </a><li class="selected"><a id="AutoCompatibilityTable" name="AutoCompatibilityTable"></a><a>Desktop</a></li>
+        <li><a>Mobile</a></li>
+    </ul>
+</div><p>
+
+</p><div id="compat-desktop">
+<table class="compat-table">
+ <tbody>
+  <tr>
+   <th>Feature</th>
+   <th>Chrome</th>
+   <th>Firefox (Gecko)</th>
+   <th>Internet Explorer</th>
+   <th>Opera</th>
+   <th>Safari (WebKit)</th>
+  </tr>
+  <tr>
+   <td>Basic support</td>
+   <td>
+    <p><span style="color: #f00;">No support</span></p>
+   </td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+  </tr>
+ </tbody>
+</table>
+</div>
+
+<div id="compat-mobile">
+<table class="compat-table">
+ <tbody>
+  <tr>
+   <th>Feature</th>
+   <th>Android</th>
+   <th>Firefox Mobile (Gecko)</th>
+   <th>Firefox OS (Gecko)</th>
+   <th>IE Phone</th>
+   <th>Opera Mobile</th>
+   <th>Safari Mobile</th>
+  </tr>
+  <tr>
+   <td>Basic support</td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td>2.0 <span class="inlineIndicator prefixBox prefixBoxInline" title="prefix"><a href="/en-US/docs/Web/Guide/Prefixes" title="The name of this feature is prefixed with 'moz' as this browser considers it experimental">moz</a></span> [1]</td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+   <td><span style="color: #f00;">No support</span></td>
+  </tr>
+ </tbody>
+</table>
+</div>
+
+<p>[1] Available in privileged apps as of Firefox OS 2.2; certified-only before that.</p><p></p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/API/NFC_API/Using_the_NFC_API">Using the NFC API</a></li>
+ <li><a href="/en-US/docs/Web/API/NFC_API/Using_the_NFC_emulator">Using the NFC emulator</a></li>
+ <li><a href="http://developer.nokia.com/community/wiki/Inside_NFC:_Understanding_NDEF_message">Understanding NDEF message structure</a></li>
+ <li><a href="http://www.adafruit.com/datasheets/Introduction_to_NFC_v1_0_en.pdf">Introduction to NFC</a> (fairly long reference doc, featuring general NFC terms, and some Nokia platform specifics.)</li>
+ <li><a href="https://gist.github.com/tauzen/ab7314db89dd613fa6cf">Small example of tag writing app</a> (contains manifest, FirefoxOS 2.1-specific)</li>
+</ul>

@@ -1,0 +1,119 @@
+---
+title: nsISupports proxies
+slug: Mozilla/Tech/XPCOM/Reference/Interface/nsISupports_proxies
+tags:
+  - NeedsHelp
+  - NeedsUpdate
+  - Obsolete
+  - XPCOM
+---
+<p></p><div class="blockIndicator obsolete obsoleteHeader"><p><strong><span class="icon-only-inline" title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete since Gecko 12 (Firefox 12 / Thunderbird 12 / SeaMonkey 2.9)</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div><p></p>
+
+<div class="blockIndicator note">
+<p>XPCOM proxies were a technology which allowed code to make asynchronous or synchronous XPCOM calls to a different thread on arbitrary XPCOM interfaces. This technology has been removed in Firefox 12 because it was very complex and often lead to strange deadlock conditions. It is no longer needed because JavaScript code can no longer run on arbitrary threads, and compiled code can use compiled runnable to achieve the same effect in a much simpler manner. For more information about alternatives, see <a href="/en/XPCOM/Making_cross-thread_calls_using_runnables" title="en/XPCOM/Making cross-thread calls using runnables">Making cross-thread calls using runnables</a>.</p>
+
+<p>The following interface is now obsolete: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProxyObjectManager" title="">nsIProxyObjectManager</a></code>.</p>
+</div>
+
+<h3 id="About_XPCOM_proxies">About XPCOM proxies</h3>
+
+<div class="blockIndicator warning">
+<p>A <strong>proxy</strong>, in this context, is a stub object which enables a method of any class which is derived from <code><a href="/en/XPCOM_Interface_Reference/nsISupports" title="en/nsISupports">nsISupports</a></code> and has a typelib to be called on any in-process thread.</p>
+</div>
+
+<p>The main reason for nsISupports Proxies is that JavaScript and UI are on a single thread. When one is busy, the other is blocked. A good example of this is the old install.js scripts that were used in XPInstall in older Mozilla versions. They from the majority of JavaScript code, which is small and can be quickly run. XPInstall installation scripts are sometimes very complex and can require long execution time due to unzipping or native file system actions. If XPInstall ran on the UI thread, the product would appear frozen until the script was complete. This is definitely bad. Because of this, XPInstall was moved to its own thread. Now XPInstall can do its installations while the product renders, but now XPInstall can not access UI elements such as a progress meter or a confirmation dialog. How can a separate non-UI thread act as if it was on the UI thread? Herein lays the utility of <code>nsISupports</code> Proxies.</p>
+
+<p>I believe that other people working on Mozilla need similar solutions. In this document, I will try to explain how to use nsISupports Proxies.</p>
+
+<h3 id="How_do_I_use_it.3F" name="How_do_I_use_it.3F">How do I use it?</h3>
+
+<div class="blockIndicator note">
+<p>The API has changed in Mozilla 1.9, but the prose below hasn't been updated yet. See <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/proxy/public/nsIProxyObjectManager.idl" rel="custom">xpcom/proxy/public/nsIProxyObjectManager.idl</a></code> for the updated interface and its documentation. See also .</p>
+</div>
+
+<p>From a users point of view, you need only to look at the <code><a href="/en/NsIProxyObjectManager" title="en/NsIProxyObjectManager">nsIProxyObjectManager</a></code>. It has two entry points:</p>
+
+<pre class="eval">NS_IMETHOD GetProxyForObject(nsIEventQueue *destQueue,
+                             const nsIID &amp; iid,
+                             nsISupports *object,
+                             PRInt32 proxyType,
+                             void * *result);
+
+NS_IMETHOD GetProxy(nsIEventQueue *destQueue,
+                    const nsIID &amp; cid,
+                    nsISupports *aOuter,
+                    const nsIID &amp; iid,
+                    PRInt32 proxyType,
+                    void * *result);
+</pre>
+
+<p>The two APIs are essentially the same. The only difference is that the first accepts a created object <code>object</code>, and the latter will create an object for you. This creation will happen off the destination's event queue. For instance, if you need to not only use an object remotely, but also have it created remotely, use the second API.</p>
+
+<p>The IID that you are requesting <em>must</em> be in the typelib. These means that you should have had to create and IDL for it and have generated a typelib. If you haven't, or you've never heard of these things, see <a class="external" href="http://www.mozilla.org/scriptable/" rel="freelink">http://www.mozilla.org/scriptable/</a> .</p>
+
+<p>The <code>proxyType</code> parameter can be either two flags: <code>PROXY_SYNC</code> or <code>PROXY_ASYNC</code>. These two flags can also be ORed with <code>PROXY_ALWAYS</code>.</p>
+
+<p><code>PROXY_ALWAYS</code> will ensure that a proxy object is always created no matter what thread you currently are on. If this flag is not specified, the Proxy Object Manager will compare the eventQ which you pass to the eventQ which is on the current thread. If they match, it will return the real <em>non-proxied</em> object. Most of the time you will want to set this flag.</p>
+
+<p><code>PROXY_SYNC</code> acts just like a function call in that it blocks the calling thread until the the method is invoked on the destination thread. This is the normal and default case.</p>
+
+<p><code>PROXY_ASYNC</code>, on the other hand, is a "fire and forget" method call. Calls on object created with this flag will return immediately and you will lose all return information. <code>NS_OK</code> will be returned to you.</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning</strong> about <code>PROXY_ASYNC</code>:</p>
+
+<p>You must take very special care when using this flag. As soon as the calling function or method exits, there is no guarantee about the data at the location that used to be part of that stack frame. Accessing it might even cause a crash. For example:</p>
+
+<pre class="eval"> myFoo-&gt;bar(&amp;x)
+
+ ... stack frame goes away ...
+
+ bar(PRInt32 *x)
+ {
+     ...
+     *x = 0;   &lt;-----  You will blow up here.
+ }
+</pre>
+</div>
+
+<p>So, given an event queue to execute methods on, and either an <code>nsISupports</code> object that has been created or CID, and a flag, a new <code>nsISupports</code> proxy object will be returned to you. Once you have a proxy object, you may use it as if it is the "real" object. All the methods that are in the "real" object are stubbed into the proxy object. When you are finished with a proxy object, you should call <code><a href="/en/NS_RELEASE" title="en/NS_RELEASE">NS_RELEASE</a></code> on it. It will take care of freeing the "real" object as well as itself. If you have created the object yourself and then created the proxy, please note that you will have at least a refcount of 2 (one for the proxy and one for the created object which you passed into <code>GetProxyObject</code>, plus any other refcounts which you may have).</p>
+
+<p>A point here to bring up is how do we supply the event queue to <code>GetProxyObject</code>? Well there are two possibilities. First, you may know which event queue that you are interested in. In this case, just simply use it. In most cases, you will want the main UI thread (aka the primordial thread). If this is the case, you can simply pass <code>nsnull</code> as the event queue. You may also use the defined flags which are defined in <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/threads/nsIEventQueueService.h#44" rel="custom">xpcom/threads/nsIEventQueueService.h#44</a></code>.</p>
+
+<p>There is also logic that will determine if the caller is on the destination thread. If this is true, I will not call via proxy, but rather invoke the method directly which is an optimization. This detection will only be used if you are using a proxy created with the <code>PROXY_SYNC</code> flag.</p>
+
+<h4 id="Example_usage" name="Example_usage">Example usage</h4>
+
+<pre class="eval">nsresult rv = NS_OK;
+
+nsCOMPtr&lt;nsIProxyObjectManager&gt; pIProxyObjectManager(do_GetService("@mozilla.org/xpcomproxy;1", &amp;rv));
+if(NS_FAILED(rv)) return rv;
+
+nsCOMPtr&lt;IFoo&gt; pTestObj(do_CreateInstance(FOO_CONTRACTID, &amp;rv));
+if(NS_FAILED(rv)) return rv;
+
+nsCOMPtr&lt;IFoo&gt; pProxy;
+rv = pIProxyObjectManager-&gt;GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
+	IFoo::GetIID(),
+	pTestObj,
+	NS_PROXY_SYNC | NS_PROXY_ALWAYS,
+	getter_AddRefs(pProxy));
+if(NS_FAILED(rv)) return rv;
+
+// we do not care about the real object anymore.
+// ie. GetProxyObject refcounts it.
+NS_RELEASE(pTestObj);
+
+pProxy-&gt;Bar();
+NS_RELEASE(pProxy);
+</pre>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: <a class="link-mailto" href="mailto:dougt@netscape.com">Doug Turner</a></li>
+ <li>Last Updated Date: January 27, 2007</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

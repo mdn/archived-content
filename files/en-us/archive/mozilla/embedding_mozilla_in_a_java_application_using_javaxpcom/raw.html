@@ -1,0 +1,167 @@
+<p></p><div class="overheadIndicator obsolete obsoleteHeader"><p><strong><span title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete since Gecko 4.0</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div><p></p>
+
+<div class="warning"><strong>Warning:</strong> This technology is obsolete. No active maintainer has stepped forward, and the code broke in Firefox 4. The code has been removed from the Mozilla source tree.</div>
+
+<p><a href="/en/XULRunner" title="en/XULRunner">XULRunner</a> ships with the <a href="/en/JavaXPCOM" title="en/JavaXPCOM">JavaXPCOM</a> component, which allows Java code to interact with XPCOM objects. As you will see in this article, working with XPCOM objects in Java is not that much different than doing so in C++.</p>
+
+<h4 id="Prerequisites" name="Prerequisites">Prerequisites</h4>
+
+<ul>
+ <li>Java 1.4.2 or newer</li>
+ <li><a href="/en/XULRunner" title="en/XULRunner">XULRunner</a> 1.8.0.1 or newer</li>
+</ul>
+
+<h4 id="Embedding" name="Embedding">Embedding</h4>
+
+<p>In order to embed Mozilla in your Java application, you will need to add the library <code>MozillaInterfaces.jar</code> (located in <code>xulrunner/sdk/lib</code> folder) to your classpath. This library provides the interfaces necessary to bootstrap Mozilla and call XPCOM methods.</p>
+
+<p>To start embedding, we use the methods provided by the <a href="https://dxr.mozilla.org/mozilla-central/source/extensions/java/xpcom/interfaces/org/mozilla/xpcom/Mozilla.java" rel="custom">Mozilla</a> singleton class. First, the Java application must find a suitable XULRunner installation:</p>
+
+<pre class="eval"> Mozilla mozilla = Mozilla.getInstance();
+ GREVersionRange[] range = new GREVersionRange[1];
+ range[0] = new GREVersionRange("1.8.0", true, "1.9", false);
+   <span class="highlightgreen">// work with trunk nightly version 1.9a1  ^^</span>
+
+ try {
+   File grePath = Mozilla.getGREPathWithProperties(range, null);
+   LocationProvider locProvider = new LocationProvider(grePath);
+   mozilla.initEmbedding(grePath, grePath, locProvider);
+ } catch (FileNotFoundException e) {
+   <span class="highlightgreen">// this exception is thrown if greGREPathWithProperties cannot find a GRE</span>
+ } catch (XPCOMException e) {
+   <span class="highlightgreen">// this exception is thrown if initEmbedding failed</span>
+ }
+</pre>
+
+<p><code>LocationProvider</code> is a class provided by the Java application. It implements the <a href="https://dxr.mozilla.org/mozilla-central/source/extensions/java/xpcom/interfaces/org/mozilla/xpcom/IAppFileLocProvider.java" rel="custom">IAppFileLocProvider</a> interface, and tells XPCOM where to find certain files and directories.</p>
+
+<p>If your code cannot find the GRE and keeps throwing FileNotFoundExceptions during the getGREPathWithProperties(...) call, check whether you already registered the GRE on your system: <a href="/en/GRE_Registration" title="en/GRE_Registration">GRE Registration</a></p>
+
+<p>The <code>initEmbedding</code> method kicks off the embedding process, allowing the Java application to work with XPCOM and Mozilla. Once the Java application is done using Mozilla, it needs to terminate the embedding process:</p>
+
+<pre class="eval"> try {
+   mozilla.termEmbedding();
+ } catch (XPCOMException e) {
+   <span class="highlightgreen">// this exception is thrown if termEmbedding failed</span>
+ }
+</pre>
+
+<h4 id="Working_with_XPCOM_objects" name="Working_with_XPCOM_objects">Working with XPCOM objects</h4>
+
+<p>Now that Mozilla is embedded, the Java application can work with XPCOM objects. The <code>Mozilla</code> class provides several methods to facilitate this, such as <code>getServiceManager</code>, <code>getComponentManager</code>, and <code>newLocalFile</code>. In addition to retrieving and calling methods on XPCOM objects, JavaXPCOM allows the Java application to pass Java class objects to XPCOM methods.</p>
+
+<p>For example:</p>
+
+<pre class="eval"> Mozilla mozilla = Mozilla.getInstance();
+ WindowCreator creator = new WindowCreator();  <span class="highlightgreen">// implements nsIWindowCreator</span>
+
+ nsIServiceManager serviceManager = mozilla.getServiceManager();
+
+ nsIWindowWatcher windowWatcher = (nsIWindowWatcher) serviceManager
+   .getServiceByContractID(NS_WINDOWWATCHER_CONTRACTID,
+     nsIWindowWatcher.NS_IWINDOWWATCHER_IID);
+ windowWatcher.setWindowCreator(creator);
+</pre>
+
+<p>In this example, we have a Java class called <code>WindowCreator</code>, which implements the <code>nsIWindowCreator</code> interface, and we want to register it with Mozilla. To do so, we first get the service manager, through which we can get a reference to Mozilla's window watcher.</p>
+
+<p>Another example: (taken from <a class="external" href="http://rayh.co.uk">rayh.co.uk</a>)</p>
+
+<pre class="eval">     // Note, on linux, gtk has to be already initialized for this code to work
+     Mozilla moz = Mozilla.getInstance();
+
+     // Now we need to start an XUL application, so we get an instance of the XPCOM service manager
+     nsIServiceManager serviceManager = moz.getServiceManager();
+
+     // Now we need to get the @mozilla.org/toolkit/app-startup;1 service:
+     nsIAppStartup appStartup = (nsIAppStartup)serviceManager.getServiceByContractID("@mozilla.org/toolkit/app-startup;1", nsIAppStartup.NS_IAPPSTARTUP_IID);
+
+     // Get the nsIWindowWatcher interface to the above
+     nsIWindowCreator windowCreator = (nsIWindowCreator)appStartup.queryInterface(nsIWindowCreator.NS_IWINDOWCREATOR_IID);
+
+     // Get the window watcher service
+     nsIWindowWatcher windowWatcher = (nsIWindowWatcher)serviceManager.getServiceByContractID("@mozilla.org/embedcomp/window-watcher;1", nsIWindowWatcher.NS_IWINDOWWATCHER_IID);
+
+     // Set the window creator (from step 6)
+     windowWatcher.setWindowCreator(windowCreator);
+
+     // Create the root XUL window:
+     nsIDOMWindow win = windowWatcher.openWindow(null, "<a class="external" rel="freelink">chrome://your-app/content/window.xul</a>", "mywindow", "chrome,resizable,centerscreen", null);
+
+     // Set this as the active window
+     windowWatcher.setActiveWindow(win);
+
+     // Hand over the application to xpcom/xul, this will block:
+     appStartup.run();
+</pre>
+
+<p>Here is an example of a LocationProvider that works :</p>
+
+<pre class="eval">       public class LocationProvider implements IAppFileLocProvider {
+
+       private final File libXULPath;
+       int counter = 0;
+
+       public LocationProvider(File grePath) {
+       this.libXULPath = grePath;
+       }
+
+       public File getFile(String aProp, boolean[] aPersistent) {
+       File file = null;
+       if (aProp.equals("GreD") || aProp.equals("GreComsD")) {
+           file = libXULPath;
+           if (aProp.equals("GreComsD")) {
+               file = new File(file, "components");
+           }
+       }
+       else if (aProp.equals("MozBinD") ||
+                aProp.equals("CurProcD") ||
+                aProp.equals("ComsD") ||
+                aProp.equals("ProfD"))
+           {
+               file = libXULPath;
+               if (aProp.equals("ComsD")) {
+                   file = new File(file, "components");
+               }
+           }
+       return file;
+   }
+
+   public File[] getFiles(String aProp) {
+       File[] files = null;
+       if (aProp.equals("APluginsDL")) {
+           files = new File[1];
+           files[0] = new File(libXULPath, "plugins");
+       }
+       return files;
+   }
+
+}
+</pre>
+
+<h4 id="Calling_XPCOM_UI_from_another_thread" name="Calling_XPCOM_UI_from_another_thread">Calling XPCOM UI from another thread</h4>
+
+<p>appStartup.run() enters the main event loop and will stay there until the application exits. In order to communicate with XPCOM after this point, you should use an nsIProxyObjectManager.</p>
+
+<p>Following on from the above example, to create a new window, we would do the following:</p>
+
+<pre class="eval"> // First, get the event queue service.  This handles all event queues in XPCOM.
+ nsIEventQueueService eventQueueServive = (nsIEventQueueService)serviceManager.getServiceByContractID("@mozilla.org/event-queue-service;1",nsIEventQueueService.NS_IEVENTQUEUESERVICE_IID);
+
+ // Next, we want to get the UI thread, since we want to open a window.  There is a static variable on the
+ // nsIEventQueueService that contains the id of the special UI event queue.
+ nsIEventQueue eventQueue = eventQueueServive.getSpecialEventQueue(nsIEventQueueService.UI_THREAD_EVENT_QUEUE);
+
+ // Now create a proxy for the proxy object manager.
+ nsIProxyObjectManager proxy = (nsIProxyObjectManager)componentManager.createInstanceByContractID("@mozilla.org/xpcomproxy;1",null,nsIProxyObjectManager.NS_IPROXYOBJECTMANAGER_IID);
+
+ // and use the proxy object manager to create a proxy for the nsIWindowWatcher instance we created above.
+ nsIWindowWatcher windowProxy = (nsIWindowWatcher)proxy.getProxyForObject(eventQueue,windowWatcher.NS_IWINDOWWATCHER_IID,windowWatcher,nsIProxyObjectManager.INVOKE_SYNC);
+
+ // now we use the proxy to call the method as usual.
+ windowProxy.openWindow(null, chromeUri, name, "centerscreen", null);
+</pre>
+
+<p>For more information, please see <a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIProxyObjectManager.html">XulPlanet's documentation of nsIProxyObjectManager</a></p>
+
+<p>This was taken from <a class="external" href="http://rayh.co.uk/blog/?p=14">Injecting Events onto XPCOM’s UI Thread</a></p>

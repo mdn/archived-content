@@ -1,0 +1,353 @@
+---
+title: Windows Media in Netscape
+slug: Archive/Windows_Media_in_Netscape
+tags:
+  - Obsolete
+  - Web Development
+---
+<p>Netscape 7.1 has the ability to load the Microsoft® Windows Media Player™ as an ActiveX control, and thus developers can now build multimedia experiences that script the Windows Media Player in Netscape 7.1, just as they do in Internet Explorer. Netscape 7.1 will work with both the Windows Media Player 6.4 ActiveX control as well as versions 7 through 9. This article explains how to embed the Windows Media Player ActiveX control in web pages to support Netscape 7.1, how to control the Windows Media Player ActiveX control using JavaScript and provides working examples. This article deals uniquely with Netscape 7.1 running on the Windows operating system.</p>
+<h2 id="Detecting_the_Right_Browser" name="Detecting_the_Right_Browser">Detecting the Right Browser</h2>
+<p>Like Internet Explorer, Netscape 7.1 and later versions can play Windows Media files using the popular Windows Media Player ActiveX control. This control is widely used to provide inline media support for web pages that provide sound, video and other media. Controls such as Windows Media Player also interact closely with the scripts in a web page. Netscape 7.1 is the first Netscape Gecko™ browser to support the Windows Media Player as an ActiveX control -- previous Netscape browsers did not support any ActiveX controls, and thus detecting which versions of Netscape support the Windows Media ActiveX control is an important first step towards building multimedia experiences using HTML, JavaScript, and the Windows Media ActiveX control. The <a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dnwmt/html/WMPlayer_9_SDK_Intro.asp" class="external">Windows Media 9 Series SDK</a> documentation for Netscape browsers says that versions of Netscape (including 6.2 and 7.0) support the embedding of the Windows Media Player control using a Java Applet. While that approach works with browsers older than Netscape 7.1, this section introduces the use of the objects that enable deployment of the Windows Media Player <b>directly</b> as an ActiveX control within Netscape 7.1.</p>
+<p>This section presents two mechanisms to detect the browsers that support Windows Media Player --</p>
+<ul>
+  <li>Detection using JavaScript Objects which is useful for client-side detection</li>
+  <li>Detection using the user agent string which is useful for server side detection.</li>
+</ul>
+<p>An advantage of the client-side approach is that it is also possible to detect if Windows Media Player is installed.</p>
+<h2 id="Client-side_Detection_Using_JavaScript_Objects" name="Client-side_Detection_Using_JavaScript_Objects">Client-side Detection Using JavaScript Objects</h2>
+<p>Internet Explorer implements the <code>ActiveXObject</code> object to create new instances of ActiveX controls. Netscape 7.1 introduces <code>GeckoActiveXObject</code> which can be used in a similar way to create instances of the Windows Media Player.</p>
+<p>The following JavaScript illustrates one approach using object detection of <code>ActiveXObject</code> and <code>GeckoActiveXObject</code> to determine if the Windows Media ActiveX control is supported and available for use. JavaScript will dynamically write out what browser you are running, and what kind of Windows Media Player technology you may have.</p>
+<h3 id="Example_1:_Client-side_Detection_Scripts" name="Example_1:_Client-side_Detection_Scripts">Example 1: Client-side Detection Scripts</h3>
+<pre class="eval">   Browser architecture supports: NetscapePlugin
+   Windows Media Player Installed: true
+   Windows Media Scriptable: false
+   Windows Media Version: PluginVersion
+</pre>
+<p>A complete source code listing showing how that detection was done can be found <a href="http://devedge-temp.mozilla.org/viewsource/2003/windows-media-in-netscape/first-detection.js.txt" class="external">here (devedge-temp)</a>. Below, some of the salient points are illustrated in a code snippet:</p>
+<pre>if (window.ActiveXObject &amp;&amp; navigator.userAgent.indexOf('Windows') != -1) {
+  // IE for Windows object instantiation -- use of ActiveXObject
+} else if(window.GeckoActiveXObject) {
+  // Netscape 7.1 object instantiation --use of GeckoActiveXObject
+} else if(navigator.mimeTypes) {
+  // Plugin architecture, such as in Netscape 4x - 7.02 and Opera browsers
+}</pre>
+<p>Since IE for Mac also exposes <code>window.ActiveXObject</code> it is wise to determine if the browser in question is on Windows.</p>
+<p>Both ActiveXObject and GeckoActiveXObject function similarly. The next subsection discusses them in detail.</p>
+<h3 id="GeckoActiveXObject_vs._ActiveXObject" name="GeckoActiveXObject_vs._ActiveXObject">GeckoActiveXObject vs. ActiveXObject</h3>
+<p>Both <code>GeckoActiveXObject</code> and <code>ActiveXObject</code> work very similarly, with one key difference:</p>
+<p>Both take a Programmatic ID (<code>ProgID</code>) and use it to create a reference to the Windows Media Player. The <code>ProgID</code> of Windows Media Player is <code>MediaPlayer.MediaPlayer.1</code>. While the <code>ProgID</code> cannot be used to create a Windows Media Player object that exposes all its properties and methods, it is useful for rapid detections. Here is a code snippet that shows this:</p>
+<pre>var player;
+try {
+  if (window.ActiveXObject) {
+    player = new ActiveXObject("MediaPlayer.MediaPlayer.1");
+  } else if (window.GeckoActiveXObject) {
+    player = new GeckoActiveXObject("MediaPlayer.MediaPlayer.1");
+  } else {
+    // Plugin code using navigator.mimeTypes
+    player = navigator.mimeTypes["application/x-mplayer2"].enabledPlugin;
+  }
+} catch(e) {
+  // Handle error -- no WMP control
+  // Download: http://www.microsoft.com/windows/windowsmedia/download/default.asp
+}
+
+if (player) {
+  // Windows Media Player control exists
+}</pre>
+
+<p>Currently, dynamically writing out markup using document.write after using detection mechanisms won't work owing to a <a href="http://bugzilla.mozilla.org/show_bug.cgi?id=210863" class="external">bug in Netscape 7.1</a>.</p>
+<ul>
+  <li><b>Both</b> <code>ActiveXObject</code> and <code>GeckoActiveXObject</code> can take <code>WMPlayer.OCX.7</code> as an argument to create the control if Windows Media Player 7 or 9 are present. Unlike using the <code>ProgID</code> as an argument, using <code>WMPlayer.OCX.7</code> as an argument to both these APIs creates a fully usable reference to the Windows Media Player 7 or 9 control, with all the methods and properties exposed to JavaScript. Furthermore, you know for certain that you are working with the Windows Media 7 or 9 control -- there is no comparable instantiation for the Windows Media Player 6 control. For the sake of brevity, we've made the following code snippet shorter to illustrate the relevant points about the API:</li>
+</ul>
+<pre>var player;
+
+try {
+  if(window.ActiveXObject) {
+    player = new ActiveXObject("WMPlayer.OCX.7");
+  } else if (window.GeckoActiveXObject) {
+    player = new GeckoActiveXObject("WMPlayer.OCX.7");
+  }
+} catch(e) {
+  // Handle error -- no WMP 7 or 9 control
+  // Can use WMP 6 also if necessary, but this is legacy software nowadays
+}
+
+if (player) {
+  // Windows Media Player control exists and it is version 7 or 9
+  // Can use WMP 7 or 9 API -- call versionInfo property, only in 7 and 9
+
+  var versionString = player.versionInfo;
+
+  alert(versionString);
+}</pre>
+
+<ul>
+  <li><b>Only</b> <code>GeckoActiveXObject</code> allows for the use of the Windows Media Player classID as an argument. Since classIDs are affiliated with individual ActiveX controls in a unique manner, this allows for unique instantiation of controls. Netscape 7.1 works with both Windows Media Player 6.4 and with Windows Media Players 7 and 9, but they have unique classIDs:
+    <ul>
+      <li>Windows Media Player 6.4 has this classID:22D6F312-B0F6-11D0-94AB-0080C74C7E95</li>
+      <li>Windows Media Players 7 and 9 have this classID: 6BF52A52-394A-11d3-B153-00C04F79FAA6</li>
+    </ul>
+  </li>
+</ul>
+
+<p>Windows Media Player 6.4 and Windows Media Player 7 and up are <b>not backwards compatible</b> in terms of APIs (and thus have different classIDs).</p>
+
+<p>Here is a snippet of code that illustrates the use of classIDs with GeckoActiveXObject:</p>
+<pre>function createGeckoWMPObject(clid) {
+  var player = null;
+
+  try {
+    player = new GeckoActiveXObject(clid);
+  } catch(e) {
+    ;
+  }
+
+  return player;
+}
+
+// instantiate players
+
+wmp7or9 = createGeckoWMPObject("{6BF52A52-394A-11d3-B153-00C04F79FAA6}");
+
+if (!wmp7or9) {
+  wmp64 = createGeckoWMPObject("{22D6F312-B0F6-11D0-94AB-0080C74C7E95}");
+}
+ .....
+</pre>
+
+<p>Note that the classIDs must be passed in curly braces "{}".</p>
+
+<p>The name <code>GeckoActiveXObject</code> rather than <code>ActiveXObject</code> was introduced for two reasons:</p>
+
+<ul>
+  <li><code>GeckoActiveXObject</code> is limited to creating instances of Windows Media Player ActiveX controls. It therefore can not be used everywhere ActiveXObject is used.</li>
+  <li><code>ActiveXObject</code> is used by many web developers to detect the presence of Internet Explorer in much the same fashion as document.all is used. For example</li>
+</ul>
+<pre>if (window.ActiveXObject) {
+  // Internet Explorer only script
+}
+</pre>
+
+<h2 id="Server-side_Detection_Using_User-agent_Strings" name="Server-side_Detection_Using_User-agent_Strings">Server-side Detection Using User-agent Strings</h2>
+<p>Netscape 7.1's user agent string on Windows has the general pattern:</p>
+
+<pre>Mozilla/5.0 (Windows; U; &lt;em&gt;operating system version&lt;/em&gt;;
+&lt;em&gt;language&lt;/em&gt;; rv:1.4) Gecko/20030624 Netscape/7.1 (ax&lt;em&gt;[;optional
+comments]&lt;/em&gt;)
+</pre>
+<p>The "Vendor Comment" <code>(ax)</code> following the "Vendor Version" <code>Netscape/7.1</code> is an indicator that the browser supports the Windows Media Player ActiveX control.</p>
+<p>For example on Windows XP, Netscape 7.1's user agent string may be:</p>
+<pre>Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.4) Gecko/20030624
+Netscape/7.1 (ax)
+</pre>
+<p>If the client was customized by a third party, additional information may be present in the "Vendor Comment" area of the user agent string. For example:</p>
+<pre>Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.4) Gecko/20030624
+Netscape/7.1 (ax; PROMOSTRING)
+</pre>
+<p>Although <code>GeckoActiveXObject</code> is currently available only in Netscape 7.1 on Windows, it may be the case in the future that it will be available in other Gecko-based browsers on other operating systems.</p>
+<p>Detecting the presence of the strings <code>Gecko/</code> and <code>(ax</code> should provide for the ability to detect any Gecko-based browsers which supports <code>GeckoActiveXObject</code> which may be introduced in the future.</p>
+<p>For example, a possible regular expression to detect if <code>GeckoActiveXObject</code> is supported could be:</p>
+<pre>/Gecko\/[^)].*\(ax/
+</pre>
+<h2 id="Embedding_the_Control_in_Web_Pages:_Use_of_the_OBJECT_element" name="Embedding_the_Control_in_Web_Pages:_Use_of_the_OBJECT_element">Embedding the Control in Web Pages: Use of the OBJECT element</h2>
+<p>Netscape 7.1 allows the use of the OBJECT element of HTML to be used to instantiate the Windows Media Player control in the same way it is used in IE. This differs from what previous Netscape Gecko browsers did -- those browsers only supported the Netscape-plugin architecture, and <b>not</b> the ActiveX architecture, and thus <a href="http://devedge-temp.mozilla.org/viewsource/2002/markup-and-plugins/" class="external">the markup used for browsers prior to Netscape version 7.1 (devedge-temp)</a> was distinct.</p>
+<h3 id="Example_2:_Use_of_OBJECT_Element_to_Create_Control" name="Example_2:_Use_of_OBJECT_Element_to_Create_Control">Example 2: Use of OBJECT Element to Create Control</h3>
+<p>If you are running Netscape 7.1 and later or IE, and have installed <a href="http://www.microsoft.com/windows/windowsmedia/download/default.asp" class="external">Windows Media Player 7</a> or above, the snippet of code below should produce a Windows Media control and play a song.</p>
+
+<pre>THIS IS THE EXAMPLE: NEEDS TO BE EMBEDDED IN WIKI PAGE (can it just be put here?)
+
+&lt;object id="PlayerEx2" classid="clsid:6BF52A52-394A-11d3-B153-00C04F79FAA6" height="200" width="200"&gt;
+  &lt;param name="uiMode" value="full"&gt;
+  &lt;param name="autoStart" value="True"&gt;
+  &lt;param name="URL" value="media/preludesteel.wma"&gt;
+  Your browser does not support the ActiveX Windows Media Player
+
+&lt;/object&gt;
+</pre>
+
+<p>The same markup (used above and shown below) will work in both IE and Netscape 7.1.</p>
+
+<pre>&lt;object id="PlayerEx2" classid="clsid:6BF52A52-394A-11d3-B153-00C04F79FAA6"
+        height="200" width="200"&gt;
+  &lt;param name="uiMode" value="full" /&gt;
+  &lt;param name="autoStart" value="true" /&gt;
+  &lt;param name="URL" value="preludesteel.wma" /&gt;
+  Your browser does not support the ActiveX Windows Media Player
+&lt;/object&gt;
+</pre>
+
+<p>The classid attribute references the clsid of Windows Media Player 7 and above -- Windows Media Player versions before 7 used a different clsid. Examples in this article all assume that the user is running Windows Media Player 7 and later, although Netscape 7.1 supports the clsids of Windows Media Player 6x and later.</p>
+<p>It is important to note that in Netscape 7.1, <b>only</b> the classid for Windows Media Player is supported, and no other control can be created. The various <code>param</code> elements that can be used and the functionalities behind them is best described by the <a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dnwmt/html/WMPlayer_9_SDK_Intro.asp" class="external">Windows Media 9 Series SDK</a>.</p>
+<p>In Netscape 7.1, the <code>codebase</code> attribute of the <code>object</code> element cannot be used to initiate a digitally signed download of the Windows Media control, if it is not present on the machine. The section below on scripting the control covers more on how to detect if the Windows Media Player has not been successfully created.</p>
+
+<h2 id="Scripting_the_Windows_Media_Player_Control" name="Scripting_the_Windows_Media_Player_Control">Scripting the Windows Media Player Control</h2>
+<p>The number of methods and properties that are exposed by the Windows Media Player, including the events that the player throws for handling by scripts in the web page containing the control, are covered in detail by the <a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dnwmt/html/WMPlayer_9_SDK_Intro.asp" class="external">Windows Media Player SDK</a>. This section covers relevant issues concerning the invocation of methods and properties from within web pages that are embedding the Windows Media control.</p>
+<h3 id="Detecting_Successful_Creation_of_the_Control" name="Detecting_Successful_Creation_of_the_Control">Detecting Successful Creation of the Control</h3>
+<p>Often, usage of ActiveX controls in IE involve the use of the <code>object</code> element along with a <code>codebase</code> attribute that initiates a download of the component if it is missing from the machine running the web page. The <a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dnwmt/html/WMPlayer_9_SDK_Intro.asp" class="external">Windows Media 9 Series SDK</a> doesn't provide a URL to use with the codebase attribute for retrieval of the component in IE, and on Netscape 7.1 the <code>codebase</code> attribute isn't supported for such retrieval. Therefore detecting whether the component was successfully instantiated can help provide users with the right component if a failed instantiation is detected. The code listing below provides a mechanism to to this.</p>
+
+<pre>&lt;object id="PlayerEx2" classid="clsid:6BF52A52-394A-11d3-B153-00C04F79FAA6"
+        height="200" width="200"&gt;
+  &lt;param name="uiMode" value="full" /&gt;
+  &lt;param name="autoStart" value="true" /&gt;
+  &lt;param name="URL" value="preludesteel.wma" /&gt;
+&lt;/object&gt;
+
+&lt;script type="text/javascript"&gt;
+if(!document.PlayerEx2.versionInfo) {
+  // Control Not installed -- the versionInfo property returns null
+  // Redirect users to http://www.microsoft.com/windows/windowsmedia/download/default.asp
+} else {
+  //Control was correctly created
+  //Proceed with scripting calls, etc.
+}
+&lt;/script&gt;
+</pre>
+
+<p>Note that if the control is correctly instantiated, you will know that it is a version of Windows Media Player 7 and up, since the clsid used with the object element reflects the unique component in this version range.</p>
+<h3 id="Scripting_the_Control" name="Scripting_the_Control">Scripting the Control</h3>
+<p>Namespacing issues are the most important distinction between scripting the Windows Media control in IE and Netscape 7.1. In code deployed for IE, invocations of the sort <code>Player.controls.play();</code> are common, where <code>Player</code> is the <code>id</code> of the <code>object</code> element. In Netscape 7.1, plugins and ActiveX controls are not exposed to the global namespace, but rather as properties of the <code>document</code> object. Accessing properties and controls from the <code>document</code> object works well with IE also, and thus, in order to deploy cross-platform code, avoiding syntax that makes use of global namespace is important.</p>
+<p>Here, for example, is a code snippet that works equally well on both Netscape 7.1 and IE:</p>
+
+<pre>&lt;object id="Player" height="0" width="0"
+  CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6"&gt;
+  &lt;param name="autoStart" value="true"&gt;
+&lt;/object&gt;
+&lt;input type="button" name="PlayMedia" value="Play" OnClick="StartMediaUp()"&gt;
+&lt;input type="button" name="StopMedia" value="Stop" OnClick="ShutMediaDown()"&gt;
+
+&lt;P&gt;This example shows a minimally-functional player
+
+&lt;script&gt;
+&lt;!--
+
+function StartMediaUp () {
+  document.Player.URL = "preludesteel.wma";
+  document.Player.controls.play();
+}
+
+function ShutMediaDown () {
+  document.Player.controls.stop();
+}
+
+--&gt;
+&lt;/script&gt;
+</pre>
+
+<p>More extensive examples of working cross-browser code can be found in the examples section at the end.</p>
+<p>Qualifying references with <code>document</code>. is sufficient to resolve the namespace issue. So for example, an object can be called from IE and Netscape 7.1 like this: <code>document.Player.controls.play()</code>. For programming convenience, the object could be assigned to a temporary variable, e.g.</p>
+
+<pre>var thePlayer = document.Player;
+thePlayer.controls.play()'
+</pre>
+
+<h3 id="Programmatic_Creation_of_the_Control_and_Scripting" name="Programmatic_Creation_of_the_Control_and_Scripting">Programmatic Creation of the Control and Scripting</h3>
+<p>As mentioned above, both <code>GeckoActiveXObject</code> and <code>ActiveXObject</code> can be used to create instances of the control. Here's an example of directly instantiating the control programmatically (without an <code>object</code> element) and scripting it:</p>
+
+<pre>try {
+  var player = null;
+
+  if (window.ActiveXObject) {
+    player = new ActiveXObject("WMPlayer.OCX.7");
+  } else if(window.GeckoActiveXObject) {
+    player = new GeckoActiveXObject("WMPlayer.OCX.7");
+  }
+} catch(e) {
+   ;
+}
+
+if (player) {
+  player.currentPlaylist = player.mediaCollection.getByName('preludesteel');
+  player.controls.play();
+}</pre>
+
+<h2 id="Callbacks_from_Within_Windows_Media_Player_To_Web_Pages:_Script_For_Event" name="Callbacks_from_Within_Windows_Media_Player_To_Web_Pages:_Script_For_Event">Callbacks from Within Windows Media Player To Web Pages: Script For Event</h2>
+<p>Netscape 7.1 supports IE's <code>&lt;script for="ActiveXControl" event="ActiveXControlEvent"&gt;</code> script elements. No Netscape browser prior to Netscape 7.1 has supported this non-standard way of writing scripts that handle information sent by a plugin or control.</p>
+<p>A good illustration of the use of this non-standard <code>script</code> element syntax is in creating closed captioning of media content. Automatic closed captioning does not work in Netscape 7.1 as it does in IE. In IE, a named HTML element such as a DIV may be given to the Windows Media Player control and it will be automatically updated with caption data. This does not work in Gecko because it requires IE DOM functionality that has not been implemented. Fortunately, Windows Media Player also fires a ScriptCommand() event for closed captioning, which means content may update the caption manually with a small piece of JavaScript.</p>
+<p>For example, in IE it is possible to do this:</p>
+<pre>Player.closedCaption.CaptioningID = "CapText";
+</pre>
+<p>Here, "CapText" is the <code>id</code> of an HTML element, assigned to the CaptioningID property of the Player. Instead of doing that, this is the recommendation and workaround for Netscape 7.1:</p>
+<pre>&lt;script FOR="Player" EVENT="ScriptCommand(type, param)"&gt;
+  if (type == "Text")
+  {
+    var cap = document.getElementById("CapText");
+    cap.innerHTML = param;
+  }
+&lt;/script&gt;
+</pre>
+<p>More detailed examples are available in the final section on examples and sample code.</p>
+<h2 id="Important_Caveats_and_Usage_Scenarios" name="Important_Caveats_and_Usage_Scenarios">Important Caveats and Usage Scenarios</h2>
+<p>This section covers some of the common usages in conjunction with Windows Media Player and IE that should not be used with Windows Media Player and Netscape 7.1.</p>
+<h3 id="Detection_Strategies" name="Detection_Strategies">Detection Strategies</h3>
+<p>Proper detection strategies are important for cross-browser development using ActiveX controls in Internet Explorer and Netscape 7.1. Browser Detection and Cross Browser Support provides a good introduction to the general issues involved.</p>
+<p>Using object-based detection to detect the vendor and version of a browser and its support for ActiveX controls can lead to problems. For example, if you use document.all to detect Internet Explorer 4 and later and the availability of ActiveXObject you will not support Netscape 7.1.</p>
+<h4 id="Bad_Approach" name="Bad_Approach">Bad Approach</h4>
+
+<pre>if (document.all) {
+  // use ActiveXObject or write IE only OBJECT markup
+} else {
+  // use Netscape Plugins
+}</pre>
+
+<h4 id="Better_Approach" name="Better_Approach">Better Approach</h4>
+<pre>if (window.ActiveXObject) {
+  // ActiveXObject is supported
+} else if (window.GeckoActiveXObject) {
+  // GeckoActiveXObject is supported
+} else {
+  // use Netscape Plugins
+}</pre>
+
+<h3 id="Use_of_Microsoft.27s_MSXML_in_Conjunction_with_the_Windows_Media_Player" name="Use_of_Microsoft.27s_MSXML_in_Conjunction_with_the_Windows_Media_Player">Use of Microsoft's MSXML in Conjunction with the Windows Media Player</h3>
+<p>Remember that Windows Media Player is the only ActiveX control that Netscape 7.1 supports. Use of Microsoft's MSXML in conjunction with use of Windows Media Player is common, particularly since both are offered to the developer community as ActiveX controls for IE browsers. In particular, the XMLHttp object is a popular one for establishing dynamic channel communication. Netscape 7.1 offers its own XMLHttpRequest object; here is a snippet of cross-browser code that can be used:</p>
+
+<pre>if (window.ActiveXObject) {
+  req = new ActiveXObject("Microsoft.XMLHTTP");
+} else if (window.XMLHttpRequest) {
+  req = new XMLHttpRequest();
+}
+
+// req can be used in a cross-browser way -- the actual objects are similar
+// Caveat emptor: look out for the case of methods and properties -- IE uses
+// capital letters where Gecko uses lowercase</pre>
+
+<p>Other popular uses of Microsoft's MSXML objects are for in-memory manipulation of XML documents via XSLT, perhaps to construct dynamic data for the Windows Media Player. Netscape Gecko based browsers such as Netscape 7.1 provide comparable implementations of XSLT transformations in memory via JavaScript. Use of HTML Behaviors in Conjunction with Windows Media Player</p>
+<p>The only IE emulation that Netscape 7.1 does in terms of HTML usage is with respect to the object element usage with clsid and script for="" event="" syntax.</p>
+<p>DHTML behaviors can be used in Internet Explorer to perform ActiveX control detection. For example, the following uses DHTML behaviors to associate a set of behaviors with a SPAN element, which is then interrogated for its version number (the script attempts to verify that the Windows Media Player control is at version 9):</p>
+
+<pre>&lt;span style="behavior:url(#default#clientCaps)" id="cc"&gt;&lt;/span&gt;
+&lt;script language=JavaScript&gt;
+var cv = cc.getComponentVersion(
+  "{6BF52A52-394A-11D3-B153-00C04F79FAA6}",
+  "componentid"
+);
+
+if (cv == null || cv == "") {
+  top.location.href = "http://foo.bar.foo/checkref";
+}
+&lt;/script&gt;</pre>
+
+<p>Netscape 7.1 does not support IE's DHTML Behaviors. In order to use the Windows Media Player control in both Netscape 7.1 and IE, you need to avoid browser-specific detection mechanisms like this.</p>
+<h2 id="Summary:_Cross_Browser_Use_of_Windows_Media_Player_in_IE_and_Netscape_7.1" name="Summary:_Cross_Browser_Use_of_Windows_Media_Player_in_IE_and_Netscape_7.1">Summary: Cross Browser Use of Windows Media Player in IE and Netscape 7.1</h2>
+<ol>
+  <li>Don't use proprietary DOM sniffs such as looking for <code>document.all</code>-- this will rule out Netscape 7.1.</li>
+  <li>When scripting the player, ensure that you use the syntax <code>document.PlayerElementName.property</code> as opposed to <code>PlayerElementName.property</code>. Merely adding <code>document.</code> as a prefix to player scripting calls solves the namespacing difference between Netscape 7.1 and IE.</li>
+  <li>Both Netscape 7.1 and IE handle the nonstandard HTML format <code>script for event</code> in script HTML tags. An example is the usage of close captioning. In the case of close captioning media content, the player API <code>Player.closedCaption.CaptioningID = "CapText";</code> is not supported, and the workaround is to capture events fired by the Media Player in script using <code>script for event</code>.</li>
+  <li>Do not use IE only markup or IE only features, such as DHTML Behaviors or use MSXML in conjunction with the control.</li>
+</ol>
+<h2 id="Examples_of_Usage_in_Netscape_7.1_and_IE" name="Examples_of_Usage_in_Netscape_7.1_and_IE">Examples of Usage in Netscape 7.1 and IE</h2>
+<p>All these samples consist of one page of markup (and script) that works in both IE and Netscape 7.1. No code forking has been used.</p>
+<ul>
+  <li>The min-object-usage.html sample shows a minimalist control manipulated by scripting and HTML buttons. An object element creates the controls.</li>
+  <li>The embedded-audio-video.html shows both scripting the control and callbacks.</li>
+  <li>closecap-outtakes.html shows the closed captioning workaround and scripting.</li>
+</ul>
+
+<div class="originaldocinfo">
+  <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+  <ul>
+    <li>Authors: Arun Ranganathan, Bob Clary, Ian Oeschger</li>
+    <li>Last Updated Date: 30 Jun 2003</li>
+    <li>Copyright Information: Copyright © 2001-2003 Netscape. All rights reserved.</li>
+  </ul>
+</div>

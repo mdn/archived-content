@@ -1,0 +1,90 @@
+<p>This page describes how to perform tests that measure memory leaks and bloat for MailNews and its sub-components.</p>
+<h2 id="Aim"><span class="mw-headline"> Aim </span></h2>
+<ul> <li>To provide a continuous check within MailNews and its sub-components for the following items: <ol> <li>Total memory leaks.</li> <li>Total memory usage (aka bloat).</li> </ol> </li> <li>Provide a consistent number from build to build where no source code has changed.</li> <li>Provide reasonable coverage for the normal activities that a user performs.</li>
+</ul>
+<h2 id="Method"><span class="mw-headline"> Method </span></h2>
+<p>Current Method:</p>
+<ul> <li>Measure Leaks and Bloats, in a similar way to Firefox (using <code>XPCOM_MEM_LEAK_LOG</code> and <code>--trace-malloc</code>).</li> <li>The method of testing memory bloat and leaks will be the same sequence of events, using the same set of test data. <ol> <li>Startup Main Mail Window</li> <li>Open Address Book and Message Composition windows</li> <li>Close Address Book and Message Composition windows</li> <li>Quit the application</li> </ol> </li>
+</ul>
+<p>Future improvements will be discussed on the <a class=" link-https" href="https://wiki.mozilla.org/MailNews_Talk:Memory_Bloat_and_Leak_Tests" title="MailNews Talk:Memory Bloat and Leak Tests">discussion</a> page of the Mozilla wiki.</p>
+<h2 id="Results"><span class="mw-headline">Results </span></h2>
+<p>Printed on tinderbox output, these consist of:</p>
+<ul> <li>Mail RLk <ul> <li>Reference Count Leaks</li> </ul> </li> <li>Mail Lk <ul> <li>Total Bytes malloc'ed and not free'd</li> </ul> </li> <li>Mail MH <ul> <li>Maximum Heap size</li> </ul> </li> <li>Mail A <ul> <li>Allocations - number of calls to malloc and friends.</li> </ul> </li>
+</ul>
+<p>There are currently no graphs for these results.</p>
+<h2 id="Manually_Running_Tests"><span class="mw-headline"> Manually Running Tests </span></h2>
+<h3 id="Setting_up"><span class="mw-headline"> Setting up </span></h3>
+<h4 id="Build_Set_up"><span class="mw-headline"> Build Set up </span></h4>
+<p>Build Thunderbird or SeaMonkey with your standard <code>mozconfig</code> file, but with the following options set:</p>
+<ul> <li><code>ac_add_options --enable-debug</code></li> <li><code>ac_add_options --enable-trace-malloc</code></li>
+</ul><h4 id="Running_the_Tests"><span class="mw-headline">Running the Tests</span></h4>
+<p>In your <code>&lt;objdir&gt;</code> run the following command:</p>
+<pre>make mailbloat
+</pre>
+<p>This will run the tests and produce some result files. See <a class="external text" href="http://developer.mozilla.org/en/docs/Debugging_memory_leaks" rel="nofollow" title="http://developer.mozilla.org/en/docs/Debugging_memory_leaks">Debugging Memory Leaks</a> for more information on what to do with this data.</p>
+<p>TODO: add more information on processing output.</p><h2 id="Code_Locations"><span class="mw-headline"> Code Locations </span></h2>
+<p>The files specific to Leak and Bloat testing are be stored in:</p>
+<p><code><a href="http://mxr.mozilla.org/comm-central/source/mailnews/test/performance">http://mxr.mozilla.org/comm-central/source/mailnews/test/performance</a><br>
+</code></p>
+<p>These files consist of:</p>
+<ul> <li>Overlays (used to provide the hooks for the javascript): <ul> <li><code>bloat/bloatAddrOverlay.xul</code></li> <li><code>bloat/bloatComposeOverlay.xul</code></li> <li><code>bloat/bloatMainOverlay.xul</code></li> </ul> </li> <li>Javascript files (used to drive the tests): <ul> <li><code>bloat/bloatAddrOverlay.js</code></li> <li><code>bloat/bloatComposeOverlay.js</code></li> <li><code>bloat/bloatMainOverlay.js</code></li> </ul> </li> <li>Preference Settings (used to provide a defined profile, see below): <ul> <li><code>common/mailnewsTestPrefs.js</code></li> </ul> </li> <li>Python scripts (used to set up the profile and run the test): <ul> <li><code>bloat/setUpBloatTest.py</code></li> <li><code>bloat/runtest.py</code></li> <li><code>common/setUpCommonMailNews.py</code></li> </ul> </li>
+</ul>
+<h2 id="Pre-defined_profile"><span class="mw-headline"> Pre-defined profile </span></h2>
+<p>Initial Setup:</p>
+<ul> <li>One POP3 account (Mails TBD)</li> <li>One Identity</li> <li>One SMTP server defined (not used)</li>
+</ul>
+<p>Future requirements/possibilities:</p>
+<ul> <li>One Address Book where PAB has ~1000 entries</li> <li>Large Message folders</li> <li>IMAP</li> <li>NNTP Server and subscribed newsgroup.</li>
+</ul>
+<p>08/04/2008: <code>prefs.js</code> created via TB with the above settings, the first section is for preferences included in tinderbox, the second section is ones which don't currently get set.</p>
+<pre>user_pref("mail.account.account1.server", "server1");
+user_pref("mail.account.account2.identities", "id1");
+user_pref("mail.account.account2.server", "server2");
+user_pref("mail.accountmanager.accounts", "account1,account2");
+user_pref("mail.accountmanager.defaultaccount", "account2");
+user_pref("mail.accountmanager.localfoldersserver", "server1");
+user_pref("mail.identity.id1.fullName", "Tinderbox");
+user_pref("mail.identity.id1.smtpServer", "smtp1");
+user_pref("mail.identity.id1.useremail", "tinderbox@invalid.com");
+user_pref("mail.identity.id1.valid", true);
+user_pref("mail.root.none-rel", "[ProfD]Mail");
+user_pref("mail.root.pop3-rel", "[ProfD]Mail");
+user_pref("mail.server.server1.directory-rel", "[ProfD]Mail/Local Folders");
+user_pref("mail.server.server1.hostname", "Local Folders");
+user_pref("mail.server.server1.name", "Local Folders");
+user_pref("mail.server.server1.type", "none");
+user_pref("mail.server.server1.userName", "nobody");
+user_pref("mail.server.server2.check_new_mail", false);
+user_pref("mail.server.server2.directory-rel", "[ProfD]Mail/tinderbox");
+user_pref("mail.server.server2.download_on_biff", true);
+user_pref("mail.server.server2.hostname", "tinderbox");
+user_pref("mail.server.server2.login_at_startup", false);
+user_pref("mail.server.server2.name", "tinderbox@invalid.com");
+user_pref("mail.server.server2.type", "pop3");
+user_pref("mail.server.server2.userName", "tinderbox");
+user_pref("mail.smtp.defaultserver", "smtp1");
+user_pref("mail.smtpserver.smtp1.hostname", "tinderbox");
+user_pref("mail.smtpserver.smtp1.username", "tinderbox");
+user_pref("mail.smtpservers", "smtp1");
+user_pref("mail.startup.enabledMailCheckOnce", true);
+user_pref("mailnews.start_page_override.mstone", "1.9pre");
+user_pref("mail.shell.checkDefaultClient", false);
+// Ensure OS X and Outlook/OE books are disabled
+user_pref("ldap_2.servers.osx.position", 0);
+user_pref("ldap_2.servers.oe.position", 0);
+</pre>
+<p>Preferences in generated profile, but not set:</p>
+<pre>user_pref("mail.root.none", "/home/moztest/.thunderbird/t7i1txfw.minimum/Mail");
+user_pref("mail.root.pop3", "/home/moztest/.thunderbird/t7i1txfw.minimum/Mail");
+user_pref("mail.server.server1.directory", "/home/moztest/.thunderbird/t7i1txfw.minimum/Mail/Local Folders");
+user_pref("mail.server.server2.directory", "/home/moztest/.thunderbird/t7i1txfw.minimum/Mail/tinderbox");
+user_pref("mail.attachment.store.version", 1);
+user_pref("mail.folder.views.version", 1);
+user_pref("mail.spam.version", 1);
+user_pref("mailnews.quotingPrefs.version", 1);
+user_pref("mailnews.ui.threadpane.version", 6);
+</pre>
+<h2 id="Changes_to_Leak_and_Bloat_Tests"><span class="mw-headline"> Changes to Leak and Bloat Tests </span></h2>
+<table> <tbody> <tr> <td>Date and Time (PST)</td> <td>Description</td> <td>Approx Effect on Numbers</td> </tr> <tr> <td>Pre Dec 2008</td> <td>Initial Version</td> <td>-</td> </tr> <tr> <td>2008/12/07 11:20</td> <td><a class="external text" href="https://bugzilla.mozilla.org/show_bug.cgi?id=463594" rel="nofollow" title="https://bugzilla.mozilla.org/show_bug.cgi?id=463594">bug 463594</a> Disabled OS X and Outlook address books via the preference settings</td> <td>Mac Lk -56.2kb.</td> </tr> </tbody>
+</table>
+<p> </p>

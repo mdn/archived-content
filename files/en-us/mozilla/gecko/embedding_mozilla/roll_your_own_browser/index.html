@@ -1,0 +1,187 @@
+---
+title: 'Roll your own browser: An embedding how-to'
+slug: Mozilla/Gecko/Embedding_Mozilla/Roll_your_own_browser
+tags:
+  - Embedding Mozilla
+---
+<p></p><section class="Quick_links" id="Quick_Links">
+  <ol>
+    <li class="toggle">
+        <details>
+            <summary>Firefox developer release notes</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Releases">Firefox developer release notes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Add-ons</summary>
+            <ol>
+              <li><a href="/en-US/Add-ons/WebExtensions">Browser extensions</a></li>
+              <li><a href="/en-US/Add-ons/Themes">Themes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Firefox internals</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/">Mozilla project</a></li>
+              <li><a href="/en-US/docs/Mozilla/Gecko">Gecko</a></li>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Headless_mode">Headless mode</a></li>
+              <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules">JavaScript code modules</a></li>
+              <li><a href="/en-US/docs/Mozilla/js-ctypes">JS-ctypes</a></li>
+              <li><a href="/en-US/docs/Mozilla/MathML_Project">MathML project</a></li>
+              <li><a href="/en-US/docs/Mozilla/MFBT">MFBT</a></li>
+              <li><a href="/en-US/docs/Mozilla/Projects">Mozilla projects</a></li>
+              <li><a href="/en-US/docs/Mozilla/Preferences">Preference system</a></li>
+              <li><a href="/en-US/docs/Mozilla/WebIDL_bindings">WebIDL bindings</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XUL">XUL</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Building and contributing</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions">Build instructions</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options">Configuring build options</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works">How the build system works</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Source_Code/Mercurial">Mozilla source code</a></li>
+              <li><a href="/en-US/docs/Mozilla/Localization">Localization</a></li>
+              <li><a href="/en-US/docs/Mozilla/Mercurial">Mercurial</a></li>
+              <li><a href="/en-US/docs/Mozilla/QA">Quality assurance</a></li>
+              <li><a href="/en-US/docs/Mozilla/Using_Mozilla_code_in_other_projects">Using Mozilla code in other projects</a></li>
+            </ol>
+        </details>
+    </li>
+  </ol>
+</section><div class="blockIndicator obsolete obsoleteHeader"><p><strong><span class="icon-only-inline" title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div><p></p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> This document is out of date.  You should instead build <a href="/en-US/docs/Archive/Mozilla/XULRunner" class="internal">XULRunner</a> and use it for all new embedding.  You should not need to, and should not, use embedding/config.</p>
+</div>
+
+<h2 id="What_bits_do_I_need">What bits do I need?</h2>
+
+<p>One of the requirements of building a SDK is the ability to identify and package up required files. Like that isn't totally obvious, nonetheless it has to be done. Here is that effort.</p>
+
+<p>I have created a directory under embedding called <a href="https://dxr.mozilla.org/seamonkey/source/embedding/config/" class="external">config</a>. Contained within this directory are a couple of makefiles:</p>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/config/basebrowser-unix" class="external">basebrowser-unix</a></li>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/config/basebrowser-win" class="external">basebrowser-win</a></li>
+</ul>
+
+<p>The <a href="/en/XPInstall" title="en/XPInstall">XPInstall</a> <a href="https://dxr.mozilla.org/seamonkey/source/xpinstall/packager/" class="external">packager</a> follows the same format. However in our case, we only have one named <a href="/en/XPI" title="en/XPI">XPI</a> package.</p>
+
+<p>After the build is done, you can change directory into <code>mozilla/embedding/config</code>, and do a <code>make</code>. This will produce a directory in <code>DIST</code> named <code>Embed</code>. It should include all of the base support that you need to get a web browser started up.</p>
+
+<p>Included is the sample test application (<code>gtkEmbed</code> or <code>winEmbed</code>).</p>
+
+<h2 id="What_initializations_do_I_have_to_do.3F" name="What_initializations_do_I_have_to_do.3F">What initializations do I have to do?</h2>
+
+<p>Somewhere during the start of your application, you must initialize <a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a>. You will also want to shut this down when you quit.</p>
+
+<p>Other initialization must be done to start up event queues and load some string bundles. All of this is somewhat generic and has been isolated into a static library that you can simply call on.</p>
+
+<p>If you build <code>mozilla/embedding/base/</code>, a static library (on windows) called <code>baseembed_s.lib</code> is built. Just link this library to your application. There are two functions that are needed:</p>
+
+<pre class="brush: cpp;">nsresult NS_InitEmbedding(const char *aPath);
+nsresult NS_TermEmbedding();
+</pre>
+
+<p>Pretty self-explanatory. The <code>aPath</code> parameter will be passed to <a href="https://dxr.mozilla.org/seamonkey/source/xpcom/build/nsXPComInit.cpp#192" class="external">NS_InitXPCOM</a>. <code>NS_InitEmbedding()</code> must be called from the main thread of your application, otherwise it won't work.</p>
+
+<h2 id="Do_you_have_any_simple_examples_of_embedding_Mozilla.3F" name="Do_you_have_any_simple_examples_of_embedding_Mozilla.3F">Do you have any simple examples of embedding Mozilla?</h2>
+
+<p>There are many examples of products already using Gecko for embedding. Here's a partial list. The sections marked 'Mozilla Examples' refer to clients and sample code to be found within the Mozilla source tree.</p>
+
+<h3 id="Linux" name="Linux">Linux</h3>
+
+<h4 id="External_projects" name="External_projects">External projects</h4>
+
+<ul>
+ <li><a href="http://www-128.ibm.com/developerworks/linux/library/l-sashxb/" class="external">SashXB</a>: IBM uses Mozilla to implement part of their <a href="http://publib-b.boulder.ibm.com/Redbooks.nsf/RedbookAbstracts/sg246403.html?Open" class="external">Sash</a> development/desktop environment. Part of the <a href="http://www.gnome.org" class="external">GNOME</a> effort.</li>
+ <li><a href="http://www.activestate.com/Products/Komodo/index.html" class="external">ActiveState's Komodo</a>: Development environment, based on Mozilla's <a href="/en/XUL" title="en/XUL">XUL</a>. (<a href="http://www.activestate.com/_images/screenshots/ss_Komodo_rails_large.gif" class="external">Screenshot</a>)</li>
+ <li><a href="http://www.ne.jp/asahi/linux/timecop/#light" class="external">Light</a>: Very simple non-bloated GTK+ interface, familiar Netscape 4.x keyboard shortcuts, context menus, etc. (<a href="http://www.ne.jp/asahi/linux/timecop/images/browser.png" class="external">Screenshot</a>)</li>
+ <li><a href="http://websvn.kde.org/*checkout*/trunk/KDE/kdebindings/xparts/doc/xparts.html" class="external">XParts</a>: KDE extension that allows Mozilla to be embedded into the Konqueror browser. Uses GtkMozEmbed widget, part of the kdebindings module and available from <a href="http://websvn.kde.org/trunk/KDE/kdebindings/xparts/" class="external" rel="freelink">http://websvn.kde.org/trunk/KDE/kdebindings/xparts/</a>. (<a href="http://dot.kde.org/977406679/" class="external">News release</a>, <a href="http://trolls.troll.no/%7Elars/xparts" class="external">screenshot</a>)</li>
+</ul>
+
+<h4 id="Mozilla_Examples" name="Mozilla_Examples">Mozilla Examples</h4>
+
+<ul>
+ <li><a href="http://www.mozilla.org/unix/gtk-embedding.html" class="external">GtkMozEmbed widget</a>: Gtk widget wrapper for the Mozilla Gecko Engine.</li>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/browser/gtk/tests/TestGtkEmbed.cpp" class="external">TestGtkEmbed</a>: Basic browser built with the GtkMozEmbed widget. URL location field, menu bar, html area, supports SSL.</li>
+</ul>
+
+<h3 id="Windows" name="Windows">Windows</h3>
+
+<h4 id="External_projects_2" name="External_projects_2">External projects</h4>
+
+<ul>
+ <li><a href="http://kmeleon.sourceforge.net/" class="external">K-Meleon browser</a>: the Windows answer to Galeon. Fast IE-look-alike browser, uses IE and NS bookmarking system, fast loading time, privacy features, Java support and complete control of the menus and "hotkeys". Implemented with Mozilla embedding APIs. (<a href="http://kmeleon.sourceforge.net/shots.php" class="external">Screenshots</a>)</li>
+ <li><a href="http://www.neoplanet.com/" class="external">Neoplanet browser</a>: A Gecko add-on for the NeoPlanet browser.</li>
+ <li><a href="http://www.activestate.com/Products/Komodo/index.html" class="external">ActiveState's Komodo</a>: Development environment, based on Mozilla's <a href="/en/XUL" title="en/XUL">XUL</a>. (<a href="http://www.activestate.com/_images/screenshots/ss_Komodo_rails_large.gif" class="external">Screenshot</a>)</li>
+ <li><a href="http://www.macromedia.com/software/homesite/" class="external">Macromedia HomeSite HTML Editor</a>: Internal browser for the Homesite Studio application is implemented by embedding Mozilla. (<a href="http://www.macromedia.com/v1/handlers/index.cfm?ID=17448&amp;Method=Full&amp;Cache=Off" class="external">Mozilla blurb</a>)</li>
+ <li><a href="http://www.bradsoft.com/topstyle/" class="external">Bradsoft's TopStyle CSS builder</a>: Implements an <a href="http://www.bradsoft.com/support/faq/faqitem.asp?id=1" class="external">internal browser</a> using Mozilla ActiveX embedding control.<span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 7.0 / Thunderbird 7.0 / SeaMonkey 2.4)">Obsolete since Gecko 7.0</span></li>
+ <li><a href="http://nxzilla.sourceforge.net/" class="external">NXZILLA</a>: A set of libraries that allow Mozilla to be used with a <a href="http://www.microwindows.org" class="external">NanoX</a> server.</li>
+ <li><a href="http://www.iol.ie/~locka/mozilla/mozilla.htm" class="external">ActiveX control</a>: An ActiveX control allowing for embedding the Gecko layout engine.<span class="inlineIndicator obsolete obsoleteInline" title="(Firefox 7.0 / Thunderbird 7.0 / SeaMonkey 2.4)">Obsolete since Gecko 7.0</span></li>
+ <li><a href="http://ubrowser.com" class="external">LLMozLib &amp; uBrowser</a>: a static library that allows you to embed Gecko and render pages to memory. Includes test applications that illustrate how to use it. Versions for Windows and Mac with Linux to follow.</li>
+</ul>
+
+<h4 id="Mozilla_Examples_2" name="Mozilla_Examples_2">Mozilla Examples</h4>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/qa/mozembed/src/mozEmbed.cpp" class="external" title="http://mxr.mozilla.org/seamonkey/source/embedding/qa/mozembed/src/mozEmbed.cpp">mfcEmbed</a>: Standard Mozilla embedding example application for win32. Basic browser, menus, toolbar, URLbar, html area.</li>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/tests/winEmbed/winEmbed.cpp" class="external">winEmbed</a>: Obsoleted by mfcEmbed. A bare-bones browser with URLbar and html area.</li>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/browser/activex/" class="external">ActiveX control</a>: An ActiveX control for Mozilla using the Gecko layout engine. More information at <a href="http://www.iol.ie/~locka/mozilla/mozilla.htm" class="external">1</a> and <a href="http://www.mozilla.org/docs/codestock99/mozcontrol/mozcontrol_files/v3_document.htm" class="external">2</a>.</li>
+</ul>
+
+<h3 id="Mac" name="Mac">Mac</h3>
+
+<h4 id="External_projects_3" name="External_projects_3">External projects</h4>
+
+<ul>
+ <li><a href="http://www.activestate.com/Products/Komodo/index.html" class="external">ActiveState's Komodo</a>: Development environment, based on Mozilla's <a href="/en/XUL" title="en/XUL">XUL</a>. (<a href="http://www.activestate.com/_images/screenshots/ss_Komodo_rails_large.gif" class="external">Screenshot</a>)</li>
+</ul>
+
+<p><a href="http://www.symphonyinc.co.jp/mozilla/mazmoz/mazmoz_e/index.html" class="external">marbrow</a></p>
+
+<p>: Mac port of</p>
+
+<p><a href="http://www.x2web.com" class="external">X2Web</a></p>
+
+<p>(ja, ko) embedding Mozilla.</p>
+
+<h4 id="Mozilla_Examples_3" name="Mozilla_Examples_3">Mozilla Examples</h4>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/seamonkey/source/embedding/browser/powerplant/" class="external">PPEmbed</a>: Standard Mozilla sample application implemented with Metroworks' Powerplant.</li>
+ <li><a href="http://www.caminobrowser.org/" class="external">Camino</a>: A project aimed at delivering a best-of-breed browser on the Mac OS X platform. Camino uses Cocoazilla, a variant of Fizzilla that consists of a UNIX back end wed to a Cocoa front end.</li>
+</ul>
+
+<h3 id="Java" name="Java">Java</h3>
+
+<h4 id="Examples" name="Examples">Examples</h4>
+
+<ul>
+ <li><a href="http://www.mozilla.org/projects/blackwood/webclient/" class="external">Java Webclient</a>: Provides a browser-neutral Java API that enables generic web browsing capability.</li>
+ <li><a href="http://browserg.mozdev.org/" class="external">BrowserG!</a>: A Java application that uses Webclient for HTML rendering and surfing capabilities.</li>
+</ul>
+
+<p><br>
+ If you find any missing item, please send <a href="mailto:dougt@netscape.com" class="link-mailto">me</a> an email.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a href="mailto:dougt@netscape.com" class="link-mailto">Doug Turner</a></li>
+ <li>Original Document: , , and</li>
+ <li>Last Updated Date: December 8, 2004</li>
+ <li>Copyright Information: Copyright (C) <a href="mailto:dougt@netscape.com" class="link-mailto">Doug Turner</a></li>
+</ul>
+</div>

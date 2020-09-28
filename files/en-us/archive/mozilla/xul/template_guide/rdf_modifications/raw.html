@@ -1,0 +1,71 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Template_and_Tree_Listeners" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Sorting_Results">Next  »</a></p>
+</div>
+<p>One of the most useful aspects of using templates with RDF datasources is that when the RDF datasource changes, for instance a new triple is added, or a triple is removed, the template updates accordingly, adding or removing result output as needed. No extra code needs to be written to do this; it happens automatically. </p><p>This involves a third type of observer involved in a template builder, an <a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIRDFObserver.html">nsIRDFObserver</a>, used to listen for modifications to the RDF datasource. Naturally, this only applies to RDF queries. When the datasource is modified, the datasource will notify any observers of the change. The template builder uses these notifcations to update the template as necessary based on the new or removed information. You don't need to implement this observer yourself, although you may add an observer to the datasource if you want to be notified when the data changes.
+</p><p>Note that this automatic updating of the template does not occur for XML and Sqlite sources, only for RDF datasources. However, as it is possible to use and/or implement other query types with templates, these additional types may support automatic updating. </p><p>There are two main situations when the notifications are made. The first is when the modification functions on the datasource are called. There are four such functions: 'Assert', to add a new triple (or arrow) to the RDF graph, 'Unassert' to remove a triple, 'Change' to adjust the target of a triple, and 'Move' to adjust the source of a 'triple'. For Mozilla's datasources, the latter two just Unassert the old triple and add a new one, creating the effect of changing the value. However, only one notification is made.
+</p><p>For instance, an Assert call looks like the following:
+</p>
+<pre>var source = RDF.GetResource("http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg");
+var predicate = RDF.GetResource("http://purl.org/dc/elements/1.1/description");
+var target = RDF.GetLiteral("One of the thirty or so Egyptian obelisks");
+datasource.Assert(source, predicate, target, true);
+</pre>
+<p>The Assert call adds a new triple to the RDF datasource. When this happens, any templates observing the datasource will be notified via the RDF observer's onAssert method.
+</p><p>The second situation when notifications are made is when a datasource is being loaded or reloaded. Actually, internally, this isn't any different than the other notifications, but it is worth discussing separately. When the RDF parser loads RDF/XML, it starts with a new empty datasource, and as the parser parses the input data, it calls the datasource's Assert function to add each found triple. In effect, this isn't any different than adding the same set of triples yourself using the Assert method.
+</p><p>When reloading a datasource, you might think that the RDF parser removes all the existing data, loads the new data, and adds it to the datasource. Or, you might think that it creates a fresh datasource with the new data. Actually, the parser does something smarter. When reloading a datasource, it keeps the existing RDF triples intact, and only modifies the datasource based on what has changed. When parsing, any triples that already exist are not added again. If a triple does not exist yet, it will be added. Any triples that don't exist in the new data but were there before are removed. This means that the observer will be called only for the triples that differ between the new and old version of the data. If the reloaded datasource hasn't changed, the builder won't receive any notifications. This saves a lot of extra work.
+</p><p>The RDF observer also has two methods onBeginUpdateBatch and onEndUpdateBatch. These are called when performing a lot of operations on a datasource. When changing the datasource, the changes are surrounded by begin and end batch calls. Then, rather than notify on every change, the datasource will send one notification when the changes are finished. The template builder then rebuilds the template completely when done. This is useful when making a large amount of changes to avoid having to keep recalculating parts of the template that might change again quickly.
+</p>
+<h3 id="Adding_RDF_Triples" name="Adding_RDF_Triples"> Adding RDF Triples </h3>
+<p>Let's say we've just added the triple below to the datasource.
+</p>
+<pre>subject: http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg
+predicate: http://purl.org/dc/elements/1.1/description
+object: One of the thirty or so Egyptian obelisks
+</pre>
+<p>The template builder will be notified through the RDF observer mechanism of the change. The template builder will need to check all of the queries and rules to see if this triple could cause a change in what would be displayed. If the triple wouldn't cause any change in the output, the builder won't make any changes. If the output would change, the builder will need to adjust the output, either by adding a new result, removing an old result, or by changing the value of some part of the result. The builder is smart enough to only change what needs to be changed and leave the remaining parts alone. Let's assume we have single query with as follows:
+</p>
+<pre>&lt;query&gt;
+  &lt;content uri="?start"/&gt;
+  &lt;member container="?start" child="?photo"/&gt;
+  &lt;triple subject="?photo"
+             predicate="http://purl.org/dc/elements/1.1/title"
+             object="?title"/&gt;
+  &lt;triple subject="?photo"
+             predicate="http://purl.org/dc/elements/1.1/description"
+             object="?description"/&gt;
+&lt;/query&gt;
+</pre>
+<p>These query statements will cause any photos with both a title and a description to be displayed. Assuming that the 'obelisk' photo doesn't have a description already, adding the triple listed above should cause a new result to be available for this photo.
+</p><p>The builder scans through the query statements one by one.
+</p><p>The <code><a href="/en-US/docs/Mozilla/Tech/XUL/content" title="content">content</a></code> tag can safely be skipped at this part of the process, so the builder moves onto the <code><a href="/en-US/docs/Mozilla/Tech/XUL/member" title="member">member</a></code> statement. This type of statement can only cause a change when an item is being added or removed from a container. Since this is a new RDF triple that isn't an addition or removal from a container, this statement can be skipped. Effectively, if the result generation process was to evaluate this member statement, the same output would be supplied for the ?photo variable whether the new data is there or not. Thus, the member statement can be skipped.
+</p><p>The next statement is a <code><a href="/en-US/docs/Mozilla/Tech/XUL/triple" title="triple">triple</a></code> involving the '<span class="nowiki">http://purl.org/dc/elements/1.1/title</span>' predicate. We aren't adding a arc involving this triple so we can ignore this statement as well. The second triple, however, could cause a change, since the predicate attribute matches the predicate being added. The subject and object are variables so the builder accepts this as a possible change, and moves on to the next step. If the predicate was different, the builder would come to the end of the statements and could just stop there. For instance, if the predicate of the triple being added was '<span class="nowiki">http://purl.org/dc/elements/1.1/date</span>', the builder could ignore it since the template doesn't even care about the date field. Similarly, if the triple didn't use a variable but a static value, this value would also need to match in order to continue processing. </p><p>Now that we know the statements could cause a change in the template, the second step is to fill in the variables for this statement for what could potentially be a new result. In this situation, it fills in the ?photo and ?description variables using the values from the newly added triple.
+</p>
+<pre>(?photo = http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg,
+ ?description = 'One of the thirty or so Egyptian obelisks')
+</pre>
+<p>Next, the builder works its way backwards through the statements, in order to fill in the remaining variables. It does this in a similar manner as it does when it generates results, but traverses the statements in the opposite order. The previous triple will fill in a value for the ?title variable, since we now have a value for the ?photo variable referred to by the triple's subject attribute. Next, the <code>member</code> statement is examined, and, in this situation, the builder fills in the known ?photo variable, and looks for a parent container containing this value. There is a container '<span class="nowiki">http://www.xulplanet.com/rdf/myphotos</span>', so the ?start variable will be filled in with this value. Now, the potential result so far is:
+</p>
+<pre>(?photo = http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg,
+ ?description = 'One of the thirty or so Egyptian obelisks',
+ ?start = http://www.xulplanet.com/rdf/myphotos,
+ ?title = 'Obelisk')
+</pre>
+<p>As you can see, the result looks to have all the information necessary to create a new item in the output. If a statement hadn't generated a result, for instance if the photo did not have a title, or it wasn't contained in a parent container, there would be no match and the builder could stop processing the new triple. For instance, we might have added a description for a new photo, but haven't added the photo to the container resource. Once we do add it to the container with another RDF assertion, the process described above is applied again and this time it may match.
+</p><p>There are still two more things to do before a result is accepted as a new match. First, once the builder reaches the <code>content</code> statement, it checks what the container or reference variable is, in this case ?start, as specified by the uri attribute. The calculated value for the potential new match is '<span class="nowiki">http://www.xulplanet.com/rdf/myphotos</span>'. The builder looks to see if this resource is being used as the stating point in the template. As it happens, this resource is being used, since it is the value of the ref attribute we've been using in these examples. This would also be the case for any starting points used in recursive generation. If the calculated ?start variable was something different, naturally we don't need to change the template output, as that resource isn't being used in a template.
+</p><p>Finally, the builder processes any statements below the one we started at, in order to fill in any remaining variables. In this case, there are no other statements, so the builder accepts this result as a new match. Since all the variables have been filled in, the action body can be processed and a new block of content generated and inserted into the output. We'll find out how the builder determines where to insert the new content is an upcoming section. However, this does show that the template builder can update the output upon changes without rebuilding the entire template.
+</p><p>When an unassertion occurs, or data is removed from the datasource, a different process is used. In this case, the builder looks at the results and determines which ones to remove. When it had first generated the results, the builder stored extra information to specify what parts of the graph were navigated over. It uses this information to help determine what results are no longer needed.
+</p>
+<h3 id="RDF_Changes_that_Affect_a_Binding" name="RDF_Changes_that_Affect_a_Binding"> RDF Changes that Affect a Binding </h3>
+<p>Often, a new RDF triple is created in the datasource which would only affect a template rule's bindings. Since the bindings section of a rule specifies predicates that may optionally have values, the addition or removal or this RDF data would never be able to add or remove a new result. At the very most, the change would cause a label to be filled in with a value, or cleared when removing an RDF triple.
+</p><p>As described earlier, the query part of a template is checked first to see if it would cause a change. After this, the bindings are examined. This is done whether the query produced a new result, removed one, or the content was not affected, since a binding could have affected any existing results. It's possible, for instance, for every existing row to be affected by a single triple being added to the datasource. Consider the following binding:
+</p>
+<pre>&lt;binding subject="?start"
+            predicate="http://www.xulplanet.com/rdf/categoryName"
+            object="?name"/&gt;
+</pre>
+<p>This binding involves a triple pointing out from the starting variable that has been used in these examples. The value for this binding will be the same for every result, so if the category name changes, every result will need to change. However, the builder can use a much simpler process for recalculating the results. Instead of regenerating the content for a result, the builder just looks for attribute values that involve the ?name variable. Those attributes are just recomputed, substituting the new value for ?name instead. This process is repeated for each result that would be affected.
+</p><p>When a template involves multiple queries, the same process is used for each query as with one query. As when generating the results initially, only the highest matching query needs to be applied. The only extra complication to deal with in the multiple query case is when a particular result's member resource already matches a query, yet the new RDF triple would cause an earlier query to match. Since the earlier query takes precedence, the builder handles this by removing the old content first and then adding the new content.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Template_and_Tree_Listeners" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Sorting_Results">Next  »</a></p>
+</div>

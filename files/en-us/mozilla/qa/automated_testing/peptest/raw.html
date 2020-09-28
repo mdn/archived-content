@@ -1,0 +1,143 @@
+<h2 id="Overview">Overview</h2>
+<p>Peptest is an automated testing framework designed to test whether or not the browser's UI thread remains responsive while performing a variety of actions. Tests are simple JavaScript files which can optionally import Mozmill's driver to manipulate the user interface in an automated fashion.</p>
+<p>The code is currently located at <a class="link-https" href="https://github.com/mozilla/peptest">github</a>. If you would like to help you can send pull requests, or ping ahal or mcote on IRC for ways to get started. Peptest is also <a class="link-https" href="https://wiki.mozilla.org/Auto-tools/HowTo/MirrorRepo">mirrored</a> to <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/testing/peptest/">Mozilla Central</a>. Firefox tests can be added to the <a class="link-https" href="https://github.com/mozilla/peptest/tree/master/tests">tests directory </a> (don't forget to also add them to the {{ anch("Test manifest") }}).</p>
+<p>For a longer description of what "unresponsiveness" actually means, see <a class="external" href="http://blog.mozilla.com/ted/2011/06/27/measuring-ui-responsiveness/">ted's blog post</a>.</p>
+<p>The <a class="link-https" href="https://wiki.mozilla.org/Auto-tools/Projects/peptest">Peptest wiki page</a> contains project-related information, including current status and plans for future work.</p>
+<h2 id="Using_Peptest">Using Peptest</h2>
+<h3 id="Running_tests">Running tests</h3>
+<h4 id="Standalone">Standalone</h4>
+<p>Currently tests are run from the command line with python. Make sure you have <a class="link-https" href="https://wiki.mozilla.org/Auto-tools/Python101#Setting_up_Python">pip and virtualenv</a> installed.</p>
+<ol> <li>Create and activate a <a class="external" href="http://pypi.python.org/pypi/virtualenv">virtualenv</a>, then run the command<br> <pre>pip install peptest</pre> </li> <li>Run the command (use --help for a full list of options)<br> <pre>peptest --binary &lt;path_to_binary&gt; --test-path &lt;path_to_test_manifest&gt;</pre> </li>
+</ol>
+<p>Alternatively if you will be modifying peptest, you can install peptest from the source repositories.</p>
+<ol> <li>Clone the <a class="link-https" href="https://github.com/mozilla/mozbase">mozbase repository</a>.</li> <li>Create a new <a class="external" href="http://pypi.python.org/pypi/virtualenv">virtualenv</a> and run 'python setup_development.py' to install all the packages.</li> <li>Clone the <a class="link-https" href="https://github.com/mozilla/peptest">Peptest repo</a> and install peptest (python setup.py develop)</li> <li>Run the command (use --help for a full list of options)<br> <pre>peptest --binary &lt;path_to_binary&gt; --test-path &lt;path_to_test_manifest&gt;</pre> </li>
+</ol>
+<h4 id="From_within_mozilla-central">From within mozilla-central</h4>
+<p>After building, go to your <code>obj</code> dir and type <code>make peptest</code>. This will run all tests in <a class="internal" href="#proxymode">proxy mode</a>, i.e., without accessing the network.</p>
+<h3 id="Test_manifest">Test manifest</h3>
+<p>All parameters are optional except for the --test-path parameter. This parameter should contain the path to a <a class="link-https" href="https://github.com/mozilla/mozbase/tree/master/manifestdestiny">ManifestDestiny</a> manifest that lists all the tests that will be run. Manifests should be of the following format:</p>
+<pre># test paths are relative to the manifest
+[test1.js]
+[test2.js]
+[foo/bar/test3.js]
+# this test is disabled and won't be run
+[test4.js]
+disabled = "Doesn't work, see bug 123456"
+</pre>
+<p>Alternatively, the <code>--test-path</code> parameter can point to a single test which might be useful for debugging purposes.</p>
+<h4 id="Fail_threshold">Fail threshold</h4>
+<p>One more thing that can be specified from the manifest is the failure threshold. When each test finishes, the Peptest harness will aggregate all of the unresponsive times into one <a class="internal" href="#metric">metric</a> that can be used for regression detection. If you specify a <code>failThreshold</code> for a test, it will only be reported as a failure if its metric is higher than the threshold.</p>
+<pre># no failThreshold, this test will fail if there is any unresponsiveness whatsoever
+[test1.js]
+# these tests will only fail if their metrics are greater than their failThresholds
+[test2.js]
+failThreshold = 42
+[test3.js]
+failThreshold = 500
+</pre>
+<h3 id="Test_format">Test format</h3>
+<p>Tests are simply JavaScript files that will be executed in chrome space. This means they have access to any of the APIs that an extension would normally have access to. In addition to this, they also have access to <a class="internal" href="/en/Mozmill" title="Mozmill">Mozmill</a>'s driver for convenient automation of Firefox/Thunderbird's UI.</p>
+<p>It is helpful to think of tests as a series of actions. That is, the UI thread will only be checked for responsiveness while an action is currently happening. This ensures that we are only testing the actions that we care about, and that the test isn't overrun with noise generated during setup or teardown. To accomplish this, tests call a function called <code>performAction(<em>name</em>, <em>func</em>)</code> which takes in two parameters: an action name and a function pointer whose contents consist of a single action.</p>
+<p>The following example test will make sure that the browser remains responsive while opening a page and while searching in Google.</p>
+<pre class="brush: js">// import Mozmill and initialize a controller
+Components.utils.import('resource://mozmill/driver/mozmill.js');
+let controller = getBrowserController();
+
+// Create our first action which will open Google
+pep.performAction('open_google', function() {
+  controller.open('http://google.com');
+  controller.waitForPageLoad();
+});
+
+// stuff not inside a performAction() call won't be tested for responsiveness
+let textbox = findElement.ID(controller.tabs.activeTab, 'lst-ib');
+let button = findElement.Name(controller.tabs.activeTab, 'btnK');
+
+// Create our second action which will perform a search in the google searchbox
+pep.performAction('search_google', function() {
+  textbox.sendKeys('foobar');
+  button.click();
+  controller.waitForPageLoad();
+});
+</pre>
+<p>For documentation on using Mozmill's driver, see the <a class="internal" href="/en/Mozmill#Reference_Desk" title="Mozmill Reference Desk">Mozmill Reference Desk</a>.</p>
+<p>Note that using Mozmill may be convenient but is not required. Here is another example that tests resizing the window without Mozmill.</p>
+<pre class="brush: js">// getWindow is a convenience function exposed to tests
+// It uses nsIWindowMediator to get the current window
+let window = pep.getWindow();
+let width = window.outerWidth;
+let height = window.outerHeight;
+
+pep.performAction('resize_by', function() {
+  window.resizeBy(100, 100);
+});
+
+pep.performAction('resize_to', function() {
+  window.resizeTo(800, 600);
+});
+
+// Tests should clean up after themselves
+window.resizeTo(width, height);
+</pre>
+<p>See the <a class="link-https" href="https://github.com/mozilla/peptest/tree/master/tests/firefox">existing Firefox peptests</a> for more examples.</p>
+<h3 id="Log_format">Log format</h3>
+<p>Peptest uses the <a class="link-https" href="https://github.com/mozilla/mozbase/tree/master/mozlog">mozlog</a> module to standardize on the logging format.</p>
+<pre>PEP TEST-START | test1.js
+PEP TEST-PASS  | test1.js | fail threshold: 0.0 &lt; metric: 0.0
+PEP TEST-END   | test1.js | finished in: 1536 ms
+PEP TEST-START | test2.js
+PEP WARNING    | test2.js | loadPage | unresponsive time: 116 ms
+PEP WARNING    | test2.js | loadPage | unresponsive time: 61 ms
+PEP WARNING    | test2.js | loadPage | unresponsive time: 275 ms
+PEP TEST-UNEXPECTED-FAIL | test2.js | fail threshold: 90.0 &lt; metric: 92.802
+PEP TEST-END   | test2.js | finished in: 8022 ms
+PEP TEST-START | test3.js
+PEP WARNING    | test3.js | scroll_menu | unresponsive time: 121 ms
+PEP TEST-PASS  | test3.js | fail threshold: 15.0 &lt; metric: 14.641
+PEP TEST-END   | test3.js | finished in: 2137 ms
+</pre>
+<p>When a responsiveness measurement runs over 50ms, a <code>TEST-UNEXPECTED-FAIL</code> message is output. The second column is the name of the test file, the third column is the name of the particular action that was being performed and the last column is the time in milliseconds that the event took to process.</p>
+<p>When the test is finished, the total run time and a metric are output. The metric is explained in the next section.</p>
+<h4 id="Metric">Metric</h4>
+<p>The metric is a number that is calculated based on all accumulated unresponsive times. The function used to calculate the metric is</p>
+<pre># values is a list of unresponsive values that occurred during the test
+def get_metric(values):
+    return sum([x*x / 1000.0 for x in values])
+</pre>
+<p>The metric is useful for determining whether a test has regressed or not. For example if a test used to have a metric of 56.43 then all of a sudden has a metric of 193.42 we know a regression has happened.</p>
+<div class="note"><strong>Important:</strong> You cannot compare the metric from one test to that of another. Tests can be of an arbitrary length and therefore it is impossible to conclude that a test with a metric of 10 is more responsive than a test with a metric of 1000. You must only compare metric values to previous metric values of the same test.</div>
+<h3 id="Proxying_to_local_files_to_avoid_network_access">Proxying to local files to avoid network access</h3>
+<p>Peptest can be configured to proxy all network requests to local files. There are three related options:</p>
+<ul> <li><code>--proxy</code>: This option must be given with the location to a text file specifying what URLs should be proxied. The file should have one or more lines in the form <code>&lt;url&gt; [&lt;options&gt;]</code>. See {{ source("testing/peptest/tests/firefox/server-locations.txt") }} for an example (as used in buildbot).</li> <li><code>--server-path</code>: This must be set to the path to a directory serving as the root of the local web server.</li> <li><code>--proxy-host-dirs</code>: This indicates that the files in the web server root should be organized according to URL. Without this option, the same content, as found in the server path, is served for all proxied URLs. With this option, the web server root should have one directory per URL. See <a class="link-https" href="https://github.com/mozilla/peptest/tree/master/tests/firefox/server">the server files</a> in the repo for an example of how the server root should be structured when <code>--proxy-host-dirs</code> is given (as used in buildbot).</li>
+</ul>
+<h2 id="Peptest_Statistics">Peptest Statistics</h2>
+<p>Peptest is run automatically as part of buildbot on all pushes to try, mozilla-inbound, and mozilla-centric. The results are <a class="external" href="http://mrcote.info/peptest/">gathered and displayed</a> for analysis. (This is a temporary URL; eventually they will be folded into the next version of the graph server/perfomatic)</p>
+<h2 id="API_reference">API reference</h2>
+<p>There is a Peptest API that gets injected into the scope of every test under the "pep" namespace. Each test can use the following methods:</p>
+<h3 id="General_methods">General methods</h3>
+<h4 id="pep.performAction(name_function)">pep.performAction(name, function)</h4>
+<p>Performs an action during which responsiveness measurements are recorded.</p>
+<dl> <dt><code>name</code></dt> <dd>The name of the action to run.</dd> <dt><code>function</code></dt> <dd>A function to handle running the action.</dd>
+</dl>
+<h4 id="pep.getWindow(type)">pep.getWindow(type)</h4>
+<p>Returns a reference to the current window.</p>
+<dl> <dt><code>type</code></dt> <dd>A string specifying the XUL {{ XULAttr("windowtype") }} of the window type to return; the default is "navigator:browser".</dd>
+</dl>
+<h4 id="pep.sleep(milliseconds)">pep.sleep(milliseconds)</h4>
+<p>Unfortunately, UI automation is very dependent on timing and sometimes it is necessary to sleep; however, you should avoid this method if you can.</p>
+<dl> <dt><code>milliseconds</code></dt> <dd>The number of milliseconds for which to sleep.</dd>
+</dl>
+<h3 id="Logging_methods">Logging methods</h3>
+<p>These log messages to the console.</p>
+<h4 id="pep.log.debug(msg)">pep.log.debug(msg)</h4>
+<dl> <dt><code>msg</code></dt> <dd>The message to output.</dd>
+</dl>
+<h4 id="pep.log.info(msg)">pep.log.info(msg)</h4>
+<dl> <dt><code>msg</code></dt> <dd>The message to output.</dd>
+</dl>
+<h4 id="pep.log.warning(msg)">pep.log.warning(msg)</h4>
+<dl> <dt><code>msg</code></dt> <dd>The message to output.</dd>
+</dl>
+<h4 id="pep.log.error(msg)">pep.log.error(msg)</h4>
+<dl> <dt><code>msg</code></dt> <dd>The message to output.</dd>
+</dl>

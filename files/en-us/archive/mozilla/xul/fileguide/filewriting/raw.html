@@ -1,0 +1,75 @@
+<div><p><strong><a href="/en-US/docs/FileGuide/IO" title="FileGuide/IO">File and Stream Guide</a>:</strong> <strong>[</strong> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableIO" title="">nsIScriptableIO</a></code> | <a href="/en-US/docs/FileGuide/Accessing_Files" title="FileGuide/Accessing_Files">Accessing Files</a> | <a href="/en-US/docs/FileGuide/FileInfo" title="FileGuide/FileInfo">Getting File Information</a> | <a href="/en-US/docs/FileGuide/FileReading" title="FileGuide/FileReading">Reading from Files</a> | <a href="/en-US/docs/FileGuide/FileWriting" title="FileGuide/FileWriting">Writing to Files</a> | <a href="/en-US/docs/FileGuide/MoveCopyDelete" title="FileGuide/MoveCopyDelete">Moving, Copying and Deleting Files</a> | <a href="/en-US/docs/FileGuide/FileUpDown" title="FileGuide/FileUpDown">Uploading and Downloading Files</a> | <a href="/en-US/docs/FileGuide/Directories" title="FileGuide/Directories">Working With Directories</a> <strong>]</strong></p>
+
+<div class="warning">
+  <strong>Important note:</strong> The pages from the <em>File and Stream Guide</em> use the <code>IO</code> object (<code>nsIScriptableIO</code>), which was not available in any released version of the platform (pending <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=396051" title="https://bugzilla.mozilla.org/show_bug.cgi?id=396051">some fixes</a>). There are alternative XPCOM APIs you can use, your help in updating this pages to use the supported API is very much welcome!</div>
+<p>Other documentation on files and I/O not using the unavailable nsIScriptableIO APIs: <a href="/en-US/docs/Code_snippets/File_I_O">Code snippets: File I/O</a>, <a href="/en-US/docs/XUL_Tutorial/Open_and_Save_Dialogs">Open and Save Dialogs</a>, <a href="/en-US/docs/Reading_textual_data">Reading textual data</a>, <a href="/en-US/docs/Writing_textual_data">Writing textual data</a>, <a href="/en-US/docs/Table_Of_Errors#File_Errors">List of file-related error codes</a>.</p></div>
+
+<p>To write to a file, an <a href="/en-US/docs/FileGuide/Streams" title="FileGuide/Streams">output stream</a> is used. An output stream is an object which can be used to write bytes, strings and other values to a file. To create an output stream, use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code>. This method has a number of options to specify text or binary writing, the character set, and whether to append to an existing file or create a new one.</p>
+<p>To create an input stream, first get a reference to a <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>, and then use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code> to open a stream for writing to it. To learn more about file objects, see <a href="/en-US/docs/FileGuide/Files" title="FileGuide/Files">Files and Streams</a>.</p>
+<pre>try {
+  var file = IO.getFile("Desktop", "myinfo.txt");
+  var stream = IO.newOutputStream(file, "text");
+} catch (ex) { alert(ex); }
+</pre>
+<p>This example retrieves a file object on the desktop called 'myinfo.txt' using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code>. It doesn't matter whether the file exists or not. <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code> is called to create a new output stream, which will be used to write to the file.</p>
+<p>In this example, the operations are enclosed in a try-catch block in order to capture any errors that might occur during the process. See <a href="/en-US/docs/FileGuide/Errors" title="FileGuide/Errors">File Errors</a> for a list of errors that might occur.</p>
+<p>The <code>newOutputStream</code> method takes two arguments in this example. The first argument is the file to write to, and the second is a set of flags which control the writing. In this case, the 'text' flag is used which indicates that you will be writing text to the file. When writing text files, characters are writing using a chosen character set, encoded automatically. The default character set is 'UTF-8' but this can be changed using an additional, yet optional, argument to the <code>newOutputStream</code> method. See below for more details about this.</p>
+<h4 id="Creating_and_Appending_to_Files" name="Creating_and_Appending_to_Files">Creating and Appending to Files</h4>
+<p>A number of flags control whether a new file is created when writing or whether data is appended to an existing file. These flags should be included in addition to the 'text' or 'binary' flags when using the <code>newOutputStream</code> method. The default when writing is to create a new file when the file to write to does not exist, and replace the existing file if it does. However, there are three flags that can be used to control this behaviour.</p>
+<dl>
+  <dt>append</dt>
+  <dd>if used, always write data to the end of the file. This flag is used when adding more to an existing file. If this flag is not used, the data is written at the beginning of the file, overwriting what is already there.</dd>
+  <dt>nocreate</dt>
+  <dd>if used, don't create a new file if it does not already exist. In this case, an error will occur if the file does not exist, which you can capture using a try-catch block. If this flag is not used, a new file will be created. In either case, if the file already exists, it will be truncated to zero length.</dd>
+  <dt>notruncate</dt>
+  <dd>if used, don't truncate an existing file when opening it for writing. Instead, just overwrite the existing content. If the new data being written is shorter than the existing data, the existing data will remain in the areas where no new data was written. If this flag is not used, the file is truncated before being written to.</dd>
+</dl>
+<p>The flags are designed such that the most common case that is needed is with no flags set, so usually you will not set these flags. However, here is an example of how they might be used:</p>
+<pre>var stream = IO.newOutputStream(file, "text nocreate append");
+</pre>
+<p>The flags are specified in a space separated list as the second argument to the <code>newOutputStream</code> method. In this example, the nocreate flag is used to prevent the creation of new files, and the append flag is used to append to an existing file.</p>
+<h4 id="Writing_Text_Files" name="Writing_Text_Files">Writing Text Files</h4>
+<p>Characters are written to a text input stream using a specified character encoding, which defaults to UTF-8. This means that a single character will occupy several bytes if it has a value greater than 128. This encoding is done automatically as long as you specify the 'text' flag to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code>. Other character encodings are available; see <a href="#Writing_Other_Character_Encodings">Writing Other Character Encodings</a> below for details about writing text in other encodings.</p>
+<p>There are several methods available to write to a stream. For text files, you will usually use the <a href="/en-US/docs/InputStream/writeString" title="InputStream/writeString">writeString</a> method.</p>
+<pre>var file = IO.getFile("Desktop", "myinfo.txt");
+var stream = IO.newOutputStream(file, "text");
+stream.writeString("This is some text");
+stream.close();
+</pre>
+<p>In this example, a text input stream is created for the file 'myinfo.txt'. The <code>writeString</code> method is called to write a single string to the file, supplied as an argument to the method. Finally, the stream is closed by calling the stream's <a href="/en-US/docs/InputStream/close" title="InputStream/close">close</a> method. You should ensure that the file is closed, so that the data is properly written and that the file can be reopened for reading later.</p>
+<p>To write additional strings, call the <code>writeString</code> method multiple times.</p>
+<h5 id="Writing_Other_Character_Encodings" name="Writing_Other_Character_Encodings">Writing Other Character Encodings</h5>
+<p>The default character encoding is UTF-8. If you want to write using a different encoding, you can specify a third argument to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code> which specifies the encoding. This example opens a file using the UTF-16 encoding.</p>
+<pre>var stream = IO.newInputStream(file, "text", "UTF-16");
+</pre>
+<p>This third argument is not needed to write using UTF-8. As UTF-8 can store all characters, you will usually always use this default. For a list of supported character encodings, see <a href="/en-US/docs/Character_Sets_Supported_by_Gecko" title="Character_Sets_Supported_by_Gecko">Supported Character Sets</a>.</p>
+<p>The files can be written using the <code>writeString</code> method whichever character encoding is used. The difference is handled internally so you don't need to write any other part of the code differently.</p>
+<h4 id="Writing_Binary_Data" name="Writing_Binary_Data">Writing Binary Data</h4>
+<p>In addition to text, binary values may be written to a file either as bytes or as numbers. A number of methods are available which may be used for this. If you are going to write to a binary file instead of text, specify the 'binary' flag in place of the 'text' flag when creating the stream with <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#newOutputStream()">nsIScriptableIO.newOutputStream()</a></code>.</p>
+<pre>var stream = IO.newOutputStream(file, "binary");
+</pre>
+<p>This line will create and open a binary stream for a file. Once opened, you can write to the file using various writing methods. The following methods are available, all of which take one argument, which is the value to write:</p>
+<ul>
+  <li><a href="/en-US/docs/InputStream/writeBoolean" title="InputStream/writeBoolean">writeBoolean</a> will write a boolean value to a stream. If the argument is false, 0 is written, and if the argument is true, 1 is written. Non-boolean values will be converted into booleans automatically.</li>
+  <li><a href="/en-US/docs/InputStream/write8" title="InputStream/write8">write8</a> will write a single byte. The 8 in the method name indicates that 8 bits of data are being written. If the supplied value is larger than 8 bits, only the lowest significant 8 bits are written.</li>
+  <li><a href="/en-US/docs/InputStream/write16" title="InputStream/write16">write16</a> will write two bytes to the stream.</li>
+  <li><a href="/en-US/docs/InputStream/write32" title="InputStream/write32">write32</a> will write four bytes.</li>
+  <li><a href="/en-US/docs/InputStream/writeFloat" title="InputStream/writeFloat">writeFloat</a> will write a floating point value in four bytes.</li>
+  <li><a href="/en-US/docs/InputStream/writeDouble" title="InputStream/writeDouble">writeDouble</a> will write a floating point value in eight bytes.</li>
+</ul>
+<p>In this example, the <code>write16</code> method is used to write the value 1000 in two bytes. The <code>write32</code> method performs a similar operation except that the value 1000 is written using four bytes, padding the unused bits with zeroes.</p>
+<pre>stream.write16(1000);
+stream.write32(1000);
+</pre>
+<p>All values are read in big endian form, which means that integers are stored in the file with their higher bits first. For the write16 and write32 methods, the values are always interpreted as unsigned values. If you want to write a negative value, use the following calculation first to convert the value:</p>
+<pre>function writeNegative(val)
+{
+  if (val &gt; 0x7fff)
+    val = ~(0x10000 - val - 1);
+  stream.write16(val);
+}
+</pre>
+<p>One last method that is useful for writing to binary streams is the <a href="/en-US/docs/InputStream/writeByteArray" title="InputStream/writeByteArray">writeByteArray</a> method, used to write an array of bytes. This method takes an array of values and writes them all in sequence, where each element in the array is written as one byte.</p>
+<pre>stream.writeByteArray([25, 77, 46, 8]);
+</pre>
+<p>This example uses the <code>writeByteArray</code> method to write 4 bytes to the stream.</p>

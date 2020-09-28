@@ -1,0 +1,477 @@
+---
+title: Finding window handles
+slug: Archive/Add-ons/Code_snippets/Finding_Window_Handles
+tags:
+  - Add-ons
+  - Code snippets
+  - Extensions
+  - XPCOM
+  - js-ctypes
+---
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<div class="note">
+<p><strong>Note:</strong> Starting in <span title="(Firefox 17.0 / Thunderbird 17.0 / SeaMonkey 2.14)">Gecko 17.0</span>, <code>nsIBaseWindow.nativeHandle</code> provides the handle (<code>HWND</code> [Widows], <code>GdkWindow*</code> [Linux], <code>NSWindow*</code> [MacOSX],...) of a top-level window, for all plateforms, as a string.</p>
+</div>
+
+<p>When working on Windows platforms, many APIs and frameworks require a window handle (HWND type). Since Mozilla tries to be as cross-platform as possible, it can be difficult to get the handle you need.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Starting in <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span>, only the top level browser window has an HWND. Web content windows (in tabs) do not have their own HWNDs. Typically the top level browser window HWND has no children, although if there are windowed plugins (such as Flash) visible in the window, they will have HWNDs whose parent is the top level browser window HWND.</p>
+</div>
+
+<p>Here is some simple code that can get access to Mozilla window handles. This code can be used from external application or from an XPCOM component within an extension.</p>
+
+<h3 id="Finding_the_content_window_handle" name="Finding_the_content_window_handle">Finding the content window handle</h3>
+
+<pre class="brush: cpp"> HWND hContent = 0;
+
+ // first we need to find the main browser window
+ HWND hFF = ::FindWindowEx(0, 0, "MozillaUIWindowClass", 0);
+ if (hFF) {
+    // next we step down through a fixed structure
+    HWND hTemp;
+    hTemp = ::FindWindowEx(hFF, 0, "MozillaWindowClass", 0);
+    hTemp = ::FindWindowEx(hTemp, 0, "MozillaWindowClass", 0);
+
+    // assume only 1 window at this level has children
+    // and the 1 with children is the one we want
+    HWND hChild = ::GetWindow(hTemp, GW_CHILD);
+    while (hTemp &amp;&amp; !hChild) {
+      hTemp = ::GetWindow(hTemp, GW_HWNDNEXT);
+      hChild = ::GetWindow(hTemp, GW_CHILD);
+    }
+
+    // did we find a window with children?
+    // that child is hopefully the content window
+    if (hTemp) {
+      hTemp = ::GetWindow(hTemp, GW_CHILD);
+      hContent = ::FindWindowEx(hTemp, 0, "MozillaContentWindowClass", 0);
+    }
+ }
+
+ // at this point hContent is NULL or the content window HWND
+
+</pre>
+
+<p>I am not sure how "fragile" the assumptions are about the window structure, but it matched the values I got from SPY++.</p>
+
+<p>Another technique is to use the Accessibility framework, see for example <a class="external" href="http://developer.mozilla.org/en/docs/Working_with_Multiple_Versions_of_Interfaces" rel="freelink">http://developer.mozilla.org/en/docs..._of_Interfaces</a></p>
+
+<h3 id="Another_way_to_find_a_window_handle...">Another way to find a window handle...</h3>
+
+<p>Is to query it from an object. Once you have a docShell, QueryInterface it into nsIBaseWindow, call GetMainWidget on result, and then call GetNativeData(NS_NATIVE_WINDOW).</p>
+
+<p>Like this</p>
+
+<pre class="brush: cpp">HWND GetHWND(nsIBaseWindow *window)
+
+{
+  nsCOMPtr&lt; nsIWidget &gt; widget;
+  window-&gt;GetMainWidget(getter_AddRefs(widget));
+
+  if (widget)
+    return (HWND) widget-&gt;GetNativeData(NS_NATIVE_WINDOW);
+}
+</pre>
+
+<h3 id="Yet_Another_way_to_find_a_window_handle_(parent_window_handle)"> Yet Another way to find a window handle (parent window handle)</h3>
+
+<p>This method is for people who want to get the top level window HWND from the window object in javascript. Comparing to the method above, by using this method, you don't have to compile your component with nsIWidget.h and other bunchs of h files that should not be exposed to outside, and could change every time Firefox updates, all you need is nsIBaseWindow.idl(It's not in gecko_sdk, get this from the latest Firefox source, or <a class="external" href="http://mxr.mozilla.org/mozilla/source/widget/public/nsIBaseWindow.idl" rel="freelink">http://mxr.mozilla.org/mozilla/sourc...BaseWindow.idl</a>), and use xpidl to compile it to .h file, although that's stll a unfrozen interface, but it should be a lot better. Notice that by using only the C++ part of this code will get the the parent window handle of the nsIBaseWindow you give as a param.  That means if you use the top level nsIBaseWindow as a param, NULL will be returned in the chain and cause crash of Firefox, that's a bug of firefox.(<a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=489045" rel="freelink">https://bugzilla.mozilla.org/show_bug.cgi?id=489045</a>)</p>
+
+<p>Now, let's move forward. First, in JavaScript, the code gets the nsIBaseWindow we want, it's a direct child of the top nsIBaseWindow.</p>
+
+<pre class="brush: js">        var baseWindow = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                        .getInterface(Components.interfaces.nsIWebNavigation)
+                        .QueryInterface(Components.interfaces.nsIDocShellTreeItem)
+                        .treeOwner
+                        .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                        .getInterface(Components.interfaces.nsIBaseWindow);</pre>
+
+<p>Then in C++ part, a function take nsIBaseWindow as param</p>
+
+<pre class="brush: cpp">HWND getParentWindowHWND(nsIBaseWindow *window)
+
+{
+	nativeWindow hwnd;
+	nsresult rv = window-&gt;GetParentNativeWindow(&amp;hwnd);
+	if (NS_FAILED(rv)) return NULL;
+	return (HWND)hwnd;
+}
+</pre>
+
+<p>That's it; use with caution!</p>
+
+<h2 id="OS_Specific_Examples_Using_Javascript_(js-ctypes)_nsIBaseWindow_->_nativeHandle">OS Specific Examples Using Javascript (js-ctypes) <code>nsIBaseWindow</code> -&gt; <code>nativeHandle</code></h2>
+
+<p>In all of the examples below, the native handle to the most recent navigator:browser is obtained and then it is focused. Run the snippets below from the Scratchpad in Environment &gt; Browser.</p>
+
+<p>Recall that <code>nsIBaseWindow</code> -&gt; <code>nativeHandle</code> returns the following in the different operating systems:</p>
+
+<ul>
+ <li>Windows - <code>HWND</code></li>
+ <li>Mac OS X -<code> NSWindow*</code></li>
+ <li>Linux - <code>GdkWindow*</code> (it will be <code>GdkWindow*</code> no matter what desktop/window manager) is in use, for explanation why see the article: <a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries#UNIX">Standard OS Libraries - UNIX</a> Section)</li>
+</ul>
+
+<h3 id="Windows">Windows</h3>
+
+<pre class="brush: js">Components.utils.import('resource://gre/modules/Services.jsm');
+var browserWindow = Services.wm.getMostRecentWindow('navigator:browser');
+if (!browserWindow) {
+    throw new Error('No browser window found');
+}
+
+var baseWindow = browserWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebNavigation)
+                              .QueryInterface(Ci.nsIDocShellTreeItem)
+                              .treeOwner
+                              .QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIBaseWindow);
+
+var hwndString = baseWindow.nativeHandle;
+
+Components.utils.import('resource://gre/modules/ctypes.jsm');
+
+var user32 = ctypes.open('user32.dll');
+
+/* http://msdn.microsoft.com/en-us/library/ms633539%28v=vs.85%29.aspx
+ * BOOL WINAPI SetForegroundWindow(
+ *   __in_ HWND hWnd
+ * );
+ */
+var SetForegroundWindow = user32.declare('SetForegroundWindow', ctypes.winapi_abi,
+    ctypes.bool, // return BOOL
+    ctypes.voidptr_t // HWND
+);
+
+var hwnd = ctypes.voidptr_t(ctypes.UInt64(hwndString));
+var rez_SetForegroundWindow = SetForegroundWindow(hwnd);
+
+console.log('rez_SetForegroundWindow:', rez_SetForegroundWindow, rez_SetForegroundWindow.toString());
+
+user32.close();</pre>
+
+<h3 id="Mac_OS_X">Mac OS X</h3>
+
+<h4 id="Objective-C">Objective-C</h4>
+
+<pre class="brush: js">Components.utils.import('resource://gre/modules/Services.jsm');
+var browserWindow = Services.wm.getMostRecentWindow('navigator:browser');
+if (!browserWindow) {
+    throw new Error('No browser window found');
+}
+
+var baseWindow = browserWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebNavigation)
+                              .QueryInterface(Ci.nsIDocShellTreeItem)
+                              .treeOwner
+                              .QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIBaseWindow);
+
+var NSWindowString = baseWindow.nativeHandle;
+
+Components.utils.import('resource://gre/modules/ctypes.jsm');
+
+var objc = ctypes.open(ctypes.libraryName('objc'));
+
+// types
+let id = ctypes.voidptr_t;
+let SEL = ctypes.voidptr_t;
+
+// constants
+let nil = ctypes.voidptr_t(0);
+
+//common functions
+let sel_registerName = objc.declare('sel_registerName', ctypes.default_abi, SEL, ctypes.char.ptr);
+let objc_msgSend = objc.declare('objc_msgSend', ctypes.default_abi, id, id, SEL, '...');
+
+/* https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ApplicationKit/Classes/NSApplication_Class/index.html#//apple_ref/occ/instp/NSApplication/orderFront:
+ *   [NSWindowPtr orderFront:nil]
+ */
+var orderFront = sel_registerName('orderFront:');
+
+var NSWindowPtr = ctypes.voidptr_t(ctypes.UInt64(NSWindowString));
+var rez_orderFront = objc_msgSend(NSWindowPtr, orderFront, nil);
+
+console.log('rez_orderFront:', rez_orderFront, rez_orderFront.toString());
+
+objc.close();</pre>
+
+<h3 id="Unix">Unix</h3>
+
+<p>Under Unix systems, the <code>nativeHandle</code> holds a string address to a <code>GdkWindow*</code> (the asterik/star means pointer). The string is made into an actual <code>GdkWindow* </code>like this:</p>
+
+<pre class="brush: js">var GdkWindow = ctypes.StructType('GdkWindow');
+var GDKWindowPtrString = baseWindow.nativeHandle;
+var GdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));</pre>
+
+<h4 id="Working_with_GdkWindow*">Working with GdkWindow*</h4>
+
+<h5 id="GdkWindow*_to_XID">GdkWindow* to XID</h5>
+
+<pre class="brush: js">var GdkWindow = ctypes.StructType('GdkWindow');
+var GdkDrawable = ctypes.StructType('GdkDrawable');
+var CARD32 = /^(Alpha|hppa|ia64|ppc64|s390|x86_64)-/.test(Services.appinfo.XPCOMABI) ? ctypes.unsigned_int : ctypes.unsigned_long;
+var XID =  CARD32;
+
+var gdk = ctypes.open('libgdk-x11-2.0.so.0');
+var gdk_x11_drawable_get_xid = gdk.declare('gdk_x11_drawable_get_xid', ctypes.default_abi, XID, GdkDrawable.ptr);
+
+var GDKWindowPtrString = baseWindow.nativeHandle;
+var GdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+var GdkDrawPtr = ctypes.cast(GdkWinPtr, GdkDrawable.ptr);
+
+var xidOfWin = gdk_x11_drawable_get_xid(GdkDrawPtr);
+</pre>
+
+<h5 id="GdkWindow*_to_GtkWindow*">GdkWindow* to GtkWindow*</h5>
+
+<p>How to get the <code>GtkWindow*</code> from the <code>GdkWindow*</code>? Mozilla developers have put the reference to the <code>GtkWindow*</code> into the <code>GdkWindow*</code> "user data", as a back reference. The "user data" is accessed by using the GDK function of <code>gdk_window_get_user_data</code>.</p>
+
+<pre class="brush: js">var GdkWindow = ctypes.StructType('GdkWindow');
+var gpointer = ctypes.voidptr_t;
+var GtkWindow = ctypes.StructType('GtkWindow');
+
+var GDKWindowPtrString = baseWindow.nativeHandle;
+var GdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+
+var gptr = gpointer();
+gdk_window_get_user_data(GdkWinPtr, gptr.address());
+
+var GtkWinPtr = ctypes.cast(gptr, GtkWindow.ptr);</pre>
+
+<h4 id="Working_with_GtkWindow*">Working with GtkWindow*</h4>
+
+<h5 id="GtkWindow*_to_XID">GtkWindow* to XID</h5>
+
+<pre class="brush: js">// soon to come</pre>
+
+<h5 id="GtkWindow*_to_GdkWindow*">GtkWindow* to GdkWindow*</h5>
+
+<p>How to get a <code>GdkWindow*</code> from the <code>GtkWindow*</code>? There is a GTK+ provided function for this, <code>gtk_widget_get_window</code>. The <code>GtkWindow*</code> is cast to a <code>GtkWidget*</code>, and this is passed to the <code>gtk_widget_get_window</code> function which returns a <code>GdkWindow*</code>.</p>
+
+<pre class="brush: js">var GdkWindow = ctypes.StructType('GdkWindow');
+var gpointer = ctypes.voidptr_t;
+var GtkWindow = ctypes.StructType('GtkWindow');
+var GtkWidget = ctypes.StructType('GtkWidget');
+
+/***** this part is from the GdkWindow* to GtkWindow* example above
+var GDKWindowPtrString = baseWindow.nativeHandle;
+var GdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+
+var gdk = ctypes.open('libgdk-x11-2.0.so.0');
+var gdk_window_get_user_data = gdk.declare('gdk_window_get_user_data', ctypes.default_abi, ctypes.void_t, GdkWindow.ptr, gpointer.ptr);
+var gptr = gpointer();
+gdk_window_get_user_data(GdkWinPtr, gptr.address());
+
+var GtkWinPtr = ctypes.cast(gptr, GtkWindow.ptr); // we now have GtkWindow*
+ */
+
+// lets take it back to GdkWindow*
+var gtk = ctypes.open('libgtk-x11-2.0.so.0');
+var gtk_widget_get_window = gtk.declare('gtk_widget_get_window', ctypes.default_abi, GdkWindow.ptr, GtkWidget.ptr); // for getGdkWindowFromGtkWindow
+
+var gtkWidgetPtr = ctypes.cast(GtkWinPtr, GtkWidget.ptr);
+var backTo_gdkWinPtr = gtk_widget_get_window(gtkWidgetPtr);
+ </pre>
+
+<h4 id="Working_with_XID">Working with XID</h4>
+
+<h5 id="sect1"> </h5>
+
+<h5 id="XID_to_GdkWindow*">XID to GdkWindow*</h5>
+
+<pre class="brush: js">// soon to come</pre>
+
+<h5 id="XID_to_GtkWindow*">XID to GtkWindow*</h5>
+
+<pre class="brush: js">// soon to come</pre>
+
+<p>Now onto the examples!</p>
+
+<h4 id="Examples">Examples</h4>
+
+<h5 id="GDK">GDK</h5>
+
+<pre class="brush: js">Components.utils.import('resource://gre/modules/Services.jsm');
+var browserWindow = Services.wm.getMostRecentWindow('navigator:browser');
+if (!browserWindow) {
+    throw new Error('No browser window found');
+}
+
+var baseWindow = browserWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebNavigation)
+                              .QueryInterface(Ci.nsIDocShellTreeItem)
+                              .treeOwner
+                              .QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIBaseWindow);
+
+var GDKWindowPtrString = baseWindow.nativeHandle;
+
+Components.utils.import('resource://gre/modules/ctypes.jsm');
+
+var gdk = ctypes.open('libgdk-x11-2.0.so.0');
+
+// types
+let guint32 = ctypes.uint32_t;
+let GdkWindow = ctypes.StructType('GdkWindow');
+
+// https://developer.gnome.org/gdk3/stable/gdk3-Windows.html#gdk-window-focus
+var gdk_window_focus = gdk.declare('gdk_window_focus', ctypes.default_abi, ctypes.void_t, GdkWindow.ptr, guint32);
+
+// https://developer.gnome.org/gdk2/stable/gdk2-X-Window-System-Interaction.html#gdk-x11-get-server-time
+var gdk_x11_get_server_time = gdk.declare('gdk_x11_get_server_time', ctypes.default_abi, guint32, GdkWindow.ptr);
+
+var browserWindow_madeIntoGdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+
+var rez_gst = gdk_x11_get_server_time(browserWindow_madeIntoGdkWinPtr);
+console.info('rez_gst:', rez_gst, uneval(rez_gst)); // return is a number of ms since the computer (XServer) was on
+
+var rez_gwf = gdk_window_focus(browserWindow_madeIntoGdkWinPtr, rez_gst);
+console.info('rez_gwf:', rez_gwf, uneval(rez_gwf)); // return is void so this will be undefined
+
+gdk.close();
+</pre>
+
+<h5 id="GTK">GTK+</h5>
+
+<pre class="brush: js">Components.utils.import('resource://gre/modules/Services.jsm');
+var browserWindow = Services.wm.getMostRecentWindow('navigator:browser');
+if (!browserWindow) {
+    throw new Error('No browser window found');
+}
+
+var baseWindow = browserWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebNavigation)
+                              .QueryInterface(Ci.nsIDocShellTreeItem)
+                              .treeOwner
+                              .QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIBaseWindow);
+
+var GDKWindowPtrString = baseWindow.nativeHandle;
+
+Components.utils.import('resource://gre/modules/ctypes.jsm');
+
+var gdk = ctypes.open('libgdk-x11-2.0.so.0');
+var gtk = ctypes.open('libgtk-x11-2.0.so.0');
+
+// types
+let guint32 = ctypes.uint32_t;
+let GdkWindow = ctypes.StructType('GdkWindow');
+let gpointer = ctypes.voidptr_t;
+let GtkWindow = ctypes.StructType('GtkWindow');
+
+//https://developer.gnome.org/gdk3/stable/gdk3-Windows.html#gdk-window-get-user-data
+var gdk_window_get_user_data = gdk.declare('gdk_window_get_user_data', ctypes.default_abi, ctypes.void_t, GdkWindow.ptr, gpointer.ptr);
+
+//https://developer.gnome.org/gtk3/stable/GtkWindow.html#gtk-window-present
+var gtk_window_present = gtk.declare('gtk_window_present', ctypes.default_abi, ctypes.void_t, GtkWindow.ptr);
+
+//https://developer.gnome.org/gtk3/stable/GtkWindow.html#gtk-window-present-with-time
+var gtk_window_present_with_time = gtk.declare('gtk_window_present_with_time', ctypes.default_abi, ctypes.void_t, GtkWindow.ptr, guint32);
+
+// gdk_x11_get_server_time is needed for gtk_window_present_with_time
+// https://developer.gnome.org/gdk2/stable/gdk2-X-Window-System-Interaction.html#gdk-x11-get-server-time
+var gdk_x11_get_server_time = gdk.declare('gdk_x11_get_server_time', ctypes.default_abi, guint32, GdkWindow.ptr);
+
+var browserWindow_madeIntoGdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+
+var gptr = gpointer();
+var rez_gwgud = gdk_window_get_user_data(browserWindow_madeIntoGdkWinPtr, gptr.address());
+console.info('rez_gwgud:', rez_gwgud, /*rez_gwgud.toString(),*/ uneval(rez_gwgud)); // return is void so cant do .toString on it
+
+var browserWindow_madeIntoGtkWindowPtr = ctypes.cast(gptr, GtkWindow.ptr);
+
+// focusing window this way is better, so it maintains proper history in case you or some other app want to focus "most recent window" by timestamp
+// var rez_gst = gdk_x11_get_server_time(browserWindow_madeIntoGdkWinPtr);
+// console.info('rez_gst:', rez_gst, uneval(rez_gst)); // return is a number of ms since the computer (XServer) was on
+// var rez_gwpwt = gtk_window_present_with_time(browserWindow_madeIntoGtkWindowPtr, rez_gst);
+// console.info('rez_gwaf:', rez_gwpwt, uneval(rez_gwpwt));
+
+var rez_gwp = gtk_window_present(browserWindow_madeIntoGtkWindowPtr);
+console.info('rez_gwaf:', rez_gwaf, uneval(rez_gwaf));
+
+gdk.close();
+gtk.close();</pre>
+
+<h5 id="X11">X11</h5>
+
+<div class="note">
+<p><strong>WARNING </strong>This example below does not focus a window yet, it does convert from a <code>GdkWindow*</code> to a <code>XID</code> and that's it, the code for focusing the window is soon to come.</p>
+</div>
+
+<pre class="brush: js">Components.utils.import('resource://gre/modules/Services.jsm');
+var browserWindow = Services.wm.getMostRecentWindow('navigator:browser');
+if (!browserWindow) {
+    throw new Error('No browser window found');
+}
+
+var baseWindow = browserWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIWebNavigation)
+                              .QueryInterface(Ci.nsIDocShellTreeItem)
+                              .treeOwner
+                              .QueryInterface(Ci.nsIInterfaceRequestor)
+                              .getInterface(Ci.nsIBaseWindow);
+
+var GDKWindowPtrString = baseWindow.nativeHandle;
+
+Components.utils.import('resource://gre/modules/ctypes.jsm');
+
+var gdk = ctypes.open('libgdk-x11-2.0.so.0');
+var x11 = ctypes.open('libX11.so.6');
+
+// types
+let guint32 = ctypes.uint32_t;
+let GdkWindow = ctypes.StructType('GdkWindow');
+let GdkDrawable = ctypes.StructType('GdkDrawable');
+let CARD32;
+if (/^(Alpha|hppa|ia64|ppc64|s390|x86_64)-/.test(Services.appinfo.XPCOMABI)) {
+    CARD32 = ctypes.unsigned_int;
+} else {
+    CARD32 = ctypes.unsigned_long;
+}
+let XID =  CARD32;
+
+//https://developer.gnome.org/gdk2/stable/gdk2-X-Window-System-Interaction.html#gdk-x11-drawable-get-xid
+<code>var gdk_x11_drawable_get_xid</code> = gdk.declare('<code>gdk_x11_drawable_get_xid', ctypes.default_abi</code>, XID, GdkDrawable.ptr);
+
+
+var browserWindow_madeIntoGdkWinPtr = GdkWindow.ptr(ctypes.UInt64(GDKWindowPtrString));
+var browserWindow_madeIntoGdkDrawable = ctypes.cast(browserWindow_madeIntoGdkWinPtr, GdkDrawable.ptr);
+
+var browserWindow_madeIntoXID = gdk_x11_drawable_get_xid(browserWindow_madeIntoGdkDrawable);
+console.info('browserWindow_madeIntoXID:', browserWindow_madeIntoXID, browserWindow_madeIntoXID.toString(), uneval(browserWindow_madeIntoXID));
+
+// the code to focus the window is soon to come, its long and messy it needs to be made into a simple readable good for example. to see the messy code see here: https://gist.github.com/Noitidart/60aab0a96f060240614f#file-_ff-addon-snippet-x11_focusmostrecentwindowofpid-js-L354
+
+gdk.close();
+x11.close();
+</pre>
+
+<h2 id="See_Also">See Also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes">js-ctypes</a> - How to use C from Javascript
+
+  <ul>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a> - Specifics of js-ctypes per OS</li>
+  </ul>
+ </li>
+</ul>

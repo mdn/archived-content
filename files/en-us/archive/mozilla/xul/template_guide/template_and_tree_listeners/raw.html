@@ -1,0 +1,50 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Template_Builder_Interface" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:RDF_Modifications">Next  »</a></p>
+</div>
+<p>There are several listeners (or observers) used during the template build process, each used for different purposes. These each implement a different XPCOM interface, as listed below:</p>
+<ul> <li><a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIXULBuilderListener.html">nsIXULBuilderListener</a> - used to listen to template rebuilds.</li> <li><a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIXULTreeBuilderObserver.html">nsIXULTreeBuilderObserver</a> - used to listen to particular tree operations.</li> <li><a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIRDFObserver.html">nsIRDFObserver</a> - for RDF datasources, used to listen to changes in the underlying RDF datasource.</li>
+</ul>
+<h3 id="Listening_for_Template_Rebuilds" name="Listening_for_Template_Rebuilds">Listening for Template Rebuilds</h3>
+<p>The first of these is the simplest and involves two methods, willRebuild and didRebuild. You would implement this object with these two methods if you wish to be notified when the template is rebuilt using the builder's rebuild call. The template builder might also force a rebuild when the underlying data change notifications require it. The primary use of this listener is to store some state before the template is rebuilt and restore it afterwards. Recall that when a template is rebuilt, all of the existing content will be removed and generated fresh. The willRebuild method of any listeners will be called before the content is removed, and didRebuild method will be called when the content has been regenerated. This listener will also work for tree builders, and will call the appropriate methods before and after the tree has been generated.</p>
+<p>To assign a builder listener to a builder, use the addListener method.</p>
+<pre>var someListener = {
+  item: null,
+  willRebuild : function(builder) {
+    this.item = builder.getResourceAtIndex(builder.root.currentIndex);
+  },
+  didRebuild : function(builder) {
+    if (this.item) {
+      var idx = builder.getIndexOfResource(this.item)
+      if (idx != -1) builder.root.view.selection.select(idx);
+    }
+  }
+};
+
+tree.builder.addListener(someListener);
+</pre>
+<p>This example is very simple and just saves and restores the selected index after a rebuild. Since the content goes away during a rebuild, the selection is lost, so it is restored here during the didRebuild method. The Firefox bookmarks window uses this technique. If you try <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex35.xul.txt">an example</a> using the code above, you will notice that the first tree will maintain the selection when the Rebuild button is pressed, whereas in the second tree does not. This is because the listener is only attached to the first tree.</p>
+<p>The example above makes use of the getResourceAtIndex and getIndexOfResource methods. These two methods are available for tree builders and will convert between an index in the tree and the associated member resource for the item at the index. Naturally, we can't store the index as the item may have moved its position. Or, the resource may no longer be part of the results, which is why we need to check the return value of the getIndexOfResource method. (As this example uses the RDF resources directly, it requires elevated privileges so you will need a chrome URL to test it.)</p>
+<p>You might also guess that the builder's root property, which is used above, refers to the tree. In a content builder, it will return the element with the datasources attribute, which in the template builder is referred to as the root element.</p>
+<p>Finally, you can remove a listener using the builder's removeListener method.</p>
+<h3 id="Listening_for_Tree_Changes" name="Listening_for_Tree_Changes">Listening for Tree Changes</h3>
+<p>The second type of listener is used to handle particular actions related to trees. The tree builder implements the <a class="internal" href="/en/nsITreeView" title="en/nsITreeView">nsITreeView</a> interface, so handles the gathering of data and passing it on to the tree. The tree widget informs the view when certain operations are performed that might affect the data. The tree view handles all of these operations, but allows an observer to be attached which is invoked during these operations. For instance, the observer may have an onToggleOpenState method which will be called when the user opens or closes a row. The tree builder will handle the adding or removing of rows, but will call the observer so that it can perform some task.</p>
+<p>The tree builder observer implements the <a class="external" href="http://www.xulplanet.com/references/xpcomref/ifaces/nsIXULTreeBuilderObserver.html" style="border-bottom: 3px solid red;">nsIXULTreeBuilderObserver</a> interface and may be attached to a tree builder using the builder's addObserver method. You can add more than one observer if needed, and can remove them again with the builder's removeObserver method.</p>
+<p>The observer is always invoked before the appropriate operation is performed. For instance, the onToggleOpenState method of any observers will be called before the tree item is opened. After the observers have finished, the tree builder opens the row and adds any child rows inside. Note that you cannot cancel the operation from within the observer.</p>
+<p>Some useful functions of the observer are the drag and drop related callbacks to handle when an item is dragged onto the tree. This makes handling dragging onto a tree fairly simple. All you need to do is implement three methods, <code>canDropOn</code>, <code>canDropBeforeAfter</code> and <code>onDrop</code>.</p>
+<p>The tree observer receives drag related events in three places: over a container row, before a row, and after a row. This allows you to handle dragging with more flexibility. For example, in some situations you may want to require dragging onto a folder type of row. In other situations, you may wish to allow items to be dragged between (before or after) rows. This would be the situation if you were dragging items from that tree around, for instance dragging a bookmark from one location to another. The tree widget will draw a small line between the rows while dragging. All you need to do is add a tree builder observer which returns true for the canDrop method. Note that the 'drag on' case only allows dragging onto containers, not ordinary rows.</p>
+<pre>var treeBuilderObserver = {
+  canDropBeforeAfter : function(idx, orient) { return false; },
+  canDropOn : function(idx, orient) { return true; },
+  canDrop : function(idx, orient) { return !orient; },
+  onDrop : function(idx, orient) {
+    // do something here
+  },
+};
+//tree.builderView.addObserver(treeBuilderObserver);</pre>
+<pre>// ppchenhui@hotmail.com
+tree.builder.QueryInterface (Components.interfaces.nsIXULTreeBuilder)
+.addObserver(treeBuilderObserver);</pre>
+<p>The <code>canDropBeforeAfter</code> method returns false since we do not want to allow before and after drops. The <code>canDropOn</code> method returns true however. The <code>canDrop</code> method is there for compatibility with older versions; this function checks the orientation and returns the opposite. This works as the 'on' value is 0 and the 'between' values are -1 and 1. Obviously, this code is much simpler than what we would really want to use -- we should be checking what is being dragged to make sure that it is compatible with the tree. Or, we might want to allow dropping on specific rows only; the drop methods are supplied with an index argument so we can check for this.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Template_Builder_Interface" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:RDF_Modifications">Next  »</a></p>
+</div>

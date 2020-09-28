@@ -1,0 +1,484 @@
+---
+title: Using Objective-C from js-ctypes
+slug: Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes
+tags:
+  - JavaScript
+  - Mac OS X
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+<ol>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+ <li class="toggle">
+  <details><summary>Introduction</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details><summary>References</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary>Examples</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li>
+  </ol>
+  </details>
+ </li>
+</ol>
+</section>
+
+<p><span class="seoSummary">Objective-C has its own syntax, it cannot be written directly with js-ctypes. This guide explains how to convert Objective-C code into js-ctypes code.</span></p>
+
+<div class="note">
+<p>A simple example is also in <a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries#Cocoa">Standard OS Libraries</a> page.</p>
+</div>
+
+<h2 id="Converting_Objective-C_code_to_C_code">Converting Objective-C code to C code</h2>
+
+<p>To convert Objective-C code to js-ctypes, we need to convert it to C code first. We can then convert it straight to js-ctypes code.</p>
+
+<h3 id="Speech_Synthesis_Example">Speech Synthesis Example</h3>
+
+<p>Let&apos;s start with the following Objective-C code, which invokes the <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ApplicationKit/Classes/NSSpeechSynthesizer_Class/">Speech Synthesis API</a> to say &quot;Hello, Firefox!&quot;. It uses the default system voice and waits until the speaking is done.</p>
+
+<pre class="brush: cpp">#import &lt;AppKit/AppKit.h&gt;
+
+int
+main(void) {
+  NSSpeechSynthesizer* synth = [[NSSpeechSynthesizer alloc] initWithVoice: nil];
+
+  [synth startSpeakingString: @&quot;Hello, Firefox!&quot;];
+  // Wait until start speaking.
+  while (![synth isSpeaking]) {}
+  // Wait while speaking.
+  while ([synth isSpeaking]) {}
+
+  [synth release];
+
+  return 0;
+}
+</pre>
+
+<p>Save this file as <code>test.m</code>, and run with the following command, inside the same directory as the saved file (needs XCode).</p>
+
+<pre class="brush: cpp">$ clang -framework AppKit test.m &amp;&amp; ./a.out
+</pre>
+
+<h3 id="Class_Message_and_Selector">Class, Message, and Selector</h3>
+
+<p>Our task at hand is to convert Objective-C syntax to C syntax. Let&apos;s look at the following codelet:</p>
+
+<pre class="brush: cpp">[NSSpeechSynthesizer alloc]
+</pre>
+
+<p>It passes an <code>alloc</code> message to the <code>NSSpeechSynthesizer</code> class, in Objective-C syntax. It performs the following through this Objective-C syntax:</p>
+
+<ol>
+ <li>Get the <code>NSSpeechSynthesizer</code> class definition.</li>
+ <li>Register the <code>alloc</code> selector for the message.</li>
+ <li>Send a message to the class, with the selector.</li>
+</ol>
+
+<h4 id="Get_a_reference_to_a_class">Get a reference to a class</h4>
+
+<p>Class definitions are retrieved with the <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/func/objc_getClass"><code>objc_getClass</code></a> function, declared in <code>/usr/include/objc/runtime.h</code>. The <code>objc_getClass</code> function receives the name of the class, looks up the definition, and returns it.</p>
+
+<pre class="brush: cpp">Class objc_getClass(const char *name);
+</pre>
+
+<p>In <code>/usr/include/objc/objc.h</code>, <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/tdef/Class"><code>Class</code></a> is defined as an opaque type by the following:</p>
+
+<pre class="brush: cpp">typedef struct objc_class *Class;
+</pre>
+
+<p>In this example, we need the class<code>NSSpeechSynthesizer</code>, which is retrieved with the following code:</p>
+
+<pre class="brush: cpp">Class NSSpeechSynthesizer = objc_getClass(&quot;NSSpeechSynthesizer&quot;);
+</pre>
+
+<h4 id="Registering_a_selector">Registering a selector</h4>
+
+<p>Selectors can be registered and retrieved with <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/func/sel_registerName"><code>sel_registerName</code></a> function, also declared in <code>/usr/include/objc/runtime.h</code>. <code>sel_registerName</code> receives the name of the selector, and returns the selector.</p>
+
+<pre class="brush: cpp">SEL sel_registerName(const char *str);
+</pre>
+
+<p><a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/tdef/SEL"><code>SEL</code></a> is defined as follows, in <code>/usr/include/objc/objc.h</code>. It&apos;s also an opaque type.</p>
+
+<pre class="brush: cpp">typedef struct objc_selector *SEL;
+</pre>
+
+<p>In this example, we need to send <code>alloc</code>, its selector can be retrieved with the following code:</p>
+
+<pre class="brush: cpp">SEL alloc = sel_registerName(&quot;alloc&quot;);
+</pre>
+
+<h4 id="Sending_a_message">Sending a message</h4>
+
+<p>Once target class and selector are ready, you can send a message. This message can be sent using the <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/func/objc_msgSend"><code>objc_msgSend</code></a> function, and its variants, which are declared in <code>/usr/include/objc/message.h</code>. <code>objc_msgSend</code> function, receives the instance which receives the message, the selector, and variable argument list for the message, returning the returned value from the method.</p>
+
+<pre class="brush: cpp">id objc_msgSend(id self, SEL op, ...);
+</pre>
+
+<p><a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/tdef/id"><code>id</code></a> is defined as the following, in <code>/usr/include/objc/objc.h</code>, it&apos;s also an opaque type. <code>Class</code> can be cast into <code>id</code>, so we can pass <code>Class</code> returned by <code>objc_getClass</code>.</p>
+
+<pre class="brush: cpp">typedef struct objc_object *id;
+</pre>
+
+<p>In this example, we send an <code>alloc</code> message without any arguments using the following code. This code returns an allocated <code>NSSpeechSynthesizer</code> instance that has not yet been initialized.</p>
+
+<pre class="brush: cpp">id tmp = objc_msgSend((id)NSSpeechSynthesizer, alloc);
+</pre>
+
+<p>Here, <code>Class</code> is always cast into <code>id</code>, which is an opaque type. We could choose to use <code>id</code> instead, reducing casting and making our code more efficient in future.</p>
+
+<pre class="brush: cpp">id NSSpeechSynthesizer = (id)objc_getClass(&quot;NSSpeechSynthesizer&quot;);
+id tmp = objc_msgSend(NSSpeechSynthesizer, alloc);
+</pre>
+
+<h3 id="Selector_for_a_method_with_arguments">Selector for a method with arguments</h3>
+
+<p><code>In this case, [NSSpeechSynthesizer initWithVoice:]</code> takes one argument; the selector name with a trailing colon.</p>
+
+<pre class="brush: cpp">SEL initWithVoice = sel_registerName(&quot;initWithVoice:&quot;);
+</pre>
+
+<p>If a method takes two or more arguments, the selector name becomes a concatenation of each name.</p>
+
+<pre class="brush: cpp">// [NSString getBytes:maxLength:usedLength:encoding:options:range:remainingRange:]
+SEL foo = sel_registerName(&quot;getBytes:maxLength:usedLength:encoding:options:range:remainingRange:&quot;);
+</pre>
+
+<h3 id="Method_which_returns_non-id_type">Method which returns non-id type</h3>
+
+<p>If a method returns a type which is compatible with <code>id</code>, we can cast it, or just use it as <code>id</code> type (since we don&apos;t need to use a different type for each instance, in terms of C).</p>
+
+<p>Otherwise, the following functions can be used, depending on return type and architecture.</p>
+
+<dl>
+ <dt><code>objc_msgSend_stret</code></dt>
+ <dd>For the method which returns structs on the stack.</dd>
+ <dt><code>objc_msgSend_fpret</code> / <code>objc_msgSend_fp2ret</code></dt>
+ <dd>For the method which returns floating-point values on the stack.</dd>
+ <dt><code>objc_msgSend</code></dt>
+ <dd>For the method which returns the value in a register, or returns nothing.</dd>
+</dl>
+
+<p>For example, <code>[NSSpeechSynthesizer isSpeaking]</code> returns <code>BOOL</code>. In this case, <code>BOOL</code> can be passed through a register, and we can use <code>objc_msgSend</code>. As <code>[NSObject release]</code> returns nothing, we can also use <code>objc_msgSend</code>.</p>
+
+<h3 id="NSString_literals">NSString literals</h3>
+
+<p>Another Objective-C syntax used is the <code>@&quot;...&quot;</code> literal, which creates NSString instance. This could be converted by the following Objective-C code (may not be exactly the same).</p>
+
+<pre class="brush: cpp">NSString* text = [NSString initWithCString: &quot;Hello, Firefox!&quot;
+                                  encoding: NSUTF8StringEncoding];
+</pre>
+
+<p>This will be converted into the following C code. <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/Foundation/Classes/NSString_Class/#//apple_ref/doc/constant_group/String_Encodings"><code>NSUTF8StringEncoding</code></a> is defined as <code>4</code>.</p>
+
+<pre class="brush: cpp">id NSString = (id)objc_getClass(&quot;NSString&quot;);
+SEL initWithCString_encoding = sel_registerName(&quot;initWithCString:encoding:&quot;);
+int NSUTF8StringEncoding = 4;
+id tmp = objc_msgSend(NSString, alloc);
+id text = objc_msgSend(tmp, initWithCString_encoding,
+                       &quot;Hello, Firefox!&quot;, NSUTF8StringEncoding);
+</pre>
+
+<p>Note that you need to release this allocated <code>NSString</code> instance.</p>
+
+<h3 id="Converted_C_code">Converted C code</h3>
+
+<p>Now we can translate our whole code into C syntax.</p>
+
+<pre class="brush: cpp">#include &lt;objc/objc.h&gt;
+#include &lt;objc/runtime.h&gt;
+#include &lt;objc/message.h&gt;
+
+int
+main(void) {
+  // NSSpeechSynthesizer* synth = [[NSSpeechSynthesizer alloc] initWithVoice: nil];
+  id NSSpeechSynthesizer = (id)objc_getClass(&quot;NSSpeechSynthesizer&quot;);
+  SEL alloc = sel_registerName(&quot;alloc&quot;);
+  SEL initWithVoice = sel_registerName(&quot;initWithVoice:&quot;);
+  id tmp = objc_msgSend(NSSpeechSynthesizer, alloc);
+  id synth = objc_msgSend(tmp, initWithVoice, NULL);
+
+  // @&quot;Hello, Firefox!&quot;
+  id NSString = (id)objc_getClass(&quot;NSString&quot;);
+  SEL initWithCString_encoding = sel_registerName(&quot;initWithCString:encoding:&quot;);
+  int NSUTF8StringEncoding = 4;
+  id tmp2 = objc_msgSend(NSString, alloc);
+  id text = objc_msgSend(tmp2, initWithCString_encoding,
+                         &quot;Hello, Firefox!&quot;, NSUTF8StringEncoding);
+
+  // [synth startSpeakingString: @&quot;Hello, Firefox!&quot;];
+  SEL startSpeakingString = sel_registerName(&quot;startSpeakingString:&quot;);
+  objc_msgSend(synth, startSpeakingString, text);
+
+  SEL isSpeaking = sel_registerName(&quot;isSpeaking&quot;);
+
+  // Wait until start speaking.
+  // [synth isSpeaking]
+  while (!objc_msgSend(synth, isSpeaking)) {}
+  // Wait while speaking.
+  // [synth isSpeaking]
+  while (objc_msgSend(synth, isSpeaking)) {}
+
+  SEL release = sel_registerName(&quot;release&quot;);
+
+  // [synth release];
+  objc_msgSend(synth, release);
+  // [text release];
+  objc_msgSend(text, release);
+
+  return 0;
+}
+</pre>
+
+<p>To run this code, save it as <code>test.c</code>, and run the following command in the same directory.</p>
+
+<pre class="brush: cpp">$ clang -lobjc -framework AppKit test.c &amp;&amp; ./a.out
+</pre>
+
+<h2 id="Converting_C_code_to_js-ctypes_code">Converting C code to js-ctypes code</h2>
+
+<p>Now we have working C code, it can be converted into js-ctypes in a relatively straightforward manner.</p>
+
+<h3 id="Types_and_Functions">Types and Functions</h3>
+
+<p>In addition to the above code, we need to declare function and types.</p>
+
+<h4 id="Types">Types</h4>
+
+<p>Types can be readily declared. <code>BOOL</code> is defined in <code>/usr/include/objc/objc.h</code>.</p>
+
+<pre class="brush: js">let id = ctypes.StructType(&quot;objc_object&quot;).ptr;
+let SEL = ctypes.StructType(&quot;objc_selector&quot;).ptr;
+let BOOL = ctypes.signed_char;
+</pre>
+
+<h4 id="Functions">Functions</h4>
+
+<p>All functions in our example are exported by <code>/usr/lib/libobjc.dylib</code>.</p>
+
+<pre class="brush: js">let lib = ctypes.open(ctypes.libraryName(&quot;objc&quot;));
+</pre>
+
+<p>Function definition is the more tricky part. In this example, <code>objc_msgSend</code> is used in 3 ways. We need to declare three different <code>FunctionType</code> <code>CData</code>s:</p>
+
+<ul>
+ <li>Returns <code>id</code> or compatible type.</li>
+ <li>Returns <code>BOOL</code>.</li>
+ <li>Returns nothing.</li>
+</ul>
+
+<pre class="brush: js">let objc_msgSend_id = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                                  id, id, SEL, &quot;...&quot;);
+let objc_msgSend_BOOL = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                                    BOOL, id, SEL, &quot;...&quot;);
+let objc_msgSend_void = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                                    ctypes.void_t, id, SEL, &quot;...&quot;);
+</pre>
+
+<p>The first two cases are both integers (including pointer), so we can cast them after receiving the value in pointer type. The third case is <code>void</code>, but we&apos;re going to use the same function internally, the only difference is if we need to ignore the returned value or not. In fact, here we can use the same definition in all cases, as a minimal case.</p>
+
+<pre class="brush: js">let objc_msgSend = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                               id, id, SEL, &quot;...&quot;);
+</pre>
+
+<p>Declaring a dedicated function for <code>BOOL</code> might be more efficient, directly getting the primitive value.</p>
+
+<pre class="brush: js">let objc_msgSend = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                               id, id, SEL, &quot;...&quot;);
+let objc_msgSend_BOOL = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                                    BOOL, id, SEL, &quot;...&quot;);
+</pre>
+
+<p>Other functions can be declared fluently, using <code>id</code> instead of <code>Class</code> as the return type of <code>objc_getClass</code>.</p>
+
+<pre class="brush: js">let objc_getClass = lib.declare(&quot;objc_getClass&quot;, ctypes.default_abi,
+                                id, ctypes.char.ptr);
+let sel_registerName = lib.declare(&quot;sel_registerName&quot;, ctypes.default_abi,
+                                    SEL, ctypes.char.ptr);
+</pre>
+
+<h3 id="Calling_variadic_function">Calling variadic function</h3>
+
+<p><code>objc_msgSend</code> is a variadic function, so we should always pass it a <code>CData</code> instance, other than this first and second argument, to declare each argument type.</p>
+
+<p>For example, let&apos;s take the following function call:</p>
+
+<pre class="brush: cpp">id text = objc_msgSend(tmp2, initWithCString_encoding,
+                       &quot;Hello, Firefox!&quot;, NSUTF8StringEncoding);
+</pre>
+
+<p><a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/Foundation/Classes/NSString_Class/#//apple_ref/occ/instm/NSString/initWithCString:encoding:"><code>[NSString initWithCString:encoding:]</code></a> is defined as:</p>
+
+<pre class="brush: cpp">- (instancetype)initWithCString:(const char *)nullTerminatedCString
+                       encoding:(NSStringEncoding)encoding
+</pre>
+
+<p>And <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Reference/Foundation/Classes/NSString_Class/#//apple_ref/c/tdef/NSStringEncoding"><code>NSStringEncoding</code></a> is defined as:</p>
+
+<pre class="brush: cpp">typedef unsigned long NSUInteger;
+typedef NSUInteger NSStringEncoding;
+</pre>
+
+<p>So, our function call can be converted into the following js-ctypes code:</p>
+
+<pre class="brush: js">let text = objc_msgSend(tmp2, initWithCString_encoding,
+                        ctypes.char.array()(&quot;Hello, Firefox!&quot;),
+                        ctypes.unsigned_long(NSUTF8StringEncoding));
+</pre>
+
+<h3 id="Converted_js-ctypes_code">Converted js-ctypes code</h3>
+
+<p>Finally, we have our converted code. This can run with a copy-and-paste into a JavaScript shell.</p>
+
+<div class="warning">This example uses a busy loop, and thus, Firefox won&apos;t respond until the speaking is done. If this code were to be used in a production add-on, then to avoid Firefox locking up, run this code from a <a href="/en-US/docs/Web/API/ChromeWorker">ChromeWorker</a>.</div>
+
+<pre class="brush: js">let { ctypes } = Components.utils.import(&quot;resource://gre/modules/ctypes.jsm&quot;, {});
+
+let id = ctypes.StructType(&quot;objc_object&quot;).ptr;
+let SEL = ctypes.StructType(&quot;objc_selector&quot;).ptr;
+let BOOL = ctypes.signed_char;
+
+let lib = ctypes.open(ctypes.libraryName(&quot;objc&quot;));
+
+let objc_getClass = lib.declare(&quot;objc_getClass&quot;, ctypes.default_abi,
+                                id, ctypes.char.ptr);
+let sel_registerName = lib.declare(&quot;sel_registerName&quot;, ctypes.default_abi,
+                                    SEL, ctypes.char.ptr);
+let objc_msgSend = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                               id, id, SEL, &quot;...&quot;);
+let objc_msgSend_BOOL = lib.declare(&quot;objc_msgSend&quot;, ctypes.default_abi,
+                                    BOOL, id, SEL, &quot;...&quot;);
+
+let NSSpeechSynthesizer = objc_getClass(&quot;NSSpeechSynthesizer&quot;);
+let alloc = sel_registerName(&quot;alloc&quot;);
+let initWithVoice = sel_registerName(&quot;initWithVoice:&quot;);
+let tmp = objc_msgSend(NSSpeechSynthesizer, alloc);
+let synth = objc_msgSend(tmp, initWithVoice, ctypes.voidptr_t(null));
+
+let NSString = objc_getClass(&quot;NSString&quot;);
+let initWithCString_encoding = sel_registerName(&quot;initWithCString:encoding:&quot;);
+let NSUTF8StringEncoding = 4;
+let tmp2 = objc_msgSend(NSString, alloc);
+let text = objc_msgSend(tmp2, initWithCString_encoding,
+                        ctypes.char.array()(&quot;Hello, Firefox!&quot;),
+                        ctypes.unsigned_long(NSUTF8StringEncoding));
+
+let startSpeakingString = sel_registerName(&quot;startSpeakingString:&quot;);
+objc_msgSend(synth, startSpeakingString, text);
+
+let isSpeaking = sel_registerName(&quot;isSpeaking&quot;);
+
+// Wait until start speaking.
+while (!objc_msgSend_BOOL(synth, isSpeaking)) {}
+// Wait while speaking.
+while (objc_msgSend_BOOL(synth, isSpeaking)) {}
+
+let release = sel_registerName(&quot;release&quot;);
+
+objc_msgSend(synth, release);
+objc_msgSend(text, release);
+
+lib.close();
+</pre>
+
+<h2 id="Creating_Objective-C_Blocks">Creating Objective-C Blocks</h2>
+
+<p>Objective-C API calls sometimes require you to pass in a block. Reading the <a href="https://developer.apple.com/library/ios/documentation/Cocoa/Conceptual/ProgrammingWithObjectiveC/WorkingwithBlocks/WorkingwithBlocks.html">Apple Developer :: Programming with Objective-C - Working with Blocks</a> you can learn more about blocks. To create a block with js-ctypes, use the function:</p>
+
+<pre>function createBlock(aFuncTypePtr) {
+	/**
+	 * Creates a C block instance from a JS Function.
+	 * Blocks are regular Objective-C objects in Obj-C, and can be sent messages;
+	 * thus Block instances need are creted using the core.wrapId() function.
+	 */
+	// Apple Docs :: Working with blocks - https://developer.apple.com/library/ios/documentation/Cocoa/Conceptual/ProgrammingWithObjectiveC/WorkingwithBlocks/WorkingwithBlocks.html
+
+	var _NSConcreteGlobalBlock = ctypes.open(ctypes.libraryName(&apos;objc&apos;)).declare(&apos;_NSConcreteGlobalBlock&apos;, ctypes.voidptr_t); // https://dxr.mozilla.org/mozilla-central/source/js/src/ctypes/Library.cpp?offset=0#271
+
+	/**
+	 * The &quot;block descriptor&quot; is a static singleton struct. Probably used in more
+	 * complex Block scenarios involving actual closure variables needing storage
+	 * (in `NodObjC`, JavaScript closures are leveraged instead).
+	 */
+	// struct is seen here in docs: http://clang.llvm.org/docs/Block-ABI-Apple.html
+	var Block_descriptor_1 = ctypes.StructType(&apos;Block_descriptor_1&apos;, [
+		{ reserved: ctypes.unsigned_long_long },
+		{ size: ctypes.unsigned_long_long }
+	]);
+
+	/**
+	 * We have to simulate what the llvm compiler does when it encounters a Block
+	 * literal expression (see `Block-ABI-Apple.txt` above).
+	 * The &quot;block literal&quot; is the struct type for each Block instance.
+	 */
+	// struct is seen here in docs: http://clang.llvm.org/docs/Block-ABI-Apple.html
+	var Block_literal_1 = ctypes.StructType(&apos;Block_literal_1&apos;, [
+		{ isa: ctypes.voidptr_t },
+		{ flags: ctypes.int32_t },
+		{ reserved: ctypes.int32_t },
+		{ invoke: ctypes.voidptr_t },
+		{ descriptor: Block_descriptor_1.ptr }
+	]);
+
+	var BLOCK_CONST = {
+		BLOCK_HAS_COPY_DISPOSE: 1 &lt;&lt; 25,
+		BLOCK_HAS_CTOR: 1 &lt;&lt; 26,
+		BLOCK_IS_GLOBAL: 1 &lt;&lt; 28,
+		BLOCK_HAS_STRET: 1 &lt;&lt; 29,
+		BLOCK_HAS_SIGNATURE: 1 &lt;&lt; 30
+	};
+
+	// based on work from here: https://github.com/trueinteractions/tint2/blob/f6ce18b16ada165b98b07869314dad1d7bee0252/modules/Bridge/core.js#L370-L394
+	var bl = Block_literal_1();
+	// Set the class of the instance
+	bl.isa = _NSConcreteGlobalBlock;
+	// Global flags
+	bl.flags = BLOCK_CONST.BLOCK_HAS_STRET;
+	bl.reserved = 0;
+	bl.invoke = aFuncTypePtr;
+
+	// create descriptor
+	var desc = Block_descriptor_1();
+	desc.reserved = 0;
+	desc.size = Block_literal_1.size;
+
+	// set descriptor into block literal
+	bl.descriptor = desc.address();
+
+	return bl;
+}</pre>
+
+<p>An example of this function in use can be seen here: <a href="https://gist.github.com/Noitidart/8645b47b0e46a0eb284e">_ff-addon-snippet-objc_monitorEvents - Shows how to monitor and block mouse and key events on Mac OS X</a></p>

@@ -1,0 +1,95 @@
+---
+title: Things I've tried to do with XUL
+slug: Archive/Mozilla/XUL/Things_I've_tried_to_do_with_XUL
+tags:
+  - XUL
+---
+<p>This is a grab-bag type of FAQ, with a list of things that should work (hopefully with bug numbers), things that don't work (hopefully with explanations), and workarounds for both of the above. Feel free to add your own XUL experiences here.
+</p>
+<hr>
+<h3 id="How_do_I_use_percentage-based_height.2Fwidth_with_XUL.3F" name="How_do_I_use_percentage-based_height.2Fwidth_with_XUL.3F"> How do I use percentage-based height/width with XUL? </h3>
+<p>Short answer: you can't easily, at least not yet. This
+means that creating any sort of visual display (not necessarily "UI"; my use case is for creating a calendar time display) that sizes sanely when the user resizes the window is unfortunately very difficult.
+</p><p>(To add insult, XUL layout code *explicitly* trims off '%' from
+width/height, thus treating it as pixels.)
+</p><p>For reference, I'd like the following to give a vbox that resizes along with the window, with the green, red, and blue inside boxes always maintaining a 30%-20%-50% ratio to the height of the parent vbox.
+</p>
+<pre class="eval">&lt;vbox flex="1"&gt;
+ &lt;box height="30%" flex="1" style="background: green;"/&gt;
+ &lt;box height="20%" flex="1" style="background: red;"/&gt;
+ &lt;box height="50%" flex="1" style="background: blue;"/&gt;
+&lt;/vbox&gt;
+</pre>
+<p>Workaround: no real good ones; the closest I've gotten is to use a
+div instead of a box container:
+</p>
+<pre class="eval">&lt;html:div style="-moz-box-flex: 1; width: 100%; height: 100%;"&gt;
+ &lt;box style="height: 30%" flex="1" style="background: green;"/&gt;
+ &lt;box style="height: 20%" flex="1" style="background: green;"/&gt;
+ &lt;box style="height: 50%" flex="1" style="background: green;"/&gt;
+&lt;/html:div&gt;
+</pre>
+<p>Using flex="3" flex="2" flex="5" would give the right display visually for the empty boxes; however, flex only applies to how empty space is allocated. So, as soon as you add a label or some other element inside, there will be a different amount of "empty space" to allocate in different boxes.
+</p><p><br>
+Enn: percentages won't have any effect in these examples though, since the actual height of the container isn't known, and 30% of an unknown number is still an unknown number.
+</p><p>Vlad: sure; the snippets assume that there's some enclosing structure that will provide the actual height. Wrap the whole thing in a &lt;vbox height="300"&gt; or something. :)
+</p><p>Silver: if you set height="0" and include "overflow: hidden" on each box that is sharing the space, current Gecko will quite happily split the space out according to flex, ignoring the contents of each box, as desired. From my reading of the code, just height="0" should work, but it doesn't seem to. This trick doesn't work in 1.4, but works in 1.7 and current versions.
+</p>
+<h3 id="Obtaining_the_rect_of_an_element" name="Obtaining_the_rect_of_an_element"> Obtaining the rect of an element </h3>
+<p>You can't obtain the actual visible rect of an element. HTML elements
+have the non-standard clientWidth/clientHeight properties (see
+<a class=" external" href="http://www.mozilla.org/docs/dom/domref/clientHeight.html" rel="freelink">http://www.mozilla.org/docs/dom/domr...entHeight.html</a>); no
+equivalent exists for XUL.
+</p><p>Enn: most people would use the box object width and height properties, or do you want something else?
+</p><p>Vlad: the boxObject width/height are the actual width and height of the box, regardless of the actual visible portion of the box (clipped by the window borders, for example). This is assuming no scrolling is going on.
+</p>
+<h3 id="Resize_event_problems" name="Resize_event_problems"> Resize event problems </h3>
+<p>Going with the inability to obtain the clientWidth/clientHeight of XUL elements, it's impossible to handle the "resize" event yourself to grow/shrink content as needed -- as you grow the content, when you shrink the window, the content will simply be clipped (because now it has a bigger size than the window). You have no way of finding out what the clipped size is, so you can never shrink the content.
+</p><p>An ugly workaround for this problem might include nesting an invisible HTML-Element in order to access its "clientWidth" method: </p>
+<pre>&lt;window
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	xmlns:html="http://www.w3.org/1999/xhtml"&gt;
+...
+&lt;html:body id="invisible_element" flex="1" &gt;
+	&lt;svg xmlns="http://www.w3.org/2000/svg" version="1.1"&gt;&lt;!-- ...or _visible_ XUL content or whatever... --&gt;&lt;/svg&gt;
+&lt;/html:body&gt;
+...
+var available_width = document.getElementById("invisible_element").clientWidth;
+...
+</pre>
+<h3 id="XBL_in_listboxes" name="XBL_in_listboxes"> XBL in listboxes </h3>
+<p>Using XBL bindings in listboxes is not easy because there is a big bug there: if you create from JS an element you want to bind, and if it is hidden when the listbox is first rendered, the listbox does not create a frame for it, and the xbl doesn't get attached... A workaround for that is to create the element, insert it in the document and set its style attribute with a -moz-binding property, all of that from c++ instead of JS.
+</p>
+<h3 id="Multi-column_listboxes" name="Multi-column_listboxes"> Multi-column listboxes </h3>
+<p>When adding items to multi-column listboxes, you can't use the appendItem API:
+</p>
+<pre class="eval">// Auto-create and attach 1st cell
+var row = myListBox.appendItem( label, value );
+// Create and attach 2nd cell
+var cell = document.createElement('listcell');
+cell.setAttribute('label', label2 );
+cell.setAttribute('value', value2 );
+row.appendChild( cell );
+// etc
+// ...
+</pre>
+<p>While this works at first, after a number of rows have been added it breaks and stops displaying the first cell (the one specified by the appendItem call).
+</p><p>Instead, you must build up your own listitem full of listcells, and then add that listitem to the listbox, using generic DOM calls:
+</p>
+<pre class="eval">var row = document.createElement('listitem');
+// Create and attach 1st cell
+var cell = document.createElement('listcell');
+cell.setAttribute('label', label );
+cell.setAttribute('value', value );
+row.appendChild( cell );
+// Create and attach 2nd cell
+cell = document.createElement('listcell');
+cell.setAttribute('label', label2 );
+cell.setAttribute('value', value2 );
+row.appendChild( cell );
+// etc
+// ...
+// Attach row
+myListBox.appendChild( row );
+</pre>
+<hr>

@@ -1,0 +1,118 @@
+<div>{{SpiderMonkeySidebar("Releases")}}</div>
+
+<div class="note" style="color: black;">
+<p><strong>These release notes are incomplete.</strong></p>
+
+<p>The Mozilla JavaScript team is pleased to announce the release of <strong>SpiderMonkey 31</strong>.</p>
+
+<p>SpiderMonkey 31 is the JavaScript engine that shipped in Firefox 31. It continues to improve performance over previous SpiderMonkey releases, with a significantly improved garbage collector and other features.  It also contains new language and API features described in detail below.</p>
+
+<p>Please let us know about your experiences with this release by posting in the <a class="link-news" href="news://news.mozilla.org/mozilla.dev.tech.js-engine">mozilla.dev.tech.js-engine newsgroup</a>. Or file bugs at <a class="link-https" href="https://bugzilla.mozilla.org/">bugzilla.mozilla.org</a> under Product: Core, Component: JavaScript engine.</p>
+</div>
+
+<div>
+<p>The download url is outdated and SpiderMonkey not RELEASE alone! Get it here <a href="https://hg.mozilla.org/releases/mozilla-esr31/archive/tip.tar.bz2">mozilla-esr31</a></p>
+
+<p>You will find it in "Firefox Extended Support Release 31" package on <a href="https://hg.mozilla.org/releases">hg release</a></p>
+</div>
+
+<h2 id="Platform_support">Platform support</h2>
+
+<p>SpiderMonkey 31 is supported on all the platforms where Firefox 31 runs.  Compiling it requires a C++ compiler, and the JSAPI can only be used from C++ code.  If you are compiling with Microsoft's Visual Studio, note that the minimum supported version is MSVC10/2010: MSVC8/9 support has been dropped.</p>
+
+<p>SpiderMonkey 31 includes a just-in-time compiler (JIT) that compiles JavaScript to machine code, for a significant speed increase. It is supported on x86, x86_64, and ARM architectures. On some other platforms (SPARC, MIPS), the JIT is provided but not supported.  On all other platforms the JIT is simply disabled; JavaScript code runs in an interpreter, as in previous versions. It's the same language, just not as fast.</p>
+
+<h2 id="Migrating_to_SpiderMonkey_31">Migrating to SpiderMonkey 31</h2>
+
+<p>The first change most embedders will notice is that SpiderMonkey must now be <em>initialized</em> before it can be used, using the newly-repurposed <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a> method.  After this method is called, normal JSAPI operations are permitted.  When all JSAPI operation has completed, the corresponding <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown"><code>JS_ShutDown</code></a> method (currently non-mandatory, but highly recommended as it may become mandatory in the future) uninitializes SpiderMonkey, cleaning up memory and allocations performed by <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a>.</p>
+
+<p>A major change to SpiderMonkey in 31 is that its APIs support a moving garbage collector.  This entailed changing the vast majority of the JSAPI from raw types, such as <code><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval">JS::Value</a> or </code><code><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval">JS::Value</a></code><code>*</code>, to <code>JS::Handle</code> and <code>JS::MutableHandle</code> template types that encapsulate access to the provided value/string/object or its location.  The <code>JS::Handle&lt;<a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval">JS::Value</a>&gt;</code> and <code>JS::MutableHandle&lt;<a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval">JS::Value</a>&gt;</code> classes have been specialized to implement the same interface as <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/Jsval"><code>JS::Value</code></a>, for simplicity and to ease migration pain.  Changes to introduce handles to the JSAPI are not individually documented, because of the breadth of the changes involved.</p>
+
+<p>The following features in earlier versions of SpiderMonkey have been dropped.</p>
+
+<ul>
+ <li>XXX list removed features here</li>
+</ul>
+
+<p>SpiderMonkey 31 is not binary-compatible with previous releases, nor is it source-code compatible. Many JSAPI types, functions, and callback signatures have changed, though most functions that have changed still have the same names and implement essentially unchanged functionality. Applications will need significant changes, but most of those changes will be detected by the C/C++ compiler, so they are easy to detect and updating the code is a fairly straightforward job. Here is a list of the most significant changes:</p>
+
+<ul>
+ <li>Many of the garbage collector changes require type signature changes to JSAPI methods: specifically introducing <code>JS::Rooted</code>, <code>JS::Handle</code>, and <code>JS::MutableHandle</code> types.  These types, with the appropriate parametrizations, can roughly be substituted for plain types of GC things (values, string/object pointers, etc.).</li>
+ <li>The <code>JSBool</code> type has been removed, along with the corresponding <code>JS_TRUE</code> and <code>JS_FALSE</code> constants.  They have been replaced by <code>bool</code>, <code>true</code>, and <code>false</code> respectively.</li>
+ <li>Many <code>JSClass</code> and <code>js::Class</code> instances are now explicitly <code>const</code>, and several APIs have been updated to use <code>const JSClass *</code> and <code>const js::Class *</code> pointers.</li>
+ <li>All references to shortid/tinyid have been removed. That includes the APIs <code>JS_DefinePropertyWithTinyId</code> and <code>JS_DefineUCPropertyWithTinyId</code> as well as the <code>JSPropertyDescriptor</code> structure and the matching <code>JSPROP_SHORTID</code> flag.</li>
+</ul>
+
+<p>These and other changes are explained in detail below.</p>
+
+<h2 id="New_JavaScript_language_features">New JavaScript language features</h2>
+
+<p>JavaScript 31 includes significant updates to language features, yo.</p>
+
+<h2 id="New_C_APIs" style="position: static;">New C++ APIs</h2>
+
+<p>JSAPI is now a C++-only API. Please note that SpiderMonkey reserves the <code>JS::</code> namespace for itself (and the <code>js::</code> namespace for internal use).</p>
+
+<ul>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a> is a new function which must be used to initialize the JS engine before any <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSRuntime" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSRuntime"><code>JSRuntime</code></a>s are created or other JSAPI methods are called.  This method pairs with the existing (currently non-mandatory) <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown" title="/en-US/docs/"><code>JS_ShutDown</code></a> method, which uninitializes the JS engine after all runtimes have been destroyed.</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_SetICUMemoryFunctions" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_SetICUMemoryFunctions</code></a> is a new function which can be used to set the allocation and deallocation functions used by the ICU internationalization library.  This is unlikely to be of interest to embedders unless you are doing detailed memory profiling.  It must be called before <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a> is called.</li>
+</ul>
+
+<h2 id="Obsolete_APIs">Obsolete APIs</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS_ConvertArguments">JS_ConvertArguments</a> "j" type</li>
+</ul>
+
+<h2 id="Deleted_APIs">Deleted APIs</h2>
+
+<ul>
+ <li>JS_NewGrowableString (can be replaced with <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_NewString" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_NewStringCopyN">JS_NewUCString</a>)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_IsConstructing">JS_IsConstructing</a> (can be replaced with CallArgs::isConstructing or CallReceiver::isConstructing)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ValueToBoolean">JS_ValueToBoolean</a> (replaced by <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS::ToBoolean">JS::ToBoolean</a>)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ValueToNumber">JS_ValueToNumber</a> (can be replaced with <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS::ToNumber">JS::ToNumber</a>)</li>
+ <li>JS_ValueToInt64 (replaced by JS::ToInt64)</li>
+ <li>JS_ValueToUint64 (replaced by JS::ToUint64)</li>
+ <li><span id="summary_alias_container"><span id="short_desc_nonedit_display">JS_ValueToECMAUint32</span> </span>(replaced by JS::ToUint32)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ValueToECMAInt32">JS_ValueToECMAInt32</a> (replaced by JS::ToInt32)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ValueToInt32">JS_ValueToInt32</a> (can be replaced with JS::ToInt32, which has a <strong>different behavior</strong>!)</li>
+ <li><a href="/en-US/docs/">JS_ValueToUint16</a> (replaced by JS::ToUint16)</li>
+ <li><a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS_ValueToString">JS_ValueToString</a> (replaced by <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS::ToString">JS::ToString</a>)</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_DefinePropertyWithTinyId">JS_DefinePropertyWithTinyId</a></li>
+ <li>JS_DefineUCPropertyWithTinyId</li>
+ <li>JS_GetObjectId</li>
+</ul>
+
+<h2 id="API_changes">API changes</h2>
+
+<p>SpiderMonkey must now be <em>initialized</em> before it can be used.  This is performed by calling the new <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a> method before creating any runtimes or contexts and before compiling, evaluating, or executing any JS script.  Once this method has been successfully called, it's okay to call <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_NewRuntime" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_NewRuntime"><code>JS_NewRuntime</code></a> and all the other existing SpiderMonkey APIs as usual.  Once all JSAPI operation has completed, the corresponding <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown"><code>JS_ShutDown</code></a> method uninitializes SpiderMonkey, cleaning up memory and allocations performed by <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_Init"><code>JS_Init</code></a>.  It is not required to call <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_ShutDown"><code>JS_ShutDown</code></a> at present, but it is strongly recommended: calling it may be required in a future SpiderMonkey release.</p>
+
+<h2 id="JavaScript_shell_changes">JavaScript shell changes</h2>
+
+<p>Detail added/removed methods here...</p>
+
+<p>On POSIX platforms, building a threadsafe shell <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=931151">no longer requires NSPR</a>. Embedders still need to build with NSPR, as the new wrappers require using SpiderMonkey internal functions which are not exposed to the public API.</p>
+
+<h2 id="Known_Issues">Known Issues</h2>
+
+<p>Detail any known issues here...</p>
+
+<h2 id="Future_Direction">Future Direction</h2>
+
+<p>...insert details on future plans...</p>
+
+<p>SpiderMonkey embedders should be aware that</p>
+
+<ul>
+ <li>Mozilla has no plans to keep the JSAPI, nor the JSDBGAPI stable for embedders. We have chosen to concentrate on performance and correctness as primary concerns instead.</li>
+ <li>JS_THREADSAFE is going away, with future versions supporting only thread-safe builds</li>
+ <li>A new debugging API is on the way to replace JSD.</li>
+</ul>
+
+<h2 id="Release_Notes_Errata">Release Notes Errata</h2>
+
+<p>This is a list of changes which need to be made to the release notes ASAP. Feel free to fix any problems you spot -- this is a Wiki!</p>
+
+<ul>
+ <li>Don't add anything here -- this is for after the release notes are completed.  :-)</li>
+</ul>

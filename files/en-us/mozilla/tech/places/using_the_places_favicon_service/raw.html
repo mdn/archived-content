@@ -1,0 +1,22 @@
+<p>
+
+</p><p>The favicon service, implemented by the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFaviconService" title="">nsIFaviconService</a></code> interface, stores the favicons for pages in bookmarks and history. For an overview of the database design, see <a href="en/The_Places_database">The Places database</a>.
+</p>
+<h3 id="Creating_the_favicon_service" name="Creating_the_favicon_service"> Creating the favicon service </h3>
+<p>The favicon service's contract ID is <code>@mozilla.org/browser/favicon-service;1</code>, so to gain access to the favicon service, you should do something like this:
+</p>
+<pre>var faviconService = Components.classes["@mozilla.org/browser/favicon-service;1"]
+                               .getService(Components.interfaces.nsIFaviconService);
+</pre>
+<h3 id="Caching" name="Caching"> Caching </h3>
+<p>The favicon service stores an expiration time for each favicon. This time is used by <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFaviconService#setAndLoadFaviconForPage()">nsIFaviconService.setAndLoadFaviconForPage()</a></code> to determine if the data is fresh or needs reloading from the server. If you are manually loading favicon data, you can specify the expiration time yourself. Otherwise, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFaviconService#setAndLoadFaviconForPage()">nsIFaviconService.setAndLoadFaviconForPage()</a></code> will use the default expiration time.
+</p><p>Currently, the default expiration time is set to one day in the future. This makes sure that we aren't obsessively reloading favicons into the database for every page viewed, but also that changes in the favicon will be picked up quickly. Most of the time, the favicon will be served from the browser's cache and will have minimal performance impact.
+</p><p>This expiration time is <i>not</i> the time that the favicon will be deleted. Expiration is handled by <code><a href="https://dxr.mozilla.org/mozilla-central/source/browser/components/places/src/nsNavHistoryExpire.cpp" rel="custom">browser/components/places/src/nsNavHistoryExpire.cpp</a></code> as described in <a href="en/Places/Design">Places Design</a>. The expiration time is only used to determine whether data should be reloaded from the network (or cache) or whether the version in the database is fresh enough.
+</p>
+<h3 id="Getting_favicon_images" name="Getting_favicon_images"> Getting favicon images </h3>
+<p>You can use favicons in the browser UI using special annotation URIs. <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFaviconService#getFaviconImageForPage()">nsIFaviconService.getFaviconImageForPage()</a></code> returns an annotation URI for the favicon for a given page, and <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFaviconService#getFaviconLinkForIcon()">nsIFaviconService.getFaviconLinkForIcon()</a></code> returns an annotation URI for the given favicon. The annotation service's "moz-anno:" protocol handler notices annotations called "favicon" and forwards these to the favicon service. These annotation URIs are described in more detail in <a href="en/Using_the_Places_annotation_service">Using the Places annotation service</a>.
+</p><p>You should always use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFaviconService#getFaviconImageForPage()">nsIFaviconService.getFaviconImageForPage()</a></code> to get the favicon for a page. If the page has no favicon, or we have never heard of the page, this function will return a "chrome:" URI of the default favicon. This allows efficient caching, since the default favicon will probably be cached in its decoded form by the image library. If there is an error loading the favicon for an annotation URI, the default favicon data will be returned by the annotation service's protocol handler. However, since the URI will be different from the default favicon, the decoded image will not be cached by the image library.
+</p>
+<h3 id="See_also" name="See_also">See also</h3>
+<ul><li> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFaviconService" title="">nsIFaviconService</a></code>
+</li></ul>

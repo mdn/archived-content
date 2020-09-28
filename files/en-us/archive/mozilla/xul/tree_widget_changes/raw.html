@@ -1,0 +1,156 @@
+<p>This describes changes in XUL Trees API for <span title="(Firefox 1.5 / Thunderbird 1.5 / SeaMonkey 1.0)">Gecko 1.8</span>.</p>
+
+<p>There are no changes to <a href="/en/XUL" title="en/XUL">XUL</a> tree tags, however the <code>id</code> attribute is no longer required on <code><a href="/en-US/docs/Mozilla/Tech/XUL/treecol" title="treecol">treecol</a></code> elements just to get them to work. That means that the ids can be left out, although it's probably a good idea to use them anyway.</p>
+
+<p>Instead of identifying columns by id, a new column object is used. This object implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumn" title="">nsITreeColumn</a></code> interface and holds information about a single column in the tree. A tree will have one of these objects for each column (each <code>treecol</code> element) in the tree. The columns are grouped into a list which implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumns" title="">nsITreeColumns</a></code> interface. Both the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumn" title="">nsITreeColumn</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumns" title="">nsITreeColumns</a></code> interfaces can be found at <code><a href="https://dxr.mozilla.org/mozilla-central/source/layout/xul/base/src/tree/public/nsITreeColumns.idl" rel="custom">layout/xul/base/src/tree/public/nsITreeColumns.idl</a></code>.</p>
+
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XUL/column" title="column">column</a></code> objects are created automatically, so you don't have to write any extra code. You can get the <code><a href="/en-US/docs/Mozilla/Tech/XUL/columns" title="columns">columns</a></code> object which implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumns" title="">nsITreeColumns</a></code> interface for a tree using the tree's <code>columns</code> property. From there you can get specific columns, the current sort column, and position and size info about the columns. For the most part these objects are readonly; you can modify the columns by just adjusting the <code><a href="/en-US/docs/Mozilla/Tech/XUL/treecol" title="treecol">treecol</a></code> attributes directly.</p>
+
+<p>The <code>tree</code> and <code>view</code> methods no longer take ids as arguments when columns are used. Instead, they use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumns" title="">nsITreeColumns</a></code>. For example, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeView#getCellValue()">nsITreeView.getCellValue()</a></code> takes a <code>row</code> index and a <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumn" title="">nsITreeColumn</a></code> as arguments, whereas before it took a row index and a column id.</p>
+
+<p>To get a column in <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a>:</p>
+
+<pre class="brush: js;">tree.columns.getColumnFor(treeColElement);
+tree.columns.getNamedColumn(treeColID);
+tree.columns.getColumnAt(index);
+</pre>
+
+<p>You can also just use array syntax to get a column:</p>
+
+<pre class="brush: js;">tree.columns["lastName"];
+tree.columns[5];
+</pre>
+
+<p>Once you have a column, you can get various properties of it:</p>
+
+<ul>
+ <li><code>column.index</code> - the <code>index</code> of the column in displayed order</li>
+ <li><code>column.id</code> - the <code>id</code> attribute of the column</li>
+ <li><code>column.element</code> - the <code>treecol</code> element</li>
+ <li><code>column.x</code> - the X position in the tree of the left edge of the column</li>
+ <li><code>column.width</code> - the width of the column</li>
+</ul>
+
+<p>In C++ code, you can also get the atom attribute of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeColumn" title="">nsITreeColumn</a></code> which returns an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAtom" title="">nsIAtom</a></code> for the column, making it fast to do comparisons.</p>
+
+<pre class="brush: cpp;">nsCOMPtr&lt;nsIAtom&gt; atom;
+aCol-&gt;GetAtom(getter_AddRefs(atom));
+if (atom = kMyCol) ...
+</pre>
+
+<p>One feature that has been added is <code>restoreNaturalOrder</code> which may be used to restore the original order of the columns before the user moved them around.</p>
+
+<pre class="brush: js;">tree.columns.restoreNaturalOrder()
+</pre>
+
+<p>There is also a command on the end of the tree's column picker which the user may use to restore the original column order. This will be hidden if the column redordering is disabled using <code>enableColumnDrag="false"</code>.</p>
+
+<h3 id="Some_specific_changes" name="Some_specific_changes">Some specific changes</h3>
+
+<p>You should now get the tree selection object from the view, not the box object, meaning use <code>tree.view.selection</code> instead of <code>tree.treeBoxObject.selection</code>.</p>
+
+<p>Use <code>tree.columns[1].id</code> instead of <code>tree.treeBoxObject.getColumnID(1)</code> to get the <code>id</code> of a column, in this case column 1.</p>
+
+<p>Use <code>tree.columns.getKeyColumn().index</code> instead of <code>tree.treeBoxObject.getKeyColumnIndex()</code>.</p>
+
+<p>The <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeBoxObject#getPageCount()">nsITreeBoxObject.getPageCount()</a></code> method has been renamed to make it clearer what it does. It returns the number of rows that can be displayed in the tree. This should correspond to the <code>rows</code> attribute on the tree if it was specified.</p>
+
+<p><code>tree.treeBoxObject.getPageCount()</code> is now <code>tree.treeBoxObject.getPageLength()</code>.</p>
+
+<p>The <code>invalidatePrimaryCell(row)</code> method has been removed, instead use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeBoxObject#invalidateCell()">nsITreeBoxObject.invalidateCell()</a></code> like this invalidateCell(row, tree.columns.getPrimaryColumn()). This may be used to redraw a cell after it or its data has been changed.</p>
+
+<p>The <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeView#cycleHeader()">nsITreeView.cycleHeader()</a></code> method has been changed, <code>cycleHeader(colID, element)</code> is now just cycleHeader(column), since the code can get the element from the column object.</p>
+
+<p>The constants below have been changed, and their integer values are different:</p>
+
+<pre class="syntaxbox">nsITreeView.inDropBefore          -&gt; nsITreeView.DROP_BEFORE            (-1)
+nsITreeView.inDropOn              -&gt; nsITreeView.DROP_ON                (0)
+nsITreeView.inDropAfter           -&gt; nsITreeView.DROP_AFTER             (1)
+nsITreeView.progressNormal        -&gt; nsITreeView.PROGRESS_NORMAL        (1)
+nsITreeView.progressUndetermined  -&gt; nsITreeView.PROGRESS_UNDETERMINED  (2)
+nsITreeView.progressNode          -&gt; nsITreeView.PROGRESS_NONE          (3)
+</pre>
+
+<p>As well, the drag and drop methods <code>canDropOn</code> and <code>canDropBeforeAfter</code> have been replaced with a single method <code>canDrop(idx,orientation)</code> which handles both. It should return <code>true</code> if a drop is allowed on a row.</p>
+
+<h3 id="Checkbox_columns" name="Checkbox_columns">Checkbox columns</h3>
+
+<p>Tree columns now implement the <code>checkbox</code> type. Previously the value existed but was not implemented. Now it is. You can create a checkbox column by setting the <code>type</code> attribute of a column to <code>checkbox</code>.</p>
+
+<pre class="brush: xml;">&lt;treecol type="checkbox"&gt;
+</pre>
+
+<p>You can then set or clear the checkbox for a particular cell in that column by setting the value attribute to <code>true</code>, or leaving out the attribute. Note that it's the value attribute you use, not the label attribute.</p>
+
+<pre class="brush: xml;">&lt;treecell/&gt;
+&lt;treecell value="true"/&gt;
+</pre>
+
+<p>You need to specify the checkbox image with CSS for the checkbox to display. (Do NOT set id of the column to be 'checked' it will cause problems with the CSS)</p>
+
+<pre class="brush: css;">treechildren::-moz-tree-checkbox(checked)
+{
+    /* css for checked cells */
+    list-style-image: url("<a class="external" rel="freelink">chrome://global/skin/checkbox/cbox-check.gif</a>");
+}
+</pre>
+
+<p>In addition, checkmark columns support editing:</p>
+
+<pre class="brush: xml;">&lt;tree editable="true"&gt;
+  &lt;treecols&gt;
+    &lt;treecol type="checkbox" editable="true"&gt;
+      ...
+    &lt;/treecol&gt;
+  &lt;/treecols&gt;
+&lt;/tree&gt;
+</pre>
+
+<p>If the column is editable, the user can click the cell to change the state of the checkbox. When the user clicks the cell, the view's <code>setCellValue</code> method will be called with either the value <code>true</code> or <code>false</code>.</p>
+
+<p><strong>Note that the tree must also be marked as editable</strong> using the <code>editable</code> attribute in order for this to work. This is shown in the example above. Sometimes, you might have a particular row or cell which you do not want to be editable. In this case, disable editing for that cell by setting editable to false for that cell, as in the following:</p>
+
+<pre class="brush: xml;">&lt;treecell value="true" editable="false"/&gt;
+</pre>
+
+<p>Or, for custom views, return <code>false</code> from the <code>isEditable</code> method.</p>
+
+<p>Currently, only checkbox columns support editing, although the content-based tree handles the <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeView#setCellValue()">nsITreeView.setCellValue()</a></code> and <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITreeView#setCellText()">nsITreeView.setCellText()</a></code> functions to change the tree content with a script for other types of cells. For instance:</p>
+
+<pre class="brush: js;">var col = tree.columns.getPrimaryColumn();
+treecell.setCellText(5, col, "Banana");
+</pre>
+
+<p>This will change the label of the cell in row 5 and the primary column to <em>Banana</em>. However, this paves the way in the future for more general tree editing features.</p>
+
+<h3 id="Style_improvements" name="Style_improvements">Style improvements</h3>
+
+<p>You can now specify the cursor to use for a cell using the <a href="/en/CSS" title="en/CSS">CSS</a> cursor property.</p>
+
+<pre class="brush: css;">treechildren::-moz-tree-cell-text {
+    cursor: pointer;
+}
+</pre>
+
+<p>This allows you to create separate cursors for cells.</p>
+
+<p>The <a href="/en-US/docs/Web/CSS/:-moz-tree-separator" title="Activated by the properties attribute."><code>:-moz-tree-separator</code></a> pseudo has been improved to make it a proper box type and now has additional styling capabilities. Example:</p>
+
+<pre class="brush: css;">treechildren::-moz-tree-separator {
+    margin-top:    1px;
+    border-top:    1px solid ThreeDShadow;
+    border-left:   1px solid ThreeDShadow;
+    border-right:  1px solid ThreeDHighlight;
+    border-bottom: 1px solid ThreeDHighlight;
+    height:        2px;
+}
+</pre>
+
+<div class="originaldocinfo">
+<h3 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h3>
+
+<ul>
+ <li>Author: Neil Deakin</li>
+ <li>Source: <a class="external" href="http://mozdev.org/pipermail/project_owners/2004-April/002131.html">here</a></li>
+</ul>
+</div>

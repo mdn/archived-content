@@ -1,0 +1,50 @@
+<h2 id="The_Problem" name="The_Problem">The Problem</h2>
+
+<p>Please note that the following issues have been fixed for the Firefox 1.0.4 release, and this document applies strictly to the 1.0.3 version of the browser.</p>
+<p>Changes were made in Firefox 1.0.3 that can cause the following error to arise on pages that would have worked properly in previous versions:</p>
+
+
+<pre>Error: uncaught exception: [Exception... "Illegal operation
+on WrappedNative prototype object"
+nsresult: "0x8057000c (NS_ERROR_XPC_BAD_OP_ON_WN_PROTO)"
+location: "JS frame :: <i>file_url</i> :: anonymous :: line 789"  data: no]
+</pre>
+
+<p>If you are getting this error, there are two possible solutions.</p>
+
+<h2 id="Solution:_If_.22file_url.22_is_a_Chrome-related_file" name="Solution:_If_.22file_url.22_is_a_Chrome-related_file">Solution: If "file_url" is a Chrome-related file</h2>
+
+<p>Changes were made in Firefox 1.0.3 that change how the content DOM is accessed from Chrome. These changes, and the changes you need to make to your code, are outlined in the <a href="/en-US/docs/Safely_accessing_content_DOM_from_chrome">Safely accessing content DOM from chrome</a>.</p>
+
+
+<h2 id="Solution.2FWorkaround:_If_.22file_url.22_is_a_non-Chrome_.js_or_.html_file" name="Solution.2FWorkaround:_If_.22file_url.22_is_a_non-Chrome_.js_or_.html_file">Solution/Workaround: If "file_url" is a non-Chrome .js or .html file</h2>
+
+<p>If this is the case, then you have run into a bug we inadvertently introduced while making some major security fixes for Firefox 1.0.3. There is a workaround for this, as follows:</p>
+
+<h3 id="Gecko-based_browsers" name="Gecko-based_browsers">Gecko-based browsers</h3>
+
+<pre class="brush:js">var elementProto = Element.prototype;
+elementProto.__proto__ = {
+  get text() { return this.firstChild.nodeValue; },
+  __proto__: elementProto.__proto__
+};
+</pre>
+
+<p><b>Note:</b> The <code>get text() {...}</code> syntax will not work in non-Gecko browsers.</p>
+
+<h3 id="All_browsers" name="All_browsers">All browsers</h3>
+
+<pre class="brush:js">var elementProto = Element.prototype;
+var elementGrandProto = elementProto.__proto__ = {
+  __proto__: elementProto.__proto__
+};
+
+elementGrandProto.__defineGetter__('text',
+  function () { return this.firstChild.nodeValue; }
+);
+</pre>
+
+<p><b>Note:</b> If you are trying to override a predefined prototype property, you may have to put these vanilla objects ahead of the DOM prototype, instead of after it as these examples do. In that case, be careful not to reset the DOM prototype for all browsers (you'll need to detect the user agent and reset <code>Element.prototype</code> only for Firefox 1.0.3; other browsers do not support <code>__proto__</code>, so do not allow insertion in an existing prototype chain).</p>
+
+<h2 id="For_more_information" name="For_more_information">For more information</h2>
+<p>For more information, see <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=290777">Bug 290777</a>.</p>

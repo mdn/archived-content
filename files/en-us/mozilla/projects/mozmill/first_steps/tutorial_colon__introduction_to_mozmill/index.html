@@ -1,0 +1,122 @@
+---
+title: 'Tutorial: Introduction to Mozmill'
+slug: 'Mozilla/Projects/Mozmill/First_Steps/Tutorial:_Introduction_to_Mozmill'
+tags:
+  - MozMill
+---
+<div class="warning">
+ <p><strong>This tutorial is for Mozmill 1.5.x and below</strong></p>
+</div>
+<p> </p>
+<p>Let's write a simple Mozmill test to explain how each part of the Mozmill tool and API works.  If you haven't already installed the <a class="link-https" href="https://addons.mozilla.org/en-US/firefox/addon/9018" title="https://addons.mozilla.org/en-US/firefox/addon/9018">Mozmill extension</a>, do that now.  This tutorial will cover using Mozmill in Firefox, and we will automate a common practice on the net: looking something up on Wikipedia.</p>
+<h2 id="Getting_Started">Getting Started</h2>
+<p>Once it's installed, open Mozmill from the Tools menu to bring up the User Interface (UI) of Mozmill. You'll get a blank editor. Paste in this sample code to get started:</p>
+<pre class="brush: js">var setupModule = function (module) {
+   module.controller = mozmill.getBrowserController();
+}
+
+var testFoo = function () {
+   controller.open('http://www.google.com');
+}
+
+</pre>
+<p>The <code>setupModule</code> function is used to obtain the controller instance we will use to run the test. The <a href="/en/Mozmill/Mozmill_Controller_Object" title="https://developer.mozilla.org/en/Mozmill/Mozmill_Controller_Object">Mozmill controller</a> is the core interface used to simulate user actions. The <code>mozmill.getBrowserController</code> call returns a controller for the currently open browser window. The <code>testFoo</code> function is the actual test. At the moment, all our test does is open the Google homepage, which is not very interesting.</p>
+<h2 id="Test_Framework">Test Framework</h2>
+<p>Since we want to run more than one test in our file, we will use Mozmill's test framework features. For example, each test will open up Wikipedia's website and search for a book. So, each test will open Wikipedia's site in the beginning and each test will need to close that site at the end of the test. We can do that by adding a <code>setupTest</code> and <code>teardownTest</code> to the file. Whatever is placed in <code>setupTest</code> will be executed before the each test is run and whatever code is in <code>teardownTest</code> will be executed after each test is run. Here's what our code looks like so far:</p>
+<pre class="brush: js">var setupModule = function (module) {
+   module.controller = mozmill.getBrowserController();
+}
+
+var setupTest = function(test) {
+  // Open a tab for wikipedia
+  controller.window.alert('setupTest');
+  controller.click(new elementslib.Elem(controller.menus['file-menu']['menu_newNavigatorTab']));
+  controller.open('http://www.wikipedia.org');
+}
+
+var teardownTest = function(test) {
+  // Close the tab
+  controller.window.alert('teardownTest');
+  controller.click(new elementslib.Elem(controller.menus['file-menu']['menu_close']));
+}
+
+var testFoo1 = function () {
+   controller.window.alert('Doing a test');
+}
+
+var testFoo2 = function() {
+   controller.window.alert('Doing another test');
+}
+</pre>
+<p>If you run the test, you'll see the alert for "setupTest", then you'll see the wikipedia page open in a tab, then you see the "Doing a test" alert. Next you'll see the "teardownTest" alert just before the tab that we opened for Wikipedia is closed. Next, the entire process is repeated for <code>testFoo2</code>, which will display the "Doing another test" alert. Hopefully this illustrates the usefulness of <code>setupTest</code> and <code>teardownTest</code>.</p>
+<p>Let's look at the statements that were added.</p>
+<ul>
+ <li><code>controller.window.alert()</code> -- This is the same as calling <code>window.alert()</code>. It merely throws an alert dialog onto the screen. This is often useful in debugging. And that means that <code>controller.window</code> is the top level DOM window for the application, if you're familiar with the DOM.</li>
+ <li><code>controller.click(yadda yadda)</code> -- You probably guessed that simulates a user clicking the mouse on something. And if so, you're right.</li>
+ <li><code>new elementslib.Elem(yadda yadda)</code> This is how we designate an element for the controller to act on. In this case, we are telling the controller what to click on. <code>elementslib</code> is a generic mechanism to look up elements in both the application's user interface and inside rendered web pages. You can learn more about it in the <a href="/en/Mozmill/Mozmill_Elements_Library_Object" title="https://developer.mozilla.org/en/Mozmill/Mozmill_Elements_Library_Object">elementslib reference</a>.</li>
+ <li><code>controller.menus['file-menu']['menu_newNavigatorTab']</code> -- And here we use a shortcut provided by the controller to point elementslib at the File menu. <code>controller.menus['file-menu']</code> is a list of the menu options available from the File menu. We are designating the "New Tab" menu item by using its ID attribute.</li>
+ <li><code>controller.click(new elementslib.Elem(controller.menus['file-menu']['menu_newNavigatorTab']));</code> Putting it all together now, we are asking the controller to click on a newly constructed elementslib object corresponding to the "New Tab" menu item from the File menu. And that's what it does.</li>
+</ul>
+<h2 id="Making_Useful_Tests">Making Useful Tests</h2>
+<p>Now that we understand how to run the tests and how the framework helps us, it's time to make these tests actually do something.  We were going to have Wikipedia look up a book for us.  First, we need to discover what the names of the controls are on the wikipedia.org  main page.  Open a tab to <a class="external" href="http://wikipedia.org" title="http://wikipedia.org/">http://wikipedia.org</a> in your browser and click on the Inspector tab of Mozmill.  Click on "Start", now mouseover the Wikipedia page.  You'll see that a blue rectangle is following the mouse.  And the text in the Mozmill Inspector tab is changing as you do so.  Mouseover the search box and double click.  This freezes the Inspector with the <code>elementslib.ID</code> call needed to get the searchbox.  It should be: <code>new elementslib.ID(controller.tabs.activeTab, "searchInput")</code>.  You can copy and paste that into your test and assign it to a variable.  Next we just tell the controller to type "Hitchhiker's Guide to the Galaxy" into the search box.  That's done with a <code>controller.type</code> statement.  And lastly, we want to click the "arrow" button to start the search.  We'll use the Inspector trick to grab a reference to that search button just like we did with the searchInput box.  After all this <code>testFoo1</code> becomes: </p>
+<pre class="brush: js">var testFoo1 = function () {
+   controller.window.alert('Doing a test');
+   searchbox = new elementslib.ID(controller.tabs.activeTab, "searchInput");
+   controller.type(searchbox, "Hitchhiker's Guide to the Galaxy");
+   controller.click(<span id="dxElement">new elementslib.Name(controller.tabs.activeTab, "go"));</span>
+}</pre>
+<p>Now if you run this in our fledgling test, you'll see a problem.  The "teardownTest" alert will fire before the page for <em>Hitchhiker's Guide to the Galaxy</em> ever loads.  We need a way for the test to be certain that the page loads, and we need a way for the test to fail should the page not load or if something should go wrong.  To do that, we'll use a "waitFor" statement.  The simplest is <code>waitForPageLoad</code>.  Now, we can put that into our test, but we are only testing that the page is loading.  Let's actually test that Firefox is loading images as well.  For that we will use an assert statement.  The assert statement will cause the test to fail if the image does not load, and will insert a passing statement should the image load.  Because it is good practice we'll also change the name of testFoo1 to something more meaningful, but keep in mind it must start with "test". Also be sure that the file in which your tests reside has the prefix "test" on its name (like <code>testRestoreHomepageToDefault.js</code> or <code>test_restore_homepage_to_default.js</code>, for example), otherwise it won't be found by mozmill when asked to run tests from a given folder.</p>
+<pre class="brush: js">var testHitchHiker = function () {
+   controller.window.alert('Doing a test');
+   searchbox = new elementslib.ID(controller.tabs.activeTab, "searchInput");
+   controller.type(searchbox, "Hitchhiker's Guide to the Galaxy");
+   controller.click(<span id="dxElement">new elementslib.Name(controller.tabs.activeTab, "go"));</span>
+   controller.waitForPageLoad();
+   image = new elementslib.XPath(controller.tabs.activeTab,
+                                 "/html/body/div[@id='globalWrapper']/div[@id='column-content']" +
+                                 "/div[@id='content']/div[@id='bodyContent']/div[6]/div/a[1]/img");
+   controller.assertImageLoaded(image);}</pre>
+<p>Now, let's look at that <code>elementslib</code> object again.  Elementslib has a few mechanisms available to find elements.  It always uses the simplest one to find any element that you point it at.  Notice that for the search text box, it found an ID, for the search button a name, and for the image an XPath.  The good news is that the Inspector will generate these for you so you don't have to worry about them.  The bad news is that they can get rather ugly.  Here you can see that I broke it over two lines by cutting it in half. </p>
+<p>Once more we assign the image element to a variable and then we use an assert method.  Images can use the specific <code>assertImageLoaded</code> method.  This will cause a failure if the image is not loaded.  If you want to see the test fail, simply go into your Firefox Preferences window, uncheck the "load images automatically" box on the "Content" tab.  Then run the tests again.  This time, you will see a red line in the output tab of Mozmill indicating that "assertImageLoad" failed.</p>
+<p>To complete our test, we will do the same test with a second book, and we will take all the alerts out of the test.  So the final test file is:</p>
+<pre class="brush: js">var setupModule = function(module) {
+  module.controller = mozmill.getBrowserController();
+}
+
+var setupTest = function(test) {
+  // Open a tab for wikipedia
+  controller.click(new elementslib.Elem(controller.menus['file-menu']['menu_newNavigatorTab']));
+  controller.open('http://www.wikipedia.org');
+  controller.waitForPageLoad();
+}
+
+var teardownTest = function(test) {
+  // Close the tab
+  controller.click(new elementslib.Elem(controller.menus['file-menu']['menu_close']));
+}
+
+var testHitchhiker = function () {
+   searchbox = new elementslib.ID(controller.tabs.activeTab, "searchInput");
+   controller.type(searchbox, "Hitchhiker's Guide to the Galaxy");
+   controller.click(new elementslib.Name(controller.tabs.activeTab, "go"));
+   controller.waitForPageLoad();
+
+   image = new elementslib.XPath(controller.tabs.activeTab,
+                                 "/html/body/div[@id='content']/div[@id='bodyContent']"+
+                                 "/div[4]/table/tbody/tr[2]/td/a[1]/img");
+   controller.assertImageLoaded(image);
+}
+
+var testHuckFinn = function(){
+   searchbox = new elementslib.ID(controller.tabs.activeTab, "searchInput");
+   controller.type(searchbox, "Huck Finn");
+   controller.click(new elementslib.Name(controller.tabs.activeTab, "go"));
+   controller.waitForPageLoad();
+
+   // Note that the Xpath is different on this page, used the inspector to get it
+   image = new elementslib.XPath(controller.tabs.activeTab,
+                                  "/html/body/div[@id='content']/div[@id='bodyContent']"+
+                                  "/div[4]/table/tbody/tr[2]/td/a[1]/img");
+   controller.assertImageLoaded(image);
+}
+</pre>

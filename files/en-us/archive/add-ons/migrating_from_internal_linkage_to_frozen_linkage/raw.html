@@ -1,0 +1,128 @@
+
+<p>Extension code using <a href="/en/XPCOM_Glue#Using_Mozilla_internal_linkage" title="en/XPCOM_Glue#Using_Mozilla_internal_linkage">internal linkage</a> will need to migrate to use <a href="/en/XPCOM_Glue#Frozen_linkage:_dependent_glue_.28dependent_on_xpcom.dll.29" title="en/XPCOM_Glue#Frozen_linkage:_dependent_glue_.28dependent_on_xpcom.dll.29">frozen linkage</a> because internal linkage will not be available in Firefox 3. This document is a guide to common code patterns that may need to change to work with frozen linkage.</p>
+<h4 id="Strings" name="Strings">Strings</h4>
+<p>The most obvious change required by frozen linkage is using the frozen string API.</p>
+<pre class="eval"><span class="highlightred">- #include "nsAString.h"<br>- #include "nsString.h"<br>- #include "nsReadableUtils.h"<br>- #include "nsEscape.h"</span>
+<span class="highlightgreen">+ #include "nsStringAPI.h"</span>
+</pre>
+<p>On Windows, if you see the following error, you are including a header you shouldn't be:</p>
+<pre class="eval">nsStringFwd.h(60) : fatal error C1001: INTERNAL COMPILER ERROR
+</pre>
+<p>To debug this error, make in the failing directory, adding the /showIncludes directive to figure out what is being included incorrectly:</p>
+<pre class="eval">make -C directory/that/failed OS_CPPFLAGS=-showIncludes
+</pre>
+<p>The frozen string API is similar but not identical to the nonfrozen string API. The frozen string API does not have (or need) nsXPIDLString:</p>
+<pre class="eval"><span class="highlightred">- nsXPIDLString value;</span>
+<span class="highlightgreen">+ nsString value;</span>
+  ptr-&gt;GetterMethod(getter_Copies(value));
+<span class="highlightred">- const PRUnichar *strvalue = value;</span>
+<span class="highlightgreen">+ // nsString doesn't cast directly to PRUnichar*, use .get()<br>+ const PRUnichar *strvalue = value.get();</span>
+
+</pre>
+<p>The frozen string API doesn't accept a length for .Truncate(). Use .SetLength() instead:</p>
+<pre class="eval">  nsString myString = someString;
+<span class="highlightred">- myString.Truncate(4);</span>
+<span class="highlightgreen">+ myString.SetLength(4);</span>
+</pre>
+<p>The frozen string API doesn't support the <code>iterator</code> or <code>const_iterator</code> classes, but you can use pointers the same way:</p>
+<pre class="eval">  nsString myString = someString;
+<span class="highlightred">- nsString::const_iterator begin, end;<br>- myString.BeginReading(begin); myString.EndReading(end);</span>
+<span class="highlightgreen">+ const PRUnichar *begin, *end;<br>+ myString.BeginReading(&amp;begin, &amp;end);</span>
+</pre>
+<p>The frozen string API uses comparator functions instead of a virtual comparator class. unicharutils has been modified to provide a frozen-linkage comparator:</p>
+<pre class="eval">  nsString myString = someString;
+<span class="highlightred">- if (myString.Equals(otherString, nsCaseInsensitiveStringComparator()))</span>
+<span class="highlightgreen">+ if (myString.Equals(otherString, CaseInsensitiveCompare))</span>
+    return NS_OK; // woot, we're equal in all things but case
+</pre>
+<div class="note">When using unicharutils from frozen-linkage code, link against the <code>unicharutil_external_s</code> static library.</div>
+<p>The frozen string API doesn't implement the Left(), Mid(), or Right() signatures. Use StringHead(), Substring(), and StringTail() instead:</p>
+<pre class="eval">  nsString buffer = someString;
+<span class="highlightred">- nsCAutoString prefix;<br>- buffer.Left(prefix, 4);</span>
+<span class="highlightgreen">+ const nsDependentSubstring prefix = StringHead(buffer, 4);</span>
+</pre>
+<p>The frozen string API doesn't use nsSubstringTuple objects and maintains all strings in a contiguous buffer. This means that the + operator is not implemented, nor are the PromiseFlatString functions or classes around any more. Use += or Append() instead of using +, and use nsString or nsCString instead of PromiseFlatString:</p>
+<pre class="eval">  nsString firstString = someString;
+  nsString secondString = someOtherString;
+<span class="highlightred">- nsString comboString = firstString + secondString;</span>
+<span class="highlightgreen">+ nsString comboString = firstString;<br>+ comboString += secondString; // or: comboString.Append(secondString);</span>
+<span class="highlightred">- nsresult rv = SomeFunc(PromiseFlatString(comboString));</span>
+<span>+ nsresult rv = SomeFunc(comboString);<br></span></pre>
+<p>Removing the nsReadableUtils.h from the headers list also means that we would not have access to AppendUTF16toUTF8 kind of functions. All these functions are now available via the new String API</p>
+<pre class="eval"> <span class="highlightred">- AppendUTF16toUTF8(srcString, destString);</span>
+ <span class="highlightgreen">+ destString.Append(NS_ConvertUTF16toUTF8(srcString));</span>
+</pre>
+<p>The signatures of the Find methods differ between the two APIs. If you are only finding a single character, prefer the FindChar method.</p>
+<p>The (Lossy)Copy(ASCII|UTF8|16)to(ASCII|UTF8|16) do not accept character pointer parameters. You must explicitly wrap them in an appropriate dependent string.</p>
+<p>You cannot make a dependent string from an abstract string. Nor can you use nsPromiseFlat(C)String. You probably meant to use PromiseFlat(C)String instead. Note that you don't need to promise a flat string if you already have an ns(C)(Auto)String type, since they are already flat.</p>
+<p>You cannot mix string variables and literals in comparison operators. In particular you may need to use NS_LITERAL_(C)STRING("") instead of Empty(C)String.</p>
+<p>The EqualsIgnoreCase method does not take a length parameters. You may be able to use StringBeginsWith instead.</p>
+<p>The FindInReadable methods do not exist in the external API. You may be able to use the Find methods instead.</p>
+<p>The ToNewCString, ToNewUnicode methods only work on the appropriate string class. You need to supply the appropriate conversion yourself.</p>
+<p>The Adopt and getter_Copies methods do not work on abstract strings. Instead of passing getter_Copies(aString) to a method expecting a character pointer out parameter, you will need to use a temporary variable and copy the result.</p><h4 id="Missing_Headers" name="Missing_Headers">Missing Headers</h4>
+<p>Some headers are included from IDL files only when <code>MOZILLA_INTERNAL_API</code> is defined (actually, they shouldn't be there at all).</p>
+<p>For errors about undeclared <code>do_CreateInstance</code>:</p>
+<pre class="eval">#include "nsComponentManagerUtils.h"
+</pre>
+<p>For errors about undeclared <code>do_GetService</code>:</p>
+<pre class="eval">#include "nsServiceManagerUtils.h"
+</pre>
+<p>For errors about undeclared <code>NS_GetSpecialDirectory</code>:</p>
+<pre class="eval">#include "nsDirectoryServiceUtils.h"
+</pre>
+<h4 id="Utility_Classes" name="Utility_Classes">Utility Classes</h4>
+<p>Some utility classes could previously be created with NS_New* utility functions. These classes must now be created using XPCOM:</p>
+<pre class="eval">  // nsISupportsArray is bad! Don't use it in new code. Use nsIArray instead. (See <a href="/en/XPCOM_array_guide" title="en/XPCOM_array_guide">XPCOM:Arrays</a>.)
+  nsCOMPtr&lt;nsISupportsArray&gt; array;
+<span class="highlightred">- rv = NS_NewISupportsArray(getter_AddRefs(array));</span>
+<span class="highlightgreen">+ array = do_CreateInstance(NS_SUPPORTSARRAY_CONTRACTID);</span>
+</pre>
+<pre class="eval"><span class="highlightred">- nsCOMPtr&lt;nsIInputStream&gt; rawStream;<br>- rv = NS_NewByteInputStream(getter_AddRefs(rawStream),<br>-                            (const char*)data, length);</span>
+<span class="highlightgreen">+ nsCOMPtr&lt;nsIStringInputStream&gt; rawStream =<br>+   do_CreateInstance(NS_STRINGINPUTSTREAM_CONTRACTID, &amp;rv);<br>+ NS_ENSURE_SUCCESS(rv, rv);<br>+<br>+ rv = rawStream-&gt;SetData((const char*)data, length);</span>
+  NS_ENSURE_SUCCESS(rv, rv);
+</pre>
+<div class="note">
+<p><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStringInputStream" title="">nsIStringInputStream</a></code> is not frozen (and thus, not available in the Gecko SDK as currently published). In order to use this interface in your code, you will need to get the IDL files <a href="/en/Build_Documentation#Get_the_source" title="en/Build_Documentation#Get_the_source">from the source</a> (via CVS, from a tarball, or using LXR).</p>
+</div>
+<p>The following functions, however, are implemented in the glue library and can be used from frozen-linkage code:</p>
+<ul> <li><code>NS_NewArrayEnumerator</code> (excluding deprecated <code>nsISupportsArray</code> version)</li> <li><code>NS_NewEmptyEnumerator</code></li> <li><code>NS_NewUnionEnumerator</code></li>
+</ul>
+<h4 id="nsCRT" name="nsCRT">nsCRT</h4>
+<p>Functions in nsCRT.h are not available to frozen-linkage code. Some of the constants are still useful though.</p>
+<pre class="eval"><span class="highlightred">- #include "nsCRT.h"</span>
+<span class="highlightgreen">+ #include &lt;string.h&gt;</span>
+
+  const char *str = "Foo";
+<span class="highlightred">- PRUint32 len = nsCRT::strlen(str);</span>
+<span class="highlightgreen">+ PRUint32 len = strlen(str);</span>
+</pre>
+<pre class="eval"><span class="highlightred">- #include "nsCRT.h"</span>
+<span class="highlightgreen">+ #include "nsCRTGlue.h"</span>
+
+  const PRUnichar str[] = {'F','o','o','\0'};
+<span class="highlightred">- PRUint32 len = nsCRT::strlen(str);</span>
+<span class="highlightgreen">+ PRUint32 len = NS_strlen(str);</span>
+</pre>
+<pre class="eval"><span class="highlightred">- #include "nsCRT.h"</span>
+<span class="highlightgreen">+ #include "nsMemory.h"</span>
+<span class="highlightgreen">+ #include "nsCRTGlue.h"</span>
+
+  PRUnichar* anotherstr = (PRUnichar*) NS_Alloc(100 * sizeof(PRUnichar));
+<span class="highlightred">- PRUnichar *str = nsCRT::strdup(anotherstr);</span>
+<span class="highlightred">- nsCRT::free(str);</span>
+<span class="highlightgreen">+ PRUnichar *str = NS_strdup(anotherstr);</span>
+<span class="highlightgreen">+ NS_Free(str);</span>
+
+</pre><h4 id="Linking">Linking</h4>
+<p>For information about the correct libraries to link to when using frozen linkage, see <a class="internal" href="/en/XPCOM_Glue" title="en/XPCOM Glue">XPCOM Glue</a>.</p>
+<h3 id="The_nsMsgUtils.h_header">The nsMsgUtils.h header</h3>
+<p>For developing core Mail/News code, the nsMsgUtils.h header is being enhanced to fill in some of the gaps caused by the differences between the internal and external APIs. These enhancements make it easier to write code that will transparently compile using either API. The list of enhancements fall in to three categories.</p>
+<h4 id="Changes_to_internal_APIs_to_make_them_compatible_with_the_external_API.">Changes to internal APIs to make them compatible with the external API.</h4>
+<ul> <li><code>#define CaseInsensitiveCompare PR_TRUE</code><br> This allows you to use <code>CaseInsensitiveCompare</code> as the parameter to various string methods that normally accept <code>PR_TRUE</code> under the internal API.</li> <li><code>#define ToInteger(prv, radix) ToInteger(reinterpret_cast&lt;PRInt32*&gt;(prv), radix)</code><br> This allows you to pass a pointer to an nsresult to the ToInteger method, when it normally accepts a PRInt32. Note that you must pass the radix (normally 10).</li>
+</ul>
+<h4 id="Changes_to_external_APIs_to_make_them_compatible_with_the_internal_API.">Changes to external APIs to make them compatible with the internal API.</h4>
+<ul> <li><code>#define nsCaseInsensitiveCStringComparator() CaseInsensitiveCompare</code></li> <li><code>#define nsCaseInsensitiveStringComparator() CaseInsensitiveCompare</code><br> These allow you to use the comparators to those APIs that normally accept CaseInsensitiveCompare under the external API.</li> <li><code>#define kNotFound -1</code><br> This convenience constant is not defined under the external API.</li> <li><code>#define AppendASCII(str) AppendLiteral(str)</code><br> The internal API distinguishes between literals (which must be character constants) and ASCII strings. The external API confusingly provides an AppendLiteral method that does not require a character constant.</li> <li><code>#define AppendUTF16toUTF8(a16, a8) (a8).Append(NS_ConvertUTF16toUTF8(a16))</code><br> And similarly for the other conversions.</li> <li><code>#define Compare(str1, str2, comp) (str1).Compare(str2, comp)</code></li> <li><code>#define Last() EndReading()[-1]</code></li> <li><code>#define SetCharAt(c, i) Replace(i, 1, ch)</code><code><br> </code></li> <li><code>#define </code><code>NS_NewISupportsArray(result) CallCreateInstance(NS_SUPPORTSARRAY_CONTRACTID, static_cast&lt;nsISupportsArray**&gt;(result));<br> </code>Ideally we would switch to nsIMutableArray, but in the mean time there's no point changing the same code twice.<br> Note: #include nsISupportsArray.h before nsMsgUtils.h</li>
+</ul>
+<h4 id="Convenience_methods_that_work_using_either_API.">Convenience methods that work using either API.</h4>
+<ul> <li><code>MsgLowerCaseEqualsLiteral(a8, literal)</code><br> Replaces (a8).LowerCaseEqualsLiteral(literal). Note that the external API provides LowerCaseEqualsLiteral for nsAString, but not nsACString.</li> <li><code>MsgRFindChar(str, ch, len)</code><br> Replaces (str).RFindChar(ch, len)</li> <li><code>MsgCompressWhitespace(str)</code><br> Replaces (str).CompressWhitespace(). Support for the optional parameters is not provided.</li> <li><code>MsgEscapeHTML(str)</code><br> Replaces nsEscapeHTML(str)</li> <li><code>MsgEscapeHTML2(buffer, len)</code><br> Replaces nsEscapeHTML2(buffer, len). Support for the other forms of nsEscapeHTML is not provided.</li>
+</ul>

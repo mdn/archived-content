@@ -1,0 +1,79 @@
+---
+title: XEmbed Extension for Mozilla Plugins
+slug: Archive/Plugins/XEmbed_Extension_for_Mozilla_Plugins
+tags:
+  - Add-ons
+  - Plugins
+---
+<h2 id="Overview" name="Overview">Overview</h2>
+<p>Recent versions of Mozilla include an extension for writing plugins that use XEmbed instead of using the old Xt-based mainloop that most plugins have been using since the Netscape 3.x days.</p>
+<p>The use of the Xt mainloop has been a problem for modern plugin development because very few modern applications that want to take advantage of the capabilities of newer toolkits use Xt. Also, when included with builds of Mozilla that are based on Gtk 1.2 or Gtk 2.x, the Xt code that hosts the plugins is at best hacky and has been the source for many minor problems including inconsistent focus behavior as well as occasional crashes.</p>
+<p>It's recommended that you have a look at the <a href="/en/Gecko_Plugin_API_Reference" title="en/Gecko_Plugin_API_Reference">Gecko Plugin API Reference</a> since this document will include information that assumes that you are already familiar with the way that plugins are currently hosted as well as the APIs.</p>
+<h2 id="Key_Differences" name="Key_Differences">Key Differences</h2>
+<p>All of the interfaces that you would normally expect to exist in the plugins will still exist when using XEmbed plugins. There are only two key differences:</p>
+<ul> <li>In the NPP_SetWindow call, the window parameter will be the XID of the hosting XEmbed window. As an implementation note, this is really the XID of a <a href="http://developer.gnome.org/doc/API/2.0/gtk/GtkSocket.html" class="external">GtkSocket</a> window.</li> <li>In your Plugin Instance NPP_GetValue call you need to make sure that you support the new NPPVpluginNeedsXEmbed value. More information is included on this below.</li>
+</ul>
+<h2 id="Hosting_using_Gtk2.x" name="Hosting_using_Gtk2.x">Hosting using Gtk2.x</h2>
+<p>Included below are a couple of code snippits that should help you get started as well as some hints on building a successful plugin. Please use the following diagram as a reference:</p>
+<p><img src="/@api/deki/files/480/=Xembed-diagram.png" alt="Image:Xembed-diagram.png" class=" internal"></p>
+<p>As you can see from the diagram above, it's pretty easy to set up a plugin using Gtk2. The general idea is that you use the XID that was passed into your NPP_SetWindow() call and create a GtkPlug to host inside of that socket. Since the GtkPlug is just a <a href="http://developer.gnome.org/doc/API/2.0/gtk/GtkContainer.html" class="external">container</a>, you can add your own widgets at your leisure with the packing you prefer.</p>
+<h2 id="Telling_Mozilla_You_Support_XEmbed" name="Telling_Mozilla_You_Support_XEmbed">Telling Mozilla You Support XEmbed</h2>
+<p>As mentioned above, you will need to tell Mozilla that you support the XEmbed protocol for hosting plugins. For backwards compatibility reasons if you don't tell Mozilla that you support it it will try to hand you an Xt widget as a parent.</p>
+<p>However, before you do so you should make sure that the browser also supports XEmbed when the plugin is first initialized. If you've built your plugin so that it will support either Xt or XEmbed you can include a fallback for older style hosting. If you haven't you can return an error and the plugin will be ignored. It's good practice to do this in case people try to install your plugin for older versions of the browser that don't support XEmbed functionality.</p>
+<p>This is an incomplete example of what a piece of code might look like that tries to check for the proper Mozilla version. This would be included in your NP_Initialize function.</p>
+<pre>NPError
+NP_Initialize(NPNetscapeFuncs* nsTable, NPPluginFuncs* pluginFuncs)
+{
+    NPError err = NPERR_NO_ERROR;
+    PRBool supportsXEmbed = PR_FALSE;
+    NPNToolkitType toolkit = 0;
+
+    [ code that copies all of the function tables and does ]
+    [ other standard checks                                ]
+
+    /*
+     * Make sure that the browser supports functionality we care
+     * about.
+     */
+
+    err = CallNPN_GetValueProc(gNetscapeFuncs.getvalue, NULL,
+                               NPNVSupportsXEmbedBool,
+                               (void *)&amp;supportsXEmbed);
+
+    if (err != NPERR_NO_ERROR || supportsXEmbed != PR_TRUE)
+        return NPERR_INCOMPATIBLE_VERSION_ERROR;
+
+    err = CallNPN_GetValueProc(gNetscapeFuncs.getvalue, NULL,
+                               NPNVToolkit,
+                               (void *)&amp;toolkit);
+
+    if (err != NPERR_NO_ERROR || toolkit != NPNVGtk2)
+        return NPERR_INCOMPATIBLE_VERSION_ERROR;
+
+    [ the rest of initialization ]
+
+    return err;
+}
+</pre>
+<p>As you can see, if the browser says that it doesn't support XEmbed and doesn't use Gtk2 as a toolkit we return an error. If you return with an error from your initialization function the plugin will not be used which avoids crashes and other problems.</p>
+<p>Once you've verified that the browser has the compatibility you require, you can modify your NPP_GetValue call like so:</p>
+<pre>NPError
+NPP_GetValue(void *future, NPPVariable variable, void *value)
+{
+    NPError err = NPERR_NO_ERROR;
+    switch (variable) {
+    case NPPVpluginNeedsXEmbed:
+        *((PRBool *)value) = PR_TRUE;
+        break;
+    default:
+        err = NPERR_GENERIC_ERROR;
+    }
+
+    return err;
+}
+</pre>
+<p>Once you have set those variables, it should be relatively easy to set up a plugin. Just create a GtkPlug that is the child of the XID passed in and it's just like using a standard Gtk widget.</p>
+<h2 id="Other_Toolkits_and_Out_of_Process_Plugins" name="Other_Toolkits_and_Out_of_Process_Plugins">Other Toolkits and Out of Process Plugins</h2>
+<p>It should be possible to use this interface to build a plugin that would run out of process as well as using other toolkits like Qt to build plugins. Since XEmbed was designed for cross-toolkit and out of process applications, it should work. In fact, version 1.5 of the Java Plugin will probably use XEmbed out of process. The author has no specific knowledge of other instances where people are using this architecture, though.</p>
+<h2 id="XEmbed_Sample_Plugin">XEmbed Sample Plugin</h2>
+<p>For a complete working sample of a plugin using in-process XEmbed, see the <a href="http://multimedia.cx/diamondx/" class="external" title="http://multimedia.cx/diamondx/">DiamondX XEmbed Example Plugin.</a> Works only in Firefox 2.0.</p>

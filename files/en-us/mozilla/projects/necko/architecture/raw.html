@@ -1,0 +1,65 @@
+<p>{{ Outdated("It was last updated in 1999.") }}
+</p><p><a href="en/Necko">Necko</a> is a modular networking library developed as part of the Mozilla project. Necko has been designed to accommodate pluggable protocols so developers can contribute their own protocol libraries that can be dynamically loaded and used by applications utilizing Necko.
+</p><p>Necko provides the following libraries:
+</p>
+<ul><li> necko - core networking functionality.
+</li><li> mimetype - MIME &lt;-&gt; file extension mapping
+</li><li> nkabout - about: protocol
+</li><li> nkdata - data: protocol
+</li><li> nkfile - file: protocol
+</li><li> nkftp - ftp: protocol
+</li><li> nkkeyword - keyword: protocol
+</li><li> nkresrc - resource: protocol
+</li><li> cnvts - stream converters
+</li><li> stremcnv - stream converter service
+</li></ul>
+<p>These libraries will change with time and illustrate the modularity of Necko.
+</p>
+<h3 id="Architecture" name="Architecture"> Architecture </h3>
+<p>After a few iterations of our original design, the current Necko architecture looks something like this:
+</p><p><img alt="Image:arch.jpg">
+</p>
+<h3 id="URLs" name="URLs"> URLs </h3>
+<p>Necko's primary responsibility is moving data from one location, to another location. These locations are represented in the form we have all grown to know and love as URIs. A URL implements the URI interface. The URI interface does resource-generic things like getting/setting the scheme, or getting/setting the spec (everything beyond the first colon ':'). URLs provide getting/setting of paths, hosts, ports, filenames, etc. URLs are the most commonly used form of a URI. Because of their importance, Necko provides its own standard implementation of URLs (with class id <code>NS_STANDARDURL_CID</code>), which does all of the standard parsing necessary for most URLs. Necko also provides a simple URI implementation for convenience. URIs (recall that a URL is just one implementation of a URI) can be created as individual components independently of Necko, or they can be retrieved via the {{ Interface("nsIIOService") }} interface.
+</p><p>For more information see <a href="en/URIs_and_URLs">URIs and URLs</a>.
+</p><p>If you want to provide your own resource implementation for foo URLs, you simply need to implement the {{ Interface("nsIURI") }} interface.
+</p><p>{{ Interface("nsIIOService") }} acts as the central point of access to URLs and channels ({{ Interface("nsIChannel") }}) in Necko. Given a string representation of a URL, you can ask the <code>nsIIOService</code> for a URL instance representing that string. Once you have a URL interface in hand ({{ Interface("nsIURL") }}), you have a completely parsed representation of the original URL string, and you can query for the various parts of the URL.
+</p>
+<h3 id="Handlers_&amp;_channels" name="Handlers_&amp;_channels"> Handlers &amp; channels </h3>
+<p>{{ Interface("nsIChannel") }} provides a data access interface which allows you to read or write data from or to a URI. There is a 1-to-1 relationship between URIs and channels (if you go so far as to create a channel from a URI, which is not required if all you need is a parsed representation of a URI string). For every URI you want to transact with, there is exactly one channel.
+</p><p>In order to get a channel from a URI an intermediary layer was introduced. Because a URI has no self knowledge about what "protocol" it represents, another component is responsible for deciding which channel implementation will be responsible for "loading" the URI. This layer is the protocol handler layer. A protocol handler's primary responsibility is to create channels for the scheme it has registered to handle. For example, the HTTP protocol handler registers itself as the protocol handler for "http." The HTTP protocol handler creates HTTP channels for HTTP URLs.
+</p><p>Once you have a channel you can read or write data from or to your URI.
+</p>
+<h4 id="nsIIOService" name="nsIIOService"> nsIIOService </h4>
+<p>The {{ Interface("nsIIOService") }} does the protocol handler lookup for you. However, you can certainly ask the <code>nsIIOService</code> for the protocol handler for the URI you have, then ask the protocol handler for a channel on that URI. In fact, most of what the <code>nsIIOService</code> does can be done independently of the <code>nsIIOService</code>, by hand. The <code>nsIIOService</code> acts as a convenience interface, consolidating several steps for the user.
+</p><p>To summarize, the <code>nsIIOService</code> creates URL instances. It does this by looking up the protocol handler for the scheme of the URL, then asking the protocol handler to create the URL. The <code>nsIIOService</code> can also create channels. It does this by looking up the protocol handler and asking it to create the channel.
+</p><p>The primary responsibility of protocol handlers is to create channel instances that know how to interpret the protocol that the handler registered for. However, a protocol handler implementation also might "cache" the underlying transports so channels it creates can reuse them later. The channel does the true work of protocol interpretation and data movement (if any). Although the protocol handler creates channels, protocol interpretation doesn't begin until the user initiates the transaction using the <code>nsIChannel</code> API.
+</p>
+<h3 id="Receiving_data_&amp;_nsIStreamListener" name="Receiving_data_&amp;_nsIStreamListener"> Receiving data &amp; nsIStreamListener </h3>
+<p>You can read or write, from or to a channel using either the synchronous API, or the asynchronous API. If you want to move data asynchronously you need to be able to receive callbacks using an implementation of {{ Interface("nsIStreamListener") }}. An <code>nsIStreamListener</code> is told when the URI transaction has "started," when data is available (in the case of reading data), and when it has "stopped." It is up to the <code>nsIStreamListener</code> implementation to decide what to do with these various notifications. The <code>OnDataAvailable()</code> notification provides a chance for the <code>nsIStreamListener</code> to actually retrieve data that the channel has acquired. One of the arguments to the <code>OnDataAvailable()</code> notification is an {{ Interface("nsIInputStream") }} (which can be considered the underlying data).
+</p>
+<h3 id="Streams" name="Streams"> Streams </h3>
+<p>Necko represents data in the form of streams ({{ Interface("nsIBaseStream") }} is the root interface. {{ Interface("nsIInputStream") }} is read from. {{ Interface("nsIOutputStream") }} is written to). Streams provide a generic interface to the data and allow for many underlying implementations that permit multiple data sources to be used. As a user, you don't care where the data came from, or where it "is," as long as you get the data. The data may be in memory, it may be on disk, or it may be located somewhere else. The point is that streams provide a loose interface for data access.
+</p><p>If you initiate a synchronous transfer on a channel, you are handed back a stream that you can read or write from or to. If you initiate an asynchronous transfer, you receive callbacks that notify you when things are happening. In the case of an asynchronous read... when you receive the <code>OnDataAvailable()</code> callback, you are handed an <code>nsIInputSteam</code> which you can read the data from (you will more than likely need to be able to handle multiple <code>OnDataAvailable()</code> callbacks, buffering the data you receive as necessary). The transaction is not complete until you receive an "stopped" notification.
+</p>
+<h3 id="Transports" name="Transports"> Transports </h3>
+<p>Underlying I/O functionality has been consolidated into "transports." There is a transport for each type of I/O. Necko implements a file transport and a socket transport that the protocol implementations (channels) use to actually move bytes to and from.
+</p>
+<h3 id="How_do_I_add_my_own_protocol_handler.3F" name="How_do_I_add_my_own_protocol_handler.3F"> How do I add my own protocol handler? </h3>
+<p>Adding your own protocol handler is a straightforward process in Necko. There are a minimum of two interfaces you need to implement in order to fit into the Necko architecture: {{ Interface("nsIProtocolHandler") }}, and {{ Interface("nsIChannel") }}.
+</p><p>Recall, that the IOService will look up your protocol handler and ask it for a channel. After registering your protocol handler
+</p><p>Necko will use it to create channels for any URIs it encounters that have the scheme your protocol handler registered for. Please use existing protocol handler's for reference (the <code>data:</code> protocol handler is the simplest handler Necko provides, HTTP is a fairly complex (uses many classes) implementation utilizing asynchronous I/O, and FTP provides an example of a protocol implementation that creates an extra thread which uses synchronous I/O).
+</p>
+<h3 id="Dependencies" name="Dependencies"> Dependencies </h3>
+<p>Necko requires the following libraries for linking:
+</p>
+<ul><li> <a href="en/NSPR">NSPR</a>
+</li><li> <a href="en/XPCOM">XPCOM</a>
+</li></ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author(s): Jud Valeski
+</li><li> Last Updated Date: November 8, 1999
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

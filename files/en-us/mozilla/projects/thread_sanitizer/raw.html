@@ -1,0 +1,130 @@
+<h2 id="What_is_Thread_Sanitizer">What is Thread Sanitizer?</h2>
+
+<p>Thread Sanitizer (TSan) is a fast data race detector for C/C++ programs. It uses a compile-time instrumentation to check all non-race-free memory access at runtime. Unlike other tools, it understands compiler-builtin atomics and synchronization and therefore provides very accurate results with no real false positives. More information on how TSan works can be found on <a class="external" href="https://github.com/google/sanitizers/wiki/ThreadSanitizerAlgorithm" title="http://code.google.com/p/address-sanitizer/wiki/AddressSanitizerAlgorithm">the Thread Sanitizer wiki</a>.</p>
+
+<h2 id="Public_Builds">Public Builds</h2>
+
+<div class="note">
+<p><strong>Note:</strong> No public builds are available at this time yet.</p>
+</div>
+
+<h2 id="Manual_Build">Manual Build<a name="ManualBuild"></a></h2>
+
+<h3 id="Build_prerequisites">Build prerequisites</h3>
+
+<div class="note"><strong>Note:</strong> This section assumes you're using <strong>Linux</strong> to build. ThreadSanitizer does not work on Mac OSX yet.</div>
+
+<h4 id="LLVMClang">LLVM/Clang</h4>
+
+<p>The TSan instrumentation is implemented as an LLVM pass and integrated into Clang. The version of Clang you need to use depends on what Firefox release you are compiling</p>
+
+<ul>
+ <li>If you are building from mozilla-central, you must use Clang 3.6 or later.  Clang 3.4 + TSan cannot compile Firefox due to an internal compiler error; some versions of Clang 3.5 packaged by Linux distros do not work for the same reason.  You can check which version of clang you have by running the command:
+  <pre>clang -v
+</pre>
+ </li>
+ <li>If you are not building from mozilla-central and are building Firefox 39 or earlier, you must use Clang 3.3.  You can find precompiled binaries for LLVM/Clang 3.3 on <a href="https://llvm.org/releases/download.html#3.3">the LLVM releases page</a>.</li>
+</ul>
+
+<p>We recommend using Clang 3.6 or later.</p>
+
+<h3 id="Building_Firefox">Building Firefox</h3>
+
+<h4 id="Getting_the_source">Getting the source</h4>
+
+<p>If you don't have a source code repository clone yet, you need to <a href="/en-US/docs/Mozilla/Developer_guide/Source_Code/Mercurial" title="Getting Mozilla Source Code Using Mercurial">get yourself a clone of mozilla-central</a>.</p>
+
+<h4 id="Adjusting_the_build_configuration">Adjusting the build configuration</h4>
+
+<p>Create the build configuration file <code>.mozconfig</code> with the following content in your mozilla-central directory:</p>
+
+<pre>mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/objdir-ff-tsan
+mk_add_options MOZ_MAKE_FLAGS=-j12
+
+# Enable LLVM specific code and build workarounds
+ac_add_options --enable-thread-sanitizer
+# If clang is already in your $PATH, then these can simply be:
+#   export CC=clang
+#   export CXX=clang++
+export CC="/path/to/clang"
+export CXX="/path/to/clang++"
+
+# llvm-symbolizer displays much more complete backtraces when data races are detected.
+# If it's not already in your $PATH, then uncomment this next line:
+#export LLVM_SYMBOLIZER="/path/to/llvm-symbolizer"
+
+# Add TSan to our compiler flags
+export CFLAGS="-fsanitize=thread -fPIC -pie"
+export CXXFLAGS="-fsanitize=thread -fPIC -pie"
+
+# Additionally, we need the TSan flag during linking. Normally, our C/CXXFLAGS would
+# be used during linking as well but there is at least one place in our build where
+# our CFLAGS are not added during linking.
+# Note: The use of this flag causes Clang to automatically link the TSan runtime :)
+export LDFLAGS="-fsanitize=thread -fPIC -pie"
+
+# These three are required by TSan
+ac_add_options --disable-jemalloc
+ac_add_options --disable-crashreporter
+ac_add_options --disable-elf-hack
+
+# Keep symbols to symbolize TSan traces
+export MOZ_DEBUG_SYMBOLS=1
+ac_add_options --enable-debug-symbols
+ac_add_options --disable-install-strip
+
+# Settings for an opt build
+ac_add_options --enable-optimize="-O2 -gline-tables-only"
+ac_add_options --disable-debug
+</pre>
+
+<h4 id="Starting_the_build_process">Starting the build process</h4>
+
+<p>Now you start the build process using the regular <code>make -f client.mk</code> command.</p>
+
+<h4 id="Starting_Firefox">Starting Firefox</h4>
+
+<p>After the build has completed, you can start Firefox from the <code>objdir</code> as usual.</p>
+
+<h4 id="Building_only_the_JavaScript_shell">Building only the JavaScript shell</h4>
+
+<p>If you want to build only the JavaScript shell instead of doing a full Firefox build, the build script below will probably help you to do so. Before using it, you must of course adjust the path name for <code>LLVM_ROOT</code> to match your setup. Once you have adjusted everything, execute this script in the <code>js/src/</code> subdirectory and pass a directory name as the first parameter. The build will then be created in a new subdirectory with that name.</p>
+
+<pre>#! /bin/sh
+
+if [ -z $1 ] ; then
+    echo "usage: $0 &lt;dirname&gt;"
+elif [ -d $1 ] ; then
+    echo "directory $1 already exists"
+else
+    autoconf2.13
+    mkdir $1
+    cd $1
+    LLVM_ROOT="/path/to/llvm"
+    CC="$LLVM_ROOT/build/bin/clang" \
+    CXX="$LLVM_ROOT/build/bin/clang++" \
+    CFLAGS="-fsanitize=thread -fPIC -pie" \
+    CXXFLAGS="-fsanitize=thread -fPIC -pie" \
+    LDFLAGS="-fsanitize=thread -fPIC -pie" \
+            ../configure --disable-debug --enable-optimize="-O2 -gline-tables-only" --enable-llvm-hacks <span class="message"><span class="content">--disable-jemalloc</span></span>
+    make -j 8
+fi
+</pre>
+
+<h3 id="Using_LLVM_Symbolizer_for_fasterbetter_traces">Using LLVM Symbolizer for faster/better traces</h3>
+
+<p>By default, TSan traces are symbolized because otherwise, the runtime suppression list wouldn't work. The default way of symbolizing the traces is much slower than using <code>llvm-symbolizer</code> for that purpose:</p>
+
+<p>LLVM ships with a symbolizer binary that TSan will readily use to immediately output symbolized traces much faster. Furthermore, additional debug information is included in traces when <code>llvm-symbolizer</code> is used. To use it, either make sure the <code>llvm-symbolizer</code> binary is in your PATH or set the environment variable <code>TSAN_OPTIONS="external_symbolizer_path=/path/to/llvm-symbolizer"</code> before running the process. If you've built TSan as described above, then you will want to set the variable to <code>$LLVM_HOME/build/bin/llvm-symbolizer</code>.</p>
+
+<h3 id="Ignoring_known_races"><strong>Ignoring known races</strong></h3>
+
+<p>In some cases, races can be confirmed to be benign and fixing them would cause possible performance issues. TSan offers two possibilities to ignore such known races.</p>
+
+<h4 id="Compile-time_blacklisting">Compile-time blacklisting</h4>
+
+<p>Functions with racy memory access can be flagged, such that the compiler will not instrument them. In our codebase, this is done using the MOZ_TSAN_BLACKLIST macro on the function definition. It will expand to the appropriate attributes if the compiler supports them. Compile-time blacklisting is the preferred way of blacklisting, because it does not have a performance impact. Still, blacklisting should be done very carefully so we won't miss important bugs.</p>
+
+<h4 id="Runtime_suppressions">Runtime suppressions</h4>
+
+<p>To prevent races from showing up at runtime, TSan also provides a runtime suppression list. This list is a good tool to temporarily hide some traces, especially for debugging purposes. However, unlike compile-time blacklisting, runtime suppressions do have a performance impact, especially if the race in question keeps showing up a lot. For more information on how to use the runtime suppression list, <a href="https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions">see the TSan wiki</a>.</p>

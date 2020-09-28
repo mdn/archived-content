@@ -1,0 +1,176 @@
+---
+title: gettext
+slug: Mozilla/Localization/gettext
+tags:
+  - Internationalization
+  - Localizability
+  - Localization
+---
+<p></p><div class="blockIndicator warning">
+    <p><strong>Warning:</strong> This document pertains to the development of Mozilla web sites and not to the development of Gecko-based extensions or applications.</p>
+</div><p></p>
+<h2 id="Plurals">Plurals</h2>
+<p>gettext lets you define and use singular and plural forms of a string. To take advantage of this functionality, you need to use a different keyword (i.e. different gettext function name) for string which are supposed to support plurals. For instance, in PHP the default keyword for regular messages is <code>gettext()</code> and <code>_()</code>. For messages with plural support, the default keyword is <code>ngettext()</code>.</p>
+<p>A definition of a string with plurals takes three arguments:</p>
+<ol>
+ <li>the singular form of the English string,</li>
+ <li>the plural form of the English string, and</li>
+ <li>the number basing on which the function will return the correct (singular or plural) form of the string.</li>
+</ol>
+<p>Consider the following code snippet:</p>
+<pre class="brush: php">&lt;?php
+  $num = 1;
+  printf(ngettext("%d user likes this.", "%d users like this.", $num), $num);
+?&gt;
+</pre>
+<p>Depending on the value of the $num variable, this code will either use the singular ("user likes) or the plural ("users like") form of the string. Notice that you need to pass the <code>$num</code> variable twice. First in the <code>ngettext()</code> call, where it will be used to determine which form of the string will be returned. In the above example, <code><code>$num</code></code> equals 1, so the string returned (for English) will be <code>%d user likes this</code>. The second time the <code>$num</code> variable is passed in the <code>printf()</code> call, which at this point of interpretation looks something like <code>printf("%d user likes this.", $num);</code>. The <code>%d</code> in the first argument (which is the string returned by gettext) will be replaced with the value of <code>$num</code>.</p>
+<p>For English, the above code will produce the following output:</p>
+<pre>1 user likes this.
+</pre>
+<p>The string definition in the messages.po file will look like this:</p>
+<pre>#: file.php:3
+#, php-format
+msgid "%d user likes this."
+msgid_plural "%d users like this."
+msgstr[0] ""
+msgstr[1] ""</pre>
+<p>Depending on the localizer's target language and its rules for creating plural forms, there might be another field for translation, e.g. <code>msgstr[2]</code>. gettext will return one of the <code>msgstr</code>s, depending on the number passed to the gettext function in the code (<code>$num</code> in the above example). To determine which form to return, gettext uses a plural rule, which should be declared in the PO file header. For example, for English, the plural rule is of the following form:</p>
+<pre class="smallexample">Plural-Forms: nplurals=2; plural=n != 1;
+</pre>
+<p>The first part defines the number of different plural forms (2). The second part is evaluated and the result of the evaluation is used to choose the right <code>msgstr</code>. In the rule above, if <code>n</code> equals <code>1</code>, the expression is evaluated to false, or 0, so <code>msgstr</code>[0] will be used. Consider another example, Gaeilge (Irish):</p>
+<pre class="smallexample">Plural-Forms: nplurals=3; plural=n==1 ? 0 : n==2 ? 1 : 2;
+</pre>
+<p>If <code>n</code> equals <code>10</code>, the expression <code>n==1 ? 0 : n==2 ? 1 : 2</code> is evaluated to <code>2</code>, and so a <code>msgstr[2]</code> should be used. <code> </code></p>
+<p>Read more about <a href="http://www.gnu.org/software/hello/manual/gettext/Plural-forms.html" class="external" title="http://www.gnu.org/software/hello/manual/gettext/Plural-forms.html">plurals in gettext at gnu.org</a>.</p>
+<h2 id="Using_context_with_msgctxt">Using context with msgctxt</h2>
+<p>Depending on context in which it is used, one English string might require two or more different translations. This is particularly true for short strings, like "File" or "Log in". For instance, "Log in" as a button label might be translated by a localizer as the imperative, but for a dialog title, the localizer may choose to use a different form, like gerund (much like "Logging in"). Gettext's context feature allows the developer to distinguish between two identical English strings and disambiguate the translation.</p>
+<p>In the PO file, msgctxt looks like this:</p>
+<pre>msgctxt "Button label"
+msgid "Log in"
+msgstr ""
+
+msgctxt "Dialog title"
+msgid "Log in"
+msgstr ""
+</pre>
+<p>You can add context to your strings by passing an additional argument to the gettext function call and then having <code>xgettext</code> extract it as the context. In PHP, however, the default gettext functions don't support passing such additional argument. To fix this, you may choose to write your own helper gettext functions. The following example illustrates this.</p>
+<pre class="brush: php">&lt;?php
+
+// Implement gettext context
+if (!function_exists('pgettext')) {
+    function pgettext($context, $msgid) {
+        $contextString = "{$context}\004{$msgid}";
+        $translation = _($contextString);
+        if ($translation === $contextString) return $msgid;
+        else  return $translation;
+    }
+
+    function npgettext($context, $msgid, $msgid_plural, $num) {
+        $contextString = "{$context}\004{$msgid}";
+        $contextStringp = "{$context}\004{$msgid_plural}";
+        $translation = ngettext($contextString, $contextStringp, $num);
+        if ($translation === $contextString) {
+            return $msgid;
+        } else if ($translation === $contextStringp) {
+            return $msgid_plural;
+        } else {
+            return $translation;
+        }
+    }
+}
+
+// New gettext keyword for regular strings with optional context argument
+function ___($message, $context ="") {
+    if($context != "") {
+        return pgettext($context, $message);
+    } else {
+        return _($message);
+    }
+}
+
+// New gettext keyword for plural strings with optional context argument
+function n___($message, $message_plural, $num, $context ="") {
+    if($context != "") {
+        return npgettext($context, $message, $message_plural, $num);
+    } else {
+        return ngettext($message, $message_plural, $num);
+    }
+}
+
+
+// L10N: This is a block comment one line directly above the gettext function call. It will be extracted by xgettext.
+echo ___('A simple string.');
+
+echo /* L10N: This is an inline comment. It will be extracted by xgettext. */ ___('A string with context.', 'Unique context string');
+
+$num = 1;
+// L10N: This is another block comment that will be extracted by xgettext.
+printf(n___("%d user likes this.", "%d users like this.", $num), $num);
+
+// L10N: This block comment will not be extracted by xgettext because it's two lines above the gettext function call.
+$num = 4;
+printf(n___("%d user likes this.", "%d users like this.", $num, 'Another unique context string'), $num);
+
+?&gt;</pre>
+<p>This code produces the following output:</p>
+<pre>A simple string.
+A string with context.
+1 user likes this.
+4 users like this.
+</pre>
+<p>To extract the strings from the PHP file, use <a href="http://www.gnu.org/software/hello/manual/gettext/xgettext-Invocation.html" class="external" title="http://www.gnu.org/software/hello/manual/gettext/xgettext-Invocation.html"><code>xgettext</code></a>. You can specify the function calls to look for with the<code> --keyword</code> option. For example, <code>--keyword=n___:1,2,4c</code> tells <code>xgettext</code> to look for <code>n___()</code> calls, and extract the first argument as the singular string, the second argument as the plural string and the fourth argument as the context (the third argument is reserved for the number in this example).</p>
+<pre>$ xgettext --language=PHP \
+           --add-comments=L10N \
+           --keyword=___:1 \
+           --keyword=___:1,2c \
+           --keyword=n___:1,2 \
+           --keyword=n___:1,2,4c \
+           file.php
+</pre>
+<p>Running <code>xgettext</code> will result in the following <code>messages.po</code> file:</p>
+<pre># SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR &lt;EMAIL@ADDRESS&gt;, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2009-09-28 16:18+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME &lt;EMAIL@ADDRESS&gt;\n"
+"Language-Team: LANGUAGE &lt;LL@li.org&gt;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#. L10N: This is a block comment one line directly above the gettext function call. It will be extracted by xgettext.
+#: file.php:12
+msgid "A simple string."
+msgstr ""
+
+#. L10N: This is an inline comment. It will be extracted by xgettext.
+#: file.php:14
+msgctxt "Unique context string"
+msgid "A string with context."
+msgstr ""
+
+#. L10N: This is another block comment that will be extracted by xgettext.
+#: file.php:18
+#, php-format
+msgid "%d user likes this."
+msgid_plural "%d users like this."
+msgstr[0] ""
+msgstr[1] ""
+
+#: file.php:22
+#, php-format
+msgctxt "Another unique context string"
+msgid "%d user likes this."
+msgid_plural "%d users like this."
+msgstr[0] ""
+msgstr[1] ""
+</pre>

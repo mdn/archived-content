@@ -1,0 +1,83 @@
+<p><strong>Note</strong>: This part of the documentation is outdated. The updated prompt documentation can be found in the <a href="https://firefox-source-docs.mozilla.org/toolkit/components/prompts/prompts/index.html">Firefox Source Docs</a>.</p>
+
+<p>{{ gecko_minversion_header("2.0") }}</p>
+
+<p>Prior to Gecko 2.0 {{ geckoRelease("2.0") }}, prompts (that is, alerts and other modal prompts) were <strong>window modal</strong>. That is, when an alert occurred, it blocked the user interface on all tabs in the window until the user dismissed the prompt.</p>
+
+<table>
+ <tbody>
+  <tr>
+   <td><img alt="old-style.png" class="default internal" src="/@api/deki/files/4954/=old-style.png"></td>
+  </tr>
+  <tr>
+   <td>Window-modal alert.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Gecko 2.0 introduces <strong>tab modal</strong> prompts, which only block the tab with which they're associated. Only the {{ domxref("window.alert()") }} method gets this by default; you get this by default.</p>
+
+<table>
+ <tbody>
+  <tr>
+   <td><img alt="new-way.png" class="default internal" src="/@api/deki/files/4955/=new-way.png"></td>
+  </tr>
+  <tr>
+   <td>Tab-modal alert.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Disabling_tab-modal_prompts">Disabling tab-modal prompts</h2>
+
+<p>You can disable tab-modal prompts and get back window-modal prompts by setting the <code>prompts.tab_modal.enabled</code> preference to <code>false</code>.</p>
+
+<h2 id="Using_tab-modal_prompts_from_chrome_code">Using tab-modal prompts from chrome code</h2>
+
+<p>Currently, {{ interface("nsIPrompt") }} defaults to using window-modal prompts. You can force a prompt to be tab-modal using code like this:</p>
+
+<pre class="brush: js">var theWindow = gBrowser.contentWindow;
+let prompt = Components.classes["@mozilla.org/prompter;1"]
+             .getService(Components.interfaces.nsIPromptFactory)
+             .getPrompt(theWindow, Components.interfaces.nsIPrompt);
+
+let bag = prompt.QueryInterface(Components.interfaces.nsIWritablePropertyBag2);
+bag.setPropertyAsBool("allowTabModal", true);
+</pre>
+
+<p>The var "theWindow" is a reference to the DOM window. Even if you set it to the browser window ("var theWindow = window") the modal alert will be shown in the current tab. From then on, you can use the {{ interface("nsIPrompt") }} object, <code>prompt</code>, as usual. For example:</p>
+
+<pre class="brush: js">var factory = Components.classes["@mozilla.org/prompter;1"]
+    .getService(Components.interfaces.nsIPromptFactory);
+var prompt = factory.getPrompt(gBrowser.contentWindow, Components.interfaces.nsIPrompt);
+
+var bag = prompt.QueryInterface(Components.interfaces.nsIWritablePropertyBag2);
+bag.setPropertyAsBool("allowTabModal", true);
+
+var promptArgs = ["Devmo Alert", "OMG! An alert!"];
+prompt.alert.apply(null, promptArgs);</pre>
+
+<p>{{ interface("nsIPrompt") }} will automatically fall back to window-modal prompts when necessary (such as in situations in which tab-modal prompts aren't supported, or for prompts displayed outside the context of a tab).le</p>
+
+<p>To use other forms of the prompts of {{ interface("nsIPromptService") }} interface see the <a href="/en-US/docs/XPCOM_Interface_Reference/nsIPromptService#Example_code" title="nsIPromptService interface Example Code">Example Code</a>. Then apply it, like in the example below, here we apply the prompt with a checkbox:</p>
+
+<pre class="brush: js">var window = gBrowser.contentWindow;
+var promptfact = Components.classes['@mozilla.org/prompter;1'].getService(Components.interfaces.nsIPromptFactory);
+var prompt = promptfact.getPrompt(window, Components.interfaces.nsIPrompt);
+var promptbag = prompt.QueryInterface(Components.interfaces.nsIWritablePropertyBag2);
+promptbag.setPropertyAsBool('allowTabModal', true);
+
+
+var check = {value: false}; //initial state of checkbox, however if no text is supplied the checkbox is not shown
+var input = {value: 'pre filled value'};
+var ok = prompt.prompt.apply(null, ['Title - but not shown in tab modal', 'Text goes here', input, 'Check text, if no text, checkbox is not shown', check]);
+
+//this here is just an alert, showing the values of the prompt
+prompt.alert.apply(null, ['Title Not Shown In Modal', 'User Clicked OK: ' + ok + '\n' + 'Checked: ' + check.value + '\nInput Value: ' + input.value]);</pre>
+
+<p><strong>Note</strong><strong>: </strong>Because the prompts are shown in a tab, if the tab is closed while the prompt is open it will throw an exception.</p>
+
+<pre class="brush: js">/*
+Exception: prompt aborted by user
+undefined:425
+*/</pre>

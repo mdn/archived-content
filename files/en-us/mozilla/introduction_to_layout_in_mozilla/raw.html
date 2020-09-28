@@ -1,0 +1,266 @@
+<h2 id="Overview" name="Overview">Overview</h2>
+<ul>
+  <li>Basic data flow</li>
+  <li>Key data structures</li>
+  <li>Detailed walk-through</li>
+  <li>Incrementalism</li>
+  <li>Future tech-talks</li>
+  <li>Wrap-up, Q&amp;A</li>
+</ul>
+<h2 id="Basic_Data_Flow" name="Basic_Data_Flow">Basic Data Flow</h2>
+<ul>
+  <li>Source document arrives via network APIs</li>
+  <li>Incrementally “pumped” through the single-threaded layout engine
+    <ul>
+      <li>Parse, compute style, render; repeat</li>
+      <li>CSS used for rendering <i>all</i> content</li>
+    </ul></li>
+  <li>Content theoretically separate from “presentation”</li>
+</ul>
+<p><img height="316" src="/files/464/Gecko_Overview_9.png" width="688"></p>
+<h2 id="Key_Data_Structures" name="Key_Data_Structures">Key Data Structures</h2>
+<p><img height="122" src="/files/454/Gecko_Overview_10.png" width="638"></p>
+<ul>
+  <li>Content node
+    <ul>
+      <li>Elements, attributes, leaves</li>
+      <li>DOM</li>
+    </ul></li>
+  <li>Frame
+    <ul>
+      <li>Rectangular formatting primitive</li>
+      <li>Geometric information</li>
+      <li>{{mediawiki.external('0..n')}} per content node</li>
+      <li>2nd thru nth are “continuations”</li>
+    </ul></li>
+  <li>Style context
+    <ul>
+      <li>Non-geometric information</li>
+      <li>May be shared by adjacent frames</li>
+      <li>Reference counted, owned by frame</li>
+    </ul></li>
+  <li>View
+    <ul>
+      <li>Clipping, z-order, transparency</li>
+      <li>{{mediawiki.external('0..1')}} per frame, owned by frame</li>
+    </ul></li>
+  <li>Widget
+    <ul>
+      <li>Native window</li>
+      <li>{{mediawiki.external('0..1')}} per view, owned by view</li>
+    </ul></li>
+</ul>
+<p><img height="397" src="/files/455/Gecko_Overview_15.png" width="680"></p>
+<h2 id="Key_Data_Structures_2" name="Key_Data_Structures_2">Key Data Structures</h2>
+<ul>
+  <li>The <i>document</i> owns the content model, and one or more <i>presentations</i>
+    <ul>
+      <li>Exposed programmatically via DOM APIs</li>
+    </ul></li>
+  <li>The <i>presentation</i> owns the frame hierarchy
+    <ul>
+      <li>Frames own the style contexts, views, widgets</li>
+      <li>Presentation has media type, dimensions, etc.</li>
+      <li>May not be directly manipulated</li>
+    </ul></li>
+</ul>
+<h2 id="Detailed_Walk-Through" name="Detailed_Walk-Through">Detailed Walk-Through</h2>
+<ul>
+  <li>Setting up</li>
+  <li>Content model construction</li>
+  <li>Frame construction</li>
+  <li>Style resolution</li>
+  <li>Reflow</li>
+  <li>Painting</li>
+</ul>
+<h2 id="Setting_Up" name="Setting_Up">Setting Up</h2>
+<ul>
+  <li>Assume basic knowledge of embedding and network APIs (doc shell, streams)</li>
+  <li>Content DLL auto-registers a <i>Document Loader Factory (DLF)</i>
+    <ul>
+      <li><code>@mozilla.org/content-viewer-factory/view;1?type=text/html</code></li>
+      <li>All MIME types mapped to the same class, nsContentDLF</li>
+    </ul></li>
+  <li><code>nsDocShell</code>
+    <ul>
+      <li>Receives inbound content via <code>nsDSURIContentListener</code></li>
+      <li>Invokes <code>nsIDLF::CreateInstance</code>, passes MIME type to DLF</li>
+    </ul></li>
+  <li>nsContentDLF
+    <ul>
+      <li>Creates a <code>nsHTMLDocument</code> object, invokes <code>StartDocumentLoad</code>.
+        <ul>
+          <li>Creates a parser, returned as <code>nsIStreamListener</code> back to the docshell</li>
+          <li>Creates a content sink, which is linked to the parser and the document</li>
+        </ul></li>
+      <li>Creates a <code>DocumentViewerImpl</code> object, which is returned as <code>nsIContentViewer</code> back to the docshell</li>
+    </ul></li>
+  <li><code>DocumentViewerImpl</code> creates pres context and pres shell</li>
+</ul>
+<p><img height="350" src="/files/456/Gecko_Overview_19.png" width="663"></p>
+<h2 id="Content_Model_Construction" name="Content_Model_Construction">Content Model Construction</h2>
+<ul>
+  <li>Content arrives from network via <code>nsIStreamListener::OnDataAvailable</code></li>
+  <li>Parser tokenizes &amp; processes content; invokes methods on <code>nsIContentSink</code> with <i>parser node</i> objects
+    <ul>
+      <li>Some buffering and fixup occurs here</li>
+      <li><code>OpenContainer</code>, <code>CloseContainer</code>, <code>AddLeaf</code></li>
+    </ul></li>
+  <li>Content sink creates and attaches content nodes using <code>nsIContent</code> interface
+    <ul>
+      <li>Content sink maintains stack of “live” elements</li>
+      <li>More buffering and fixup occurs here</li>
+      <li><code>InsertChildAt</code>, <code>AppendChildTo</code>, <code>RemoveChildAt</code></li>
+    </ul></li>
+</ul>
+<p><img height="179" src="/files/457/Gecko_Overview_21.png" width="662"></p>
+<h2 id="Frame_Construction" name="Frame_Construction">Frame Construction</h2>
+<ul>
+  <li>Content sink uses <code>nsIDocument</code> interface to notify of Δs in content model
+    <ul>
+      <li><code>ContentAppended</code>, <code>ContentInserted</code>, <code>ContentRemoved</code></li>
+    </ul></li>
+  <li><code>PresShell</code> is registered as document observer
+    <ul>
+      <li>Receives <code>ContentAppended</code>, etc. notifications</li>
+      <li>Passes these to the style set object, who in turn passes to the frame constructor</li>
+    </ul></li>
+  <li>Frame constructor creates frames
+    <ul>
+      <li><code>ConstructFrameInternal</code> recursively walks content tree, resolves style and creates frames</li>
+      <li>Either created by tag (<code>&lt;select&gt;</code>) or by display type (<code>&lt;p&gt;</code>)</li>
+    </ul></li>
+  <li>Frame manager maintains mapping from content to frame</li>
+</ul>
+<p><img height="359" src="/files/458/Gecko_Overview_23.png" width="697"></p>
+<h2 id="Style_Resolution" name="Style_Resolution">Style Resolution</h2>
+<ul>
+  <li>Compute stylistic information based on the style rules that apply for the frame’s content node</li>
+  <li>Style data broken into different structures
+    <ul>
+      <li>Display, visibility, font, color, background, …</li>
+      <li>Inherit vs. reset</li>
+    </ul></li>
+  <li>Style context object is a placeholder for partially computed stylistic data
+    <ul>
+      <li>Style data is computed lazily, as it is asked for</li>
+    </ul></li>
+</ul>
+<h2 id="Reflow" name="Reflow">Reflow</h2>
+<ul>
+  <li>Recursively compute geometry (<i>x</i>, <i>y</i>, <i>w</i>, <i>h</i>) for frames, views, and widgets
+    <ul>
+      <li>Given w &amp; h constraints of “root frame” compute (<i>x</i>, <i>y</i>, <i>w</i>, <i>h</i>) for all children</li>
+      <li>Constraints propagated “down” via <code>nsHTMLReflowState</code></li>
+      <li>Desired size returned “up” via <code>nsHTMLReflowMetrics</code></li>
+    </ul></li>
+  <li>Basic pattern
+    <ul>
+      <li>Parent frame initializes child reflow state (available <i>w</i>, <i>h</i>); places child frame (<i>x</i>, <i>y</i>); invokes child’s <code>Reflow</code> method</li>
+      <li>Child frame computes desired (<i>w</i>, <i>h</i>), returns via reflow metrics</li>
+      <li>Parent frame sizes child frame and view based on child’s metrics</li>
+    </ul></li>
+  <li>N.B. many <i>don’t</i> work like this! (Tables, blocks, XUL boxes)</li>
+</ul>
+<h2 id="Reflow_2" name="Reflow_2">Reflow</h2>
+<ul>
+  <li>“Global” reflows
+    <ul>
+      <li><i>Initial, resize, style-change</i></li>
+      <li>Processed immediately via <code>PresShell</code> method</li>
+    </ul></li>
+  <li>Incremental reflows
+    <ul>
+      <li>Targeted at a specific frame</li>
+      <li><i>Dirty</i>, <i>content-changed</i>, <i>style-changed</i>, <i>user-defined</i></li>
+      <li><code>nsHTMLReflowCommand</code> object encapsulates info</li>
+      <li>Queued and processed asynchronously, <code>nsIPressShell::AppendReflowCommand</code>, <code>ProcessReflowCommands</code></li>
+    </ul></li>
+</ul>
+<h2 id="Incremental_Reflow" name="Incremental_Reflow">Incremental Reflow</h2>
+<p><img height="331" src="/files/459/Gecko_Overview_28.png" width="319"></p>
+<ul>
+  <li>Recursively descend to target <i>recovering reflow state</i>
+    <ul>
+      <li>Child rs.reason set to <i>incremental</i></li>
+    </ul></li>
+</ul>
+<h2 id="Incremental_Reflow_2" name="Incremental_Reflow_2">Incremental Reflow</h2>
+<p><img height="331" src="/files/460/Gecko_Overview_29.png" width="319"></p>
+<ul>
+  <li>Process reflow “normally” at target frame
+    <ul>
+      <li>Child rs.reason set based on rc’s <i>type</i></li>
+    </ul></li>
+</ul>
+<h2 id="Incremental_Reflow_3" name="Incremental_Reflow_3">Incremental Reflow</h2>
+<p><img height="332" src="/files/461/Gecko_Overview_30.png" width="319"></p>
+<ul>
+  <li><i>Propagate damage</i> to frames later “in the flow”</li>
+</ul>
+<h2 id="Incremental_Reflow_4" name="Incremental_Reflow_4">Incremental Reflow</h2>
+<p><img height="331" src="/files/462/Gecko_Overview_31.png" width="319"></p>
+<ul>
+  <li>Multiple reflow commands are batched
+    <ul>
+      <li><code>nsReflowPath</code> maintains a tree of target frames</li>
+      <li>Amortize state recovery and damage propagation cost</li>
+    </ul></li>
+</ul>
+<h2 id="Painting" name="Painting">Painting</h2>
+<ul>
+  <li>As reflow proceeds through the frame hierarchy, areas are <i>invalidated</i> via <code>nsIViewManager::UpdateView</code></li>
+  <li>Unless <i>immediate</i>, invalid areas are coalesced and processed asynchronously via OS <i>expose</i> event</li>
+  <li>Native expose event dispatched to widget; widget delegates to the view manager</li>
+  <li>View manager paints views back-to-front, invoking <code>PresShell</code>’s <code>Paint</code> method</li>
+  <li><code>PresShell::Paint</code> walks from the view to the frame; invokes <code>nsIFrame::Paint</code> for each <i>layer</i></li>
+</ul>
+<h2 id="Incrementalism" name="Incrementalism">Incrementalism</h2>
+<ul>
+  <li>Single-threaded
+    <ul>
+      <li>Simple (no locking)</li>
+      <li>Can’t leave event queue unattended</li>
+    </ul></li>
+  <li>Content construction unwinds “at will”
+    <ul>
+      <li>Parser and content sink do some buffering</li>
+      <li>Content sink has “notification limits”</li>
+      <li>Efficiency vs. responsiveness trade-off</li>
+    </ul></li>
+  <li>Frame construction runs to completion</li>
+  <li>CSS parsing runs to completion</li>
+  <li>Reflow runs to completion (mostly)</li>
+  <li>Painting runs to completion</li>
+</ul>
+<p><img height="380" src="/files/463/Gecko_Overview_34.png" width="694"></p>
+<h2 id="Future_.28.3F.29_Tech_Talks" name="Future_.28.3F.29_Tech_Talks">Future (?) Tech Talks</h2>
+<ul>
+  <li>Content model and DOM - <i>jst</i>, <i>jkeiser</i></li>
+  <li>Parser and content sink (esp. invalid content) - <i>harishd</i></li>
+  <li>Events - <i>saari</i>, <i>joki</i></li>
+  <li>Block-and-line reflow - <i>waterson</i>, <i>dbaron</i></li>
+  <li>Table reflow - <i>karnaze</i></li>
+  <li>Form controls - <i>rods</i>, <i>bryner</i></li>
+  <li>Style resolution and rule tree - <i>dbaron</i></li>
+  <li>Views, widgets, and painting - <i>roc</i>, <i>kmcclusk</i></li>
+  <li>Editor - <i>kin</i>, <i>jfrancis</i></li>
+  <li>XUL and box layout - <i>hewitt</i>, <i>ben</i></li>
+  <li>XBL - <i>hewitt</i>, <i>ben</i></li>
+</ul>
+<h2 id="Conclusion" name="Conclusion">Conclusion</h2>
+<ul>
+  <li>Data flow</li>
+  <li>Key data structures</li>
+  <li>Detailed walk-through</li>
+  <li>Incrementalism</li>
+  <li>Q &amp; A?</li>
+</ul>
+<div class="originaldocinfo">
+  <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+  <ul>
+    <li>Author(s): <a class="link-mailto" href="mailto:waterson@netscape.com">Chris Waterson</a></li>
+    <li>Last Updated Date: June 10, 2002</li>
+    <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+  </ul>
+</div>

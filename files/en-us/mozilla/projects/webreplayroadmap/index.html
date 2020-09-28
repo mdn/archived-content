@@ -1,0 +1,115 @@
+---
+title: WebReplayRoadmap
+slug: Mozilla/Projects/WebReplayRoadmap
+---
+<div class="blockIndicator warning">
+<p>Replay was an early-stage experiment and is no longer part of Firefox.</p>
+</div>
+
+<p>This document describes existing, planned, and potential features for the Firefox developer tools that are based on Web Replay, along with their UI.  The low level, yet flexible architecture (described <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Projects/WebReplay">here</a>) provides an extremely powerful platform for implementing debugging and analysis features.  We would like to use Web Replay to radically improve not just the debugging experience but the entire web development experience.  To that end, this document will be revised over time as we find new and better ways of helping developers.</p>
+
+<h2 id="Time_Travel_Features">Time Travel Features</h2>
+
+<p>More features are planned for the timeline, as described below.</p>
+
+<h3 id="Retroactive_Console_Logging">Retroactive Console Logging</h3>
+
+<p>Console logging is one of the primary tools most developers use to debug a page.  Seeing messages in the console provides a simple and intuitive view into the order in which events have happened.  Without time travel, using the console requires repeatedly updating the source or the debugger's log points, reloading, and reproducing the bug.  This is time consuming, especially when the bug only reproduces intermittently.</p>
+
+<p>Retroactive console logging offers a large improvement to this workflow.  The bug only needs to be reproduced in a recording tab once, and then console logs can be added which apply throughout the entire recording.  This is based on the logpoints feature in the debugger, which can be enabled with the devtools.debugger.features.log-points preference.  Set a breakpoint and right click on it to change it to a log point.</p>
+
+<p>In a non-recording tab this will update the console whenever the log point's location executes in the future.  In a recording tab, however, this will update the console with messages for every time the location has ever been hit.  This requires scanning the recording and the console will not update immediately.  These messages will show up on the timeline and can be seeked to in the same way as other console messages.</p>
+
+<h3 id="DOMCSS_Integration_partially_implemented">DOM/CSS Integration (partially implemented)</h3>
+
+<p>When paused, the Inspector panel can be used to inspect the DOM and CSS state of the page.  New features are possible with time travel, though, which would be nice to support:</p>
+
+<ul>
+ <li>Supporting the debugger's event breakpoints would allow searching the recording for places where particular DOM events occur, and -- in the same manner as logpoints -- logging them to the console and allowing them to be seeked to later.</li>
+ <li>Similarly, when the debugger supports DOM mutation breakpoints (bug 1547692), the recording can be searched for DOM mutations, and mutations can be logged to the console and seeked to later.</li>
+ <li>Allowing CSS to be changed while paused somewhere in the recording and update graphics with the effects of those changes.</li>
+</ul>
+
+<h3 id="Object_Watching_not_yet_implemented">Object Watching (not yet implemented)</h3>
+
+<p>It would be nice to log the changes to a specific object or one of its properties, so that the points of those changes can be seeked to later.</p>
+
+<h3 id="Bookmarks_not_yet_implemented">Bookmarks (not yet implemented)</h3>
+
+<p>It would be nice to be able to bookmark points in the recording so that they show up on the timeline and can be seeked to later.</p>
+
+<h3 id="Code_Path_Highlighting_not_yet_implemented">Code Path Highlighting (not yet implemented)</h3>
+
+<p>When paused in a frame, the code path taken through the frame (the lines/expressions executed) could be highlighted somehow, which would make it easier to see what happened in the frame.  Points on the path could be clicked to seek there, which should offer faster and less clunky navigation than stepping buttons.</p>
+
+<h3 id="Hide_Unsupported_Developer_Tool_Features_not_yet_implemented">Hide Unsupported Developer Tool Features (not yet implemented)</h3>
+
+<p>Support for the normal features of the developer tools is pretty limited in recording/replaying tabs.  While the supported features will grow over time, the UI needs to be improved so that features which aren't supported are not shown or are shown in a disabled state.</p>
+
+<p>Currently, only the Debugger, Console, and Inspector developer tools will work correctly in a recording/replaying tab, and some features of these panels will not work, or will not work in the same way as when a normal tab is being debugged.</p>
+
+<p>One important issue is that any side effects from evaluating expressions via the Console or the Debugger's watch expressions will not carry over when the tab resumes executing.  This restriction is in place to ensure that JS executes the same way when replaying as it did while recording.</p>
+
+<h2 id="Dynamic_Analysis_Features">Dynamic Analysis Features</h2>
+
+<p>An important but as-yet unexploited advantage of being able to exactly replay a Web Replay recording is that the recording can be analyzed without overhead affecting the user's experience.  This section describes some analyses that could be performed and be helpful for developers who are either debugging a problem, or trying to understand or improve a complex code base.</p>
+
+<h3 id="Comparing_Executions_not_yet_implemented">Comparing Executions (not yet implemented)</h3>
+
+<p>Comparing the behavior of a recording that exhibits a bug with a second recording that doesn't exhibit the bug should help with quickly locating the source of the problem.  Doing this well will require some experimentation, but in many cases the buggy recording should hit different locations in the source or exhibit different types from the normal recording.  Using a corpus of several normal recordings (or buggy recordings) would reduce false positives due to incidental differences between the recordings.</p>
+
+<h3 id="Aggregate_Call_Graph_and_Data_Flow_not_yet_implemented">Aggregate Call Graph and Data Flow (not yet implemented)</h3>
+
+<p>When developing a complex web app it is often hard to find where a function is called, the callees at a call site, where some data in an object came from or where it is used, or what type a value has.  These questions can be answered by analyzing one or more recordings to study their behavior in detail.  If the debugger could perform this analysis then it could show this information to developers and help them understand the app even when they are not actively debugging a particular recording.</p>
+
+<h3 id="Static_Type_Integration_not_yet_implemented">Static Type Integration (not yet implemented)</h3>
+
+<p>Static type systems like Flow and TypeScript are great and really useful for managing an app's codebase, but they are unsound by design, and it is pretty easy to satisfy the type system and yet have different types in practice.  A recording can be analyzed for the types that appear in practice.  These can be compared with the types provided to the type system, and any mismatches can be flagged.  The points in the recording where the mismatches occur can be identified, and the debugger can seek to those points to allow further investigation of the causes of the mismatch.</p>
+
+<p>An alternate use of the types that appear in practice would be to provide seed information for automatically populating the types in an app that is being converted to use Flow or TypeScript.</p>
+
+<h3 id="Type_Profiling_not_yet_implemented">Type Profiling (not yet implemented)</h3>
+
+<p>The types that appear in practice have a large effect on how well the associated code can be optimized by JITs.  While different JITs optimize code in different ways, for peak performance they all require code to operate on values of consistent types: primitive types, including int32 vs. doubles, or objects that have the same set of properties.  If JS performance is a bottleneck, recordings can be analyzed for code regions that are both very hot and have inconsistent types.  These are good candidates for optimization, and as with static type integration above, points where unexpected types appear can be seeked to in the debugger for investigation.</p>
+
+<h3 id="Memory_Analysis_not_yet_implemented">Memory Analysis (not yet implemented)</h3>
+
+<p>Analyzing memory usage and leaks in JS can be difficult because there is no (or limited) information about where objects were allocated or how the object graph was constructed.  Recordings can be manually analyzed to determine this information, but it would be nice to automate this process and provide a summary of the allocation sites and places where objects are linked together that end up entraining the most amount of memory later on.</p>
+
+<h2 id="Platform_Improvements">Platform Improvements</h2>
+
+<p>This section describes improvements to Web Replay's underlying platform which could make it more broadly useful for developers.</p>
+
+<h3 id="Support_more_Web_Features_not_yet_implemented">Support more Web Features (not yet implemented)</h3>
+
+<p>Several web features are not supported when recording/replaying.  While tabs with these features won't (or shouldn't!) crash, the features are disabled and the tab will not be fully usable.  Some of these will be easier to support than others.</p>
+
+<ul>
+ <li>Media elements (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1304146" title="Support media elements when using Web Replay">bug 1304146</a>)</li>
+ <li>Web Audio (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1304147" title="Support Web Audio when using Web Replay">bug 1304147</a>)</li>
+ <li>WebRTC (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1304149" title="Support WebRTC when using Web Replay">bug 1304149</a>)</li>
+ <li>WebAssembly (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1481007" title="Web Replay: Support WebAssembly">bug 1481007</a>)</li>
+ <li>WebGL (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1506467" title="Support WebGL when using Web Replay">bug 1506467</a>)</li>
+</ul>
+
+<h3 id="Support_more_Operating_Systems_not_yet_implemented">Support more Operating Systems (not yet implemented)</h3>
+
+<p>Only macOS is supported right now.  Web Replay's architecture should allow it to work on any operating system: the OS features needed are not specific to macOS or to POSIX systems.  Still, porting it to other POSIX systems (Linux, Android) will be easier than Windows, due to the overlap with macOS.  There is, however, a partial Windows port from an older version of the architecture that can replay a simple page but not rewind, which should make writing a complete Windows port easier.</p>
+
+<h3 id="Cloud_Integration_partially_implemented">Cloud Integration (partially implemented)</h3>
+
+<p>Storing recordings in the cloud and interacting with them via the debugger could streamline several features described above:</p>
+
+<ul>
+ <li>Difficulties when recording and replaying on different machines with incompatible firefox builds or operating systems will be smoothed out.  Recordings can be uploaded, and cloud services can locate the correct build and OS needed to replay them.</li>
+ <li>Management of a corpus of recordings (some which may have been made with different builds or operating systems) will be easier to manage, with shared storage in the cloud.</li>
+ <li>Expensive dynamic analyses are easier to run in the cloud, allowing a high level of parallelism without impacting users.</li>
+</ul>
+
+<p>The cloud should not be the only option by which people can use Web Replay, however.  All features should be accessible to users operating locally.</p>
+
+<p>While cloud integration is not in placer, Web Replay's architecture has recently been redesigned in preparation for cloud support, and communicating with replaying processes over a network connection instead of IPC should work pretty efficiently.</p>
+
+<h3 id="Recording_Firefox_UI_partially_implemented">Recording Firefox UI (partially implemented)</h3>
+
+<p>Right now only content tabs can be recorded and replayed.  Firefox's UI and privileged code is largely written in JS, and it would be nice to be able to use Web Replay to help debug and develop Firefox itself, for better dogfooding and gathering internal feedback.  This is partially underway and is tracked in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1521566" title="Support recording from the browser toolbox">bug 1521566</a>.</p>

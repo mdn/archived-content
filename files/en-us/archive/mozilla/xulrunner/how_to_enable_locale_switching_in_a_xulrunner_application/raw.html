@@ -1,0 +1,106 @@
+<p>This article is for developers who have <a class="external" href="/en/Localization" title="https://developer.mozilla.org/editor/fckeditor/core/editor/En/Localization">localised</a> their XUL application using DTD entity files and want to provide their users with a mechanism to switch the locale in the application itself. Normally the application locale is inherited from the OS environment of the host system, however there are situations when you might want to give users the option to override the default setting and choose a different locale.</p>
+<p>Here is an outline of the solution:</p>
+<h2 id="1._Modify_the_application_preferences">1. Modify the application preferences</h2>
+<p>First, you need to tell <a class="external" href="/en/XULRunner" title="https://developer.mozilla.org/editor/fckeditor/core/editor/En/XULRunner">XULRunner</a> that your application wishes to ignore the default OS locale and that it will do its own choosing instead. Edit the application preferences file and set "intl.locale.matchOS" to false. Your application is now going to ignore the OS locale, so it would be a good idea to define one to fall back on using the preference "general.useragent.locale".</p>
+<p><strong><em>defaults/preferences/prefs.js</em></strong></p>
+<pre><span style="font-size: small;"><code>/* Don't inherit OS locale */<br>pref("intl.locale.matchOS", "false");<br><br>/* Choose own fallback locale; later it can be overridden by the user */<br>pref("general.useragent.locale", "en-GB");</code></span></pre>
+<p> </p>
+<div class="note">Note that some distributions of XULRunner or Firefox don't honour the "intl.locale.matchOS" setting, so in those cases you won't be able to override the OS locale [<a class="external" href="http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=417961" title="http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=417961">Debian Iceweasel bug #417961</a>].</div>
+<h2 id="2._Include_a_XUL_control_for_the_locale_selection">2. Include a XUL control for the locale selection</h2>
+<p>The next step is to add a <a class="external" href="/en/XUL_controls" title="https://developer.mozilla.org/editor/fckeditor/core/editor/En/XUL_controls">XUL control</a> to your application which lists the available locales in the package and makes it possible for the user to select one of them. I chose a <a class="external" href="/en/XUL/listbox" title="https://developer.mozilla.org/editor/fckeditor/core/editor/en/XUL/listbox">listbox</a> with a <a class="external" href="/en/XUL/button" title="https://developer.mozilla.org/editor/fckeditor/core/editor/en/XUL/button">button</a>.</p>
+<pre> <img alt="LocaleSwitchDemo.01.jpg" class="internal default" src="/@api/deki/files/3007/=LocaleSwitchDemo.01.jpg" style="width: 220px;">
+Screenshot of sample locale switching control
+</pre>
+<h2 id="3._Populate_the_XUL_control_with_the_available_locales">3. Populate the XUL control with the available locales</h2>
+<p>The available package locales are declared in the chrome manifest.</p>
+<p>Sample <strong><em>chrome/chrome.manifest</em></strong></p>
+<pre>content   localeswitchdemo		content/
+locale    localeswitchdemo	de-DE	locale/de-DE/
+locale    localeswitchdemo	en-GB	locale/en-GB/
+locale    localeswitchdemo	fr-FR	locale/fr-FR/
+</pre>
+<p>How are you going to populate the XUL listbox?</p>
+<p>You can hardwire the choices into the XUL code using fixed list items, or could take the elegant approach and construct the list dynamically.</p>
+<p>The dynamic list population requires an <a class="external" href="/en/XPCOM" title="https://developer.mozilla.org/editor/fckeditor/core/editor/En/XPCOM">XPCOM</a> to query the currently selected locale as well as all locales available in the application package. Here is a code snippet showing how this is done:</p>
+<p>The definition of the XUL control:</p>
+<pre>&lt;listbox id="locale-listbox"&gt;
+  &lt;!-- generated list items go in here --&gt;
+&lt;/listbox&gt;
+
+&lt;button label="&amp;switchLocale.button;" oncommand="changeLocale()"/&gt;
+</pre>
+<p>The Javascript code to populate the control:</p>
+<pre>try {
+	// Query available and selected locales
+
+	var chromeRegService = Components.classes["@mozilla.org/chrome/chrome-registry;1"].getService();
+	var xulChromeReg = chromeRegService.QueryInterface(Components.interfaces.nsIXULChromeRegistry);
+	var toolkitChromeReg = chromeRegService.QueryInterface(Components.interfaces.nsIToolkitChromeRegistry);
+
+	var selectedLocale = xulChromeReg.getSelectedLocale("localeswitchdemo");
+	var availableLocales = toolkitChromeReg.getLocalesForPackage("localeswitchdemo");
+
+
+	// Render locale menulist by iterating through the query result from getLocalesForPackage()
+	const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+	var localeListbox = document.getElementById("locale-listbox");
+
+	var selectedItem = null;
+
+	while(availableLocales.hasMore()) {
+
+		var locale = availableLocales.getNext();
+
+		var listitem = document.createElementNS(XUL_NS, "listitem");
+		listitem.setAttribute("value", locale);
+		listitem.setAttribute("label", locale);
+
+		if (locale == selectedLocale) {
+			// Is this the current locale?
+			selectedItem = listitem;
+		}
+
+		localeListbox.appendChild(listitem);
+	}
+
+	// Highlight current locale
+	localeListbox.selectedItem = selectedItem;
+
+} catch (err) {
+
+	alert (err);
+
+}
+</pre>
+<h2 id="4._Code_to_update_the_locale_user_preference_and_restart_the_application"> 4. Code to update the locale user preference and restart the application</h2>
+<p>Mozilla XULRunner doesn't allow runtime switching of the locale, therefore the application must be restarted to activate the new choice.</p>
+<p>Here is an example event handler which is fired when the user clicks on the button to change the locale. It saves the new locale to the user application preferences (thereby overriding the default prefs.js above) and then asks XULRunner to restart.</p>
+<pre>function changeLocale() {
+
+	try {
+		// Which locale did the user select?
+		var localeListbox = document.getElementById("locale-listbox");
+		var newLocale = localeListbox.selectedItem.value;
+
+		// Write preferred locale to local user config
+		var prefs = Components.classes["@mozilla.org/preferences-service;1"].
+                    getService(Components.interfaces.nsIPrefBranch);
+		prefs.setCharPref("general.useragent.locale", newLocale);
+
+		// Restart application
+		var appStartup = Components.classes["@mozilla.org/toolkit/app-startup;1"]
+                     .getService(Components.interfaces.nsIAppStartup);
+
+		appStartup.quit(Components.interfaces.nsIAppStartup.eRestart |
+         		        Components.interfaces.nsIAppStartup.eAttemptQuit);
+
+	} catch(err) {
+
+		alert("Couldn't change locale: " + err);
+	}
+}
+</pre>
+<p> * * *</p>
+<p>Here I include a complete XULRunner application example that demonstrates the locale switching. The code snippets above were taken from it.</p>
+<p><a class="filelink external" href="@api/deki/files/3081/=LocaleSwitchExample.zip" title="https://developer.mozilla.org/editor/fckeditor/core/editor/@api/deki/files/3081/=LocaleSwitchExample.zip">LocaleSwitchExample.zip</a> (7KB, tested with XULRunner 1.9.0 for Linux)</p>

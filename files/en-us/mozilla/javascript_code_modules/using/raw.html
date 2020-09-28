@@ -1,0 +1,189 @@
+<div>{{gecko_minversion_header("1.9")}}</div>
+
+<p>JavaScript code modules are a concept introduced in {{Gecko("1.9")}} and can be used for sharing code between different privileged scopes. Modules can also be used to create global JavaScript singletons that previously required using JavaScript XPCOM objects. A JavaScript code module is simply some JavaScript code located in a registered location. The module is loaded into a specific JavaScript scope, such as XUL script or JavaScript XPCOM script, using <code><a href="/en-US/docs/Components.utils.import">Components.utils.import()</a></code> or <code><a href="/en-US/docs/Components.utils.import">Components.utils["import"]()</a></code>.</p>
+
+<h2 id="Creating_a_JavaScript_code_module">Creating a JavaScript code module</h2>
+
+<p>A very simple JavaScript module looks like this:</p>
+
+<pre class="brush: js">var EXPORTED_SYMBOLS = ["foo", "bar"];
+
+function foo() {
+  return "foo";
+}
+
+var bar = {
+  name : "bar",
+  size : 3
+};
+
+var dummy = "dummy";
+</pre>
+
+<p>Notice that the module uses normal JavaScript to create functions, objects, constants, and any other JavaScript type. The module also defines a special Array named <code>EXPORTED_SYMBOLS</code>. Any JavaScript item named in <code>EXPORTED_SYMBOLS</code> will be exported from the module and injected into the importing scope. For example:</p>
+
+<pre class="brush: js">Components.utils.import("resource://app/my_module.jsm");
+
+alert(foo());         // displays "foo"
+alert(bar.size + 3);  // displays "6"
+alert(dummy);         // displays "dummy is not defined" because 'dummy' was not exported from the module
+</pre>
+
+<div class="note"><strong>Note:</strong> When you're testing changes to a code module, be sure to change the application's build ID (e.g., the version) before your next test run; otherwise, you may find yourself running the previous version of your module's code.</div>
+
+<h3 id="The_URL_for_a_code_module">The URL for a code module</h3>
+
+<p>As you can see from the example above, you need a URL to import a code module. (The URL in the example is "resource://app/my_module.jsm".)</p>
+
+<p>Code modules can only be loaded using a <strong>chrome:</strong> ({{gecko_minversion_inline("2")}}), <strong>resource:</strong>, or <strong>file:</strong> URL.</p>
+
+<ul>
+ <li>If you're writing an extension for Firefox 4 and already have a <a href="/en-US/docs/Chrome_Registration">chrome.manifest</a> with a <code>content</code> instruction in it, you can put the code module in your content folder and reference it like your other content files via <code>chrome://&lt;yourextension&gt;/content/&lt;yourmodule&gt;.jsm.</code></li>
+ <li>If your extension or application needs to support Mozilla 1.9.x (Firefox 3.x), you should register a new resource URL. Details on doing this are in the <a href="#Extending_resource.3A_URLs">"Extending resource: URLs" section</a> below.</li>
+</ul>
+
+<h3 id="Sharing_objects_using_code_modules">Sharing objects using code modules</h3>
+
+<p>An extremely important behavior of <code><a href="/en-US/docs/Components.utils.import">Components.utils.import()</a></code> is that modules are cached when loaded and subsequent imports do not reload a new version of the module, but instead use the previously cached version. This means that a given module will be shared when imported multiple times. Any modifications to data, objects, or functions will be available in any scope that has imported the module. For example, if the simple module were imported into two different JavaScript scopes, changes in one scope can be observed in the other scope.</p>
+
+<p>Scope 1:</p>
+
+<pre class="brush: js">Components.utils.import("resource://app/my_module.jsm");
+
+alert(bar.size + 3);  // displays "6"
+
+bar.size = 10;
+</pre>
+
+<p>Scope 2:</p>
+
+<pre class="brush: js">Components.utils.import("resource://app/my_module.jsm");
+
+alert(foo());         // displays "foo"
+alert(bar.size + 3);  // displays "13"
+</pre>
+
+<p>This sharing behavior can be used to create singleton objects that can share data across windows and between XUL script and XPCOM components.</p>
+
+<p>{{Note("Each scope that imports a module receives a by-value copy of the exported symbols in that module. Changes to the symbol\'s value will not propagate to other scopes (though an object\'s properties will be manipulated by reference).")}}</p>
+
+<p>Scope 1:</p>
+
+<pre class="brush: js">Components.utils.import("resource://app/my_module.jsm");
+
+bar = "foo";
+alert(bar);         // displays "foo"
+</pre>
+
+<p>Scope 2:</p>
+
+<pre class="brush: js">Components.utils.import("resource://app/my_module.jsm");
+
+alert(bar);         // displays "[object Object]"
+</pre>
+
+<p>The main effect of the by-value copy is that global variables of simple types won't be shared across scopes. Always put variables in a wrapper class and export the wrapper (such as <code>bar</code> in the above example).</p>
+
+<p>{{h2_gecko_minversion("Unloading code modules", "7.0")}}</p>
+
+<p><code><a href="/en-US/docs/Components.utils.unload">Components.utils.unload()</a></code> allows you to unload a previously imported code module. Once this method has been called, references to the module will continue to work but any subsequent import of the module will reload it and give a new reference.</p>
+
+<h3 id="Examples">Examples</h3>
+
+<ul>
+ <li>A template to download and edit is seen here on <a href="https://gist.github.com/Noitidart/9045387">GitHub - Gists - _template-BootstrapJSM.xpi</a></li>
+</ul>
+
+<h2 id="Extending_resource_URLs">Extending resource: URLs</h2>
+
+<p>Prior to {{Gecko("2.0")}}, the most common way to load code modules was using <strong>resource:</strong> URLs. The basic syntax of a resource URL is as follows:</p>
+
+<pre>resource://&lt;alias&gt;/&lt;relative-path&gt;/&lt;file.js|jsm&gt;
+</pre>
+
+<p>The <code>&lt;alias&gt;</code> is an alias to a location, usually a physical location relative to the application or XUL runtime. There are multiple pre-defined aliases set up by the XUL runtime:</p>
+
+<ul>
+ <li><code>app</code> - Alias to the location of the XUL application</li>
+ <li><code>gre</code> - Alias to the location of the XUL runtime</li>
+</ul>
+
+<p>The <code>&lt;relative-path&gt;</code> can be multiple levels deep and is always relative to the location defined by the <code>&lt;alias&gt;</code>. The common relative path is "modules" and is used by XUL Runner and Firefox. Code modules are simple JavaScript files with a .js or .jsm extension.</p>
+
+<p><code>&lt;alias&gt;</code> must be unique to your add-on, as the application and other extensions share the same namespace for all aliases.</p>
+
+<h3 id="Using_chrome.manifest">Using chrome.manifest</h3>
+
+<p>The easiest way for extensions and XUL applications to add custom aliases is by registering an alias in the <a href="/en-US/docs/Chrome_Registration">chrome manifest</a> using a line like this:</p>
+
+<pre>resource <em>aliasname</em> <em>uri/to/files/</em>
+</pre>
+
+<p>For example, if the XPI for your <em>foo</em> extension includes a top-level modules/directory containing the <em>bar.js</em> module (that is, the modules/directory is a sibling to chrome.manifest and install.rdf), you could create an alias to that directory via the instruction:</p>
+
+<pre>resource foo modules/
+</pre>
+
+<p>(Don't forget the trailing slash!) You could then import the module into your JavaScript code via the statement:</p>
+
+<pre class="brush: js">Components.utils.import("resource://foo/bar.js");
+</pre>
+
+<h3 id="Programmatically_adding_aliases">Programmatically adding aliases</h3>
+
+<p>Custom aliases to paths that can be represented as an {{interface("nsILocalFile")}} can be programmatically added as well. For example:</p>
+
+<pre class="brush: js">// Import Services.jsm unless in a scope where it's already been imported
+Components.utils.import("resource://gre/modules/Services.jsm");
+
+var resProt = Services.io.getProtocolHandler("resource")
+                      .QueryInterface(Components.interfaces.nsIResProtocolHandler);
+
+var aliasFile = Components.classes["@mozilla.org/file/local;1"]
+                          .createInstance(Components.interfaces.nsILocalFile);
+aliasFile.initWithPath("/some/absolute/path");
+
+var aliasURI = Services.io.newFileURI(aliasFile);
+resProt.setSubstitution("myalias", aliasURI);
+
+// assuming the code modules are in the alias folder itself
+</pre>
+
+<h2 id="Notes">Notes</h2>
+
+<h3 id="Custom_modules_and_XPCOM_components">Custom modules and XPCOM components</h3>
+
+<p>Note that prior to {{Gecko("2.0")}} JavaScript XPCOM components are loaded before chrome registration. This means you can't use <code><a href="/en-US/docs/Components.utils.import">Components.utils.import()</a></code> with your own resource URL at the top level in a component source. A possible solution is moving the call to <code><a href="/en-US/docs/Components.utils.import">Components.utils.import()</a></code> into the XPCOM component constructor (<a href="http://groups.google.com/group/mozilla.dev.apps.firefox/browse_thread/thread/e178d41afa2ccc87?hl=en#">discussion</a>).</p>
+
+<h3 id="Packaging_notes">Packaging notes</h3>
+
+<p>It's important to note that you should not typically put your JavaScript code modules in a JAR file in your add-on. Firefox 3.6 doesn't support them at all, and there's only one case in which it's remotely useful: a Firefox 4-only add-on which must be installed unpacked. Otherwise placing code modules in a JAR file breaks compatibility unnecessarily.</p>
+
+<h2 id="Importing_CommonJS_modules">Importing CommonJS modules</h2>
+
+<p>The JavaScript code modules described here are not the same thing as <a href="http://www.commonjs.org/specs/modules/1.0/">CommonJS modules</a>, but you can import CommonJS modules into any scope where you can use <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.import">Components.utils.import</a>. Just call the following:</p>
+
+<pre class="brush: js line-numbers  language-js"><code class="language-js"><span class="keyword token">const</span> <span class="punctuation token">{</span> require <span class="punctuation token">}</span> <span class="operator token">=</span> Cu<span class="punctuation token">.</span><span class="keyword token">import</span><span class="punctuation token">(</span><span class="string token">"resource://gre/modules/commonjs/toolkit/require.js"</span><span class="punctuation token">,</span> <span class="punctuation token">{</span><span class="punctuation token">}</span><span class="punctuation token">)</span></code></pre>
+
+<p>This will import <code>require()</code> into your scope.</p>
+
+<p>You can then use that to import CommonJS modules. You can import <a href="/en-US/docs/Mozilla/Add-ons/SDK">Add-on SDK</a> modules in just the same way you could from an SDK add-on:</p>
+
+<pre class="brush: js">// import the SDK's base64 module
+
+var base64 = require("sdk/base64");
+base64.encode("hello"); // "aGVsbG8="</pre>
+
+<p>You can import other CommonJS modules, too, as long as you know the path to them:</p>
+
+<pre class="brush: js">// import my module
+
+var myModule = require("resource://path/to/my/module.js");</pre>
+
+<p>In this case, though, you might be better off <a href="/en-US/Add-ons/SDK/Low-Level_APIs/_loader">creating your own loader</a>, so you can specify the <code><a href="/en-US/Add-ons/SDK/Low-Level_APIs/_loader#paths">paths</a></code> property yourself.</p>
+
+<h2 id="See_also" name="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules">JavaScript code modules</a> topic page</li>
+</ul>

@@ -1,0 +1,363 @@
+---
+title: 'Extension Versioning, Update and Compatibility'
+slug: 'Archive/Add-ons/Extension_Versioning,_Update_and_Compatibility'
+tags:
+  - Add-ons
+  - Extensions
+---
+<h2 id="Add-on_Versioning" name="Add-on_Versioning">Add-on Versioning</h2>
+
+<p>Add-ons should specify their versions using the <a href="/en/Toolkit_version_format" title="en/Toolkit_version_format">Toolkit version format</a>. As a rough overview this is a version string split by periods, some examples:</p>
+
+<ul>
+ <li>2.0</li>
+ <li>1.0b1</li>
+ <li>3.0pre1</li>
+ <li>5.0.1.2</li>
+</ul>
+
+<div class="note"><strong>Note:</strong> Before Firefox 1.5 the more basic Firefox Version Format was used: major.minor.release.build[+] where only digits were allowed. The toolkit version format supports the Firefox version format but allows greater flexibility.</div>
+
+<h2 id="How_Applications_Determine_Compatibility" name="How_Applications_Determine_Compatibility">How Applications Determine Compatibility</h2>
+
+<p>When installing add-ons applications look at the <code><a href="/en/Install_Manifests#targetApplication" title="en/Install_Manifests#targetApplication">targetApplication</a></code> entries in the add-on's <code>install.rdf</code>. An entry must exist with an ID matching the ID of the application. Additionally the <code>minVersion</code> and <code>maxVersion</code> of this entry must be a range that includes the version of the running application.</p>
+
+<p>If the application has a <code>targetApplication</code> entry but it is for an incompatible version then the application will retrieve updated compatibility information from the add-on's <code><a href="/en/Install_Manifests#updateURL" title="en/Install_Manifests#updateURL">updateURL</a></code>.</p>
+
+<p>If the install.rdf contains any <code><a href="/en/Install_Manifests#targetPlatform" title="en/Install_Manifests#targetPlatform">targetPlatform</a></code> entries then the platform of the currently running application must be listed or the installation will be rejected.</p>
+
+<p> </p>
+
+<div class="blockIndicator standardNote standardNoteBlock">
+<p><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/3">Firefox 3 note</a></p>
+
+<p style="font-weight: 400;">In applications based on Gecko 1.9 you can also use a <code>targetApplication</code> entry with an id <code>toolkit@mozilla.org</code> and <code>minVersion</code> and <code>maxVersion</code> that match the toolkit version of the running application. This allows you to say that your add-on will install into any toolkit based application.</p>
+</div>
+
+<p> </p>
+
+<h3 id="Overriding_Compatibility_Checking" name="Overriding_Compatibility_Checking">Overriding Compatibility Checking</h3>
+
+<p>For testing purposes you can tell the application to somewhat ignore compatibility checks when installing add-ons. Simply create the boolean preference <code>extensions.checkCompatibility</code> and set it to false.</p>
+
+<div class="note"><strong>Note:</strong> Before Firefox 1.5 the preference <code>app.extensions.version</code> could be used to override the version that the application believed itself to be to allow normally incompatible extensions to install.</div>
+
+<h2 id="Choosing_minVersion_and_maxVersion" name="Choosing_minVersion_and_maxVersion">Choosing minVersion and maxVersion</h2>
+
+<p><code>minVersion</code> and <code>maxVersion</code> should specify the range of versions of the application you have tested with. In particular you should never specify a <code>maxVersion</code> that is larger than the currently available version of the application since you do not know what API and UI changes are just around the corner. With <a href="#Compatibility_Updates">compatibility updating</a> it is not necessary to release a whole new version of the extension just to increase its <code>maxVersion</code>.</p>
+
+<p>For the <code>maxVersion</code> it is generally permissible to use a * in place of the minor version of the application you support, for example 2.0.0.* would mean that you support any minor update to version 2 of the application. The application will usually suggest to extension authors which version part it is sensible to do this with.</p>
+
+<p>Do not mistakenly think that * in a version represents any version. The * actually represents an infinitely high number and so is really only sensibly used in the <code>maxVersion</code>. Using it in a <code>minVersion</code> usually doesn't produce the effect you want.</p>
+
+<p><a href="https://addons.mozilla.org/en-US/firefox/pages/appversions/" class="link-https">Valid Application Versions</a></p>
+
+<p> </p>
+
+<h2 id="Automatic_Add-on_Update_Checking" name="Automatic_Add-on_Update_Checking">Automatic Add-on Update Checking</h2>
+
+<p>Applications will periodically check for updates to installed add-ons by retrieving the <code><a href="/en/Install_Manifests#updateURL" title="en/Install_Manifests#updateURL">updateURL</a></code>. The information returned can be used to notify the user of an updated version to the add-on as well as inform the application of new application versions that the add-on is compatible with.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Starting in <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span>, the automatic add-on update process properly supports cases in which the add-on's GUID changes by uninstalling the old version and then installing the new one. Previously, it was possible to wind up with two copies of the same add-on installed.</p>
+</div>
+
+<h3 id="Compatibility_Updates" name="Compatibility_Updates">Compatibility Updates</h3>
+
+<p>During the automatic update checks, applications look for both new versions and updated compatibility information about the currently installed version of an add-on. This means that if your update manifest contains an entry for the currently installed version of the add-on, and the entry's <code>targetApplication</code> entry specifies a larger maxVersion then the application will use this value instead of that specified in the add-on's <code>install.rdf</code>. This can cause add-ons that are disabled for being incompatible to become enabled and add-ons that would normally not install to be installed.</p>
+
+<h3 id="Update_RDF_Format" name="Update_RDF_Format">Update RDF Format</h3>
+
+<p>If you host your add-on's <code>updateURL</code> yourself then you will need to return the add-on version information in an RDF format. Below is an example update manifest. It lists information about 2 different versions of the extension with id <code><a href="mailto:foobar@developer.mozilla.org" class="link-mailto" rel="freelink">foobar@developer.mozilla.org</a></code>. The versions included are 2.2 and 2.5, both of which specify compatibility with Firefox versions 1.5 to 2.0.0.*. For version 2.2 an https update link is used while version 2.5 has a regular http link with a hash to verify the file retrieved.</p>
+
+<p>It is important to get the initial RDF:Description's <code>about</code> attribute correct. It varies depending on what type of add-on you are providing information for:</p>
+
+<ul>
+ <li>For an extension or <a href="/en/Shipping_a_plugin_as_a_Toolkit_bundle" title="Shipping a plugin as a Toolkit bundle">plugin bundle</a> it must be <code>urn:mozilla:extension:&lt;id&gt;</code></li>
+ <li>For a theme it must be <code>urn:mozilla:theme:&lt;id&gt;</code></li>
+ <li>For any other type of add-on it must be <code>urn:mozilla:item:&lt;id&gt;</code></li>
+</ul>
+
+<div class="note"><strong>Note: </strong>Prior to Gecko 2.0 (Firefox 4.0), the ordering of the versions within the &lt;RDF:Seq&gt; is significant.  For later versions, the compatible add-on version with the greatest version string will be used by the client for automatic updates.  The behavior depends on the version of the <em>client</em> application, of course.</div>
+
+<pre>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;RDF:RDF xmlns:RDF="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:em="http://www.mozilla.org/2004/em-rdf#"&gt;
+
+  &lt;!-- This Description resource includes all the update and compatibility information for
+       a single add-on with the id foobar@developer.mozilla.org. You can list multiple
+       add-ons information in the same RDF file. --&gt;
+  &lt;RDF:Description about="urn:mozilla:extension:foobar@developer.mozilla.org"&gt;
+    &lt;em:updates&gt;
+      &lt;RDF:Seq&gt;
+
+        &lt;!-- Each li is a different version of the same add-on --&gt;
+        &lt;RDF:li&gt;
+          &lt;RDF:Description&gt;
+            &lt;em:version&gt;2.2&lt;/em:version&gt; &lt;!-- This is the version number of the add-on --&gt;
+
+            &lt;!-- One targetApplication for each application the add-on is compatible with --&gt;
+            &lt;em:targetApplication&gt;
+              &lt;RDF:Description&gt;
+                &lt;em:id&gt;{ec8030f7-c20a-464f-9b0e-13a3a9e97384}&lt;/em:id&gt;
+                &lt;em:minVersion&gt;1.5&lt;/em:minVersion&gt;
+                &lt;em:maxVersion&gt;2.0.0.*&lt;/em:maxVersion&gt;
+
+                &lt;!-- This is where this version of the add-on will be downloaded from --&gt;
+                &lt;em:updateLink&gt;https://www.mysite.com/foobar2.2.xpi&lt;/em:updateLink&gt;
+
+                &lt;!-- A page describing what is new in this updated version --&gt;
+                &lt;em:updateInfoURL&gt;http://www.mysite.com/updateinfo2.2.xhtml&lt;/em:updateInfoURL&gt;
+              &lt;/RDF:Description&gt;
+            &lt;/em:targetApplication&gt;
+          &lt;/RDF:Description&gt;
+        &lt;/RDF:li&gt;
+
+        &lt;RDF:li&gt;
+          &lt;RDF:Description&gt;
+            &lt;em:version&gt;2.5&lt;/em:version&gt;
+            &lt;em:targetApplication&gt;
+              &lt;RDF:Description&gt;
+                &lt;em:id&gt;{ec8030f7-c20a-464f-9b0e-13a3a9e97384}&lt;/em:id&gt;
+                &lt;em:minVersion&gt;1.5&lt;/em:minVersion&gt;
+                &lt;em:maxVersion&gt;2.0.0.*&lt;/em:maxVersion&gt;
+                &lt;em:updateLink&gt;http://www.mysite.com/foobar2.5.xpi&lt;/em:updateLink&gt;
+                &lt;em:updateHash&gt;sha256:78fc1d2887eda35b4ad2e3a0b60120ca271ce6e64ad2e3a0b60120ca271ce6e6&lt;/em:updateHash&gt;
+              &lt;/RDF:Description&gt;
+            &lt;/em:targetApplication&gt;
+          &lt;/RDF:Description&gt;
+        &lt;/RDF:li&gt;
+
+      &lt;/RDF:Seq&gt;
+    &lt;/em:updates&gt;
+
+    &lt;!-- A signature is only necessary if your add-on includes an updateKey
+         in its install.rdf. --&gt;
+    &lt;em:signature&gt;MIGTMA0GCSqGSIb3DQEBBQUAA4GBAMO1O2gwSCCth1GwYMgscfaNakpN40PJfOWt
+                  ub2HVdg8+OXMciF8d/9eVWm8eH/IxuxyZlmRZTs3O5tv9eWAY5uBCtqDf1WgTsGk
+                  jrgZow1fITkZI7w0//C8eKdMLAtGueGfNs2IlTd5P/0KH/hf1rPc1wUqEqKCd4+L
+                  BcVq13ad&lt;/em:signature&gt;
+  &lt;/RDF:Description&gt;
+&lt;/RDF:RDF&gt;
+</pre>
+
+<p>Some people prefer this alternate format (note that much of the information has been trimmed from this example for brevity in order to show the basic structure):</p>
+
+<pre>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;RDF:RDF xmlns:RDF="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:em="http://www.mozilla.org/2004/em-rdf#"&gt;
+
+  &lt;!-- This Description resource includes all the update and compatibility information for
+       a single add-on with the id foobar@developer.mozilla.org. You can list multiple
+       add-ons information in the same RDF file. --&gt;
+  &lt;RDF:Description about="urn:mozilla:extension:foobar@developer.mozilla.org"&gt;
+    &lt;em:updates&gt;
+      &lt;RDF:Seq&gt;
+        &lt;!-- The resource attribute points to an RDF:Description entry below with
+             a matching about attribute. The actual uri can be whatever you like --&gt;
+        &lt;RDF:li resource="urn:mozilla:extension:foobar@developer.mozilla.org:2.2"/&gt;
+        &lt;RDF:li resource="urn:mozilla:extension:foobar@developer.mozilla.org:2.5"/&gt;
+      &lt;/RDF:Seq&gt;
+    &lt;/em:updates&gt;
+    &lt;em:signature&gt;MIGTMA0GCSqGSIb3DQEBBQUAA4GBAMO1O2gwSCCth1GwYMgscfaNakpN40PJfOWt
+                  ub2HVdg8+OXMciF8d/9eVWm8eH/IxuxyZlmRZTs3O5tv9eWAY5uBCtqDf1WgTsGk
+                  jrgZow1fITkZI7w0//C8eKdMLAtGueGfNs2IlTd5P/0KH/hf1rPc1wUqEqKCd4+L
+                  BcVq13ad&lt;/em:signature&gt;
+  &lt;/RDF:Description&gt;
+
+  &lt;!-- This represents the same Description within the li from the previous example --&gt;
+  &lt;RDF:Description about="urn:mozilla:extension:foobar@developer.mozilla.org:2.2"&gt;
+    &lt;em:version&gt;2.2&lt;/em:version&gt;
+
+    &lt;!-- Trimmed the rest of the contents here --&gt;
+
+  &lt;/RDF:Description&gt;
+
+  &lt;RDF:Description about="urn:mozilla:extension:foobar@developer.mozilla.org:2.5"&gt;
+    &lt;em:version&gt;2.5&lt;/em:version&gt;
+
+    &lt;!-- Trimmed the rest of the contents here --&gt;
+
+  &lt;/RDF:Description&gt;
+
+&lt;/RDF:RDF&gt;
+</pre>
+
+<div class="note"><strong>Note: </strong>It is possible to change the id of add-on through add-on update. To do this, just provide new <code>em:id</code> in <code>install.rdf</code> within new xpi file, and put its url in <code>em:updateLink</code> in <code>update.rdf</code>.</div>
+
+<h3 id="Providing_Details_about_Updates" name="Providing_Details_about_Updates">Providing Details about Updates</h3>
+
+<p> </p>
+
+<h4 id="General" name="General">General</h4>
+
+<p>It is possible to provide the user some details about what is new in an updated version of your add-on. This is visible when the user gets an add-on update notification and should be used to give a quick overview of what new features have been added and any security issues that have been resolved.</p>
+
+<p>In order to do this you must add an <code>updateInfoURL</code> entry to the update manifest (see the example above). The page at this URL will be retrieved and displayed to the user. Since it is being displayed outside of a normal webpage context it is heavily sanitized, which means there are few formatting options available and scripting and images aren't allowed.</p>
+
+<p>The information page retrieved must currently be totally valid XHTML, including being delivered with the MIME type <code><strong>application/xhtml+xml</strong></code> (Important: see Problems section)</p>
+
+<p>You may include <code>%APP_LOCALE%</code> in your <code>updateInfoURL</code> if you want to have locale information included in the URL -- this allows you to customize the text based on the user's locale. You may also use the other substitution strings supported by <code>updateURL</code>, although those may be less useful.</p>
+
+<h4 id="Formatting_Prior_to_Firefox_4">Formatting Prior to Firefox 4</h4>
+
+<p>Prior to Firefox 4 you could only use the following tags, any other tags have themselves and their contents completely stripped:</p>
+
+<ul>
+ <li>h1, h2 and h3 for general headings</li>
+ <li>p for paragraphs</li>
+ <li>ul and ol for lists.</li>
+</ul>
+
+<p>Within lists use the usual <code>li</code> tag for each list item.</p>
+
+<p>Within h1, h2, h3, p and li tags you may use:</p>
+
+<ul>
+ <li>b or strong for bolder text</li>
+ <li>i or em for italicized text</li>
+</ul>
+
+<h4 id="Formatting_in_Firefox_4_and_later">Formatting in Firefox 4 and later</h4>
+
+<p>From Firefox 4 the restrictions are relaxed somewhat. The following tags are interpreted normally:</p>
+
+<ul>
+ <li>h1, h2 and h3 for general headings</li>
+ <li>p, div, pre and blockquote for block formatting</li>
+ <li>ul, ol, li, dl, dt and dd for lists</li>
+ <li>b, i, em, strong, u, q, sub, sup and code for text formatting</li>
+ <li>br and hr for line breaking</li>
+</ul>
+
+<p>The head, style and script tags and any of their contents are completely stripped. Other tags aren't included in the result but do have their contents displayed, so the following snippet:</p>
+
+<pre>&lt;span&gt;&lt;q&gt;Text&lt;/q&gt;&lt;/span&gt;
+</pre>
+
+<p>Would be rendered exactly the same as:</p>
+
+<pre>&lt;q&gt;Text&lt;/q&gt;
+</pre>
+
+<h4 id="What_end-user_sees" name="What_end-user_sees">Sample File</h4>
+
+<div>
+<pre>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"&gt;
+&lt;html lang="en-US" dir="ltr" xmlns="http://www.w3.org/1999/xhtml"&gt;
+&lt;h2&gt;My Extension&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;This update fixes some stability related issues.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/html&gt;
+</pre>
+</div>
+
+<h4 id="What_end-user_sees" name="What_end-user_sees">What End-User Sees</h4>
+
+<p>The content of <code>updateInfoURL</code> will be displayed to user in the add-ons page, in a list of all available updates. The user then can click the <strong>Show Information</strong> button, and will see the information, on the right hand side. (note the button caption is changed to <strong>Hide Information</strong>)</p>
+
+<p><img src="/@api/deki/files/197/=Example_updateInfoURL2.PNG" alt="Image:Example_updateInfoURL2.PNG" class="internal"></p>
+
+<h4 id="Problems" name="Problems">Problems</h4>
+
+<p>You may encounter a problem where the content will not be displayed. See image below. The problem is because of MIME type that should be set in the server for <strong>xhtml</strong> extension. If you are running Apache Server, you might consider adding <strong><code>AddType application/xhtml+xml .xhtml</code></strong> to the .htacess file. Unfortunately, I've encounter cases where adding the MIME type to the server didnt help either. So the solution I did, and which worked, was just to give the file a "xml" extension instead of "xhtml".</p>
+
+<p><img src="/@api/deki/files/198/=Example_updateInfoURL_error1.png" alt="Image:Example_updateInfoURL_error1.png" class="internal"></p>
+
+<h3 id="Securing_Updates" name="Securing_Updates">Securing Updates</h3>
+
+<p> </p>
+
+<p>Gecko 1.9 has added additional requirements designed to protect users from <a href="http://en.wikipedia.org/wiki/Man-in-the-middle_attack" class="external">man-in-the-middle attacks</a> and the like during add-on updates. In the install.rdf of the already installed add-on <code>updateURL</code> must be specified in one of the following ways:</p>
+
+<ul>
+ <li>The <code><a href="/en/Install_Manifests#updateURL" title="en/Install_Manifests#updateURL">updateURL</a></code> uses https, or there is no <code>updateURL</code> at all (which defaults to <code>addons.mozilla.org</code> which is https)</li>
+ <li>The <code><a href="/en/Install_Manifests#updateURL" title="en/Install_Manifests#updateURL">updateURL</a></code> uses http and the <code><a href="/en/Install_Manifests#updateKey" title="en/Install_Manifests#updateKey">updateKey</a></code> entry is specified which will be used to verify the data in the update manifest.</li>
+</ul>
+
+<p>When you specify an <code>updateKey</code> in the <code>install.rdf</code>, you must include a <a href="#Signing_Update_Manifests">digital signature</a> in the update manifest or the information will be rejected.</p>
+
+<p>In the update manifest delivered from the <code>updateURL</code> the <code>updateLink</code> must be specified in one of the following ways:</p>
+
+<ul>
+ <li>The <code>updateLink</code> to the XPI file must use https</li>
+ <li>The <code>updateLink</code> can use http and you must include an <code><a href="#Update_Hashes">updateHash</a></code> for the XPI file using sha1, sha256, sha384 or sha512 hash algorithms.</li>
+</ul>
+
+<p>Any entries in the update manifest that do not meet one of those two requirements will be ignored when checking for new versions.</p>
+
+<p>Note that https links to sites with invalid certificates or that redirect to http sites will fail for both the <code>update.rdf</code> and <code>updateLink</code> cases.  updateLink using an https site with a non-builtin token CA signed certificate will fail regardless of whether or not updateHash is used.</p>
+
+<h4 id="Update_Hashes" name="Update_Hashes">Update Hashes</h4>
+
+<p>In order to verify the integrity of the downloaded XPI you may provide an <code>updateHash</code> entry alongside the updateLink. This should be a hash generated against the file data using one of the supported hashing algorithms (sha1, sha256, sha384 and sha512). In Firefox 3 if the updateLink is not https then the hash must be made using one of the sha family of algorithms. The hashing algorithm used is put at the start of the string and separated from the hash by a <code>:</code>.</p>
+
+<pre>  &lt;em:updateHash&gt;sha256:78fc1d2887eda35b4ad2e3a0b60120ca271ce6e64ad2e3a0b60120ca271ce6e6&lt;/em:updateHash&gt;
+</pre>
+
+<p> </p>
+
+<div class="note"><strong>Note:</strong>  the value of <code>updateHash</code>, <strong>must</strong> start with the string of hashing algorithm, it is a common error to delete this prefix, when setting new value to <code>updateHash</code>:<br><em><strong>sha256:</strong>78fc1d2887eda35b4ad2e3a0b60120ca271ce6e64ad2e3a0b60120ca271ce6e6</em></div>
+
+<p> </p>
+
+<p>When a hash is specified the downloaded file is compared with the hash and an error shown if it does not match.</p>
+
+<p>There are quite a few tools you may use to generate hashes:</p>
+
+<p>Various Unix flavors include sha1sum, sha256sum and so on. Windows users should consider <a href="http://implbits.com/HashTab.aspx" class="external">HashTab</a> for interactive (non-build-script) use. There are also <a href="http://gnuwin32.sourceforge.net/packages/coreutils.htm" class="external">gnu ports for win</a> (besides usual suspects like cygwin), which are good for non-interactive use:</p>
+
+<pre class="eval">sha256sum FILE
+</pre>
+
+<p>There is also <a href="http://md5deep.sourceforge.net/" class="external">md5deep</a>, which is cross platform:</p>
+
+<pre class="eval">sha256deep FILE
+</pre>
+
+<p>OpenSSL also generates hashes for you:</p>
+
+<pre class="eval">openssl sha256 FILE
+</pre>
+
+<p>If you're on Windows, <a href="http://beeblebrox.org/hashtab/" class="external">HashTab</a> is a shell extension... simple right-click gives you hash values for any file.</p>
+
+<p>There is also an <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=395368" class="link-https">enhancement bug</a> about adding automatic hash generation of XPI files to mccoy.</p>
+
+<p>And all popular (scripting) languages offer support, for examples: <a href="http://docs.python.org/lib/module-hashlib.html" class="external">Python</a>, Perl: CPAN Digest, <a href="http://de2.php.net/sha1_file" class="external">PHP</a></p>
+
+<h4 id="Signing_Update_Manifests" name="Signing_Update_Manifests">Signing Update Manifests</h4>
+
+<p> </p>
+
+<p>If you wish to serve your update RDF over regular http, Gecko 1.9 based applications will require that you digitally sign the update manifest to ensure that it's information isn't tampered with between you creating it and applications retrieving it. The <a href="/en/McCoy" title="en/McCoy">McCoy</a> tool should be used to sign the update RDF.</p>
+
+<p>The technical details of the signing mechanism are beyond the scope of this document however the basics are as follows:</p>
+
+<h5 id="Step_1_-_Done_once.2C_before_you_publish_your_add-on" name="Step_1_-_Done_once.2C_before_you_publish_your_add-on">Step 1 - Done once, before you publish your add-on</h5>
+
+<p>The target: Adding <code><a href="/en/Install_Manifests#updateKey" title="en/Install_Manifests#updateKey">updateKey</a></code> in <code>install.rdf</code></p>
+
+<p>The add-on author creates a public/private RSA cryptographic key pair.</p>
+
+<p>The public part of the key is DER encoded and then base 64 encoded and added to the add-on's <code>install.rdf</code> as an <code><a href="/en/Install_Manifests#updateKey" title="en/Install_Manifests#updateKey">updateKey</a></code> entry.</p>
+
+<h5 id="Step_2_-_Done_every_time_you_change_your_.22update.rdf.22_file" name="Step_2_-_Done_every_time_you_change_your_.22update.rdf.22_file">Step 2 - Done every time you change your "update.rdf" file</h5>
+
+<p>The target: Setting value to <code><a href="/en/Update.rdf#signature" title="en/Update.rdf#signature">signature</a></code> in <code>update.rdf</code></p>
+
+<p>When the author creates the update rdf file a tool is used to sign it using the private part of the key. Roughly speaking the update information is converted to a string, then hashed using a sha512 hashing algorithm and this hash is signed using the private key. The resultant data is DER encoded then base 64 encoded for inclusion in the <code>update.rdf</code> as an <code><a href="/en/Update.rdf#signature" title="en/Update.rdf#signature">signature</a></code> entry.</p>
+
+<h2 id="Debugging_and_solving_problems" name="Debugging_and_solving_problems">Debugging and solving problems</h2>
+
+<p>The update mechanism logs information to the console, and display various information which can help you to find problem. To enable the log:</p>
+
+<ol>
+ <li>Set the value of <strong>extensions.logging.enabled</strong> to <strong>true</strong> (using URL about:config)</li>
+ <li>Run Firefox from command with option -console</li>
+</ol>
+
+<p>If you encounter problems, search the output in console for your extension id, and see if failures were logged.</p>

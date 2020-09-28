@@ -1,0 +1,85 @@
+<p class="summary">There are a lot of different memory allocators in the Mozilla source tree. This article looks over some of them and tries to sort out which should be used under what circumstances.</p>
+
+<h2 id="Allocating_memory_in_XPCOM" name="Allocating_memory_in_XPCOM">Allocating memory in XPCOM</h2>
+
+<p>These are general purpose memory-management routines that you should use unless your code falls into one of the other categories below. Use these if you link against <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> or <a href="/en/XPCOM_Glue" title="en/XPCOM_Glue">XPCOM Glue</a>; this includes extensions with binary components. See the <a href="/En/Mozilla_internal_string_guide" title="En/Mozilla_internal_string_guide">XPCOM string guide</a> for additional information.</p>
+
+<ul>
+ <li><code><a href="/en/NS_Alloc" title="en/NS_Alloc">NS_Alloc()</a></code> == <code><a href="/en/XPCOM_Interface_Reference/nsIMemory/alloc" title="en/XPCOM_Interface_Reference/nsIMemory/alloc">nsIMemory::alloc()</a></code></li>
+ <li><code><a href="/en/NS_Realloc" title="en/NS_Realloc">NS_Realloc()</a></code> == <code><a href="/en/XPCOM_Interface_Reference/nsIMemory/realloc" title="en/XPCOM_Interface_Reference/nsIMemory/realloc">nsIMemory::realloc()</a></code></li>
+ <li><code><a href="/en/NS_Free" title="en/NS_Free">NS_Free()</a></code> == <code><a href="/en/XPCOM_Interface_Reference/nsIMemory/free" title="en/XPCOM_Interface_Reference/nsIMemory/free">nsIMemory::free()</a></code></li>
+ <li><code><a href="/en/nsMemory/Clone" title="en/nsMemory/Clone">nsMemory::Clone()</a></code> (note: not part of <a href="/en/XPCOM_Interface_Reference/nsIMemory" title="en/XPCOM_Interface_Reference/nsIMemory">nsIMemory</a>)</li>
+</ul>
+
+<p>See <a href="/en/Infallible_memory_allocation" title="en/Infallible memory allocation">Infallible memory allocation</a> for information about how to allocate memory infallibly; that is, how to use memory allocators that will only return valid memory buffers, and never return <code>null</code>.</p>
+
+<h3 id="Allocating_strings_in_XPCOM_code" name="Allocating_strings_in_XPCOM_code">Allocating strings in XPCOM code</h3>
+
+<p>See <a href="/En/Mozilla_internal_string_guide#Callee-allocated_Parameters" title="En/Mozilla_internal_string_guide#Callee-allocated_Parameters">"Callee-allocated Parameters" in the XPCOM Strings guide</a>; use <code>ToNewCString()</code> or <code>ToNewUnicode()</code> to allocate strings that will be passed out. These methods convert <code>ns*String</code> to <a href="/en/XPCOM_Interface_Reference/nsIMemory" title="en/XPCOM_Interface_Reference/nsIMemory">nsIMemory</a> allocated, unowned <code>[PRUni]char*</code> buffers.</p>
+
+<p>Do not use <code>nsCRT::strdup</code> for returning values from an XPCOM object, as that uses a different allocator.</p>
+
+<h2 id="NSPR_memory_allocators" name="NSPR_memory_allocators">NSPR memory allocators</h2>
+
+<p>You should only use the NSPR allocators within NSPR or the security code located in the /security/ subtree of the source code. Avoid using them elsewhere.</p>
+
+<ul>
+ <li><code><a href="en/PR_Alloc">PR_Alloc()</a></code> (<strong>do not use</strong>, no users and only exists in /security/; use <code><a href="en/PR_Malloc">PR_Malloc()</a></code> instead)</li>
+ <li><code><a href="en/PR_Malloc">PR_Malloc()</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21428"> == </a><code><a href="en/PR_MALLOC">PR_MALLOC</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21542"> </a></li>
+ <li><code><a href="en/PR_Calloc">PR_Calloc()</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21449"> == </a><code><a href="en/PR_CALLOC">PR_CALLOC</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21612"> </a></li>
+ <li><code><a href="en/PR_Realloc">PR_Realloc()</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21474"> == </a><code><a href="en/PR_REALLOC">PR_REALLOC</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21584"> </a></li>
+ <li><code><a href="en/PR_Free">PR_Free()</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21499"> </a></li>
+ <li><code><a href="en/PR_NEW">PR_NEW</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21563"> (pass in a struct to allocate its size) </a></li>
+ <li><code><a href="en/PR_NEWZAP">PR_NEWZAP</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21633"> (same as <code>PR_NEW</code>, but zeros memory) </a></li>
+ <li><code><a href="en/PR_DELETE">PR_DELETE</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21654"> (<code>PR_Free()</code> and also clears the pointer) </a></li>
+ <li><code><a href="en/PR_FREEIF">PR_FREEIF</a></code> <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21672"> </a></li>
+</ul>
+
+<h3 id="Special_cases" name="Special_cases"><a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prmem2.html#21672">Special cases </a></h3>
+
+<ul>
+ <li><code><a href="en/PR_smprintf">PR_smprintf()</a></code>, <code><a href="en/PR_sprintf_append">PR_sprintf_append()</a></code>, <code><a href="en/PR_vsmprintf">PR_vsmprintf()</a></code> and <code><a href="en/PR_vsprintf_append">PR_vsprintf_append()</a></code> must be freed with <code><a href="en/PR_smprintf_free">PR_smprintf_free()</a></code></li>
+ <li><code><a href="en/PL_strdup">PL_strdup()</a></code>, <code><a href="en/PL_strndup">PL_strndup()</a></code> must be freed with <code><a href="en/PL_strfree">PL_strfree()</a></code></li>
+ <li><code>nsCRT::strdup/nsCRT::strndup</code> must be freed with <code>nsCRT::free</code></li>
+</ul>
+
+<h2 id="Allocating_memory_within_plugins" name="Allocating_memory_within_plugins">Allocating memory within plugins</h2>
+
+<p>There are special memory allocation routines specifically intended for use from plugins, which must not be used from within Mozilla itself. See <a href="en/Gecko_Plugin_API_Reference/Memory">Gecko Plugin API Reference:Memory</a>.</p>
+
+<ul>
+ <li><code><a href="/en-US/Add-ons/Plugins/Reference/NPN_MemAlloc">NPN_MemAlloc</a></code></li>
+ <li><code><a href="/en-US/Add-ons/Plugins/Reference/NPN_MemFree">NPN_MemFree</a></code></li>
+ <li><code><a href="/en-US/Add-ons/Plugins/Reference/NPN_MemFlush">NPN_MemFlush</a></code></li>
+</ul>
+
+<h2 id="JavaScript_API_memory_allocators" name="JavaScript_API_memory_allocators">JavaScript API memory allocators</h2>
+
+<p>There are also routines intended for use within the JavaScript runtime engine (<a href="/en/SpiderMonkey" title="en/SpiderMonkey">SpiderMonkey</a>). This is the <code>/js/</code> subtree of the source code. Also, all consumers of the JSAPI must use these routines for allocating memory they plan to pass to the JavaScript runtime. See <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference">JSAPI Reference</a> for further information.</p>
+
+<ul>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_malloc" title="en/SpiderMonkey/JSAPI_Reference/JS_malloc">JS_malloc()</a></code></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_realloc" title="en/SpiderMonkey/JSAPI_Reference/JS_realloc">JS_realloc()</a></code></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_free" title="en/SpiderMonkey/JSAPI_Reference/JS_free">JS_free()</a></code></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_strdup" title="en/SpiderMonkey/JSAPI_Reference/JS_strdup">JS_strdup()</a></code></li>
+</ul>
+
+<h2 id="Arena_allocators" name="Arena_allocators">Arena allocators</h2>
+
+<p><a href="en/NSPR">NSPR</a> exposes arena allocators that can be used to efficiently allocate lots of small, uniformly sized objects.</p>
+
+<h3 id="PresShell_arena" name="PresShell_arena">PresShell arena</h3>
+
+<p><code>nsIPresShell::AllocateFrame()</code> and <code>nsPresContext::AllocateFromShell()</code> can be used to allocate memory from an arena maintained by the PresShell. These should only be used to allocate objects that are guaranteed to have a shorter lifetime than the PresShell in question (typically layout data structures), because the PresShell destructor will wipe out the arena, leaving any pointers to memory allocated from it dangling.</p>
+
+<p>The corresponding deallocators are <code>nsIPresShell::FreeFrame()</code> and <code>nsPresContext::FreeToShell()</code>.</p>
+
+<h2 id="Notes" name="Notes">Notes</h2>
+
+<p>Memory that is allocated with the C standard library (<code>malloc()</code> and <code>free()</code>) should not be passed between shared libraries. These memory buffers may be used within a single shared library or program. For data structures being passed across XPCOM boundaries, use <code><a href="/en/NS_Alloc" title="en/NS_Alloc">NS_Alloc()</a></code> instead.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en/Infallible_memory_allocation" title="en/Infallible memory allocation">Infallible memory allocation</a></li>
+</ul>

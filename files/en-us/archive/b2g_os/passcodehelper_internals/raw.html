@@ -1,0 +1,34 @@
+<p class="summary" id="PasscodeHelper_A_library_to_modify_and_check_the_lockscreen_passcode_(i.e._pin)_from_within_Gaia">PasscodeHelper is a Gaia helper library for modifying and checking the Firefox OS lockscreen passcode (i.e., pin) from within Gaia, performing functions such as checking whether an entered passcode is correct, and changing the code. This article documents how PasscodeHelper works.</p>
+
+<h2 id="High_level_overview">High level overview</h2>
+
+<p>To fullfill the needs of the different apps (Lockscreen, Settings, FindMyDevice) that interact with the lockscreen passcode, and avoid reinventing the wheel for each one, we created the <a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/passcode_helper.js">PasscodeHelper API</a>. It is an abstraction on top of the <a href="/en-US/docs/Web/API/Settings_API">Settings API</a>, therefore it is an internal API that may only be used in highly-privileged Gaia code. It uses the <a href="/en-US/docs/Web/API/Web_Crypto_API">Web Crypto API</a> to encrypt the user's passcode, avoiding storing it in an unencrypted form.</p>
+
+<p>Passcode security is enforced in two specific ways:</p>
+
+<ul>
+ <li>We are using <a href="https://en.wikipedia.org/wiki/PBKDF2">PBKDF2</a> to derive a cryptographic key from each user's password. Its input variables allows an iteration count that serves as a slowdown against brute force attacks.</li>
+ <li>We customize the outcome of the algorithm with so-called <em>salt</em>, which is randomized for each new passcode. This protects against an attacker building a dictionary of hashes for the most common passwords.</li>
+</ul>
+
+<p>The security parameters of PBKDF2 are in the source code but also stored in the settings. Storing them in the settings allows us to reproduce the algorithm that was used to compute the currently stored passcode. The parameters in the source code can be updated in the future to provide a better security margin, without any kind of compatibility problems.</p>
+
+<h2 id="PasscodeHelper_API_specifics">PasscodeHelper API specifics</h2>
+
+<p>PasscodeHelper is a stateless object that has two externally exposed methods, <code>checkPasscode()</code> and <code>setPasscode()</code>.</p>
+
+<h3 id="PasscodeHelper.setPasscode(aString)_→_Promise&lt;TypedArray>">PasscodeHelper.setPasscode(aString) → Promise&lt;TypedArray&gt;</h3>
+
+<p>The <code>setPasscode()</code> function sets a new passcode, which can by any kind of string. The caller is not required to make any checks on the return value of the promise, but may check that the return value is truthy.</p>
+
+<h3 id="PasscodeHelper.checkPasscode(aString)_→_Promise&lt;boolean>">PasscodeHelper.checkPasscode(aString) → Promise&lt;boolean&gt;</h3>
+
+<p>The <code>checkPasscode()</code> function checks whether a user supplied passcode is indeed the correct passcode. It accepts a string (the passcode to check) and returns a Promise that resolves to a boolean indicating whether the supplied passcode is correct (<code>true</code>) or not (<code>false</code>.)</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="https://timtaubert.de/blog/2015/05/implementing-a-pbkdf2-based-password-storage-scheme-for-firefox-os/">Implementing a PBKDF2-based password storage scheme for Firefox OS</a></li>
+ <li><a href="https://en.wikipedia.org/wiki/PBKDF2">PBKDF2 Wikipedia entry</a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Firefox_OS/Security">Firefox OS security landing page</a></li>
+</ul>

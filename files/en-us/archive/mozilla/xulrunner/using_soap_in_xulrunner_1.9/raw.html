@@ -1,0 +1,69 @@
+<p>Since the native SOAP interface was <a href="/en/SOAP_in_Gecko-based_Browsers" title="en/SOAP_in_Gecko-based_Browsers">removed from Gecko 1.9</a>, those stuck speaking to SOAP APIs need a new place to turn. After some experimentation, the following seems to be the best way to speak SOAP in XULRunner.</p>
+<p>Several alternatives were considered:</p>
+<ul> <li><a class="external" href="http://www.guru4.net/articoli/javascript-soap-client/en/">soapclient 2.4</a> - This library contains a few JavaScript mistakes but nevertheless seems (fairly) widely used, mature and tested. It requires servers to support WSDL which took it out of the running.</li> <li>XULRunner 1.8.* - Using an old XULRunner is certainly an option but brings up a host of speed, stability and memory issues.</li> <li>Manual implementation - The author doesn't know enough about SOAP to implement a robust client in an afternoon.</li>
+</ul>
+<p>The best solution proved to be <a class="external" href="http://www.terracoder.com/soapclient/default.html">jqSOAPClient</a>. This library doesn't require a WSDL. Though jQuery is listed as a dependency, it can be worked around easily. (There is a diff below.)</p>
+<p>You'll need:</p>
+<ul> <li><a href="/@api/deki/files/3042/=saSOAPClient.js" title="/@api/deki/files/3042/=saSOAPClient.js">saSOAPClient.js</a></li> <li><a href="/@api/deki/files/3043/=saXMLUtils.js" title="/@api/deki/files/3043/=saXMLUtils.js">saXMLUtils.js</a></li>
+</ul>
+<h2 id="Making_a_SOAP_call">Making a SOAP call</h2>
+<pre>var url = 'http://example.com/soap/';
+var ns = 'http://example.com/soap/namespace';
+var method = 'foo';
+var params = {
+    'foo': 'bar',
+    'baz': 'bang'
+};
+var callback = function(obj) {
+    Components.utils.reportError(obj.toSource());
+};
+
+SOAPClient.Proxy = url;
+var body = new SOAPObject(method);
+body.ns = ns;
+for (var k in params) {
+    body.appendChild(new SOAPObject(k).val(params[k]));
+}
+var req = new SOAPRequest(url, body);
+req.Action = ns + '#' + method;
+SOAPClient.SendRequest(req, callback);</pre>
+<h2 id="Diff_between_jqSOAPClient.js_and_saSOAPClient.js">Diff between jqSOAPClient.js and saSOAPClient.js</h2>
+<pre>42c42
+&lt; 					var jsOut = $.xmlToJSON(xData.responseXML);
+---
+&gt; 					var jsOut = XMLObjectifier.xmlToJSON(xData.responseXML);
+46,60c46,62
+&lt; 			$.ajax({
+&lt; 				 type: "POST",
+&lt; 				 url: SOAPClient.Proxy,
+&lt; 				 dataType: "xml",
+&lt; 				 processData: false,
+&lt; 				 data: content,
+&lt; 				 complete: getResponse,
+&lt; 				 contentType: SOAPClient.ContentType + "; charset=\"" + SOAPClient.CharSet + "\"",
+&lt; 				 beforeSend: function(req) {
+&lt; 					req.setRequestHeader("Method", "POST");
+&lt; 				 	req.setRequestHeader("Content-Length", SOAPClient.ContentLength);
+&lt; 					req.setRequestHeader("SOAPServer", SOAPClient.SOAPServer);
+&lt; 					req.setRequestHeader("SOAPAction", soapReq.Action);
+&lt; 				 }
+&lt; 			});
+---
+&gt; 			var xhr = new XMLHttpRequest();
+&gt; 			xhr.mozBackgroundRequest = true;
+&gt; 			xhr.open('POST', SOAPClient.Proxy, true);
+&gt; 			xhr.onreadystatechange = function() {
+&gt; 				if (4 != xhr.readyState) { return; }
+&gt; 				getResponse(xhr);
+&gt; 			};
+&gt; 			var headers = {
+&gt; 				'Method': 'POST',
+&gt; 				'Content-Type': SOAPClient.ContentType + '; charset="' +
+&gt; 					SOAPClient.CharSet + '"',
+&gt; 				'Content-Length': SOAPClient.ContentLength,
+&gt; 				'SOAPServer': SOAPClient.SOAPServer,
+&gt; 				'SOAPAction': soapReq.Action
+&gt; 			};
+&gt; 			for (var h in headers) { xhr.setRequestHeader(h, headers[h]); }
+&gt; 			xhr.send(content);</pre>
+<p> </p>

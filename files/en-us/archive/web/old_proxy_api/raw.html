@@ -1,0 +1,412 @@
+<p></p><div class="overheadIndicator nonStandard nonStandardHeader">
+      <p><strong><span title="This API has not been standardized."><i class="icon-warning-sign"> </i></span> Non-standard</strong><br>
+      This feature is non-standard and is not on a standards track. Do not use it on production sites facing the Web: it will not work for every user. There may also be large incompatibilities between implementations and the behavior may change in the future.</p>
+      </div><p></p>
+
+<p></p><div class="warning warningHeader">
+    <p><strong>Warning:</strong> The SpiderMonkey Proxy implementation is a prototype and the Proxy API and semantics specifications are unstable. The SpiderMonkey implementation may not reflect the latest specification draft. It is subject to change anytime. It is provided as an experimental feature. Do not rely on it for production code.</p>
+</div><p></p>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>Proxies are objects for which the programmer has to define the semantics in JavaScript. The default object semantics are implemented in the JavaScript engine, often written in lower-level languages like C++. Proxies let the programmer define most of the behavior of an object in JavaScript. They are said to provide a <strong>meta-programming API</strong>.</p>
+
+<h2 id="Terminology">Terminology</h2>
+
+<dl>
+ <dt>catch-all mechanism (or "intercession API")</dt>
+ <dd>The technical term for this feature.</dd>
+ <dt>handler</dt>
+ <dd>The object that intercepts properties.</dd>
+ <dt>proxy</dt>
+ <dd>The object whose properties are being intercepted.</dd>
+ <dt>proxy factory</dt>
+ <dd>The object or method that creates intercessive proxies.</dd>
+ <dt>traps</dt>
+ <dd>The methods that provide property access. This is analogous to the concept of traps in operating systems.</dd>
+</dl>
+
+<p>Proxies can be either be <strong>trapping</strong> or <strong>fixed</strong>.</p>
+
+<h2 id="Proxy_API">Proxy API</h2>
+
+<p>Catch-alls can be defined only on distinct proxy objects, controlled by a handler object. There are two kinds of proxies:</p>
+
+<p>object proxies</p>
+
+<pre>var proxy = Proxy.create(handler, proto);</pre>
+
+<p>and function proxies :</p>
+
+<pre>var proxy = Proxy.createFunction(handler, callTrap, constructTrap);</pre>
+
+<p>Where:</p>
+
+<ul>
+ <li><code>proto</code> is an optional object representing the proxy’s prototype (defaults to <code>null</code> if none is provided).</li>
+ <li><code>callTrap</code> is a variable-argument <code>function(args) { return any; }</code> that reifies “<code>proxy(args)</code>”. Note: The this-binding of the <code>callTrap</code> function is the this-binding of the call-site.</li>
+ <li><code>constructTrap</code> is an optional variable-argument <code>function(args) { return any-object; }</code> that reifies “<code>new proxy(args)</code>”. The this-binding of the <code>constructTrap</code> is either <code>undefined</code> (in strict mode) or the global object (in non-strict mode). If no <code>constructTrap</code> is provided, performing <code>new proxy(...args)</code> calls the proxy’s <code>callTrap</code> with <code>this</code> bound to a new object delegating to the proxy's prototype.</li>
+ <li><code>handler</code> is an object that implements the handler API.</li>
+</ul>
+
+<h2 id="Handler_API">Handler API</h2>
+
+<p>There are two kinds of traps: <strong>fundamental</strong> and <strong>derived</strong> traps. If one of the fundamental traps isn't implemented and the proxy is used in a way that expects the fundamental trap to be defined, then an error is thrown. If a derived trap is implemented, then that trap's code is called whenever the corresponding behavior happens on the proxy. If the derived trap is undefined, a default implementation using the fundamental traps is used. In other words: fundamental traps are required, derived traps are optional.</p>
+
+<h4 id="Fundamental_traps">Fundamental traps</h4>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Emulated JavaScript code</td>
+   <td class="header">Handler method</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>Object.getOwnPropertyDescriptor(proxy, name)</code></td>
+   <td><code><strong>getOwnPropertyDescriptor:</strong> function(name) -&gt; PropertyDescriptor | undefined</code></td>
+   <td>Should return a valid property descriptor object, or <code>undefined</code> to indicate that no property with <code>name</code> exists in the emulated object.</td>
+  </tr>
+  <tr>
+   <td><code>Object.getPropertyDescriptor(proxy, name)</code></td>
+   <td><code><strong>getPropertyDescriptor:</strong> function(name) -&gt; PropertyDescriptor | undefined</code></td>
+   <td>This function doesn't exist in ECMAScript 5. Like <code>getOwnPropertyDescriptor</code>, but should also search the prototype chain.</td>
+  </tr>
+  <tr>
+   <td><code>Object.getOwnPropertyNames(proxy)</code></td>
+   <td><code><strong>getOwnPropertyNames:</strong> function() -&gt; Strings Array</code></td>
+   <td>Return an array of all own (non-inherited) property names of the emulated object.</td>
+  </tr>
+  <tr>
+   <td><code>Object.getPropertyNames(proxy)</code></td>
+   <td><code><strong>getPropertyNames:</strong> function() -&gt; Strings Array</code></td>
+   <td>This function doesn't exist in ECMAScript 5. Like <code>getOwnPropertyNames</code>, but should also return non-overridden inherited properties.</td>
+  </tr>
+  <tr>
+   <td><code>Object.defineProperty(proxy,name,pd)</code></td>
+   <td><code><strong>defineProperty:</strong> function(name, propertyDescriptor) -&gt; any</code></td>
+   <td>Define a new property whose attributes are determined by the given <code>propertyDescriptor</code>. The return value of this method is ignored.</td>
+  </tr>
+  <tr>
+   <td><code>delete proxy.name</code></td>
+   <td><code><strong>delete:</strong> function(name) -&gt; boolean</code></td>
+   <td>Delete the named property from the proxy. The boolean return value of this method should indicate whether or not the <code>name</code> property was successfully deleted.</td>
+  </tr>
+  <tr>
+   <td>
+    <p><code>Object.freeze(proxy)</code></p>
+
+    <p><code>Object.seal(proxy)</code></p>
+
+    <p><code>Object.preventExtensions(proxy)</code></p>
+   </td>
+   <td><code><strong>fix:</strong> function() -&gt; PropertyDescriptor map (indexed on property names) | undefined</code></td>
+   <td>
+    <p>Should return an object that maps property names to property descriptors. After a call to <code>fix()</code>, the proxy becomes a regular (non-proxy) object with the properties listed in the return value. The handler is no longer used. Moreover, the respective method (<code>freeze()</code>, <code>seal()</code>, or <code>preventExtension()</code>) is immediately called on the fixed object. Note: the fixed object has the same object identity as the proxy object.</p>
+
+    <p>If <code>fix()</code> returns <code>undefined</code>, the call throws a <code>TypeError</code> exception.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Derived_traps">Derived traps</h4>
+
+<p>Default implementation refers to the code that is called for that trap when the trap isn't explicitly defined. In these functions, <code>this</code> refers to the handler object.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Emulated JavaScript code</td>
+   <td class="header">Handler method</td>
+   <td class="header">Default implementation</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>name in proxy</code></td>
+   <td><code><strong>has:</strong> function(name) -&gt; boolean</code></td>
+   <td>
+    <pre class="brush:js;">
+function(name) {
+  return !!this.getPropertyDescriptor(name);
+}</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>Object.prototype.hasOwnProperty.call(proxy, name)</code></td>
+   <td><code><strong>hasOwn: </strong>function(name) -&gt; boolean</code></td>
+   <td>
+    <pre class="brush:js;">
+function(name) {
+  return !!this.getOwnPropertyDescriptor(name);
+}</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>
+    <p><code>proxy.name</code> (in the context of "getting the value")</p>
+
+    <p><code>receiver.name</code> (if <code>receiver</code> inherits from a proxy and does not override <code>name</code>)</p>
+   </td>
+   <td><code><strong>get:</strong> function(receiver, name) -&gt; any</code></td>
+   <td>
+    <pre class="brush:js;">
+function(receiver, name) {
+  var desc = this.getPropertyDescriptor(name);
+  if (desc === undefined) {
+    return undefined;
+  }
+  if ('value' in desc) {
+    return desc.value;
+  } else {
+    if (desc.get === undefined) {
+      return undefined;
+    }
+    return desc.get.call(receiver);
+  }
+}</pre>
+   </td>
+   <td> <code>receiver</code> is either the proxy or an object that inherits from the proxy.</td>
+  </tr>
+  <tr>
+   <td>
+    <p><code>proxy.name = val</code> (in the context of "setting the value")</p>
+
+    <p><code style="font: normal normal normal 100%/normal 'Courier New', 'Andale Mono', monospace; color: inherit; font-weight: inherit;">receiver.name = val</code> (if <code>receiver</code> inherits from a proxy and does not override <code style="font: normal normal normal 100%/normal 'Courier New', 'Andale Mono', monospace; color: inherit; font-weight: inherit;">name</code>)</p>
+   </td>
+   <td><code><strong>set:</strong> function(receiver, name, val) -&gt; boolean</code></td>
+   <td>
+    <pre class="brush:js;">
+function(receiver, name, val) {
+  var desc = this.getOwnPropertyDescriptor(name);
+  if (desc) {
+    if ('writable' in desc) {
+      if (desc.writable) {
+        desc.value = val;
+        this.defineProperty(name, desc);
+        return true;
+      } else {
+        return false;
+      }
+    } else { // accessor
+      if (desc.set) {
+        desc.set.call(receiver, val);
+        return true;
+      } else {
+        return false;
+      }
+    }
+  }
+  desc = this.getPropertyDescriptor(name);
+  if (desc) {
+    if ('writable' in desc) {
+      if (desc.writable) {
+        // fall through
+      } else {
+        return false;
+      }
+    } else { // accessor
+      if (desc.set) {
+        desc.set.call(receiver, val);
+        return true;
+      } else {
+        return false;
+      }
+    }
+  }
+  this.defineProperty(name, {
+    value: val,
+    writable: true,
+    enumerable: true,
+    configurable: true});
+  return true;
+}</pre>
+   </td>
+   <td> <code style="font: normal normal normal 100%/normal 'Courier New', 'Andale Mono', monospace; color: inherit; font-weight: inherit;">receiver</code> is either the proxy or an object that inherits from the proxy.</td>
+  </tr>
+  <tr>
+   <td><code>for(prop in proxy){...}</code></td>
+   <td><code><strong>enumerate:</strong> function() -&gt; String Array</code></td>
+   <td>
+    <pre class="brush:js;">
+function() {
+  return this.getPropertyNames().filter(
+    function (name) {
+      return this.getPropertyDescriptor(name).enumerable
+    }
+  );
+}</pre>
+   </td>
+   <td>From the proxy user point of view, properties appear in the for..in loop in the same order as they are in the returned array.</td>
+  </tr>
+  <tr>
+   <td><code>Object.keys(proxy)</code></td>
+   <td><code><strong>keys:</strong> function() -&gt; String Array</code></td>
+   <td>
+    <pre class="brush:js;">
+function() {
+  return this.getOwnPropertyNames().filter(
+    function (name) {
+      return this.getOwnPropertyDescriptor(name).enumerable
+    }
+  );
+}</pre>
+   </td>
+   <td> </td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Invariants">Invariants</h2>
+
+<p>Even though proxies provide a lot of power to users, some operations are not trapped in order to keep the language consistent:</p>
+
+<ul>
+ <li>The triple equal (<code>===</code>) operator is not trapped. <code>p1 === p2</code> if and only if <code>p1</code> and <code>p2</code> refer to the same proxy. Fixing a proxy does not alter its object identity (the object “generated” by the handler during fixing does not have its own object identity; it retains the object identity of the proxy, upholding the illusion that the proxy “becomes” the object).</li>
+ <li><code>Object.getPrototypeOf(proxy)</code> returns the prototype with which <code>proxy</code> was initialized for an object proxy, and returns <code>Function.prototype</code> for a function proxy.</li>
+ <li>typeof
+  <ul>
+   <li><code>typeof anObjectProxy === "object"</code></li>
+   <li><code>typeof aFunctionProxy === "function"</code></li>
+  </ul>
+ </li>
+ <li>instanceof
+  <ul>
+   <li><code>anObjectProxy instanceof C === true</code> if and only if the prototype with which <code>anObjectProxy</code> was initialized equals or inherits from <code>C.prototype</code></li>
+   <li><code>aFunctionProxy instanceof Function === true</code></li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Common_mistakes_and_misunderstanding">Common mistakes and misunderstanding</h2>
+
+<p>When starting using proxies, there are often a few beginners' mistakes and misunderstandings:</p>
+
+<ul>
+ <li><strong>Not implementing all traps.</strong> Proxies are, by default, "semanticless" objects. If a trap isn't implemented, then if it's a derived trap, the default implementation is used. However, if a fundamental trap is unimplemented, then a call to this trap will throw a TypeError. To make sure no error is thrown when your object is used, you have to implement <u><strong>at least all fundamental traps</strong></u>.</li>
+ <li><strong>Unwanted recursion.</strong> Be careful of how you use the <code>receiver</code> argument in 'get' and 'set' traps.</li>
+</ul>
+
+<pre class="brush:js;">var p = Proxy.create({get: function(receiver, name) {
+  print(receiver); // looks for receiver's toString method. receiver turns out to be the proxy, so calling print results in calling the get trap.
+  return "something";
+} });
+
+var q = p.azerty; // infinite loop</pre>
+
+<ul>
+ <li><strong>The <code>receiver</code> argument in 'get' and 'set' traps may not be the proxy itself</strong>:</li>
+</ul>
+
+<pre class="brush:js;">var proxy;
+
+var handler = {
+    has: function (name) {
+        return name == 'foo';
+    },
+    get: function (rcvr, name) {
+        if (name != 'foo')
+            return undefined;
+        print(proxy !== rcvr);
+        return "bye";
+    },
+};
+
+proxy = Proxy.create(handler);
+
+var c = Object.create(proxy);
+
+print(c.foo); // prints: 'true' (from "proxy !== rcvr") and 'bye' (from "c.foo").
+// In this example, the get trap rcvr argument is the c object while proxy is its prototype</pre>
+
+<h2 id="Examples">Examples</h2>
+
+<h3 id="Very_simple_example">Very simple example</h3>
+
+<p>A trap is called almost each time something happens to your proxy (that is used like an object). Here is an example:</p>
+
+<pre class="brush:js;">var incompleteHandler = {get:function(myProxy, name){
+                               alert('Property ' + name + ' accessed.');
+                               return 1;
+                             }
+                        };
+var p = Proxy.create(incompleteHandler);
+var q = p.blabla; // alerts 'Property blabla accessed' and 1 is assigned to q
+p.azerty = "Trying to set a property"; // throws an error since neither the set trap or the fundamental trap used in the set trap are implemented</pre>
+
+<h3 id="No-op_forwarding_proxy">No-op forwarding proxy</h3>
+
+<p>In this example, we are using a native JavaScript object to which our proxy will forward all operations that are applied to it.</p>
+
+<pre class="brush:js;">function handlerMaker(obj) {
+  return {
+    // Fundamental traps
+    getOwnPropertyDescriptor: function(name) {
+      var desc = Object.getOwnPropertyDescriptor(obj, name);
+      // a trapping proxy's properties must always be configurable
+      if (desc !== undefined) { desc.configurable = true; }
+      return desc;
+    },
+    getPropertyDescriptor:  function(name) {
+      var desc = Object.getPropertyDescriptor(obj, name); // not in ES5
+      // a trapping proxy's properties must always be configurable
+      if (desc !== undefined) { desc.configurable = true; }
+      return desc;
+    },
+    getOwnPropertyNames: function() {
+      return Object.getOwnPropertyNames(obj);
+    },
+    getPropertyNames: function() {
+      return Object.getPropertyNames(obj);                // not in ES5
+    },
+    defineProperty: function(name, desc) {
+      Object.defineProperty(obj, name, desc);
+    },
+    delete:       function(name) { return delete obj[name]; },
+    fix:          function() {
+      if (Object.isFrozen(obj)) {
+        return Object.getOwnPropertyNames(obj).map(function(name) {
+          return Object.getOwnPropertyDescriptor(obj, name);
+        });
+      }
+      // As long as obj is not frozen, the proxy won't allow itself to be fixed
+      return undefined; // will cause a TypeError to be thrown
+    },
+
+    // derived traps
+    has:          function(name) { return name in obj; },
+    hasOwn:       function(name) { return Object.prototype.hasOwnProperty.call(obj, name); },
+    get:          function(receiver, name) { return obj[name]; },
+    set:          function(receiver, name, val) { obj[name] = val; return true; }, // bad behavior when set fails in non-strict mode
+    enumerate:    function() {
+      var result = [];
+      for (name in obj) { result.push(name); };
+      return result;
+    },
+    keys: function() { return Object.keys(obj) }
+  };
+}
+
+// ...
+
+var o = Object.create({});
+var proxy = Proxy.create(handlerMaker(o));
+
+proxy.blabla = 12; // Thanks to the forwarding, o now has a 'blabla' property with a value of 12
+o.blabla++; // just incrementing o.blabla
+
+alert(proxy.blabla); // alerts 13: the getting operation is forwarded to o which returns 13.</pre>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a class="external" href="http://jsconf.eu/2010/speaker/be_proxy_objects.html">"Proxies are awesome" Brendan Eich presentation at JSConf</a> (<a class="external" href="http://www.slideshare.net/BrendanEich/metaprog-5303821">slides</a>)</li>
+ <li><a class="external" href="http://wiki.ecmascript.org/doku.php?id=harmony:proxies">ECMAScript Harmony Proxy proposal page</a> and <a class="external" href="http://wiki.ecmascript.org/doku.php?id=harmony:proxies_semantics">ECMAScript Harmony proxy semantics page</a></li>
+ <li><a class="external" href="http://soft.vub.ac.be/~tvcutsem/proxies/">Tutorial on proxies</a></li>
+</ul>
+
+<h2 id="Licensing_note">Licensing note</h2>
+
+<p>Some content (text, examples) in this page has been copied or adapted from the <a class="external" href="http://wiki.ecmascript.org/doku.php">ECMAScript wiki</a> which content is licensed <a class="external" href="http://creativecommons.org/licenses/by-nc-sa/2.0/">CC 2.0 BY-NC-SA</a></p>

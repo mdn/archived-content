@@ -1,0 +1,180 @@
+<p>Get a reference to the module:</p>
+
+<pre><code>let sourceMap = {};
+Components.utils.import('resource:///modules/devtools/SourceMap.jsm', sourceMap);
+</code></pre>
+
+<h3 id="SourceMapConsumer">SourceMapConsumer</h3>
+
+<p>A SourceMapConsumer instance represents a parsed source map which we can query for information about the original file positions by giving it a file position in the generated source.</p>
+
+<h4 id="new_SourceMapConsumer(rawSourceMap)">new SourceMapConsumer(rawSourceMap)</h4>
+
+<p>The only parameter is the raw source map (either as a string which can be <code>JSON.parse</code>'d, or an object). According to the spec, source maps have the following attributes:</p>
+
+<ul>
+ <li>
+  <p><code>version</code>: Which version of the source map spec this map is following.</p>
+ </li>
+ <li>
+  <p><code>sources</code>: An array of URLs to the original source files.</p>
+ </li>
+ <li>
+  <p><code>names</code>: An array of identifiers that can be referenced by individual mappings.</p>
+ </li>
+ <li>
+  <p><code>sourceRoot</code>: Optional. The URL root from which all sources are relative.</p>
+ </li>
+ <li>
+  <p><code>mappings</code>: A string of base64 VLQs which contain the actual mappings.</p>
+ </li>
+ <li>
+  <p><code>file</code>: The generated filename this source map is associated with.</p>
+ </li>
+</ul>
+
+<h4 id="SourceMapConsumer.prototype.originalPositionFor(generatedPosition)">SourceMapConsumer.prototype.originalPositionFor(generatedPosition)</h4>
+
+<p>Returns the original source, line, and column information for the generated source's line and column positions provided. The only argument is an object with the following properties:</p>
+
+<ul>
+ <li>
+  <p><code>line</code>: The line number in the generated source.</p>
+ </li>
+ <li>
+  <p><code>column</code>: The column number in the generated source.</p>
+ </li>
+</ul>
+
+<p>and an object is returned with the following properties:</p>
+
+<ul>
+ <li>
+  <p><code>source</code>: The original source file, or null if this information is not available.</p>
+ </li>
+ <li>
+  <p><code>line</code>: The line number in the original source, or null if this information is not available.</p>
+ </li>
+ <li>
+  <p><code>column</code>: The column number in the original source, or null if this information is not available.</p>
+ </li>
+ <li>
+  <p><code>name</code>: The original identifier, or null if this information is not available.</p>
+ </li>
+</ul>
+
+<h3 id="SourceMapGenerator">SourceMapGenerator</h3>
+
+<p>An instance of the SourceMapGenerator represents a source map which is being built incrementally.</p>
+
+<h4 id="new_SourceMapGenerator(startOfSourceMap)">new SourceMapGenerator(startOfSourceMap)</h4>
+
+<p>To create a new one, you must pass an object with the following properties:</p>
+
+<ul>
+ <li>
+  <p><code>file</code>: The filename of the generated source that this source map is associated with.</p>
+ </li>
+ <li>
+  <p><code>sourceRoot</code>: An optional root for all relative URLs in this source map.</p>
+ </li>
+</ul>
+
+<h4 id="SourceMapGenerator.prototype.addMapping(mapping)">SourceMapGenerator.prototype.addMapping(mapping)</h4>
+
+<p>Add a single mapping from original source line and column to the generated source's line and column for this source map being created. The mapping object should have the following properties:</p>
+
+<ul>
+ <li>
+  <p><code>generated</code>: An object with the generated line and column positions.</p>
+ </li>
+ <li>
+  <p><code>original</code>: An object with the original line and column positions.</p>
+ </li>
+ <li>
+  <p><code>source</code>: The original source file (relative to the sourceRoot).</p>
+ </li>
+ <li>
+  <p><code>name</code>: An optional original token name for this mapping.</p>
+ </li>
+</ul>
+
+<h4 id="SourceMapGenerator.prototype.toString()">SourceMapGenerator.prototype.toString()</h4>
+
+<p>Renders the source map being generated to a string.</p>
+
+<h3 id="SourceNode">SourceNode</h3>
+
+<p>SourceNodes provide a way to abstract over interpolating and/or concatenating snippets of generated JavaScript source code, while maintaining the line and column information associated between those snippets and the original source code. This is useful as the final intermediate representation a compiler might use before outputting the generated JS and source map.</p>
+
+<h4 id="new_SourceNode(line_column_source_chunk)">new SourceNode(line, column, source[, chunk])</h4>
+
+<ul>
+ <li>
+  <p><code>line</code>: The original line number associated with this source node, or null if it isn't associated with an original line.</p>
+ </li>
+ <li>
+  <p><code>column</code>: The original column number associated with this source node, or null if it isn't associated with an original column.</p>
+ </li>
+ <li>
+  <p><code>source</code>: The original source's filename.</p>
+ </li>
+ <li>
+  <p><code>chunk</code>: Optional. Is immediately passed to <code>SourceNode.prototype.add</code>, see below.</p>
+ </li>
+</ul>
+
+<h4 id="SourceNode.prototype.add(chunk)">SourceNode.prototype.add(chunk)</h4>
+
+<p>Add a chunk of generated JS to this source node.</p>
+
+<ul>
+ <li><code>chunk</code>: A string snippet of generated JS code, another instance of <code>SourceNode</code>, or an array where each member is one of those things.</li>
+</ul>
+
+<h4 id="SourceNode.prototype.prepend(chunk)">SourceNode.prototype.prepend(chunk)</h4>
+
+<p>Prepend a chunk of generated JS to this source node.</p>
+
+<ul>
+ <li><code>chunk</code>: A string snippet of generated JS code, another instance of <code>SourceNode</code>, or an array where each member is one of those things.</li>
+</ul>
+
+<h4 id="SourceNode.prototype.walk(fn)">SourceNode.prototype.walk(fn)</h4>
+
+<p>Walk over the tree of JS snippets in this node and its children. The walking function is called once for each snippet of JS and is passed that snippet and its original associated source's line/column location.</p>
+
+<ul>
+ <li><code>fn</code>: The traversal function.</li>
+</ul>
+
+<h4 id="SourceNode.prototype.join(sep)">SourceNode.prototype.join(sep)</h4>
+
+<p>Like <code>Array.prototype.join</code> except for SourceNodes. Inserts the separator between each of this source node's children.</p>
+
+<ul>
+ <li><code>sep</code>: The separator.</li>
+</ul>
+
+<h4 id="SourceNode.prototype.replaceRight(pattern_replacement)">SourceNode.prototype.replaceRight(pattern, replacement)</h4>
+
+<p>Call <code>String.prototype.replace</code> on the very rightmost source snippet. Useful for trimming whitespace from the end of a source node, etc.</p>
+
+<ul>
+ <li>
+  <p><code>pattern</code>: The pattern to replace.</p>
+ </li>
+ <li>
+  <p><code>replacement</code>: The thing to replace the pattern with.</p>
+ </li>
+</ul>
+
+<h4 id="SourceNode.prototype.toString()">SourceNode.prototype.toString()</h4>
+
+<p>Return the string representation of this source node. Walks over the tree and concatenates all the various snippets together to one string.</p>
+
+<h4 id="SourceNode.prototype.toStringWithSourceMap(startOfSourceMap)">SourceNode.prototype.toStringWithSourceMap(startOfSourceMap)</h4>
+
+<p>Returns the string representation of this tree of source nodes, plus a SourceMapGenerator which contains all the mappings between the generated and original sources.</p>
+
+<p>The arguments are the same as those to <code>new SourceMapGenerator</code>.</p>

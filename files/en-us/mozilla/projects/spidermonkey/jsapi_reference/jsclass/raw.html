@@ -1,0 +1,280 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>A <strong><code>JSClass</code></strong> describes a class of JavaScript objects. A C/C++ program can use a <code>JSClass</code> with the {{jsapixref("JS_InitClass")}} and {{jsapixref("JS_NewObject")}} APIs to create objects that have custom methods and properties implemented in C/C++.</p>
+</div>
+
+<h3 id="Syntax" name="Syntax">Syntax</h3>
+
+<pre class="brush: cpp">struct JSClass {
+    const char          *name;
+    uint32_t            flags;
+
+    /* Optional since SpiderMonkey 37 */
+    JSPropertyOp        addProperty;
+    JSDeletePropertyOp  delProperty;
+    JSPropertyOp        getProperty;
+    JSStrictPropertyOp  setProperty;
+    JSEnumerateOp       enumerate;
+    JSResolveOp         resolve;
+
+    JSConvertOp         convert;      /* Obsolete since SpiderMonkey 44 */
+
+    /* Optional since SpiderMonkey 25 */
+    JSFinalizeOp        finalize;
+
+    /* Optional */
+    JSClassInternal     reserved0;    /* Obsolete since SpiderMonkey 13 */
+    JSCheckAccessOp     checkAccess;  /* Obsolete since SpiderMonkey 29 */
+    JSNative            call;
+    JSHasInstanceOp     hasInstance;
+    JSNative            construct;
+    JSXDRObjectOp       xdrObject;    /* Obsolete since SpiderMonkey 13 */
+    JSTraceOp           trace;        /* Added in SpiderMonkey 17 */
+
+    JSClassInternal     reserved1;    /* Obsolete since SpiderMonkey 13 */
+    void                *reserved[N]; /* sizeof 'reserved' depends on version */
+};
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>name</code></td>
+   <td><code>const char *</code></td>
+   <td>Class name</td>
+  </tr>
+  <tr>
+   <td>{{jsapixref("JSClass.flags", "flags")}}</td>
+   <td><code>uint32_t</code></td>
+   <td>Class flags. This field is the bitwise OR of one or more of the <code>JSCLASS_*</code> constants described in {{jsapixref("JSClass.flags")}}.</td>
+  </tr>
+  <tr>
+   <td><code>addProperty</code></td>
+   <td>{{jsapixref("JSPropertyOp")}}</td>
+   <td>
+    <p>A hook called just after adding a new property. May modify the new property value.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_PropertyStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>delProperty</code></td>
+   <td>{{jsapixref("JSDeletePropertyOp")}}</td>
+   <td>
+    <p>A hook called when deleting a property. May veto.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_DeletePropertyStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>getProperty</code></td>
+   <td>{{jsapixref("JSPropertyOp")}}</td>
+   <td>
+    <p>A hook called when getting a property. This is the default getter for the class.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_PropertyStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>setProperty</code></td>
+   <td>{{jsapixref("JSPropertyOp", "JSStrictPropertyOp")}}</td>
+   <td>
+    <p>A hook called when setting a property. This is the default setter for the class. When a script creates a new property, this is called after {{jsapixref("JSPropertyOp", "addProperty")}}.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_StrictPropertyStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>enumerate</code></td>
+   <td>{{jsapixref("JSEnumerateOp")}}</td>
+   <td>
+    <p>Method for enumerating object properties.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_PropertyStub", "JS_EnumerateStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+
+    <div class="memo">
+    <p>{{ obsolete_inline("jsapi37") }} The {{jsapixref("JSClass.flags", "JSCLASS_NEW_ENUMERATE")}} flag instructs SpiderMonkey to call this as a {{jsapixref("JSClass.enumerate", "JSNewEnumerateOp")}}.</p>
+    </div>
+   </td>
+  </tr>
+  <tr>
+   <td><code>resolve</code></td>
+   <td>{{jsapixref("JSResolveOp")}}</td>
+   <td>
+    <p>Hook for implementing lazy properties. See {{jsapixref("JSClass.resolve")}} for details.</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_PropertyStub", "JS_ResolveStub")}} (SpiderMonkey 31 or older) for default behavior.</p>
+
+    <p>{{ obsolete_inline("jsapi36") }} The {{jsapixref("JSClass.flags", "JSCLASS_NEW_RESOLVE")}} flag instructs SpiderMonkey to call this as a {{jsapixref("JSNewResolveOp")}}.</p>
+
+    <p>{{ obsolete_inline("jsapi16") }}The {{jsapixref("JSClass.flags", "JSCLASS_NEW_RESOLVE_GETS_START")}} flag further affects this hook.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>convert</code></td>
+   <td>{{jsapixref("JSConvertOp")}}</td>
+   <td>
+    <p>This hook specifies how objects of this class are converted to a primitive value.  It implements the object's <code><span class="nowiki">[[DefaultValue]]</span></code> hook, which is invoked by JavaScript when the object must be converted to a string, number, or primitive value. {{ obsolete_inline("jsapi44") }}</p>
+
+    <p>Use <code>NULL</code> or {{jsapixref("JS_PropertyStub", "JS_ConvertStub")}} (SpiderMonkey 31 or older) for default behavior, which is equivalent to that defined by ECMAScript in <a class="external" href="http://es5.github.com/#x8.12.8" title="http://es5.github.com/#x8.12.8">§8.12.8</a>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>finalize</code></td>
+   <td>{{jsapixref("JSFinalizeOp")}}</td>
+   <td>
+    <p>The object finalizer hook. This is called at some point after the object becomes unreachable, and can be used to free any additional resources associated with the object.</p>
+
+    <p>If objects of this class do not need finalization, use <code>NULL</code>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>checkAccess</td>
+   <td>{{jsapixref("JSCheckAccessOp")}}</td>
+   <td>Optional method for access checks. Implements {{jsapixref("JS_CheckAccess")}}. If your application does not use the JSAPI's security features, use <code>NULL</code>. {{ obsolete_inline("jsapi29") }}</td>
+  </tr>
+  <tr>
+   <td>{{jsapixref("JSClass.call", "call")}}</td>
+   <td>{{jsapixref("JSNative")}}</td>
+   <td>This is called when a script calls an object as though it were a function: <code>obj()</code>. If objects of your class shouldn't be callable, use <code>NULL</code>. Most objects are not callable.</td>
+  </tr>
+  <tr>
+   <td><code>hasInstance</code></td>
+   <td>{{jsapixref("JSHasInstanceOp")}}</td>
+   <td>Pointer to an optional <code>hasInstance</code> method for this object. If you do not provide a method for <code>hasInstance</code>, set this pointer to <code>NULL</code>.</td>
+  </tr>
+  <tr>
+   <td>{{jsapixref("JSClass.call", "construct")}}</td>
+   <td>{{jsapixref("JSNative")}}</td>
+   <td>This is called when a script uses an object as though it were a constructor: <code>new obj()</code>.  If objects of your class shouldn't be callable this way, use <code>NULL</code>. Most custom objects are not intended to be used as constructors.</td>
+  </tr>
+  <tr>
+   <td>xdrObject</td>
+   <td>{{jsapixref("JSXDRObjectOp")}}</td>
+   <td>Implements object serialization. If you do not use <a href="/en/JSXDR" title="en/JSXDR">JSXDR</a>, set this pointer to <code>NULL</code>. {{ obsolete_inline("jsapi13") }}</td>
+  </tr>
+  <tr>
+   <td><code>trace</code></td>
+   <td>{{jsapixref("JSTraceOp")}}</td>
+   <td>
+    <p>The GC trace hook.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Description" name="Description">Description</h3>
+
+<p>Use <code>JSClass</code> to define a custom class of JavaScript objects. A <code>JSClass</code> has a name, flags, and several callback functions for advanced customization of object behavior.</p>
+
+<h4 id="Simple_classes">Simple classes</h4>
+
+<p>A simple custom class does not require any special <code>JSClass</code> callbacks. Instead, all the native code is in {{jsapixref("JSPropertyOp")}}s (property getters and setters) and {{jsapixref("JSNative")}}s or {{jsapixref("JSFastNative")}}s (methods). The code for such a class is simple:</p>
+
+<pre class="brush: cpp">/* SpiderMonkey 38 */
+static JSClass robot_class = {
+    "Robot",  /* name */
+    0         /* flags */
+};
+
+/* SpiderMonkey 31 or older */
+static JSClass robot_class = {
+    "Robot",  /* name */
+    0,        /* flags */
+    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, NULL,
+    JSCLASS_NO_OPTIONAL_MEMBERS
+};
+</pre>
+
+<p>To expose this class to scripts, and to attach methods and properties to it, use {{jsapixref("JS_InitClass")}}.</p>
+
+<h4 id="Private_data">Private data</h4>
+
+<p>Custom classes very often need to store private C/C++ data that should not be visible to scripts. To do this, use the {{jsapixref("JSClass.flags", "JSCLASS_HAS_PRIVATE")}} ({{jsapixref("JSClass.flags", "JSCLASS_CONSTRUCT_PROTOTYPE")}} wad removed) flags. Implement a {{jsapixref("JSNative")}} constructor function that allocates this private data and stores it in the new object using {{jsapixref("JS_SetPrivate")}}. Implement a {{jsapixref("JSClass.finalize")}} callback that frees the private data. Each native getter, setter, or method can access the private data using {{jsapixref("JS_GetInstancePrivate")}}.</p>
+
+<p>When initializing the class, pass the <code>JSNative</code> constructor function to {{jsapixref("JS_InitClass")}}.</p>
+
+<p>(This example uses the C++ <code>new</code> and <code>delete</code> keywords, but the application can allocate the memory for private data however it likes. The JavaScript engine never touches the private data; it is for the application's use only.)</p>
+
+<pre class="brush: cpp">void
+printer_finalize(JSContext *cx, JSObject *obj)
+{
+    MyPrinter *p = (MyPrinter *) JS_GetPrivate(cx, obj);
+    delete p;
+}
+
+static JSClass printer_class = {
+    "Printer",
+    JSCLASS_HAS_PRIVATE,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, printer_finalize
+};
+
+/* SpiderMonkey 31 or older
+ * static JSClass printer_class = {
+ *     "Printer",
+ *     JSCLASS_HAS_PRIVATE,
+ *     JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+ *     JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, printer_finalize,
+ *     JSCLASS_NO_OPTIONAL_MEMBERS
+ * };
+ */
+
+bool
+printer_construct(JSContext *cx, unsigned argc, jsval *vp)
+{
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+    JSObject *obj = JS_NewObjectForConstructor(cx, &amp;printer_class, args);
+    /* SpiderMonkey 31 or older
+     * JSObject *obj = JS_NewObjectForConstructor(cx, &amp;printer_class, vp);
+     */
+    if (!obj)
+        return false;
+
+    MyPrinter *p = new MyPrinter;
+    if (p == NULL) {
+        JS_ReportOutOfMemory(cx);
+        return false;
+    }
+    JS_SetPrivate(cx, obj, p);
+
+    args.rval().setObject(*obj);
+    /* SpiderMonkey 31 or older
+     * JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
+     */
+    return true;
+}
+
+{
+  JS_InitClass(cx, global, JS::NULL(), &amp;printer_class, printer_construct, 1,
+               NULL, NULL, NULL, NULL);
+}
+</pre>
+
+<h3 id="See_Also" name="See_Also">See also</h3>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JSClass") }}</li>
+ <li>{{jsapixref("JSClass.flags")}}</li>
+ <li>{{jsapixref("JS_GetClass")}}</li>
+ <li>{{jsapixref("JS_InitClass")}}</li>
+ <li>{{jsapixref("JS_NewObject")}}</li>
+ <li>{{jsapixref("JS_NewObjectForConstructor")}}</li>
+ <li>{{jsapixref("JS_InstanceOf")}}</li>
+ <li>{{bug(638291)}} - added <code>trace</code></li>
+ <li>{{bug(702507)}} - removed <code>JSCLASS_CONSTRUCT_PROTOTYPE</code></li>
+ <li>{{bug(726944)}} - removed <code>xdrObject</code>, <code>reserved0</code> and <code>reserved1</code></li>
+ <li>{{bug(886829)}} - made <code>finalize</code> optional</li>
+ <li>{{bug(957688)}} - removed <code>checkAccess</code></li>
+ <li>{{bug(1103368)}} - made most of members optional</li>
+ <li>{{bug(1097267)}} - removed <code>JSCLASS_NEW_ENUMERATE</code></li>
+ <li>{{bug(1054756)}} - removed <code>convert</code></li>
+ <li>{{bug(1261723)}} - class ops are moved to a sub-structure <code>JSClassOps</code></li>
+</ul>

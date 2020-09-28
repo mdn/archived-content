@@ -1,0 +1,19 @@
+<p></p><div class="warning">  <p>On November 30th, 2016, Mozilla shut down the persona.org services. Persona.org and related domains will soon be taken offline.</p>  <p>For more information, see this guide to migrating your site away from Persona:</p>  <p><a href="https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers">https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers</a></p></div><p></p>
+
+<p>After your <code>onlogin</code> handler gets called with an assertion, if for any reason you can't use the assertion to log the user in, you must call <a href="/en-US/docs/Web/API/Navigator/id/logout" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.logout()</code></a>.</p>
+
+<p>If you don't, then the next time you call <a href="/en-US/docs/Web/API/Navigator/id/watch" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.watch()</code></a> Persona will immediately call your <code>onlogin</code> handler again, with the same assertion. Typically this will lead to an endless loop of failed login attempts:</p>
+
+<ol>
+ <li>the user clicks "Sign In"</li>
+ <li>the user interacts with the Persona interface, and Persona generates an assertion</li>
+ <li>Persona delivers the assertion to the page's <code>onlogin</code> handler</li>
+ <li>the <code>onlogin</code> handler rejects the assertion, and redirects the user to the login page</li>
+ <li>the login page loads, calls <a href="/en-US/docs/Web/API/Navigator/id/watch" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.watch()</code></a>, and we go back to (3)</li>
+</ol>
+
+<p>The reason is that Persona tries to remember which email you want to use to log into a particular site. Once the user has tried to log into your site as bob@gmail.com, Persona remembers that this is the address they want to use with your site. Then when the next page load calls <a href="/en-US/docs/Web/API/Navigator/id/watch" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.watch()</code></a> with a <code>loggedInUser</code> of "null", Persona compares that with its value of "bob@gmail.com", and sends the assertion again.</p>
+
+<p>To make Persona forget the association between your site and the email address, call <a href="/en-US/docs/Web/API/Navigator/id/logout" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.logout()</code></a> if you don't want to log the user in with that assertion. This might be because the assertion does not validate, or because you don't want to use the given email address.</p>
+
+<p>A common scenario where this is a problem is when an RP wants to allow users to sign <strong>in</strong> with Persona, but does not want to let them sign <strong>up</strong> with Persona, preferring some custom registration system for new users. In this case, when you get an assertion, you'll check that the email address it contains is for one of your existing users, and reject the login attempt if it is not. If you do reject this assertion, you must call <a href="/en-US/docs/Web/API/Navigator/id/logout" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.logout()</code></a>.</p>

@@ -1,0 +1,159 @@
+<div class="warning">
+<p><span style="line-height: 1.572;">The techniques described this article are no longer best practices for Web-based development. It is now preferable to use </span><a href="/en-US/docs/CSS/Getting_Started/Layout" style="line-height: 1.572;" title="/en-US/docs/CSS/Getting_Started/Layout">CSS for layout</a><span style="line-height: 1.572;">. However, these techniques may be relevant when the developer cannot assume that users have a modern browser, such as for HTML-based e-mail messages.</span></p>
+</div>
+
+<p>Almost no matter when you started creating Web pages, odds are pretty high you have one or more designs based on the classic "convoluted tables and lots of images" paradigm. Whether you've sliced up a logo so it fits in well with the design, or used tons of single-pixel spacer GIFs, the principles (and perils) remain largely the same. Back in the early days, this approach worked, because browsers would usually make a table cell exactly as wide and tall as an image it contained.</p>
+
+<p>Fast forward to 2001, and the rise of standards-based browsers that lay out pages using HTML and CSS instead of their own private layout algorithms. Thanks to an obscure corner of the CSS specification, every design based on a precise layout of small images in table cells have become visual disasters just waiting to happen. All it takes is a modern browser and the right DOCTYPE, and kaboom!</p>
+
+<h3 id="The_Components" name="The_Components">The Components</h3>
+
+<p>Let's take a close look at the breeding ground for trouble, and why this is a problem. We start with a simple case, illustrated in Figure 1: a one-cell table containing an image.</p>
+
+<p><img alt="Figure 1" src="/@api/deki/files/718/=Images-tables-gaps-figure1.gif"></p>
+
+<p>Obviously most designs are a touch more complicated than this, but we don't need anything more for our purposes. One image, one cell-- that's all it takes. There's nothing apparently wrong with that example. There isn't supposed to be, since it's an example of how browsers have traditionally behaved.</p>
+
+<p>Now let's see what that same simple table looks like in a modern browser when the page has a strict DOCTYPE.</p>
+
+<p><img alt="Figure 2" src="/@api/deki/files/721/=Images-tables-gaps-figure2.gif"></p>
+
+<p>Notice the added space beneath the image in Figure 2. The markup of both table and cell remains unchanged-- it's the rendering mode that's different. Instead of "shrinkwrapping" the image itself, the browser is now wrapping around the line in which the image sits. The image is sitting in a line because images are, by default, inline content. That's all it takes.</p>
+
+<h3 id="How_Inline_Content_is_Constructed" name="How_Inline_Content_is_Constructed">How Inline Content is Constructed</h3>
+
+<p>In order to understand what just happened, let's take a look at the construction of a line box, the placement of images within a line box, and the placement of a line box within a table cell. First a basic line box containing text, shown in Figure 3.</p>
+
+<p><img alt="Figure 3" src="/@api/deki/files/722/=Images-tables-gaps-figure3.gif"></p>
+
+<p>The most crucial part of Figure 3 is the baseline (represented by the blue line), and its placement within the line box. The baseline's exact placement is dependent on the "default" font for the line box (represented by the red box), which is determined by the value of font-family for the element that contains the line box. It isn't possible for an author to change the baseline's position directly, so wherever it ends up is where it will be. The space below the baseline is referred to as "descender space" since that's where the descenders in lowercase letters like "j", "y", and "q" are drawn. Figure 4 shows what happens when we add an image to the mix.</p>
+
+<p><img alt="Figure 4" src="/@api/deki/files/723/=Images-tables-gaps-figure4.gif"></p>
+
+<p>Note where the image sits by default: its bottom edge is aligned with the baseline of the line box. This placement can be changed with vertical-align-- we'll talk about that in a bit-- but almost nobody ever changes the value from its default. Let's take away the text, and leave only the image, as was done in Figure 5.</p>
+
+<p><img alt="Figure 5" src="/@api/deki/files/724/=Images-tables-gaps-figure5.gif"></p>
+
+<p>So we have an image sitting on the baseline of a line box that contains only the image. Now consider what happens when we put that line in a table cell (Figure 6).</p>
+
+<p><img alt="Figure 6" src="/@api/deki/files/725/=Images-tables-gaps-figure6.gif"></p>
+
+<p>And there you have it-- spaces opening up where none have ever been seen before. It gets even worse with small images, like ones that are one pixel tall, as illustrated in Figure 7.</p>
+
+<p><img alt="Figure 7" src="/@api/deki/files/726/=Images-tables-gaps-figure7.gif"></p>
+
+<p>Now there's all kinds of space unexpectedly opening up. It's enough to drive a designer mad.</p>
+
+<h3 id="How_About_a_Fix.3F" name="How_About_a_Fix.3F">How About a Fix?</h3>
+
+<p>There is one obvious fix-- stop creating designs that are dependent on tables and sliced up or single-pixel images-- but it's not terribly practical for many designers, and it sure doesn't help fix old designs that are suddenly blowing apart in recent browsers. There's another obvious fix, which is to make sure your document doesn't trigger the "standards"rendering mode.</p>
+
+<p>You can do this by using a DOCTYPE that will trigger either <a class="external" href="http://www.mozilla.org/docs/web-developer/quirks/">"quirks" mode</a> or <a href="en/Gecko's_Almost_Standards_Mode">"almost standards" mode</a>, or not having a DOCTYPE appear in your document at all. The lack of a DOCTYPE will prevent validation, and so is not recommended. For authors who are working with legacy documents, a "quirks" mode DOCTYPE is the best choice. In cases where an author is writing a new document or trying to migrate a design to be as standards-based as possible, then "almost standards" mode is probably a better choice.</p>
+
+<p>Of course, documents authored in XHTML Strict or HTML Strict will trigger the "standards" rendering mode, so we're going to go through two basic ways to address the problem in strict documents, and a number of ways to call on these "fixes."</p>
+
+<h4 id="Setting_images_to_be_blocks" name="Setting_images_to_be_blocks">Setting images to be blocks</h4>
+
+<p>The first choice, and one that will work for most graphically-intense designs, is to convert the image from being an inline element to a block-level element. Do that, and it no longer generates a line box, and so the problem goes away-- assuming that the image is the only thing that occupies that table cell. In the simplest case, we might add a style like this:</p>
+
+<pre> td img {display: block;}</pre>
+
+<p>Consider this rule when applied to the following markup:</p>
+
+<pre>&lt;table cellspacing="0" cellpadding="0" border="0" width="500"&gt;
+&lt;tr&gt;&lt;td&gt;&lt;img src="nav1.gif"&gt;&lt;img src="nav2.gif"&gt;&lt;img src="nav3.gif"&gt;&lt;img
+src="nav4.gif"&gt;&lt;img src="nav5.gif"&gt;&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td style="background: red;"&gt;
+&lt;img src="smallred.gif" height="1" width="1"&gt;&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;
+&lt;p style="margin: 0.5em;"&gt;This is text in another cell of the
+ table.  Within the textthere is an icon &lt;img src="icon2.gif"&gt;
+ that indicates a link to another site.  It's very worldly.  Lorem
+ipsum, dolor sit amet...&lt;/p&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</pre>
+
+<p>As we see in Figure 8, that works well in some cases but not so well in others.</p>
+
+<p><img alt="Figure 8" src="/@api/deki/files/727/=Images-tables-gaps-figure8.gif"></p>
+
+<p>The thin red line shows that the single-pixel spacer GIF is now only making the cell one pixel tall, as the designer intended. Unfortunately, the buttons in the top cell are all now block-level and so end up stacked on top of one another instead of being shown side-by-side.</p>
+
+<p>One potential solution is to add a class to any image that needs to be block-level and then write the rule to match.</p>
+
+<pre>td img.decoration {display: block;}
+
+&lt;td&gt;&lt;img src="reddot.gif" class="decoration"&gt;&lt;/td&gt;</pre>
+
+<p>Depending on the design, though, that could lead to a lot of classes added for this one simple effect. This would be especially true if there are many single-pixel cells intended to create cool stacked lines, or something like that. If you have markup that lends itself well to this approach, you could class the table rows instead of the images. Thus you might have:</p>
+
+<pre>tr.decoration img {display: block;}</pre>
+
+<p>...along with the following change in the markup:</p>
+
+<pre>&lt;tr class="decoration"&gt;&lt;td style="background: red;"&gt;
+&lt;img src="smallred.gif" height="1" width="1"&gt;
+&lt;/td&gt;&lt;/tr&gt;</pre>
+
+<p>The result is that of only making the spacer GIF block-level, thus leaving the other images alone. This leads to the result seen in Figure 9.</p>
+
+<p><img alt="Figure 9" src="/@api/deki/files/728/=Images-tables-gaps-figure9.gif"></p>
+
+<p>Alternatively, you could class table cells instead of rows, if that's a better choice for you. In any of these cases, though, making images block-level could have unintended side effects if your table cells have more than just a single image in them, as in Figure 8.</p>
+
+<p>Of course, while we have a single-pixel spacer cell in Figure 9, there is still unwanted space underneath the navigation buttons across the top. Getting rid of this space could be as easy as putting each image in its own cell and making them all block-level, but let's leave them all together in a single cell so we can illustrate another approach.</p>
+
+<h4 id="Using_vertical_alignment" name="Using_vertical_alignment">Using vertical alignment</h4>
+
+<p>The other main choice is leave the image inline and alter the vertical alignment of the image with respect to the line box. For example, you could try the following:</p>
+
+<pre>td img {vertical-align: bottom;}</pre>
+
+<p>This will cause the bottom edges of the images to be aligned with the bottom of the line box, instead of the baseline. As we can see in Figure 10, this has the intended effect: the space underneath our navbar images is gone. However, the decorative cell is still too tall, and other images are misaligned with respect to the text around them.</p>
+
+<p><img alt="Figure 10" src="/@api/deki/files/719/=Images-tables-gaps-figure10.gif"></p>
+
+<p>Again, we could class images, cells, or rows in order to narrow down the focus of the effect. However, the styles shown above won't overcome the problem of one-pixel images, because the line box surrounding them will be the height of the font-size for the table cell, and so won't shrink down. The image will move to the bottom of the cell, but the cell won't "shrinkwrap" the image. In addition, any other image which is shorter than the line box is tall will still have space appear around it-- as happened with the red spacer cell. The one-pixel image in the cell is aligned with the bottom of the cell now, but the line box is back and it's the size of normal text.</p>
+
+<p>See, for example, Figure 11, where the font-size of the document has been raised to a large amount. The navbar images now have space appearing above them, and the red spacer got even bigger.</p>
+
+<p><img alt="Figure 11" src="/@api/deki/files/720/=Images-tables-gaps-figure11.gif"></p>
+
+<p>It's difficult to avoid this, because the images are (in this approach) still inline and so still participate in the creation of a line box. If that line box gets tall enough, space will begin to appear around the images.</p>
+
+<h3 id="Looking_Forward_To_a_Fix" name="Looking_Forward_To_a_Fix">Looking Forward To a Fix</h3>
+
+<p>Thanks to Mozilla's thorough implementation of CSS2, the problem of inline images in table cells forcing open unwanted space has come to the attention of the CSS Working Group. There have been many proposals to fix the problem, but one of the most promising approaches is the property <a class="external" href="http://www.w3.org/TR/css3-box/#line-box-contain">line-box-contain</a>, which has been proposed for inclusion in CSS3. Should this property be adopted, then any browser supporting it could emulate traditional "shrinkwrap" behavior without risking other layout upset with the following rule:</p>
+
+<pre>td {line-box-contain: font replaced;}  /* proposed for CSS3 */</pre>
+
+<p>There are other possible fixes contained within the current CSS3 Working Drafts, such as <a class="external" href="http://www.w3.org/TR/css3-box/#line-height">line-height-policy</a>. Obviously, the sooner a solution can be found and implemented, the happier authors everywhere will be.</p>
+
+<h3 id="Recommendations" name="Recommendations">Recommendations</h3>
+
+<p>Absent support for CSS3, it is difficult to provide a clear set of steps for fixing every instance of these problems, because the best solution for a given document will greatly depend on its structure. If your document uses transitional markup, make sure your DOCTYPE reflects that fact and does not trigger "standards" mode. This will prevent browsers from using standards-based rendering, and thus all the image-layout problems are avoided. If you're using strict markup, or you need for other reasons to be in "standards" rendering, then remember these guidelines:</p>
+
+<ul>
+ <li>Any image alone in a table cell (e.g., single-pixel spacer images) should be made block-level.</li>
+ <li>Any image in a table cell with other images should be vertically aligned with the bottom of the line box.</li>
+ <li>Any image in a table cell with other images and text should have its vertical alignment changed as necessary, if at all.</li>
+</ul>
+
+<p>With a judicious mixture of approaches and a reduction of single-pixel image tricks-- which, in a CSS-capable browser, are unnecessary anyway-- it is quite possible to sidestep this strange effect of standards support. The best solution may be to ensure that images are always in a cell by themselves, thus allowing authors to make them block-level, but as always this will depend on the author's design.</p>
+
+<h3 id="Related_Links" name="Related_Links">Related Links</h3>
+
+<ul>
+ <li><a href="en/Gecko's_Almost_Standards_Mode">Gecko's Almost Standards Mode</a></li>
+ <li><a href="en/Mozilla's_Quirks_Mode">Mozilla's Quirks Mode</a></li>
+</ul>
+
+<div class="originaldocinfo">
+<h3 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h3>
+
+<ul>
+ <li>Author(s): Eric A. Meyer</li>
+ <li>Last Updated Date: March 21st, 2003</li>
+ <li>Copyright © 2001-2003 Netscape.</li>
+</ul>
+</div>
+
+<p> </p>

@@ -1,0 +1,76 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+<div class="summary">
+<p>Allocate and free memory that is <em>not</em> managed by the garbage collector.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">void *
+JS_malloc(JSContext *cx, size_t nbytes);
+
+void *
+JS_realloc(JSContext *cx, void *p, size_t oldBytes, size_t newBytes);
+
+char *
+JS_strdup(JSContext *cx, const char *s);
+
+void
+JS_free(JSContext *cx, void *p);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to a JS context. If allocation fails, an error is reported in this context.</td>
+  </tr>
+  <tr>
+   <td>p</td>
+   <td>void *</td>
+   <td>(<em><code>JS_realloc</code> </em>and<em> <code>JS_free</code> </em>only) Pointer to a previously allocated region of memory to resize or deallocate.</td>
+  </tr>
+  <tr>
+   <td><code>nbytes</code></td>
+   <td><code>size_t</code></td>
+   <td>(<em><code>JS_malloc</code> </em>and<em> <code>JS_realloc</code> </em>only) Amount of space, in bytes, to allocate.</td>
+  </tr>
+  <tr>
+   <td>s</td>
+   <td>const char *</td>
+   <td>(<em><code>JS_strdup</code> </em>only) Pointer to a null-terminated string. <code>s</code> must not be <code>NULL</code>.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><strong><code>JS_malloc</code></strong> allocates a region of memory <code>nbytes</code> in size. On success, <code>JS_malloc</code> returns a pointer to the beginning of the region. As with the standard C function <code>malloc</code>, memory allocated by <code>JS_malloc</code> is uninitialized.</p>
+<p><strong><code>JS_realloc</code></strong> tries to change the allocation size of the region of memory at <code>p</code> to <code>nbytes</code>. Failing that, <code>JS_realloc</code> allocates a new region of size <code>nbytes</code> and copies as much of the existing data in <code>p</code> as will fit to the new region. Then it frees the region at <code>p</code> and returns a pointer to the new region. Apart from whatever is copied, any newly allocated space is uninitialized. <code>JS_realloc(cx, NULL, nbytes)</code> behaves exactly like <code>JS_malloc(cx, nbytes)</code>. When <code>p</code> is not null, <code>JS_realloc(cx, p, 0)</code> behaves like <code>JS_free(cx, p)</code> and returns <code>NULL</code>.</p>
+<p><strong><code>JS_strdup</code></strong> allocates a copy of the null-terminated string <code>s</code>. On success, it returns a pointer to the copy.</p>
+<p>If any of these three functions fails to allocate the required amount of memory, it reports an error as though by calling <code>{{jsapixref("JS_ReportOutOfMemory")}}(cx)</code> and returns <code>NULL</code>.</p>
+<p><strong><code>JS_free</code></strong> deallocates a region of memory allocated a previous call to <code>JS_malloc</code>, <code>JS_realloc</code>, or <code>JS_strdup</code>. If <code>p</code> is null, <code>JS_free</code> does nothing. Once the region of memory is freed, the application must not use it again.</p>
+<p>For <code>JS_realloc</code> and <code>JS_free</code>, if <code>p</code> is non-null, <code>cx</code> must be associated with the same runtime as the context used to allocate <code>p</code>.  That is, it is safe to allocate memory in one context and free it in another, as long as both contexts are in the same runtime.</p>
+<p>Implementation note: Currently these four functions are implemented using the corresponding standard C functions. Do not make assumptions based on this implementation detail. Future releases may implement these functions differently.</p>
+<h3 id="JS_realloc_code_sample"><code>JS_realloc</code> code sample</h3>
+<p><code>realloc</code> is famously tricky to use correctly. Here is an example of proper code:</p>
+<pre class="brush: cpp">/*
+ * `p` points to the memory area to resize.
+ * We want to resize it to `newsize` bytes.
+ */
+void *p2 = JS_realloc(cx, p, newsize);
+if (p2 == NULL) {
+    if (p != NULL)
+        JS_free(cx, p);
+    p = NULL;
+    return NULL;
+}
+p = p2;
+</pre>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+  <li>{{ LXRSearch("ident", "i", "JS_malloc") }}</li>
+  <li>{{ LXRSearch("ident", "i", "JS_realloc") }}</li>
+  <li>{{ LXRSearch("ident", "i", "JS_strdup") }}</li>
+  <li>{{ LXRSearch("ident", "i", "JS_free") }}</li>
+</ul>

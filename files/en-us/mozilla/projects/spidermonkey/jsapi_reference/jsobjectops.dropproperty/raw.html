@@ -1,0 +1,58 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("js1.8.5") }}</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning!</strong> <code>JSObjectOps</code> is not a supported API. Details of the API may change from one release to the next. This documentation should be considered SpiderMonkey internals documentation, not API documentation. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=408416">bug 408416</a> for details.</p>
+</div>
+
+<div class="summary">
+<p>The <strong>{{jsapixref("JSObjectOps", "JSObjectOps.dropProperty")}}</strong> callback releases a {{jsapixref("JSProperty")}}.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef void (*JSPropertyRefOp)(JSContext *cx, JSObject *obj, JSProperty *prop);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>A context that was the <code>cx</code> argument to an earlier call to {{jsapixref("JSObjectOps.lookupProperty")}} that found a property.</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JSObject *")}}</td>
+   <td>The object of which <code>prop</code> is an own property.  That is, the value that the <code>JSObjectOps.lookupProperty</code> hook stored in the <code>*objp</code> out parameter.</td>
+  </tr>
+  <tr>
+   <td><code>prop</code></td>
+   <td>{{jsapixref("JSProperty", "JSProperty *")}}</td>
+   <td>The property to release. That is, the value that <code>JSObjectOps.lookupProperty</code> hook stored in the <code>*propp</code> out parameter.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>The following contract governs {{jsapixref("JSObjectOps")}} callers and implementations:</p>
+
+<ul>
+ <li>Whenever {{jsapixref("JSObjectOps.lookupProperty")}} returns a <code>JSProperty</code> pointer, the property is <em>locked</em>.</li>
+ <li>While the property is locked, the caller may access it using other <code>JSObjectOps</code> callbacks. It may not otherwise call into the JSAPI in ways that might trigger other property accesses. (In a <code>JS_THREADSAFE</code> build, that would risk deadlock.)</li>
+ <li>When finished with a locked property, the caller must release it by calling the <code>dropProperty</code> callback.</li>
+ <li>The lifetime of the <code>JSProperty *</code> extends from the successful <code>defineProperty</code> or <code>lookupProperty</code> call to the <code>dropProperty</code> call.</li>
+</ul>
+
+<p>As a SpiderMonkey implementation detail, what is actually locked here (under the native implementation of <code>JSObjectOps</code>) is not the property but some collection of objects including the object on which the property is defined. The granularity of the locking is up to the <code>JSObjectOps</code> implementation; deadlock does not happen because each thread accesses only one property at a time.</p>
+
+<p>A single, built-in <code>JSObjectOps</code> implementation is used for most SpiderMonkey objects that are exposed to scripts. Custom <code>JSObjectOps</code> implementations can either retain the SpiderMonkey property storage and locking scheme (by copying all or most of the built-in <code>JSObjectOps</code>) or replace it entirely.</p>
+
+<p><strong>Threads.</strong> In a {{jsapixref("JS_THREADSAFE")}} build, any consistency observed by multiple threads operating on the same data is provided solely by the property locking scheme described above. In SpiderMonkey 1.8 and earlier, the main built-in <code>JSObjectOps</code> implementation serialized all accesses to a given object's properties. (That is, for each object, all property accesses happened in some order, and what each thread observed was consistent with that order: no stale reads, for example.) However, SpiderMonkey does not guarantee this high degree of serialization.</p>

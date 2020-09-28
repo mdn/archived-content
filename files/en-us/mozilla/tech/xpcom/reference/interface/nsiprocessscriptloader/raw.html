@@ -1,0 +1,110 @@
+<div class="summary">
+<p>IDL file: <a href="http://dxr.mozilla.org/mozilla-central/source/dom/base/nsIMessageManager.idl">mozilla-central/source/dom/base/nsIMessageManager.idl</a></p>
+
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></p>
+</div>
+
+<p>This interface is used by parent process message managers to load scripts into a child process. The scripts run only once per process. The global object for process scripts is a ContentProcessMessageManager.</p>
+
+<h2 id="Methods">Methods</h2>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <td>
+    <p><code>void loadProcessScript(in AString aURL,<br>
+                            in boolean aAllowDelayedLoad)</code></p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>void removeDelayedProcessScript(in AString aURL);</code></td>
+  </tr>
+  <tr>
+   <td><code>jsval getDelayedProcessScripts();</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="loadProcessScript()">loadProcessScript()</h3>
+
+<p>Load a script in the child process. Process scripts are loaded as soon as <code>loadProcessScript()</code> is called.</p>
+
+<p>If this function is called on a <code>ChromeMessageBroadcaster</code>, :</p>
+
+<ul>
+ <li>it will load the process script into all child processes.</li>
+ <li>if <code>aAllowDelayedLoad</code> is <code>true</code>, then the script will also be loaded into any new child processes created after the <code>loadProcessScript()</code> call. Otherwise it will only be loaded into child processes that exist at the time of the call.</li>
+</ul>
+
+<p>If this function is called on a <code>ChromeMessageSender</code>:</p>
+
+<ul>
+ <li>it will load the process script only into this <code>ChromeMessageSender</code>'s child process</li>
+ <li><code>aAllowDelayedLoad</code> should always be <code>true</code>. It's possible that the child process for this <code>ChromeMessageSender</code> is not yet available at the time of the <code>loadProcessScript()</code> call, and if you pass <code>false</code> in this situation, your process script won't be loaded.</li>
+</ul>
+
+<p>For example:</p>
+
+<pre class="brush: js">let ppmm = Services.ppmm.getChildAt(1);
+ppmm.loadProcessScript('data:,dump("foo\n");', true);</pre>
+
+<h4 id="Parameters">Parameters</h4>
+
+<table class="fullwidth-table standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>aURL</code></td>
+   <td>String</td>
+   <td>URL for the script to load. aURL must be the absolute URL. <code>data:</code> URLs are also supported. For example <code>data:,dump("foo\n");</code></td>
+  </tr>
+  <tr>
+   <td><code>aAllowDelayedLoad</code></td>
+   <td>Boolean</td>
+   <td>
+    <p>If this flag is <code>false</code>, the process script will only be loaded into child processes that are already running at the time of the call.</p>
+
+    <p>If this flag is true, the process script will be loaded into any new child processes created after the <code>loadProcessScript()</code> call, until <code><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProcessScriptLoader#removeDelayedProcessScript()">removeDelayedProcessScript()</a></code></code> is called for that script.</p>
+
+    <p>If you are calling <code>loadProcessScript()</code> on a <code>ChromeMessageSender</code>, you should always pass <code>true</code> here.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="removeDelayedProcessScript()">removeDelayedProcessScript()</h3>
+
+<p>Removes <code>aURL</code> from the list of scripts which support delayed load.</p>
+
+<p>This cancels the effect of the <code>aAllowDelayedLoad</code> flag, meaning that the loader will no longer load the script into new child processes. If you used <code>aAllowDelayedLoad</code>, you should call this as part of your cleanup (for example, when your add-on is disabled or uninstalled).</p>
+
+<h4 id="Parameters_2">Parameters</h4>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <td><code>aURL</code></td>
+   <td>String</td>
+   <td>URL for the script to remove.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="getDelayedProcessScripts()">getDelayedProcessScripts()</h3>
+
+<p>Returns all delayed scripts that will be loaded once a child process becomes available. The return value is a list of pairs <code>[&lt;URL&gt;, false]</code>.</p>
+
+<h4 id="Returns">Returns</h4>
+
+<p>List of the delayed scripts. Each script is returned as a pair: <code>[&lt;URL&gt;, false]</code>.</p>

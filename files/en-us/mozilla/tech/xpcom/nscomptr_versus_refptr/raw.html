@@ -1,0 +1,20 @@
+<p><span class="seoSummary">Gecko code uses both <code>nsCOMPtr</code> and <code>RefPtr</code> as smart pointers. This guide provides some explanation and advice on how to choose between them.</span></p>
+
+<h3 id="General_Rule_of_Thumb_for_nsCOMPtr_versus_RefPtr">General Rule of Thumb for <code>nsCOMPtr</code> versus <code>RefPtr</code></h3>
+
+<p><strong>The general rule of thumb is to use <code>nsCOMPtr&lt;T&gt;</code> when <code>T</code> is an interface type, and <code>RefPtr&lt;T&gt;</code> when <code>T</code> is a concrete type.</strong></p>
+
+<p>This basic rule derives from the fact that some of the <code>nsCOMPtr&lt;T&gt;</code> code is factored into the <code>nsCOMPtr_base</code> base class, which stores the underlying <code>mRawPtr</code> as an <code>nsISupports*</code>. (although, confusingly, debug builds don't work this way). This design saves some space in the binary (or at least it used to). Since <code>nsCOMPtr</code> stores the pointer as an <code>nsISupports*</code>, it must be possible to unambiguously cast from <code>T*</code> to <code>nsISupports*</code>. Many concrete classes inherit from <code>nsISupports</code> in more than one way, so they cannot be unambiguously cast to <code>nsISupports*</code>. Thus, these concrete classes cannot be used with <code>nsCOMPtr</code>.</p>
+
+<p>While is possible to use <code>nsCOMPtr&lt;T&gt;</code> on concrete classes <code>T</code> that only singly inherit from <code>nsISupports</code>, it is best to avoid doing so. In the future, more base classes might be added to <code>T</code> that would then cause unrelated code to break, which would be very confusing. Hence, the interface versus concrete class rule of thumb: interfaces will never multiply inherit from <code>nsISupports</code>, so they can always use be used with <code>nsCOMPtr</code> without fear of breaking in the future. Concrete classes should only be used with <code>RefPtr</code>.</p>
+
+<p><code>nsCOMPtr&lt;T&gt;</code> also requires that you can <code>QueryInterface</code> to type <code>T</code>. It does this so that it can assert that <code>mRawPtr</code> is a canonical <code>T</code> pointer (i.e., that <code>mRawPtr-&gt;QueryInterface(T_IID) == mRawPtr</code>).</p>
+
+<h3 id="do_QueryInterface_versus_do_QueryObject"><code>do_QueryInterface</code> versus <code>do_QueryObject</code></h3>
+
+<p>The <code>do_QueryInterface</code> helper is only available when assigning to <code>nsCOMPtr</code>. It also requires that the argument singly inherit from <code>nsISupports</code> (since the type of the argument is <code>nsISupports*</code>). For other cases, there is <code>do_QueryObject</code>, which is essentially a more powerful form of <code>do_QueryInterface</code>. It differs from <code>do_QueryInterface</code> as follows:</p>
+
+<ul>
+ <li><code>do_QueryObject</code> inherits from <code>nsCOMPtr_helper</code>, so it can be assigned into both <code>nsCOMPtr</code> and <code>RefPtr</code>. The downside of this inheritance is that <code>do_QueryObject</code> requires an extra virtual call to <code>operator()</code> in the helper method.</li>
+ <li><code>do_QueryObject</code> is templated on the argument type, so it's possible to pass in objects that multiply inherit from <code>nsISupports</code>. However, when the destination type is an XPCOM interface, it's probably better to <code>static_cast</code> to a class that unambiguously inherits from <code>nsISupports</code> and use <code>do_QueryInterface</code> in such cases.</li>
+</ul>

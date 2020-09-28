@@ -1,0 +1,163 @@
+<p>From the <a href="/en/Create_a_new_localization" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization">Create a New Localization</a> document, an interested localizer can follow a technical step-by-step process that starts the localization process by focusing on how to localize two of the primary types of localization files (DTD and properties) used in the Mozilla source code. With that document, users can see immediately two localized files in their user interface by following closely and carefully the steps to <a href="/en/Create_a_new_localization#Creating_a_langpack" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization#Creating_a_langpack">create a language pack</a> or <a href="/en/Create_a_new_localization#Repacking_the_binary" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization#Repacking_the_binary">a binary file</a> that is ready for installation. Repeating the process allows a localizer to create a testable package to see his or her work as they progress to a final version.</p>
+<p>If you choose to localize Mozilla with nothing more than a text editing application and not a specialized tool, this document (along with <a href="/en/Create_a_new_localization" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization">Create a New Localization</a>) will enable you to learn just what needs to be done.</p>
+<p>Before we start, did you make sure to <a href="/en/Create_a_new_localization#Install_Mercurial_on_Windows" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization#Install_Mercurial_on_Windows">install Mercurial</a> and confirm that you have <a href="/en/Create_a_new_localization#System_environment_requirements" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization#System_environment_requirements">set up the proper build environment</a> on your local machine?  You cannot begin localizing Mozilla file by file without a specialized tool without going through the <a href="/en/Create_a_new_localization" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization">Create a New Localization</a> page.</p>
+<h2 id="What_we_will_translate">What we will translate</h2>
+<p>We will translate a small piece of the UI found in the search bar. The search bar is next to the right of the location bar, and by default points to the Google search. If you click on the highlighted arrow pointing down while reading this tutorial on MDC, you will see two string that need to be translated:</p>
+<ul> <li>Add "MDC Search"</li> <li>Manage Search Engines...</li>
+</ul>
+<p>There is also a tooltip that appears when you hover over the magnifying glass icon on the right side of the bar.</p>
+<p><img alt="SS-2009.11.23-14.25.04.png" class="internal default" src="../../../../@api/deki/files/3899/=SS-2009.11.23-14.25.04.png"></p>
+<h2 id="Folder_structure">Folder structure</h2>
+<p>Throughout this document, we will be using the following folder structure in all examples:</p>
+<ul> <li>your working directory <em>(root)</em> <ul> <li>mozilla-1.9.2 <em>(en-US source, pulled from <a class="external" href="http://hg.mozilla.org/releases/mozilla-1.9.2" rel="external nofollow" title="http://hg.mozilla.org/releases/mozilla-1.9.2">http://hg.mozilla.org/releases/mozilla-1.9.2</a>)</em></li> <li>l10n-mozilla-1.9.2 <em>(a directory containing localization directories, one dir per localization; often referred to as "l10n base")</em> <ul> <li>x-testing <em>(a directory with your localization files)</em></li> </ul> </li> </ul> </li>
+</ul>
+<p>Please either follow this structure closely or adjust all commands in the documentation as needed by your custom set-up.</p>
+<h2 id="Get_the_source">Get the source</h2>
+<p>Change your current directory to your working directory with the following command:</p>
+<pre>$ cd /path/to/your/working/directory
+</pre>
+<p>First, you will need to check out the sources of mozilla-1.9.2 together with the en-US strings. Assuming that you have installed Mercurial, issue the following command:</p>
+<pre>$ hg clone http://hg.mozilla.org/releases/mozilla-1.9.2
+</pre>
+<p>This will pull the Mozilla 1.9.2 sources from the remote repository and create a Mercurial clone in <code>mozilla-1.9.2</code> inside your working directory.</p>
+<p>Next, again in your working dir, create a directory that will serve as localization base:</p>
+<pre>$ mkdir l10n-mozilla-1.9.2
+$ cd l10n-mozilla-1.9.2</pre>
+<p>Inside this directory you will put all the localization files in a folder named after your locale, e.g. <code>x-testing</code>. Depending on your case, you can do it in one of the following ways:</p>
+<ul> <li>If no localization exists yet, create an empty folder and create a Mercurial repository in it:</li>
+</ul>
+<pre style="margin-left: 40px;">$ mkdir x-testing
+$ cd x-testing
+$ hg init
+</pre>
+<ul> <li>If there is a BitBucket repository with localization files, you can pull from it. This will automatically create an "x-testing" directory in your current directory (you should be in<code> l10n-mozilla-1.9.2</code>).</li>
+</ul>
+<pre style="margin-left: 40px;">$ hg clone http://bitbucket.org/mozillal10n/x-testing
+</pre>
+<ul> <li>If there is an hg.mozilla.org repository with localization files, you can pull from it too:</li>
+</ul>
+<pre style="margin-left: 40px;">$ hg clone http://hg.mozilla.org/releases/l10n-mozilla-1.9.2/x-testing
+</pre>
+<p>Eventually, you should end up with a folder hierarchy described above in the Folder structure section. You are now ready to start translating!</p>
+<h2 id="Getting_Started_with_Compare-Locales">Getting Started with Compare-Locales</h2>
+<p>You are going to need to create the structure of your localization, where, one-by-one, each of the files needing localization will be copied.  This directory structure needs to mimic the same as the en-US source files concerning localization. You will use a tool called compare-locales to do the comparison between your locale's files and the en-US reference.</p>
+<p>First, install compare-locales. You can follow <a href="/en/Compare-locales" title="en/compare-locales">more detailed guidelines on compare-locale's page</a>, but running the following command from the command line should be enough:</p>
+<pre>$ sudo easy_install -U compare-locales
+</pre>
+<p>To start, be sure to open your command line interface and change your directory to where you are keeping your localization files, the en-US sources</p>
+<pre>$ cd /path/to/your/working/directory  </pre>
+<p>Now, you will need run compare locales. To do this, enter the following commands, keeping sure to change "x-testing" to the actual locale code of your locale.</p>
+<pre>$ compare-locales mozilla-1.9.2/browser/locales/l10n.ini l10n-mozilla-1.9.2 x-testing
+</pre>
+<p>For convenience, try saving the output of this command to a text file on your Desktop so you can review it as you go. Run:</p>
+<pre>$ compare-locales mozilla-1.9.2/browser/locales/l10n.ini l10n-mozilla-1.9.2 x-testing &gt; ~/Desktop/x-testing.compare</pre>
+<p>Open the x-testing.compare file that is on your desktop.  You should see something like this:</p>
+<pre>x-testing
+  browser
+    chrome
+      browser
+        aboutCertError.dtd
+            // add and localize this file
+        aboutDialog.dtd
+            +aboutLink
+            +aboutLink.accesskey
+            +aboutVersion
+            +closeCmdGNOME.accesskey
+            +closeCmdGNOME.label
+            +copyright
+            +copyright.accesskey
+            +copyrightGNOME.accesskey
+            +copyrightInfo1
+            +copyrightInfo2
+            +licenseLink
+            +licenseLinkText
+        aboutPrivateBrowsing.dtd
+            // add and localize this file
+        aboutRobots.dtd
+            // add and localize this file
+        ...
+        ...
+        ...
+x-testing:
+unchanged: 2
+changed: 3
+missingInFiles: 6117
+missing: 13
+0% of entries changed
+</pre>
+<p>The beauty of the compare-locales output is that it tells you all the missing files and which files you need to add and localize.  This will be your guide to localize Firefox.</p>
+<h2 id="Localizing_Step-by-Step">Localizing Step-by-Step</h2>
+<h3 id="DTD_files">DTD files</h3>
+<p>In order to provide an example that can be viewed quickly in your UI, we'll start by translating a DTD file named <em> searchbar.dtd</em> that contains the string "Manage Search Engines...". (Strings in the DTD files are called "entities".) "Manage Search Engines..." can easily be found in the Firefox browser UI by clicking on the drop-down arrow in the search box in the upper-right corner of your browser.  At the bottom of the list of search engines that appears, you'll see, "Manage Search Engines...".</p>
+<p><img alt="" class="internal" src="/@api/deki/files/4018/=Manage_Search_Engines....png" style="width: 268px; height: 308px;"></p>
+<p>To start, make sure you are in</p>
+<pre>/path/to/your/working/directory/l10n-mozilla-1.9.2/x-testing</pre>
+<p>And then, type the command</p>
+<pre>mkdir /browser/chrome/browser</pre>
+<p>Now, step back out to the broader directory that contains both your l10n base (l10n-mozilla-1.9.2) and the en-US source code (mozilla-1.9.2).  You can do this by typing:</p>
+<pre>cd ../../
+</pre>
+<p>where each ".." represents the prior sub directory before the main directory where you want to be.  You can always check the path by typing</p>
+<pre>pwd
+</pre>
+<p>Once you are in the root working directory with both en-US source and the l10n base, copy the <code>searchbar.dtd</code> file by typing</p>
+<pre>cp mozilla-1.9.2/browser/locales/en-US/chrome/browser/searchbar.dtd l10n-mozilla-1.9.2/x-testing/browser/chrome/browser/</pre>
+<p>Open the file in your x-testing directory and translate the words inside the quotation marks.  Be sure to only translate what is in the quotation marks. For the purposes of this tutorial, we will just convert all letters to uppercase, so that the change is visible in the UI.</p>
+<pre><code>&lt;!ENTITY cmd_engineManager.label        "MANAGE SEARCH ENGINES..."&gt;</code>
+<code>&lt;!ENTITY searchEndCap.label             "SEARCH"&gt;</code>
+</pre>
+<p>Save the file.</p>
+<h3 id=".properties_Files">.properties Files</h3>
+<p>The property file "search.properties" contains the string "Add %S".  This string can easily be found in the browser UI by visiting a website that provides a search plugin (like <a class="external" href="http://developer.mozilla.org/" rel="external
+nofollow" title="http://developer.mozilla.org/">http://developer.mozilla.org/</a>) and clicking on the drop-down arrow in the search box in the upper-right corner of your browser.  At the second to bottom of the list of search engines that appears, you'll see, "Add %S", where %S is replaced by the name of the site.</p>
+<p><img alt="" class="internal" src="/@api/deki/files/4019/=Add_%2525S.png" style="width: 259px; height: 279px;"></p>
+<p>Again, to start, make sure you are in</p>
+<pre>/path/to/your/working/directory/l10n-mozilla-1.9.2/x-testing
+</pre>
+<p>Now, step back out to the broader directory that contains both your l10n base (l10n-mozilla-1.9.2) and the en-US source code (mozilla-1.9.2).  You can do this by typing:</p>
+<pre>cd ../../
+</pre>
+<p>where each ".." represents the prior sub directory before the main directory where you want to be.  You can always check the path by typing</p>
+<pre>pwd
+</pre>
+<p>Once you are in the root working directory with both en-US source and the l10n base, copy the <code>searchbar.dtd</code> file by typing</p>
+<pre>cp mozilla-1.9.2/browser/locales/en-US/chrome/browser/search.properties l10n-mozilla-1.9.2/x-testing/browser/chrome/browser/</pre>
+<p>Open that file and translate the strings that follow the "=".  For instance, enter the proper translation for the line "Add %S"</p>
+<pre>cmd_addFoundEngine=ADD "%S"
+</pre>
+<p>With these two string examples translated, you can now test your work to see immediately where you have translated. Refer to the Building and Testing section of the <a href="/en/Create_a_new_localization#Creating_a_langpack" title="https://developer.mozilla.org/User:stasm/Create_a_new_localization#Creating_a_langpack">Create a new localization</a> page.</p>
+<h3 id="Going_one-by-one">Going one-by-one</h3>
+<p>With your compare-locales output open for review, we will start with the first file with "// add and localize this file" note.  You should see</p>
+<pre> // add and localize this file
+        aboutCertError.dtd
+</pre>
+<p>Notice from the compare-locales output that this file is located in the directory /browser/chrome/browser.  You will want to copy this file from the en-US sources into the proper ab-CD directory. To do this, you first need to create the directory structure and then copy the file into it.  Type the command</p>
+<pre>pwd
+</pre>
+<p>Again, make sure you are in</p>
+<pre>/path/to/your/working/directory/l10n-mozilla-1.9.2/x-testing</pre>
+<p>And then type the command</p>
+<pre>mkdir /browser/chrome/browser
+</pre>
+<p>Now, copy the file by typing</p>
+<pre>cp mozilla-1.9.2/browser/locales/en-US/chrome/browser/aboutCertError.dtd l10n-mozilla-1.9.2/x-testing/browser/chrome/browser/aboutCertError.dtd</pre>
+<p>You should now see the aboutCertError.dtd file in that newly created directory.  Your compare locales output follows the exact nested source structure.  Each time you see a directory or set of sub-directories, you will need to run the mkdir command inside your locale directory and then copy the .dtd or .properties files into that directory.</p>
+<h2 id="Translating">Translating</h2>
+<p>To start editing, you will need a text editing application. You can choose to use:</p>
+<ul> <li><a class="external" href="http://notepad-plus.sourceforge.net/uk/site.htm" title="http://notepad-plus.sourceforge.net/uk/site.htm">Notepad++</a> or <a class="external" href="http://www.flos-freeware.ch/notepad2.html" title="http://www.flos-freeware.ch/notepad2.html">Notepad2</a> on Windows,</li> <li><a class="external" href="http://en.wikipedia.org/wiki/Vim_%28text_editor%29" title="http://en.wikipedia.org/wiki/Vim_(text_editor)">vim</a>, <a class="external" href="http://projects.gnome.org/gedit/" title="http://projects.gnome.org/gedit/">gedit</a> or <a class="external" href="http://www.kate-editor.org/kate" title="http://www.kate-editor.org/kate">Kate</a> on GNU/Linux,</li> <li><a class="external" href="http://www.barebones.com/products/TextWrangler/" title="http://www.barebones.com/products/TextWrangler/">TextWrangler</a> on Mac OS X.</li>
+</ul>
+<p><span style="font-size: x-small;">(Read more about tools at </span><a class="link-https" href="https://wiki.mozilla.org/L10n:Tools" title="https://wiki.mozilla.org/L10n:Tools"><span style="font-size: x-small;">L10n:Tools</span></a><span style="font-size: x-small;">.)</span></p>
+<p>After you have downloaded your editor of choice, type the following command in the same path from above (l10n-mozilla-1.9.2/x-testing/browser/chrome/browser)</p>
+<pre>$ edit l10n-mozilla-1.9.2/x-testing/browser/chrome/browser/aboutCertError.dtd</pre>
+<p>Read the top of the file to get any context on how to translate contained in the notes written by the developers or l10n-drivers.  Localization notes will look like this:</p>
+<pre>&lt;!-- LOCALIZATION NOTES... --&gt;</pre>
+<p>After the localization notes, you will see a list of <code>&lt;!ENTITY&gt;</code> strings like the following:</p>
+<pre>&lt;!ENTITY certerror.pagetitle  "Untrusted Connection"&gt;</pre>
+<p>You should go through each entity, translating  the value in the parameters (e.g. <code>Untrusted Connection</code> in the example above), like so (example for Polish):</p>
+<pre>&lt;!ENTITY certerror.pagetitle  "Niezaufane połączenie"&gt;</pre>
+<p>Once you have translated all the <code>&lt;!ENTITY&gt;</code> strings in this file, you should save your work and open the next .dtd or .properties file.  You will need to go through each and every file to in every directory in the x-testing directory.</p>
+<h2 id="Recommended_order_of_localization">Recommended order of localization</h2>
+<p>For recommended order of localization, refer to the localization "phase list" which provides a very rough guide on where to start and in what order to proceed through translation.</p>
+<ul> <li><a class="external" href="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/" title="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/">The localization phase lists</a> (Firefox 3.5: <a class="external" href="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/ff35.phaselist?view=markup" title="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/ff35.phaselist?view=markup">ff35.phaselist</a>, Firefox 3.6: <a class="external" href="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/ff36.phaselist?view=markup" title="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/ff36.phaselist?view=markup">ff36.phaselist</a>).</li> <li><a class="external" href="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/phases?view=markup" title="http://zaf.svn.sourceforge.net/viewvc/zaf/trunk/po/fftb/phases?view=markup">Description of phases.</a></li>
+</ul>
+<p>Land your translated files one by one, making sure it follows the *mozilla-1.9.2* structure.  This will familiarize you with our "Hg"<br> commands and will get us something that we can import easily when you are done.</p>

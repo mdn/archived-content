@@ -1,0 +1,187 @@
+<p>XUL supports templating to create a block of content from a datasource query. The <a href="en/XUL/Template_Guide"> XUL Template Guide</a> has lots of detailed information on using XUL templates. XUL provides template query processors for RDF, XML and SQL (<a href="en/Storage">mozStorage</a>). The templating system also supports building custom query processors. Custom query processors are XPCOM components, must implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateQueryProcessor" title="">nsIXULTemplateQueryProcessor</a></code> interface and follow some conventions for when registering the component.</p>
+
+<p>In this example, we will create a simple <a href="en/How_to_Build_an_XPCOM_Component_in_Javascript"> JavaScript XPCOM component</a>. The component will hold a small array of JavaScript objects as its datasource. In practice, you would use your own custom source of data.</p>
+
+<p>Here is an example of what our XUL might look like when using a custom query processor:</p>
+
+<pre>&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css"?&gt;
+&lt;window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+    &lt;grid&gt;
+        &lt;columns&gt;
+            &lt;column flex="1"/&gt;
+            &lt;column flex="3"/&gt;
+            &lt;column flex="2"/&gt;
+            &lt;column flex="1"/&gt;
+        &lt;/columns&gt;
+
+        &lt;rows datasources="dummy" ref="." querytype="simpledata"&gt;
+            &lt;template&gt;
+                &lt;row uri="?"&gt;
+                    &lt;label value="?name"/&gt;
+                    &lt;label value="?age"/&gt;
+                    &lt;label value="?hair"/&gt;
+                    &lt;label value="?eye"/&gt;
+                &lt;/row&gt;
+            &lt;/template&gt;
+        &lt;/rows&gt;
+    &lt;/grid&gt;
+&lt;/window&gt;
+</pre>
+
+<p>A few things to note. We are not really using the <code>datasources</code> in our sample component, so we set it to a dummy value. An empty string would be ok too. The <code>querytype</code> is important. It is used to create an instance of our XPCOM object. The contract id of our XPCOM component should be of the form <code>"@mozilla.org/xul/xul-query-processor;1?name=xxx"</code>, where the <strong>xxx</strong> is the <code>querytype</code> used in the XUL template block.</p>
+
+<p>Here is our sample JavaScript XPCOM query processor:</p>
+
+<pre>Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+
+// basic wrapper for nsIXULTemplateResult
+function TemplateResult(aData) {
+  this._data = aData;
+  // just make a random number for the id
+  this._id = Math.random(100000).toString();
+}
+
+TemplateResult.prototype = {
+  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIXULTemplateResult]),
+
+  // private storage
+  _data: null,
+
+  // right now our results are flat lists, so no containing/recursion take place
+  isContainer: false,
+  isEmpty: true,
+  mayProcessChildren: false,
+  resource: null,
+  type: "simple-item",
+
+  get id() {
+    return this._id;
+  },
+
+  // return the value of that bound variable such as ?name
+  getBindingFor: function(aVar) {
+    // strip off the ? from the beginning of the name
+    var name = aVar.toString().slice(1);
+    return this._data[name];
+  },
+
+  // return an object instead of a string for convenient comparison purposes
+  // or null to say just use string value
+  getBindingObjectFor: function(aVar) {
+    return null;
+  },
+
+  // called when a rule matches this item.
+  ruleMatched: function(aQuery, aRuleNode) { },
+
+  // the output for a result has been removed and the result is no longer being used by the builder
+  hasBeenRemoved: function() { }
+};
+
+
+// basic wrapper for nsISimpleEnumerator
+function TemplateResultSet(aArrayOfData) {
+  this._index = 0;
+  this._array = aArrayOfData;
+}
+
+TemplateResultSet.prototype = {
+  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsISimpleEnumerator]),
+
+  hasMoreElements: function() {
+    return this._index &lt; this._array.length;
+  },
+
+  getNext: function() {
+    return new TemplateResult(this._array[this._index++]);
+  }
+};
+
+
+// The query processor class - implements nsIXULTemplateQueryProcessor
+function TemplateQueryProcessor() {
+  // our basic list of data
+  this._data = [
+                {name: "mark", age: 36, hair: "brown", eye: "brown"},
+                {name: "bill", age: 25, hair: "red", eye: "black"},
+                {name: "joe", age: 15, hair: "blond", eye: "blue"},
+                {name: "jimmy", age: 65, hair: "gray", eye: "dull"}
+               ];
+}
+
+TemplateQueryProcessor.prototype = {
+  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIXULTemplateQueryProcessor]),
+  classDescription: "Sample XUL Template Query Processor",
+  classID: Components.ID("{282cc4ea-a49c-44fc-81f4-1f03cbb7825f}"),
+  contractID: "@mozilla.org/xul/xul-query-processor;1?name=simpledata",
+
+  getDatasource: function(aDataSources, aRootNode, aIsTrusted, aBuilder, aShouldDelayBuilding) {
+    // TODO: parse the aDataSources variable
+    // for now, ignore everything and let's just signal that we have data
+    return this._data;
+  },
+
+  initializeForBuilding: function(aDatasource, aBuilder, aRootNode) {
+    // perform any initialization that can be delayed until the content builder
+    // is ready for us to start
+  },
+
+  done: function() {
+    // called when the builder is destroyed to clean up state
+  },
+
+  compileQuery: function(aBuilder, aQuery, aRefVariable, aMemberVariable) {
+    // outputs a query object.
+    // eventually we should read the &lt;query&gt; to create filters
+    return this._data;
+  },
+
+  generateResults: function(aDatasource, aRef, aQuery) {
+    // preform any query and pass the data to the result set
+    return new TemplateResultSet(this._data);
+  },
+
+  addBinding: function(aRuleNode, aVar, aRef, aExpr) {
+    // add a variable binding for a particular rule, which we aren't using yet
+  },
+
+  translateRef: function(aDatasource, aRefstring) {
+    // if we return null, everything stops
+    return new TemplateResult(null);
+  },
+
+  compareResults: function(aLeft, aRight, aVar) {
+    // -1 less, 0 ==, +1 greater
+    var leftValue = aLeft.getBindingFor(aVar);
+    var rightValue = aRight.getBindingFor(aVar);
+    if (leftValue &lt; rightValue) {
+      return -1;
+    }
+    else if (leftValue &gt; rightValue) {
+      return  1;
+    }
+    else {
+      return 0;
+    }
+  }
+};
+
+
+var components = [TemplateQueryProcessor];
+
+function NSGetModule(compMgr, fileSpec) {
+  return XPCOMUtils.generateModule(components);
+}
+</pre>
+
+<p>Our sample query processor is very simple. A few explanatory notes:</p>
+
+<ul>
+ <li>We are using a the <code>getBindingFor</code> rather than <code>getBindingObjectFor</code> to simplify the code. The variable passed into <code>getBindingFor</code> still has the "?" prepended to it, so be sure to handle it appropriately.</li>
+ <li>We are not handling any <code>datasources</code>, but instead hard code the datasource in the component. You could easily extend this sample to handle multiple datasources by checking the <code>datasources</code> value in <code>getDatasource</code> and <code>initializeForBuilding</code>.</li>
+ <li>We do not make use of any <code>&lt;query/&gt;</code> or <code>&lt;rule/&gt;</code> elements in the XUL template block. These could be used to support filtering the datasource.</li>
+</ul>
+
+<div class="noinclude"> </div>

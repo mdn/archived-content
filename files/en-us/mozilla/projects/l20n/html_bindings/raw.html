@@ -1,0 +1,178 @@
+<h1 id="The_L20n_HTML_Bindings">The L20n HTML Bindings</h1>
+
+<p>You can take advantage of HTML bindings to localize your HTML documents with L20n.</p>
+
+<h2 id="Download_L20n_with_HTML_Bindings">Download L20n with HTML Bindings</h2>
+
+<p>We maintain a repository with L20n optimized for production use:</p>
+
+<ul>
+ <li><a href="https://github.com/l20n/builds/blob/master/l20n.js">one file</a> (~110KB)</li>
+ <li><a href="https://github.com/l20n/builds/blob/master/l20n.min.js">one file, minified</a> (~35KB)</li>
+</ul>
+
+<p>It's recommended to include the l20n.js file as the last script in the <code>head</code> element.</p>
+
+<pre class="brush: html">&lt;head&gt;
+  …
+&lt;script src="l20n.js"&gt;&lt;/script&gt;
+&lt;/head&gt;
+</pre>
+
+<h2 id="Create_Manifest">Create Manifest</h2>
+
+<p>Use a localization <em>manifest</em> to define available languages and their resource files.</p>
+
+<pre class="brush: html">&lt;link rel="localization" href="../locales/manifest.json"&gt;
+</pre>
+
+<p>An example of the manifest file (all keys are required):</p>
+
+<pre class="brush: json">{
+  "locales": [ "en-US", "pl"],
+  "default_locale": "en-US",
+  "resources": [
+    "../locales/\{{locale}}/strings.l20n",
+    "/shared/\{{locale}}/date.l20n"¨
+  ]
+}
+</pre>
+
+<h2 id="Make_HTML_Elements_Localizable">Make HTML Elements Localizable</h2>
+
+<p>Use the <code>data-l10n-id</code> attribute on an HTML element to mark it as localizable.</p>
+
+<pre class="brush: html">&lt;p data-l10n-id="about"&gt;&lt;/p&gt;
+</pre>
+
+<p>Notice that you don't have to put the text content in the HTML anymore (you still can if you want to). All content lives in the localization resources.</p>
+
+<p>A safe subset of HTML <a href="http://www.w3.org/html/wg/drafts/html/CR/text-level-semantics.html#text-level-semantics">elements</a> (e.g. <code>em</code>, <code>sup</code>), <a href="http://www.w3.org/html/wg/drafts/html/CR/dom.html#the-translate-attribute">attributes</a> (e.g. <code>title</code>) and entities can be used in translations. In addition to the pre-defined whitelists, any element found in the original source HTML is allowed in the translation as well. Consider the following source HTML:</p>
+
+<pre class="brush: html">&lt;p data-l10n-id="save"&gt;
+  &lt;input type="submit"&gt;
+  &lt;a href="/main" class="btn-cancel"&gt;&lt;/a&gt;
+&lt;/p&gt;
+</pre>
+
+<p>Assume the following malicious translation:</p>
+
+<pre class="brush: html">&lt;save """
+  &lt;input value="Save" type="text"&gt; or
+  &lt;a href="http://myevilwebsite.com"
+     onclick="alert('pwnd!')"
+     title="Back to the homepage"&gt;cancel&lt;/a&gt;.
+"""&gt;
+</pre>
+
+<p>The result will be:</p>
+
+<pre class="brush: html">&lt;p data-l10n-id="back"&gt;
+  &lt;input value="Save" type="submit"&gt; or
+  &lt;a href="/main" class="btn-cancel"
+     title="Back to the homepage"&gt;cancel&lt;/a&gt;.
+&lt;/p&gt;</pre>
+
+<p>The <code>input</code> element is not on the default whitelist but since it's present in the source HTML, it is also allowed in the translation. The <code>value</code> attribute is allowed on <code>input</code> elements, but <code>type</code> is not. Similarly, <code>href</code> and <code>onclick</code> attributes are not allowed in translations and they are not inserted in the final DOM. However, the <code>title</code> attribute is safe.</p>
+
+<p>It is important to note that applying translations doesn't replace DOM elements, but only modifies their text nodes and their attributes. This makes it possible to use L20n in conjunction with MVC frameworks.</p>
+
+<p>When all DOM nodes are localized, the <code>document</code> element will fire a <code>DocumentLocalized</code> event, which you can listen to:</p>
+
+<pre class="brush: js">document.addEventListener('DocumentLocalized', function() {
+  // the DOM has been localized and the user sees it in their language
+  YourApp.init();
+});
+
+</pre>
+
+<h2 id="Exposing_Context_Data">Exposing Context Data</h2>
+
+<p>You can expose important bits of data to the localization context in form of <em>context data</em>.</p>
+
+<pre class="brush: html">&lt;script type="application/l10n-data+json"&gt;
+{
+  "newNotifications": 3,
+  "user": {
+    "name": "Jane",
+    "gender": "feminine"
+  }
+}
+&lt;/script&gt;
+</pre>
+
+<p>This data will be available context-wide to all localized strings. For instance, a string could use the information about the user's gender to provide two variants of the translation, like in the example below. See <a href="http://l20n.org/learn/">L20n by Example</a> to learn more about L20n's syntax.</p>
+
+<pre class="brush: html">&lt;invited[$user.gender] {
+  feminine: "\{{ $user.name }} has invited you to her circles.",
+  masculine: "\{{ $user.name }} has invited you to his circles.",
+ *unknown: "\{{ $user.name }} has invited you to their circles."
+}&gt;
+</pre>
+
+<p>Based on the context data defined above, this will produce:</p>
+
+<pre>Jane has invited you to her circles.</pre>
+
+<h2 id="Monolingual_mode">Monolingual mode</h2>
+
+<p>L20n can also operate in the so-called monolingual mode, when there is only one locale available. It doesn't have any specific locale code (internally, it's called <code>i-default</code> in compliance to <a href="http://www.iana.org/assignments/lang-tags/i-default">RFC 2277</a>). There is no language negotiation nor locale fallback possible in the monolingual mode. L20n simply always uses this one default locale.</p>
+
+<p>The monolingual mode may be useful when you first start a new project, when you want to test something quickly or when using server-side language negotiation.</p>
+
+<p>In order to enable the monolingual mode, remove the manifest <code>link</code> from your HTML. With no information about the available and the default locales, L20n will switch to the monolingual mode. You can then embed localization resources right in your HTML.</p>
+
+<pre class="brush: html">&lt;script type="application/l20n"&gt;
+  &lt;brandName "Firefox"&gt;
+  &lt;about "About \{{ brandName }}"&gt;
+&lt;/script&gt;
+</pre>
+
+<p>An alternative is to include localization resources in <code>script</code> elements. Note that this still only works for a single language. We plan to add support for a Language Pack Service in the future that can tap into this scenario on the client side.</p>
+
+<pre class="brush: html">&lt;script type="application/l20n" src="../locales/strings.l20n"&gt;&lt;/script&gt;
+</pre>
+
+<p>Note that you currently <em>cannot</em> use the manifest file <em>and</em> manually add resources via <code>script</code> tags at the same time (bug <a href="https://bugzil.la/923670">923670</a>).</p>
+
+<p> </p>
+
+<h2 id="Subnav">Subnav</h2>
+
+<section id="Quick_Links">
+<ol>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for developers wanting to implement localization functionality on their web apps using L20n">For Developers</span></summary>
+
+  <ol>
+   <li><a href="#" title="First read for developers looking to use the L20n infrastructure">Internationalization for your web app</a></li>
+   <li><a href="/en-US/docs/Mozilla/Projects/L20n/HTML_Bindings" title="Tutorial on implementing L20n in your HTML code">L20n's HTML bindings</a></li>
+   <li><a href="#" title="A complete description of the use, function, and role of L20n's .lol format.">.lol file format</a></li>
+   <li><a href="#" title="A simple cheatsheet to help developers as they add L20n to their localization infrastructure.">L20n syntax cheatsheet for developers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for Localizers creating localized content for a project that uses L20n.">For Localizers</span></summary>
+  <ol>
+   <li><a href="#" title="How to naturally localize applications using L20n. Complete with use cases and examples of L20n in action.">Learn the L20n syntax</a></li>
+   <li><a href="/en-US/docs/L20n/Localization_Use_Cases">Localization use cases</a></li>
+   <li><a href="#" title="How L20n impacts the Translation Memory eXchange standard for translation memory data.">L20n and Translation Memory eXchange (TMX)</a></li>
+   <li><a href="#" title="A simple cheatsheet to help localizers as they localize projects with L20n.">L20n syntax cheatsheet for localizers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Some additional resources for developers and localizers involved with L20n.">Additional resources</span></summary>
+  <ol>
+   <li><a href="http://www.l20n.org" title="You can try L20n live in your browser on the project page">L20n.org</a></li>
+   <li><a href="http://l20n.github.io/tinker/" title="Test out your own L20n code in L20n Tinker">L20n Tinker</a></li>
+   <li><a href="https://github.com/l20n/l20n.js" title="Where the main code for the L20n infrastructure and language lives">L20n GitHub repo</a></li>
+   <li><a href="https://wiki.mozilla.org/L20n" title="Info about the project to develop L20n">Mozilla Wiki</a></li>
+  </ol>
+  </details>
+ </li>
+</ol>
+</section>
+
+<p> </p>

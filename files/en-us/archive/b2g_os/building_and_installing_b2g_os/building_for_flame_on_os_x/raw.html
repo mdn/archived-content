@@ -1,0 +1,162 @@
+<p class="summary"><span class="seoSummary">This article provides instructions on how to build B2G OS for Flame devices using a Mac OS X system as your build platform.</span></p>
+
+<div class="note"><strong>Note:</strong> This guide assumes that you have the popular <a href="brew.sh">Homebrew</a> package manager installed. If you do not, you should either install it or an equivalent package manager and learn how it works.</div>
+
+<h2 id="Preparing_the_build_environment">Preparing the build environment</h2>
+
+<p>The first step is to <a href="/en-US/Firefox_OS/Firefox_OS_build_prerequisites#Requirements_for_OS_X">install build prerequisites</a> as usual. Then install binutils, so that the <code>objdump</code> command is available for debug builds:</p>
+
+<pre>brew install binutils</pre>
+
+<p>Create a disk image using the case-sensitive, journaled HFS+ file system and mount the image using the following commands.</p>
+
+<pre>hdiutil create -volname 'B2Gos' -type SPARSE -fs 'Case-sensitive Journaled HFS+' -size 40g ~/B2Gos.sparseimage
+open ~/B2Gos.sparseimage
+cd /Volumes/B2Gos/</pre>
+
+<div class="note">
+<p><strong>Note:</strong> Because the image has been created as a "sparse" image, only disk blocks that are actually used take up physical space on your physical media. This means that a 40 gigabyte image, such as the one above, will not actually take up 40 gigabytes of space. Instead, it will gradually get larger as you write more and more data to it.</p>
+</div>
+
+<h2 id="Clone_the_B2G_repository">Clone the B2G repository</h2>
+
+<p>Of course, before you can start your first build, you need to clone the B2G repository. It's important to note that this doesn't fetch everything. It simply pulls down the build system and setup utilities. Most of the actual code is in Mozilla's main <a href="/en-US/docs/Mercurial" title="Mercurial">Mercurial</a> repository; those files will be retrieved later in the setup process.</p>
+
+<p>To clone the repository, use <a href="https://git-scm.com/">git</a>:</p>
+
+<pre style="font-size: 14px;">git clone git://github.com/mozilla-b2g/B2G.git</pre>
+
+<p>After that's done (which should only take a minute with a fast connection), <code>cd</code> into the B2G directory:</p>
+
+<pre>cd B2G</pre>
+
+<h2 id="Configuring_B2G_for_flame">Configuring B2G for flame</h2>
+
+<p>Once you've retrieved the core B2G build system, you need to configure it for the device on which you plan to install it; in this case, that's "flame". Run the following command from within the B2G directory:</p>
+
+<pre>./config.sh flame-kk</pre>
+
+<p>It's at this point that the majority of the code will be downloaded. This is around 15 GB of source code, so it will take a long time, even if you have a fast Internet connection. Even with high-performance broadband, this can take an hour or so.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Seriously, this will take a very long time if you're on a slow Internet connection. Keep that in mind (as well as any per-megabyte fees you may have to pay on your connection) before doing this step.</p>
+</div>
+
+<h3 id="Back_up_important_device_files">Back up important device files</h3>
+
+<p>Before beginning the install process, it's important to make a backup of certain key files on the device. These will be needed if you ever need to re-flash the device. </p>
+
+<p>At this point, connect your Flame if it isn't already connected; the configure process will need to access it. Use the <code>adb devices</code> command to check to see if it's connected:</p>
+
+<pre>adb devices -l
+</pre>
+
+<p>This will list any Android or B2G compatible devices that are connected. If yours isn't listed, something's not connected properly.</p>
+
+<p>Once the device is confirmed to be connected, you can make the backup using the following commands:</p>
+
+<pre>mkdir flame-backup
+cd flame-backup
+adb pull /system system
+adb pull /data data</pre>
+
+<p>To note, if you are building for the first time, you will want to be on the latest version of the flame base image; see <a href="https://developer.mozilla.org/en-US/Firefox_OS/Phone_guide/Flame/Updating_your_Flame#Full_flash_to_the_latest_base_image">https://developer.mozilla.org/en-US/B2G_OS/Phone_guide/Flame/Updating_your_Flame#Full_flash_to_the_latest_base_image</a> for more details.</p>
+
+<h3 id="Working_around_a_Mac_OS_X_build_problem">Working around a Mac OS X build problem</h3>
+
+<p>There's a problem that can happen when building on Mac OS X. This is a solution devised by the Mozilla community; it has been tested on Mac OS X 10.9.4 "Mavericks."</p>
+
+<h4 id="Non-existent_mkfs.vfat">Non-existent mkfs.vfat</h4>
+
+<p>You need to install a port of <code><a href="https://github.com/sv99/dosfstools-osx">dosfstools</a></code> so you can use the image.</p>
+
+<pre><code><code>brew create https://github.com/sv99/dosfstools-osx.git</code></code></pre>
+
+<p>Then edit the formula <code>brew</code> will use to build the <code>dosfstools</code> software:</p>
+
+<pre class="brush: js"><code>require "formula"
+
+class Dosfstools &lt; Formula
+  homepage "https://github.com/sv99/dosfstools-osx"
+  url "https://github.com/sv99/dosfstools-osx.git"
+  sha1 ""
+
+  def install
+    system "make", "install"
+  end
+end
+</code></pre>
+
+<p>Now you're ready to install it:</p>
+
+<pre><code><code>brew install dosfstools</code></code></pre>
+
+<h3 id="Changing_configuration_to_work_around_bugs">Changing configuration to work around bugs</h3>
+
+<p>There are some build system bugs that prevent building on Mac OS X under certain circumstances. Those circumstances are:</p>
+
+<ul>
+ <li><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1039223">Bug 1039223</a> - Build for flame fails complaining of missing dt.img</li>
+ <li><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1027682">Bug 1027682</a> - [Flame][Build] Failed to build on Mac OS X 10.9, elf.h file not found</li>
+</ul>
+
+<p>Use your favorite text editor to create a file named <code>.userconfig</code> in the B2G directory. The following content should to into the <code>.userconfig</code> file:</p>
+
+<div>
+<div>
+<pre><code><code># .userconfig for Flame build 14.08.2014
+# osx repo change
+# Bug 1039223 - Build for flame fails complaining of missing dt.img
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1039223
+pushd device/qcom/common/dtbtool
+patch -N &lt;&lt; EOF
+--- a/dtbtool/dtbtool.c
++++ b/dtbtool/dtbtool.c
+@@ -616,7 +616,7 @@ int main(int argc, char **argv)
+        extract "qcom,msm-id" parameter
+      */
+     while ((dp = readdir(dir)) != NULL) {
+-        if ((dp-&gt;d_type == DT_REG)) {
++        if ((dp-&gt;d_type == DT_REG||dp-&gt;d_type == DT_UNKNOWN)) {
+             flen = strlen(dp-&gt;d_name);
+             if ((flen &gt; 4) &amp;&amp;
+                 (strncmp(&amp;dp-&gt;d_name[flen-4], ".dtb", 4) == 0)) {
+EOF
+
+popd
+
+# Bug 1027682 - [Flame][Build] Failed to build on Mac OS X 10.9, elf.h file not found
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1027682
+if [[ ! -e /usr/local/include/elf.h ]]; then
+  cp "${B2G_DIR}/external/elfutils/libelf/elf.h" /usr/local/include
+  echo "Bug 1027682: elf.h copied into /usr/local/include"
+fi
+
+# Disable First Time User experience
+export NOFTU=1
+echo "NOFTU = ${NOFTU}"
+
+# Enable gaia developer mode
+export DEVICE_DEBUG=1
+echo "DEVICE_DEBUG = ${DEVICE_DEBUG}"
+
+# Keeping both debug and non-debug objects
+#export GECKO_PATH=${B2G_DIR}/mozilla-inbound
+echo "GECKO_PATH = ${GECKO_PATH}"
+
+export B2G_DEBUG=1
+echo "B2G_DEBUG = ${B2G_DEBUG}"
+
+#export GECKO_OBJDIR=${GECKO_PATH}/objdir-gonk
+if [[ "${B2G_DEBUG}" != "0" ]]; then
+  export GECKO_OBJDIR=${GECKO_OBJDIR}-debug
+fi
+echo "GECKO_OBJDIR = ${GECKO_OBJDIR}"</code></code></pre>
+
+<h2 id="Start_your_first_build">Start your first build</h2>
+
+<p>Now you're finally ready to build! Just kick it off the way you do for any B2G OS build:</p>
+
+<pre><code><code>./build.sh</code></code></pre>
+</div>
+</div>

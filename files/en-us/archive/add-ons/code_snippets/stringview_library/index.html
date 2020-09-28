@@ -1,0 +1,1603 @@
+---
+title: StringView
+slug: Archive/Add-ons/Code_snippets/StringView_library
+---
+<h2 id="The_aims_of_this_library_are">The aims of this library are:</h2>
+
+<ul>
+ <li>to create a <strong><a href="http://en.wikipedia.org/wiki/C_%28programming_language%29">C</a>-</strong>like interface for strings (i.e., an array of character codes — an<a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView"> <code>ArrayBufferView</code></a> in JavaScript) based upon the JavaScript <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>ArrayBuffer</code></a> interface</li>
+ <li>to create a highly extensible library that anyone can extend by adding methods to the object <code>StringView.prototype</code></li>
+ <li>to create a collection of methods for such string-like objects (since now: <code>stringView</code>s) which work strictly on arrays of numbers rather than on creating new immutable JavaScript strings</li>
+ <li>to work with Unicode encodings other than JavaScript's default UTF-16 <a href="/en-US/docs/Web/API/DOMString" title="DOMString is a UTF-16 String. As JavaScript already uses such strings, DOMString is mapped directly to a String."><code>DOMString</code></a>s</li>
+</ul>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>As web applications become more and more powerful, adding features such as audio and video manipulation, access to raw data using WebSockets, and so forth, it has become clear that there are times when it would be helpful for JavaScript code to be able to quickly and easily manipulate raw binary data. In the past, this had to be simulated by treating the raw data as a <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Global_Objects/String" title="JavaScript/Reference/Global Objects/String">string</a> and using the <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Global_Objects/String/charCodeAt" title="JavaScript/Reference/Global Objects/String/charCodeAt"><code>charCodeAt()</code></a> method to read the bytes from the data buffer.</p>
+
+<p>However, this is slow and error-prone, due to the need for multiple conversions (especially if the binary data is not actually byte-format data, but, for example, 32-bit integers or floats).</p>
+
+<p><a href="/en-US/docs/Web/JavaScript/Typed_arrays" title="/en-US/docs/Web/JavaScript/Typed_arrays">JavaScript typed arrays</a> provide a mechanism for accessing raw binary data much more efficiently. The <code>StringView</code> constructor is one level above typed arrays.</p>
+
+<h2 id="The_code">The code</h2>
+
+<h3 id="stringview.js">stringview.js</h3>
+
+<pre class="brush: js;" style="height: 400px; overflow: auto;">"use strict";
+
+/*\
+|*|
+|*|  :: Number.isInteger() polyfill ::
+|*|
+|*|  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isInteger
+|*|
+\*/
+
+if (!Number.isInteger) {
+  Number.isInteger = function isInteger (nVal) {
+    return typeof nVal === "number" &amp;&amp; isFinite(nVal) &amp;&amp; nVal &gt; -9007199254740992 &amp;&amp; nVal &lt; 9007199254740992 &amp;&amp; Math.floor(nVal) === nVal;
+  };
+}
+
+/*\
+|*|
+|*|  StringView - Mozilla Developer Network
+|*|
+|*|  Revision #12, March 21st, 2017
+|*|
+|*|  https://developer.mozilla.org/en-US/Add-ons/Code_snippets/StringView
+|*|  https://developer.mozilla.org/en-US/docs/User:fusionchess
+|*|  https://github.com/madmurphy/stringview.js
+|*|
+|*|  This framework is released under the GNU Lesser General Public License, version 3 or later.
+|*|  http://www.gnu.org/licenses/lgpl-3.0.html
+|*|
+\*/
+
+function StringView (vInput, sEncoding /* optional (default: UTF-8) */, nOffset /* optional */, nLength /* optional */) {
+
+  var fTAView, aWhole, aRaw, fPutOutptCode, fGetOutptChrSize, nInptLen, nStartIdx = isFinite(nOffset) ? nOffset : 0, nTranscrType = 15;
+
+  if (sEncoding) { this.encoding = sEncoding.toString(); }
+
+  encSwitch: switch (this.encoding) {
+    case "UTF-8":
+      fPutOutptCode = StringView.putUTF8CharCode;
+      fGetOutptChrSize = StringView.getUTF8CharLength;
+      fTAView = Uint8Array;
+      break encSwitch;
+    case "UTF-16":
+      fPutOutptCode = StringView.putUTF16CharCode;
+      fGetOutptChrSize = StringView.getUTF16CharLength;
+      fTAView = Uint16Array;
+      break encSwitch;
+    case "UTF-32":
+      fTAView = Uint32Array;
+      nTranscrType &amp;= 14;
+      break encSwitch;
+    default:
+      /* case "ASCII", or case "BinaryString" or unknown cases */
+      fTAView = Uint8Array;
+      nTranscrType &amp;= 14;
+  }
+
+  typeSwitch: switch (typeof vInput) {
+    case "string":
+      /* the input argument is a primitive string: a new buffer will be created. */
+      nTranscrType &amp;= 7;
+      break typeSwitch;
+    case "object":
+      classSwitch: switch (vInput.constructor) {
+        case StringView:
+          /* the input argument is a stringView: a new buffer will be created. */
+          nTranscrType &amp;= 3;
+          break typeSwitch;
+        case String:
+          /* the input argument is an objectified string: a new buffer will be created. */
+          nTranscrType &amp;= 7;
+          break typeSwitch;
+        case ArrayBuffer:
+          /* the input argument is an arrayBuffer: the buffer will be shared. */
+          aWhole = new fTAView(vInput);
+          nInptLen = this.encoding === "UTF-32" ?
+              vInput.byteLength &gt;&gt;&gt; 2
+            : this.encoding === "UTF-16" ?
+              vInput.byteLength &gt;&gt;&gt; 1
+            :
+              vInput.byteLength;
+          aRaw = nStartIdx === 0 &amp;&amp; (!isFinite(nLength) || nLength === nInptLen) ?
+            aWhole
+            : new fTAView(vInput, nStartIdx, !isFinite(nLength) ? nInptLen - nStartIdx : nLength);
+
+          break typeSwitch;
+        case Uint32Array:
+        case Uint16Array:
+        case Uint8Array:
+          /* the input argument is a typedArray: the buffer, and possibly the array itself, will be shared. */
+          fTAView = vInput.constructor;
+          nInptLen = vInput.length;
+          aWhole = vInput.byteOffset === 0 &amp;&amp; vInput.length === (
+            fTAView === Uint32Array ?
+              vInput.buffer.byteLength &gt;&gt;&gt; 2
+            : fTAView === Uint16Array ?
+              vInput.buffer.byteLength &gt;&gt;&gt; 1
+            :
+              vInput.buffer.byteLength
+          ) ? vInput : new fTAView(vInput.buffer);
+          aRaw = nStartIdx === 0 &amp;&amp; (!isFinite(nLength) || nLength === nInptLen) ?
+            vInput
+            : vInput.subarray(nStartIdx, isFinite(nLength) ? nStartIdx + nLength : nInptLen);
+
+          break typeSwitch;
+        default:
+          /* the input argument is an array or another serializable object: a new typedArray will be created. */
+          aWhole = new fTAView(vInput);
+          nInptLen = aWhole.length;
+          aRaw = nStartIdx === 0 &amp;&amp; (!isFinite(nLength) || nLength === nInptLen) ?
+            aWhole
+            : aWhole.subarray(nStartIdx, isFinite(nLength) ? nStartIdx + nLength : nInptLen);
+      }
+      break typeSwitch;
+    default:
+      /* the input argument is a number, a boolean or a function: a new typedArray will be created. */
+      aWhole = aRaw = new fTAView(Number(vInput) || 0);
+
+  }
+
+  if (nTranscrType &lt; 8) {
+
+    var vSource, nOutptLen, nCharStart, nCharEnd, nEndIdx, fGetInptChrSize, fGetInptChrCode;
+
+    if (nTranscrType &amp; 4) { /* input is string */
+
+      vSource = vInput;
+      nOutptLen = nInptLen = vSource.length;
+      nTranscrType ^= this.encoding === "UTF-32" ? 0 : 2;
+      /* ...or...: nTranscrType ^= Number(this.encoding !== "UTF-32") &lt;&lt; 1; */
+      nStartIdx = nCharStart = nOffset ? Math.max((nOutptLen + nOffset) % nOutptLen, 0) : 0;
+      nEndIdx = nCharEnd = (Number.isInteger(nLength) ? Math.min(Math.max(nLength, 0) + nStartIdx, nOutptLen) : nOutptLen) - 1;
+
+    } else { /* input is stringView */
+
+      vSource = vInput.rawData;
+      nInptLen = vInput.makeIndex();
+      nStartIdx = nCharStart = nOffset ? Math.max((nInptLen + nOffset) % nInptLen, 0) : 0;
+      nOutptLen = Number.isInteger(nLength) ? Math.min(Math.max(nLength, 0), nInptLen - nCharStart) : nInptLen;
+      nEndIdx = nCharEnd = nOutptLen + nCharStart;
+
+      if (vInput.encoding === "UTF-8") {
+        fGetInptChrSize = StringView.getUTF8CharLength;
+        fGetInptChrCode = StringView.loadUTF8CharCode;
+      } else if (vInput.encoding === "UTF-16") {
+        fGetInptChrSize = StringView.getUTF16CharLength;
+        fGetInptChrCode = StringView.loadUTF16CharCode;
+      } else {
+        nTranscrType &amp;= 1;
+      }
+
+    }
+
+    if (nOutptLen === 0 || nTranscrType &lt; 4 &amp;&amp; vSource.encoding === this.encoding &amp;&amp; nCharStart === 0 &amp;&amp; nOutptLen === nInptLen) {
+
+      /* the encoding is the same, the length too and the offset is 0... or the input is empty! */
+
+      nTranscrType = 7;
+
+    }
+
+    conversionSwitch: switch (nTranscrType) {
+
+      case 0:
+
+      /* both the source and the new StringView have a fixed-length encoding... */
+
+        aWhole = new fTAView(nOutptLen);
+        for (var nOutptIdx = 0; nOutptIdx &lt; nOutptLen; aWhole[nOutptIdx] = vSource[nStartIdx + nOutptIdx++]);
+        break conversionSwitch;
+
+      case 1:
+
+      /* the source has a fixed-length encoding but the new StringView has a variable-length encoding... */
+
+        /* mapping... */
+
+        nOutptLen = 0;
+
+        for (var nInptIdx = nStartIdx; nInptIdx &lt; nEndIdx; nInptIdx++) {
+          nOutptLen += fGetOutptChrSize(vSource[nInptIdx]);
+        }
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription of the source... */
+
+        for (var nInptIdx = nStartIdx, nOutptIdx = 0; nOutptIdx &lt; nOutptLen; nInptIdx++) {
+          nOutptIdx = fPutOutptCode(aWhole, vSource[nInptIdx], nOutptIdx);
+        }
+
+        break conversionSwitch;
+
+      case 2:
+
+      /* the source has a variable-length encoding but the new StringView has a fixed-length encoding... */
+
+        /* mapping... */
+
+        nStartIdx = 0;
+
+        var nChrCode;
+
+        for (nChrIdx = 0; nChrIdx &lt; nCharStart; nChrIdx++) {
+          nChrCode = fGetInptChrCode(vSource, nStartIdx);
+          nStartIdx += fGetInptChrSize(nChrCode);
+        }
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription of the source... */
+
+        for (var nInptIdx = nStartIdx, nOutptIdx = 0; nOutptIdx &lt; nOutptLen; nInptIdx += fGetInptChrSize(nChrCode), nOutptIdx++) {
+          nChrCode = fGetInptChrCode(vSource, nInptIdx);
+          aWhole[nOutptIdx] = nChrCode;
+        }
+
+        break conversionSwitch;
+
+      case 3:
+
+      /* both the source and the new StringView have a variable-length encoding... */
+
+        /* mapping... */
+
+        nOutptLen = 0;
+
+        var nChrCode;
+
+        for (var nChrIdx = 0, nInptIdx = 0; nChrIdx &lt; nCharEnd; nInptIdx += fGetInptChrSize(nChrCode)) {
+          nChrCode = fGetInptChrCode(vSource, nInptIdx);
+          if (nChrIdx === nCharStart) { nStartIdx = nInptIdx; }
+          if (++nChrIdx &gt; nCharStart) { nOutptLen += fGetOutptChrSize(nChrCode); }
+        }
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription... */
+
+        for (var nInptIdx = nStartIdx, nOutptIdx = 0; nOutptIdx &lt; nOutptLen; nInptIdx += fGetInptChrSize(nChrCode)) {
+          nChrCode = fGetInptChrCode(vSource, nInptIdx);
+          nOutptIdx = fPutOutptCode(aWhole, nChrCode, nOutptIdx);
+        }
+
+        break conversionSwitch;
+
+      case 4:
+
+      /* DOMString to ASCII or BinaryString or other unknown encodings */
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription... */
+
+        for (var nIdx = 0; nIdx &lt; nOutptLen; nIdx++) {
+          aWhole[nIdx] = vSource.charCodeAt(nIdx) &amp; 0xff;
+        }
+
+        break conversionSwitch;
+
+      case 5:
+
+      /* DOMString to UTF-8 or to UTF-16 */
+
+        /* mapping... */
+
+        nOutptLen = 0;
+
+        for (var nMapIdx = 0; nMapIdx &lt; nInptLen; nMapIdx++) {
+          if (nMapIdx === nCharStart) { nStartIdx = nOutptLen; }
+          nOutptLen += fGetOutptChrSize(vSource.charCodeAt(nMapIdx));
+          if (nMapIdx === nCharEnd) { nEndIdx = nOutptLen; }
+        }
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription... */
+
+        for (var nOutptIdx = 0, nChrIdx = 0; nOutptIdx &lt; nOutptLen; nChrIdx++) {
+          nOutptIdx = fPutOutptCode(aWhole, vSource.charCodeAt(nChrIdx), nOutptIdx);
+        }
+
+        break conversionSwitch;
+
+      case 6:
+
+      /* DOMString to UTF-32 */
+
+        aWhole = new fTAView(nOutptLen);
+
+        /* transcription... */
+
+        for (var nIdx = 0; nIdx &lt; nOutptLen; nIdx++) {
+          aWhole[nIdx] = vSource.charCodeAt(nIdx);
+        }
+
+        break conversionSwitch;
+
+      case 7:
+
+        aWhole = new fTAView(nOutptLen ? vSource : 0);
+        break conversionSwitch;
+
+    }
+
+    aRaw = nTranscrType &gt; 3 &amp;&amp; (nStartIdx &gt; 0 || nEndIdx &lt; aWhole.length - 1) ? aWhole.subarray(nStartIdx, nEndIdx) : aWhole;
+
+  }
+
+  this.buffer = aWhole.buffer;
+  this.bufferView = aWhole;
+  this.rawData = aRaw;
+
+  Object.freeze(this);
+
+}
+
+/* CONSTRUCTOR'S METHODS */
+
+StringView.loadUTF8CharCode = function (aChars, nIdx) {
+  /* The ISO 10646 view of UTF-8 considers valid codepoints encoded by 1-6 bytes,
+   * while the Unicode view of UTF-8 in 2003 has limited them to 1-4 bytes in order to
+   * match UTF-16's codepoints. In front of a 5/6-byte sequence StringView tries to
+   * encode it in any case.
+   */
+  var nLen = aChars.length, nPart = aChars[nIdx];
+  return nPart &gt; 251 &amp;&amp; nPart &lt; 254 &amp;&amp; nIdx + 5 &lt; nLen ?
+      /* (nPart - 252 &lt;&lt; 30) may be not safe in ECMAScript! So...: */
+      /* six bytes */ (nPart - 252) * 1073741824 + (aChars[nIdx + 1] - 128 &lt;&lt; 24) + (aChars[nIdx + 2] - 128 &lt;&lt; 18) + (aChars[nIdx + 3] - 128 &lt;&lt; 12) + (aChars[nIdx + 4] - 128 &lt;&lt; 6) + aChars[nIdx + 5] - 128
+    : nPart &gt; 247 &amp;&amp; nPart &lt; 252 &amp;&amp; nIdx + 4 &lt; nLen ?
+      /* five bytes */ (nPart - 248 &lt;&lt; 24) + (aChars[nIdx + 1] - 128 &lt;&lt; 18) + (aChars[nIdx + 2] - 128 &lt;&lt; 12) + (aChars[nIdx + 3] - 128 &lt;&lt; 6) + aChars[nIdx + 4] - 128
+    : nPart &gt; 239 &amp;&amp; nPart &lt; 248 &amp;&amp; nIdx + 3 &lt; nLen ?
+      /* four bytes */(nPart - 240 &lt;&lt; 18) + (aChars[nIdx + 1] - 128 &lt;&lt; 12) + (aChars[nIdx + 2] - 128 &lt;&lt; 6) + aChars[nIdx + 3] - 128
+    : nPart &gt; 223 &amp;&amp; nPart &lt; 240 &amp;&amp; nIdx + 2 &lt; nLen ?
+      /* three bytes */ (nPart - 224 &lt;&lt; 12) + (aChars[nIdx + 1] - 128 &lt;&lt; 6) + aChars[nIdx + 2] - 128
+    : nPart &gt; 191 &amp;&amp; nPart &lt; 224 &amp;&amp; nIdx + 1 &lt; nLen ?
+      /* two bytes */ (nPart - 192 &lt;&lt; 6) + aChars[nIdx + 1] - 128
+    :
+      /* one byte */ nPart;
+
+};
+
+StringView.putUTF8CharCode = function (aTarget, nChar, nPutAt) {
+
+  var nIdx = nPutAt;
+
+  if (nChar &lt; 0x80 /* 128 */) {
+    /* one byte */
+    aTarget[nIdx++] = nChar;
+  } else if (nChar &lt; 0x800 /* 2048 */) {
+    /* two bytes */
+    aTarget[nIdx++] = 0xc0 /* 192 */ + (nChar &gt;&gt;&gt; 6);
+    aTarget[nIdx++] = 0x80 /* 128 */ + (nChar &amp; 0x3f /* 63 */);
+  } else if (nChar &lt; 0x10000 /* 65536 */) {
+    /* three bytes */
+    aTarget[nIdx++] = 0xe0 /* 224 */ + (nChar &gt;&gt;&gt; 12);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 6) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + (nChar &amp; 0x3f /* 63 */);
+  } else if (nChar &lt; 0x200000 /* 2097152 */) {
+    /* four bytes */
+    aTarget[nIdx++] = 0xf0 /* 240 */ + (nChar &gt;&gt;&gt; 18);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 12) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 6) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + (nChar &amp; 0x3f /* 63 */);
+  } else if (nChar &lt; 0x4000000 /* 67108864 */) {
+    /* five bytes */
+    aTarget[nIdx++] = 0xf8 /* 248 */ + (nChar &gt;&gt;&gt; 24);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 18) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 12) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 6) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + (nChar &amp; 0x3f /* 63 */);
+  } else /* if (nChar &lt;= 0x7fffffff) */ { /* 2147483647 */
+    /* six bytes */
+    aTarget[nIdx++] = 0xfc /* 252 */ + /* (nChar &gt;&gt;&gt; 30) may be not safe in ECMAScript! So...: */ (nChar / 1073741824);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 24) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 18) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 12) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + ((nChar &gt;&gt;&gt; 6) &amp; 0x3f /* 63 */);
+    aTarget[nIdx++] = 0x80 /* 128 */ + (nChar &amp; 0x3f /* 63 */);
+  }
+
+  return nIdx;
+
+};
+
+StringView.getUTF8CharLength = function (nChar) {
+  return nChar &lt; 0x80 ? 1 : nChar &lt; 0x800 ? 2 : nChar &lt; 0x10000 ? 3 : nChar &lt; 0x200000 ? 4 : nChar &lt; 0x4000000 ? 5 : 6;
+};
+
+StringView.loadUTF16CharCode = function (aChars, nIdx) {
+
+  /* UTF-16 to DOMString decoding algorithm */
+  var nFrstChr = aChars[nIdx];
+
+  return nFrstChr &gt; 0xD7BF /* 55231 */ &amp;&amp; nIdx + 1 &lt; aChars.length ?
+    (nFrstChr - 0xD800 /* 55296 */ &lt;&lt; 10) + aChars[nIdx + 1] + 0x2400 /* 9216 */
+    : nFrstChr;
+
+};
+
+StringView.putUTF16CharCode = function (aTarget, nChar, nPutAt) {
+
+  var nIdx = nPutAt;
+
+  if (nChar &lt; 0x10000 /* 65536 */) {
+    /* one element */
+    aTarget[nIdx++] = nChar;
+  } else {
+    /* two elements */
+    aTarget[nIdx++] = 0xD7C0 /* 55232 */ + (nChar &gt;&gt;&gt; 10);
+    aTarget[nIdx++] = 0xDC00 /* 56320 */ + (nChar &amp; 0x3FF /* 1023 */);
+  }
+
+  return nIdx;
+
+};
+
+StringView.getUTF16CharLength = function (nChar) {
+  return nChar &lt; 0x10000 ? 1 : 2;
+};
+
+/* Array of bytes to base64 string decoding */
+
+StringView.b64ToUint6 = function (nChr) {
+
+  return nChr &gt; 64 &amp;&amp; nChr &lt; 91 ?
+      nChr - 65
+    : nChr &gt; 96 &amp;&amp; nChr &lt; 123 ?
+      nChr - 71
+    : nChr &gt; 47 &amp;&amp; nChr &lt; 58 ?
+      nChr + 4
+    : nChr === 43 ?
+      62
+    : nChr === 47 ?
+      63
+    :
+      0;
+
+};
+
+StringView.uint6ToB64 = function (nUint6) {
+
+  return nUint6 &lt; 26 ?
+      nUint6 + 65
+    : nUint6 &lt; 52 ?
+      nUint6 + 71
+    : nUint6 &lt; 62 ?
+      nUint6 - 4
+    : nUint6 === 62 ?
+      43
+    : nUint6 === 63 ?
+      47
+    :
+      65;
+
+};
+
+/* Base64 string to array encoding */
+
+StringView.bytesToBase64 = function (aBytes) {
+
+  var eqLen = (3 - (aBytes.length % 3)) % 3, sB64Enc = "";
+
+  for (var nMod3, nLen = aBytes.length, nUint24 = 0, nIdx = 0; nIdx &lt; nLen; nIdx++) {
+    nMod3 = nIdx % 3;
+    /* Uncomment the following line in order to split the output in lines 76-character long: */
+    /*
+    if (nIdx &gt; 0 &amp;&amp; (nIdx * 4 / 3) % 76 === 0) { sB64Enc += "\r\n"; }
+    */
+    nUint24 |= aBytes[nIdx] &lt;&lt; (16 &gt;&gt;&gt; nMod3 &amp; 24);
+    if (nMod3 === 2 || aBytes.length - nIdx === 1) {
+      sB64Enc += String.fromCharCode(StringView.uint6ToB64(nUint24 &gt;&gt;&gt; 18 &amp; 63), StringView.uint6ToB64(nUint24 &gt;&gt;&gt; 12 &amp; 63), StringView.uint6ToB64(nUint24 &gt;&gt;&gt; 6 &amp; 63), StringView.uint6ToB64(nUint24 &amp; 63));
+      nUint24 = 0;
+    }
+  }
+
+  return  eqLen === 0 ?
+      sB64Enc
+    :
+      sB64Enc.substring(0, sB64Enc.length - eqLen) + (eqLen === 1 ? "=" : "==");
+
+
+};
+
+
+StringView.base64ToBytes = function (sBase64, nBlockBytes) {
+
+  var
+    sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, ""), nInLen = sB64Enc.length,
+    nOutLen = nBlockBytes ? Math.ceil((nInLen * 3 + 1 &gt;&gt;&gt; 2) / nBlockBytes) * nBlockBytes : nInLen * 3 + 1 &gt;&gt;&gt; 2, aBytes = new Uint8Array(nOutLen);
+
+  for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx &lt; nInLen; nInIdx++) {
+    nMod4 = nInIdx &amp; 3;
+    nUint24 |= StringView.b64ToUint6(sB64Enc.charCodeAt(nInIdx)) &lt;&lt; 18 - 6 * nMod4;
+    if (nMod4 === 3 || nInLen - nInIdx === 1) {
+      for (nMod3 = 0; nMod3 &lt; 3 &amp;&amp; nOutIdx &lt; nOutLen; nMod3++, nOutIdx++) {
+        aBytes[nOutIdx] = nUint24 &gt;&gt;&gt; (16 &gt;&gt;&gt; nMod3 &amp; 24) &amp; 255;
+      }
+      nUint24 = 0;
+    }
+  }
+
+  return aBytes;
+
+};
+
+StringView.makeFromBase64 = function (sB64Inpt, sEncoding, nByteOffset, nLength) {
+
+  return new StringView(sEncoding === "UTF-16" || sEncoding === "UTF-32" ? StringView.base64ToBytes(sB64Inpt, sEncoding === "UTF-16" ? 2 : 4).buffer : StringView.base64ToBytes(sB64Inpt), sEncoding, nByteOffset, nLength);
+
+};
+
+/* DEFAULT VALUES */
+
+StringView.prototype.encoding = "UTF-8"; /* Default encoding... */
+
+/* INSTANCES' METHODS */
+
+StringView.prototype.makeIndex = function (nChrLength, nStartFrom) {
+
+  var
+
+    aTarget = this.rawData, nChrEnd, nRawLength = aTarget.length,
+    nStartIdx = nStartFrom || 0, nIdxEnd = nStartIdx, nStopAtChr = isNaN(nChrLength) ? Infinity : nChrLength;
+
+  if (nChrLength + 1 &gt; aTarget.length) { throw new RangeError("StringView.prototype.makeIndex - The offset can\'t be major than the length of the array - 1."); }
+
+  switch (this.encoding) {
+
+    case "UTF-8":
+
+      var nPart;
+
+      for (nChrEnd = 0; nIdxEnd &lt; nRawLength &amp;&amp; nChrEnd &lt; nStopAtChr; nChrEnd++) {
+        nPart = aTarget[nIdxEnd];
+        nIdxEnd += nPart &gt; 251 &amp;&amp; nPart &lt; 254 &amp;&amp; nIdxEnd + 5 &lt; nRawLength ? 6
+          : nPart &gt; 247 &amp;&amp; nPart &lt; 252 &amp;&amp; nIdxEnd + 4 &lt; nRawLength ? 5
+          : nPart &gt; 239 &amp;&amp; nPart &lt; 248 &amp;&amp; nIdxEnd + 3 &lt; nRawLength ? 4
+          : nPart &gt; 223 &amp;&amp; nPart &lt; 240 &amp;&amp; nIdxEnd + 2 &lt; nRawLength ? 3
+          : nPart &gt; 191 &amp;&amp; nPart &lt; 224 &amp;&amp; nIdxEnd + 1 &lt; nRawLength ? 2
+          : 1;
+      }
+
+      break;
+
+    case "UTF-16":
+
+      for (nChrEnd = nStartIdx; nIdxEnd &lt; nRawLength &amp;&amp; nChrEnd &lt; nStopAtChr; nChrEnd++) {
+        nIdxEnd += aTarget[nIdxEnd] &gt; 0xD7BF /* 55231 */ &amp;&amp; nIdxEnd + 1 &lt; aTarget.length ? 2 : 1;
+      }
+
+      break;
+
+    default:
+
+      nIdxEnd = nChrEnd = isFinite(nChrLength) ? nChrLength : nRawLength - 1;
+
+  }
+
+  if (nChrLength) { return nIdxEnd; }
+
+  return nChrEnd;
+
+};
+
+StringView.prototype.toBase64 = function (bWholeBuffer) {
+
+  return StringView.bytesToBase64(
+    bWholeBuffer ?
+      (
+        this.bufferView.constructor === Uint8Array ?
+          this.bufferView
+        :
+          new Uint8Array(this.buffer)
+      )
+    : this.rawData.constructor === Uint8Array ?
+      this.rawData
+    :
+      new Uint8Array(this.buffer, this.rawData.byteOffset, this.rawData.length &lt;&lt; (this.rawData.constructor === Uint16Array ? 1 : 2))
+    );
+
+};
+
+StringView.prototype.subview = function (nCharOffset /* optional */, nCharLength /* optional */) {
+
+  var
+
+    nRawSubLen, nRawSubOffset, nSubOffset, nSubLen, bVariableLen = this.encoding === "UTF-8" || this.encoding === "UTF-16",
+    nThisLen, nRawLen = this.rawData.length;
+
+  if (nRawLen === 0) {
+    return new StringView(this.buffer, this.encoding);
+  }
+
+  nThisLen = bVariableLen ? this.makeIndex() : nRawLen;
+  nSubOffset = nCharOffset ? nCharOffset + 1 &gt; nThisLen ? nThisLen : Math.max((nThisLen + nCharOffset) % nThisLen, 0) : 0;
+  nSubLen = Number.isInteger(nCharLength) ? Math.max(nCharLength, 0) + nSubOffset &gt; nThisLen ? nThisLen - nSubOffset : nCharLength : nThisLen - nSubOffset;
+
+  if (nSubOffset === 0 &amp;&amp; nSubLen === nThisLen) { return this; }
+
+  if (bVariableLen) {
+    nRawSubOffset = nSubOffset &lt; nThisLen ? this.makeIndex(nSubOffset) : nThisLen;
+    nRawSubLen = nSubLen ? this.makeIndex(nSubLen, nRawSubOffset) - nRawSubOffset : 0;
+  } else {
+    nRawSubOffset = nSubOffset;
+    nRawSubLen = nSubLen;
+  }
+
+  if (this.encoding === "UTF-16") {
+    nRawSubOffset &lt;&lt;= 1;
+  } else if (this.encoding === "UTF-32") {
+    nRawSubOffset &lt;&lt;= 2;
+  }
+
+  return new StringView(this.buffer, this.encoding, this.rawData.byteOffset + nRawSubOffset, nRawSubLen);
+
+};
+
+StringView.prototype.forEachChar = function (fCallback, oThat, nChrOffset, nChrLen) {
+
+  var aSource = this.rawData, nRawEnd, nRawIdx;
+
+  if (this.encoding === "UTF-8" || this.encoding === "UTF-16") {
+
+    var fGetInptChrSize, fGetInptChrCode;
+
+    if (this.encoding === "UTF-8") {
+      fGetInptChrSize = StringView.getUTF8CharLength;
+      fGetInptChrCode = StringView.loadUTF8CharCode;
+    } else if (this.encoding === "UTF-16") {
+      fGetInptChrSize = StringView.getUTF16CharLength;
+      fGetInptChrCode = StringView.loadUTF16CharCode;
+    }
+
+    nRawIdx = isFinite(nChrOffset) ? this.makeIndex(nChrOffset) : 0;
+    nRawEnd = isFinite(nChrLen) ? this.makeIndex(nChrLen, nRawIdx) : aSource.length;
+
+    for (var nChrCode, nChrIdx = 0; nRawIdx &lt; nRawEnd; nChrIdx++) {
+      nChrCode = fGetInptChrCode(aSource, nRawIdx);
+      if (!oThat) {
+        fCallback(nChrCode, nChrIdx, nRawIdx, aSource);
+      } else {
+        fCallback.call(oThat, nChrCode, nChrIdx, nRawIdx, aSource);
+      }
+      nRawIdx += fGetInptChrSize(nChrCode);
+    }
+
+  } else {
+
+    nRawIdx = isFinite(nChrOffset) ? nChrOffset : 0;
+    nRawEnd = isFinite(nChrLen) ? nChrLen + nRawIdx : aSource.length;
+
+    for (nRawIdx; nRawIdx &lt; nRawEnd; nRawIdx++) {
+      if (!oThat) {
+        fCallback(aSource[nRawIdx], nRawIdx, nRawIdx, aSource);
+      } else {
+        fCallback.call(oThat, aSource[nRawIdx], nRawIdx, nRawIdx, aSource);
+      }
+    }
+
+  }
+
+};
+
+StringView.prototype.valueOf = StringView.prototype.toString = function () {
+
+  if (this.encoding !== "UTF-8" &amp;&amp; this.encoding !== "UTF-16") {
+    /* ASCII, UTF-32 or BinaryString to DOMString */
+    return String.fromCharCode.apply(null, this.rawData);
+  }
+
+  var fGetCode, fGetIncr, sView = "";
+
+  if (this.encoding === "UTF-8") {
+    fGetIncr = StringView.getUTF8CharLength;
+    fGetCode = StringView.loadUTF8CharCode;
+  } else if (this.encoding === "UTF-16") {
+    fGetIncr = StringView.getUTF16CharLength;
+    fGetCode = StringView.loadUTF16CharCode;
+  }
+
+  for (var nChr, nLen = this.rawData.length, nIdx = 0; nIdx &lt; nLen; nIdx += fGetIncr(nChr)) {
+    nChr = fGetCode(this.rawData, nIdx);
+    sView += String.fromCharCode(nChr);
+  }
+
+  return sView;
+
+};</pre>
+
+<p>The code above is also <a href="https://github.com/madmurphy/stringview.js">available on GitHub</a>.</p>
+
+<h2 id="Manual">Manual</h2>
+
+<h3 id="Methods_overview">Methods overview</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th>Constructor</th>
+  </tr>
+  <tr>
+   <td><code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(stringView input, optional DOMString encoding, optional unsigned long startOffset, optional unsigned long length);</code><br>
+    <code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(DOMString input, optional DOMString encoding, optional unsigned long startOffset, optional unsigned long length);</code><br>
+    <code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(unsigned long input);</code><br>
+    <code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(arrayBuffer input, optional DOMString encoding, optional unsigned long byteOffset, optional unsigned long length);</code><br>
+    <code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(arrayBufferView input, optional DOMString encoding, optional unsigned long startOffset, optional unsigned long length);</code><br>
+    <code>stringView new <a href="#Constructor" title="#Constructor">StringView</a>(array input, optional DOMString encoding, optional unsigned long startOffset, optional unsigned long length);</code></td>
+  </tr>
+  <tr>
+   <th>Constructor's methods</th>
+  </tr>
+  <tr>
+   <td><code>stringView StringView.<a href="#StringView.makeFromBase64%28%29">makeFromBase64</a>(DOMString base64String, optional DOMString encoding, optional unsigned long byteOffset, optional unsigned long length)</code></td>
+  </tr>
+  <tr>
+   <th>Other constructor's methods</th>
+  </tr>
+  <tr>
+   <td><code>DOMString StringView.<a href="#StringView.base64ToBytes%28%29">bytesToBase64</a>(</code><code>uint8Array </code><code>uint8Array);</code></td>
+  </tr>
+  <tr>
+   <td><code>uint8Array StringView.<a href="#StringView.base64ToBytes%28%29">base64ToBytes</a>(DOMString base64String, optional unsigned char charSize);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned long StringView.<a href="#StringView.loadUTF8CharCode%28%29">loadUTF8CharCode</a>(arrayBufferView typedArray, unsigned long index);</code></td>
+  </tr>
+  <tr>
+   <td><code>void StringView.<a href="#StringView.putUTF8CharCode%28%29">putUTF8CharCode</a>(arrayBufferView typedArray, unsigned long charCode, unsigned long index);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned char StringView.<a href="#StringView.getUTF8CharLength%28%29">getUTF8CharLength</a>(unsigned long charCode);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned long StringView.<a href="#StringView.loadUTF16CharCode%28%29">loadUTF16CharCode</a>(arrayBufferView typedArray, unsigned long index);</code></td>
+  </tr>
+  <tr>
+   <td><code>void StringView.<a href="#StringView.putUTF16CharCode%28%29">putUTF16CharCode</a>(arrayBufferView typedArray, unsigned long charCode, unsigned long index);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned char StringView.<a href="#StringView.getUTF16CharLength%28%29">getUTF16CharLength</a>(unsigned long charCode);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned char StringView.<a href="#StringView.b64ToUint6%28%29">b64ToUint6</a>(unsigned char charCode);</code></td>
+  </tr>
+  <tr>
+   <td><code>unsigned char StringView.<a href="#StringView.uint6ToB64%28%29">uint6ToB64</a>(unsigned char uint6);</code></td>
+  </tr>
+  <tr>
+   <th>Instances' methods</th>
+  </tr>
+  <tr>
+   <td><code>unsigned long stringView.<a href="#StringView.prototype.makeIndex%28%29">makeIndex</a>(optional unsigned long charactersLength, optional unsigned long startFrom);</code></td>
+  </tr>
+  <tr>
+   <td><code>DOMString stringView.<a href="#StringView.prototype.toBase64%28%29">toBase64</a>(optional boolean wholeBuffer);</code></td>
+  </tr>
+  <tr>
+   <td><code>stringView stringView.<a href="#StringView.prototype.subview%28%29">subview</a>(unsigned long characterOffset, optional unsigned long charactersLength);</code></td>
+  </tr>
+  <tr>
+   <td><code>void stringView.<a href="#StringView.prototype.forEachChar%28%29">forEachChar</a>(function callback, optional object thisObject, optional unsigned long characterOffset, optional unsigned long charactersLength);</code></td>
+  </tr>
+  <tr>
+   <td><code>DOMString stringView.<a href="#StringView.prototype.valueOf%28%29">valueOf</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code>DOMString stringView.<a href="#StringView.prototype.toString%28%29">toString</a>();</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Properties_overview">Properties overview</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th>Attribute</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><a href="#StringView.prototype.encoding"><code>encoding</code></a><br>
+    <span class="inlineIndicator readOnly readOnlyInline" title="This value may not be changed.">Read only </span></td>
+   <td><code>DOMString</code></td>
+   <td>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a> expressing the encoding type. For actually supported values <a href="#encoding_values">see here</a>.</td>
+  </tr>
+  <tr>
+   <td><a href="#StringView.prototype.buffer"><code>buffer</code></a><br>
+    <span class="inlineIndicator readOnly readOnlyInline" title="This value may not be changed.">Read only </span></td>
+   <td><code>arrayBuffer</code></td>
+   <td>The buffer to be shared between <code>stringView.</code><a href="#StringView.prototype.rawData"><code>rawData</code></a> and <code>stringView.</code><a href="#StringView.prototype.bufferView"><code>bufferView</code></a> view references.</td>
+  </tr>
+  <tr>
+   <td><a href="#StringView.prototype.rawData"><code>rawData</code></a><br>
+    <span class="inlineIndicator readOnly readOnlyInline" title="This value may not be changed.">Read only </span></td>
+   <td><code>arrayBufferView</code></td>
+   <td>An <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView">arrayBufferView</a> containing the representation of the string as array of 8-bit, 16-bit, or 32-bit integers (depending on the chosen encoding).</td>
+  </tr>
+  <tr>
+   <td><a href="#StringView.prototype.bufferView"><code>bufferView</code></a><br>
+    <span class="inlineIndicator readOnly readOnlyInline" title="This value may not be changed.">Read only </span></td>
+   <td><code>arrayBufferView</code></td>
+   <td>An <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView">arrayBufferView</a> containing the representation of <strong>the whole buffer</strong> as array of 8-bit, 16-bit, or 32-bit integers (depending on the chosen encoding).</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Constructor">Constructor</h3>
+
+<h4 id="Syntax">Syntax</h4>
+
+<pre class="syntaxbox">new StringView(<em>input</em>[, <em>encoding</em>[, <em>startOffset</em>[, <em>length</em>]]])</pre>
+
+<h4 id="Description">Description</h4>
+
+<p>Create a new <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a>-like object based upon an <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>ArrayBuffer</code></a>.</p>
+
+<h4 id="Arguments">Arguments</h4>
+
+<dl>
+ <dt><code>input</code> (required)</dt>
+ <dd>The argument the <code>stringView</code> is constructed from. It can be:
+ <ul>
+  <li>another stringView</li>
+  <li>a <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a></li>
+  <li>a <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a></li>
+  <li>an <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>arrayBuffer</code></a></li>
+  <li>a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> of <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array">uint8Array</a>, <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint16Array">uint16Array</a>, or <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint32Array">uint32Array</a> subclass</li>
+  <li>any other kind of ordered object (like <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array">arrays</a>, collections, etc.)</li>
+ </ul>
+ If it is a number it will become the <em>length</em> of the new <code>stringView</code>; otherwise it will become its <em>content</em>. The following table shows the behavior of the <code>StringView</code> constructor.
+
+ <table class="standard-table" id="stringview_behaviour">
+  <thead>
+   <tr>
+    <th><code>input</code> class</th>
+    <th><code>stringView.buffer</code></th>
+    <th><code>stringView.rawData</code></th>
+    <th><code>stringView.bufferView</code></th>
+   </tr>
+  </thead>
+  <tbody>
+   <tr>
+    <td><code>StringView</code></td>
+    <td>A new arrayBuffer will be created.</td>
+    <td>Object reference to <code>stringView.bufferView</code> or a new arrayBufferView of <code>stringView.buffer</code> will be created (depending on <code>startOffset</code> and <code>length</code> arguments passed).</td>
+    <td>A new arrayBufferView of <code>stringView.buffer</code> will be created.</td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/API/DOMString"><code>DOMString</code></a></td>
+    <td>A new arrayBuffer will be created.</td>
+    <td>Object reference to <code>stringView.bufferView</code> or a new arrayBufferView of <code>stringView.buffer</code> will be created (depending on <code>startOffset</code> and <code>length</code> arguments passed).</td>
+    <td>A new arrayBufferView of <code>stringView.buffer</code> will be created.</td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number"><code>Number</code></a></td>
+    <td>A new arrayBuffer will be created.</td>
+    <td>Object reference to <code>stringView.bufferView</code>.</td>
+    <td>A new arrayBufferView of <code>stringView.buffer</code> will be created.</td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>ArrayBuffer</code></a></td>
+    <td>Object reference to <code>input.buffer</code>.</td>
+    <td>Object reference to <code>stringView.bufferView</code> or a new arrayBufferView of <code>stringView.buffer</code> will be created (depending on <code>startOffset</code> and <code>length</code> arguments passed).</td>
+    <td>A new arrayBufferView of <code>stringView.buffer</code> will be created.</td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView"><code>ArrayBufferView</code></a></td>
+    <td>Object reference to <code>input.buffer</code>.</td>
+    <td>Object reference to <code>input</code> or a new arrayBufferView of the buffer <code>input.buffer</code> (depending on many factors regarding the position of the focused parts).</td>
+    <td>Object reference to <code>input</code> or a new arrayBufferView of the buffer <code>input.buffer</code> (depending on many factors regarding the position of the focused parts).</td>
+   </tr>
+   <tr>
+    <td>other ordered object (like <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array"><code>Array</code></a>, collections, etc.)</td>
+    <td>A new arrayBuffer will be created.</td>
+    <td>Object reference to <code>stringView.bufferView</code> or a new arrayBufferView of <code>stringView.buffer</code> will be created (depending on <code>startOffset</code> and <code>length</code> arguments passed).</td>
+    <td>A new arrayBufferView of <code>stringView.buffer</code> will be created.</td>
+   </tr>
+  </tbody>
+ </table>
+ </dd>
+ <dt id="encoding_values"><code>encoding</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a> expressing the encoding type. Possible values are:
+ <ul>
+  <li><code>UTF-8</code> (default)</li>
+  <li><code>UTF-16</code></li>
+  <li><code>UTF-32</code></li>
+  <li>Another custom string. In this case it will be treated as <a href="http://en.wikipedia.org/wiki/ISO/IEC_8859-15"><code>ASCII ISO/IEC 8859-15</code></a> during conversion to and/or from string. However it is usable also for <a href="/en-US/docs/Web/API/DOMString/Binary">binary strings</a>.</li>
+ </ul>
+ If not specified (or specified as <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/null"><code>null</code></a>) it will default to <code>UTF-8</code>.</dd>
+ <dt><code>startOffset</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing:
+ <ul>
+  <li>The start offset of the new <code>stringView</code> <strong>in <a href="#glossary_byte" title="Byte - glossary">bytes</a></strong> if the input argument is an <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>arrayBuffer</code></a></li>
+  <li>The start offset of the new <code>stringView</code> <strong>in raw <a href="#glossary_element" title="Element - glossary">elements</a></strong> if the input argument is a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> or other ordered object</li>
+  <li>The start offset of the new <code>stringView</code> <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong> if the input argument is a <code>stringView</code> or a <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a></li>
+ </ul>
+ If not specified (or specified as <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/null"><code>null</code></a>) it will default to <code>0</code>.</dd>
+ <dt><code>length</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+</dl>
+
+<p>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong> the length of the new <code>stringView</code> if the <code>input</code> argument is a <code>string</code> or a <code>stringView</code>, or <strong>in raw <a href="#glossary_element" title="Element - glossary">elements</a></strong> if the input is a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a>, an <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>arrayBuffer</code></a> or any other kind of ordered object (like <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array"><code>Array</code></a>, collections, etc.). If not specified it will take the length of the input. <strong>It never can be more than the length of the input</strong>. If you want to see how to create a stringView bigger than its content, please, see <a href="#note_about_length">this note</a>.</p>
+
+<h4 id="Examples">Examples</h4>
+
+<pre class="brush: js">var myStringView1 = new StringView("Hello world!"); // UTF-8
+
+alert(myStringView1) // "Hello world!"
+
+var myStringView2 = new StringView(myStringView1, "UTF-16");
+
+alert(myStringView1.buffer.byteLength); // 12
+alert(myStringView2.buffer.byteLength); // 24
+</pre>
+
+<h3 id="StringView_constructor's_methods"><code>StringView</code> constructor's methods</h3>
+
+<dl>
+ <dt id="StringView.makeFromBase64()"><code>makeFromBase64()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.makeFromBase64(<em>base64String</em>[, <em>encoding</em>][, <em>byteOffset</em>][, <em>length</em>])</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns a new instance of <code>StringView</code> constructed decoding a given <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em>-encoded string</a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>base64String</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em>-encoded string</a> which will be decoded and copied into the new <code>stringView</code> object.</dd>
+   <dt><code>encoding</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a> expressing the encoding type. For possible values <a href="#encoding_values">see here</a>.</dd>
+   <dt><code>byteOffset</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the start offset <strong>in <a href="#glossary_byte" title="Byte - glossary">bytes</a></strong> of the new <code>stringView</code>. If not specified (or specified as <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/null"><code>null</code></a>) it will be considered as <code>0</code>.</dd>
+   <dt><code>length</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the length <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong> of the new <code>stringView</code>. If not specified it will take the length of the input.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = StringView.makeFromBase64("SGVsbG8gd29ybGQh");
+alert(myStringView) // "Hello world!"</pre>
+  </dd>
+ </dl>
+
+ <p>This function is useful in order to pass binary data containing strings. See also <a href="#Edit_an_ASCII_part_contained_within_a_binary_file" title="#Edit_an_ASCII_part_contained_within_a_binary_file">this example</a>.</p>
+ </dd>
+</dl>
+
+<h3 id="StringView_instances'_properties"><code>StringView</code> instances' properties</h3>
+
+<dl>
+ <dt id="StringView.prototype.encoding"><code>encoding</code></dt>
+ <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a> expressing the encoding type. For possible values <a href="#encoding_values">see here</a>.</dd>
+ <dt id="StringView.prototype.buffer"><code>buffer</code></dt>
+ <dd>
+ <p>The buffer to be shared between <code>stringView.</code><a href="#StringView.prototype.rawData"><code>rawData</code></a> and <code>stringView.</code><a href="#StringView.prototype.bufferView"><code>bufferView</code></a> view references.</p>
+ </dd>
+ <dt id="StringView.prototype.rawData"><code>rawData</code></dt>
+ <dd>
+ <p>An <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView">arrayBufferView</a> containing the representation of the string as an array of 8-bit, 16-bit, or 32-bit integers (depending on the chosen encoding).</p>
+ </dd>
+ <dt id="StringView.prototype.bufferView"><code>bufferView</code></dt>
+ <dd>
+ <p>An <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView">arrayBufferView</a> containing the representation of <strong>the whole buffer</strong> as an array of 8-bit, 16-bit, or 32-bit integers (depending on the chosen encoding).</p>
+ </dd>
+</dl>
+
+<h3 id="StringView_instances'_methods"><code>StringView</code> instances' methods</h3>
+
+<dl>
+ <dt id="StringView.prototype.makeIndex()"><code>makeIndex()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.makeIndex([<em>charactersLength</em>[, <em>startFrom</em>]])
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>If the <code>charactersLength</code> argument is a number it will be taken <strong>as <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a> length</strong> and <code>makeIndex()</code> will return the index <strong>in <a href="#glossary_element" title="Element - glossary">elements</a></strong> of that position starting from 0. If the <code>startFrom</code> argument is passed the analysis will be done starting from it. If the <code>charactersLength</code> argument is omitted, <code>makeIndex()</code> will return the length <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong> (ASCII or UTF-encoded) of the <code>stringView</code> object.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>charactersLength</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the distance <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong> from <code>startFrom</code> of the index of <code>stringView.rawData</code> to be returned.</dd>
+   <dt><code>startFrom</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the position <strong>in raw <a href="#glossary_element" title="Element - glossary">elements</a></strong> of the characters parts to skip. If omitted it will be considered as <code>0</code>.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("\u6432\u6432\u6432\u6432");
+alert(myStringView.makeIndex()) // 4
+alert(myStringView.makeIndex(2)) // 6</pre>
+
+  <p>…using the <code>startFrom</code> argument…</p>
+
+  <pre class="brush: js;">var myStringView = StringView.makeFromBase64("5Lit5paHIGVzcGHDsW9sIEVuZ2xpc2gg4KS54KS/4KSo4KWN4KSm4KWAINin2YTYudix2KjZitipIHBvcnR1Z3XDqnMg4Kas4Ka+4KaC4Kay4Ka+INGA0YPRgdGB0LrQuNC5IOaXpeacrOiqniDgqKrgqbDgqJzgqL7gqKzgqY==");
+
+alert(myStringView);
+
+/* Get the Hindi subview... */
+var mySubview1 = myStringView.subview(19, 6);
+
+/* Get the Hindi subview passing an uint8Array as argument... */
+
+var nHindiStart = myStringView.makeIndex(19);
+var nHindiEnd = myStringView.makeIndex(6, nHindiStart);
+var mySubview2 = new StringView(myStringView.rawData.subarray(nHindiStart, nHindiEnd), "UTF-8");
+
+alert(mySubview1.rawData.length); // 18
+alert(mySubview2.rawData.length); // 18</pre>
+  </dd>
+ </dl>
+
+ <p>See also: <a href="#StringView.prototype.forEachChar%28%29" title="#StringView.prototype.forEachChar%28%29"><code>stringView.forEachChar()</code></a>.</p>
+
+ <div class="blockIndicator note" id="makeIndex()_note">
+ <p><strong>Performance note:</strong> Each invocation of <code>stringView.makeIndex()</code> runs a cycle for all characters contained in the <code>stringView</code> object between <code>startFrom</code> and <code>startFrom</code> + <code>charactersLength</code>. <strong>Dont't use <code>stringView.makeIndex()</code> in a cycle as if it were a normal <code>length</code> property.</strong> For custom cycles, look at the example proposed <a href="#forEachChar%28%29_note" title="#forEachChar%28%29_note">here</a>.</p>
+ </div>
+ </dd>
+ <dt id="StringView.prototype.toBase64()"><code>toBase64()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.toBase64([<em>wholeBuffer</em>])</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns a <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em>-encoded string</a> corresponding to the <code>stringView</code> or to its buffer.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>wholeBuffer</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the returned <em>base64</em>-encoded string will correspond to the whole buffer (<code>true</code>) or to the stringView (<code>false</code> or omitted).</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("\u6432\u6432\u6432\u6432");
+alert(StringView.makeFromBase64(myStringView.toBase64())) // 搲搲搲搲</pre>
+  </dd>
+ </dl>
+
+ <p>See also: <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding" title="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding">Base64 encoding and decoding</a>.</p>
+ </dd>
+ <dt id="StringView.prototype.subview()"><code>subview()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.subview(<em>characterOffset</em>[, <em>charactersLength</em>])</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns a new <code>stringView</code> object <strong>which will share the same buffer</strong>. Arguments <code>characterOffset</code> and <code>charactersLength</code> will be treated as in <code>String.prototype.substr(<em>characterOffset</em>[, <em>charactersLength</em>)</code> (<a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/substr">see</a>). If you want to create a new <code>stringView</code> object <em>cloning without sharing</em> the same buffer, look at <a href="#stringview_behaviour" title="#stringview_behaviour">this table</a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>characterOffset</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing (<strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong>) the location at which to begin extracting characters.</dd>
+   <dt><code>charactersLength</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing (<strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong>) the location at which to stop extracting characters.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView1 = new StringView("Hello world!");
+var myStringView2 = myStringView1.subview(3, 7);
+alert(myStringView2); // "lo worl"</pre>
+  </dd>
+ </dl>
+ As was explained above, <code>characterOffset</code> is a character index. The index of the first character is 0, and the index of the last character is 1 less than the length of the <code>stringView.</code> <code>subview</code> begins extracting characters at <code>characterOffset</code> and collects <code>charactersLength</code> characters (unless it reaches the end of the string first, in which case it will return fewer).
+
+ <ul>
+  <li>If <code>characterOffset</code> is positive and is greater than or equal to the length of the string, <code>substr</code> returns an empty string.</li>
+  <li>If <code>characterOffset</code> is negative, <code>substr</code> uses it as a character index from the end of the string. If <code>characterOffset</code> is negative and <code>abs(start)</code> is larger than the length of the string, <code>substr</code> uses 0 as the start index.</li>
+  <li>If <code>charactersLength</code> is 0 or negative, <code>substr</code> returns an empty string. If <code>charactersLength</code> is omitted, <code>substr</code> extracts characters to the end of the string.</li>
+ </ul>
+ </dd>
+ <dt id="StringView.prototype.forEachChar()"><code>forEachChar()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.forEachChar(<em>callback</em>[, <em>thisObject</em>[, <em>characterOffset</em>[, <em>charactersLength</em>]]])</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Repeatedly invokes a function for each character of the <code>stringView</code>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>callback</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a> to be invoked for each character. It will be called with four arguments, expressing respectively:
+   <dl>
+    <dt><code>charCode</code></dt>
+    <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the Unicode representation of the actual character (<em><a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a></em>).</dd>
+    <dt><code>characterOffset</code></dt>
+    <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the position, <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong>, of the passed character.</dd>
+    <dt><code>rawOffset</code></dt>
+    <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the position, <strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a> parts</strong>, of the passed character.</dd>
+    <dt><code>rawDataArray</code></dt>
+    <dd>The array containing the raw data of the <code>stringView</code>.</dd>
+   </dl>
+   It will look something like this: <code>callback.call(<em>thisObject</em>, <em>charCode</em>, <em>characterOffset</em>, <em>rawOffset</em>, <em>rawDataArray</em>)</code>. If the encoding is a fixed-length Unicode encoding, <code>characterOffset</code> and <code>rawOffset</code> will be the same number.</dd>
+   <dt><code>thisObject</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>The <a href="/en-US/docs/Web/JavaScript/Reference/Operators/this"><code>this</code> object</a> upon which will be executed the <code>callback</code> function.</dd>
+   <dt><code>characterOffset</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing (<strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong>) the location at which to begin executing the <code>callback</code> function.</dd>
+   <dt><code>charactersLength</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing (<strong>in <a href="#glossary_codepoint" title="Codepoint - glossary">codepoints</a></strong>) the number of invocations of the <code>callback</code> function.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">function myCallback (charCode, characterOffset, rawOffset /*, rawDataArray */) {
+  this.appendChild(document.createTextNode("char #" + characterOffset + ", raw index: " + rawOffset + ", character: " + String.fromCharCode(charCode)));
+  this.appendChild(document.createElement("br"));
+}
+
+(new StringView("\u4367\uD889\uDE54\u4343\u5431")).forEachChar(myCallback, document.body);</pre>
+  </dd>
+ </dl>
+
+ <div class="blockIndicator note" id="forEachChar()_note">
+ <p><strong>Note:</strong> <code>stringView.forEachChar()</code> executes <strong>a complete cycle</strong> through <em>all</em> characters in the <code>stringView</code> between <code>characterOffset</code> and <code>characterOffset</code> + <code>charactersLength</code>. If you want to build a custom cycle through a variable-length-encoded <code>stringView</code> (<code>UTF-8</code>, <code>UTF-16</code>), you can use a code like the following, which does not make use of <code>stringView.forEachChar()</code>. If the encoding is a fixed-length one (<code>ASCII</code>, <code>UTF-32</code>, etc.), you can do a normal cycle upon the <code>stringView.rawData</code> array.</p>
+ </div>
+
+ <pre class="brush: js;">var myStringView = new StringView("\u4367\uD889\uDE54\u4343\u5431 – Hello world!"); // an UTF-8-encoded stringView...
+
+alert(myStringView);
+
+for (var nChrCode, nLen = myStringView.rawData.length, nRawIdx = 0, nChrIdx = 0; nRawIdx &lt; nLen; nRawIdx += StringView.getUTF8CharLength(nChrCode), nChrIdx++) {
+
+  nChrCode = StringView.loadUTF8CharCode(myStringView.rawData, nRawIdx);
+
+  /* Do something with each character... */
+  alert(String.fromCharCode(nChrCode));
+
+}</pre>
+
+ <div class="blockIndicator note">
+ <p><strong>Note:</strong> For <code>UTF-16</code>, replace <code>getUTF8CharLength()</code> and <code>loadUTF8CharCode()</code> methods respectively with <code>getUTF16CharLength()</code> and <code>loadUTF16CharCode()</code>.</p>
+ </div>
+
+ <p>See also: <a href="#StringView.prototype.makeIndex%28%29" title="#StringView.prototype.makeIndex%28%29"><code>stringView.makeIndex()</code></a> and <a href="#makeIndex%28%29_note" title="#makeIndex%28%29_note">its note</a>.</p>
+ </dd>
+ <dt id="StringView.prototype.valueOf()"><code>valueOf()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.valueOf()
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Converts <code>stringView</code>'s content into string and returns it.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><em>none</em></dt>
+   <dd><em>No arguments expected.</em></dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert((new StringView("Hello world!")).valueOf() === "Hello world!"); // true</pre>
+  </dd>
+ </dl>
+
+ <p>JavaScript calls the <code>stringView.valueOf()</code> method to convert an object to a primitive value. You rarely need to invoke the <code>stringView.valueOf()</code> method yourself; JavaScript automatically invokes it when encountering an object where a primitive value is expected.</p>
+ </dd>
+ <dt id="StringView.prototype.toString()"><code>toString()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">stringView.toString()</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Converts <code>stringView</code>'s content into string and returns it.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><em>none</em></dt>
+   <dd><em>No arguments expected.</em></dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert((new StringView("Hello world!")).toString() === "Hello world!"); // true</pre>
+  </dd>
+ </dl>
+
+ <p>The <code>stringView.toString()</code> method is automatically called when the object is to be represented as a text value or when an object is referred to in a manner in which a string is expected.</p>
+ </dd>
+</dl>
+
+<h3 id="Appendix_other_StringView_constructor's_methods_(utilities)">Appendix: other <code>StringView</code> constructor's methods (utilities)</h3>
+
+<dl>
+ <dt id="StringView.bytesToBase64()"><code>bytesToBase64()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.bytesToBase64(<em>uint8Array</em>)</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Converts an array of <a href="#glossary_byte" title="Byte - glossary">bytes</a> (a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> of <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array"><code>Uint8Array</code></a> subclass) into a <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a>-encoded string.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>typedArray</code> (required)</dt>
+   <dd>The <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array"><code>Uint8Array</code></a> of <a href="#glossary_byte" title="Byte - glossary">bytes</a> to encode to <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a>.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert(StringView.bytesToBase64([72,101,108,108,111,32,119,111,114,108,100,33])); // "SGVsbG8gd29ybGQh"</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.bytesToBase64()</code> is useful to encode an UTF-8 string to <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a>. See <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding">this article</a> for other stuff.</p>
+ </dd>
+ <dt id="StringView.base64ToBytes()"><code>base64ToBytes()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.base64ToBytes(<em>base64String</em>[, <em>regSize</em>])
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Decode a <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a> string to an array of <a href="#glossary_byte" title="Byte - glossary">bytes</a> and return it. The returned array will be a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> of <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array"><code>Uint8Array</code></a> subclass.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>base64String</code> (required)</dt>
+   <dd>The <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">string</a> to decode from <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a>.</dd>
+   <dt><code>regSize</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+   <dd>The <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> of <a href="#glossary_byte" title="Byte - glossary">bytes</a> of which the length must result in a multiple (<code>1</code> or omitted for ASCII, <a href="/en-US/docs/Web/API/DOMString/Binary">binary strings</a> or UTF-8-encoded strings, <code>2</code> for UTF-16 strings, <code>4</code> for UTF-32 strings).</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert(String.fromCharCode.apply(null, StringView.base64ToBytes("SGVsbG8gd29ybGQh"))); // "Hello world!"</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.base64ToBytes()</code> is a generic utility useful also for binary data. If you want to pass the <code>StringView.base64ToBytes(<em>base64String</em>[, <em>regSize</em>]).buffer</code> property to an <a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView"><code>ArrayBufferView</code></a> subclass different from <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array">Uint8Array</a>, <strong>you should make use of the <code>regSize</code> argument</strong>.</p>
+ </dd>
+ <dt id="StringView.loadUTF8CharCode()"><code>loadUTF8CharCode()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.loadUTF8CharCode(<em>typedArray</em>, <em>index</em>)</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the single <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a> at the given location from an array of UTF-8-encoded <a href="#glossary_element" title="Element - glossary">elements</a>. An UTF-8-encoded codepoint can occupy up to six elements. This function will recompose all these parts into a codepoint.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>typedArray</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> containing the UTF-8 encoded <a href="#glossary_element" title="Element - glossary">elements</a>.</dd>
+   <dt><code>index</code> (required)</dt>
+   <dd>The location to be read.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("Hello world!"); // an UTF-8 stringView...
+alert(StringView.loadUTF8CharCode(myStringView.rawData, 6)); // 119, which is the character code for "w"</pre>
+  </dd>
+ </dl>
+ <code>StringView.loadUTF8CharCode()</code> is mainly for internal use and generally is of little utility.</dd>
+ <dt id="StringView.putUTF8CharCode()"><code>putUTF8CharCode()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.putUTF8CharCode(<em>typedArray</em>, <em>charCode</em>, <em>index</em>)
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Write a single <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a> at the given position into a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a>. A single UTF-8-encoded codepoint can occupy many <a href="#glossary_element" title="Element - glossary">elements</a> (up to six). This function will split it into the needed parts and will write them. Returns <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined"><code>undefined</code></a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>typedArray</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> containing the UTF-8 encoded <a href="#glossary_element" title="Element - glossary">elements</a>.</dd>
+   <dt><code>charCode</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the Unicode representation of a character (<em><a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a></em>).</dd>
+   <dt><code>index</code> (required)</dt>
+   <dd>The location to be overwritten.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("Hello world!"); // an UTF-8 stringView...
+StringView.putUTF8CharCode(myStringView.rawData, "_".charCodeAt(0), 5)
+alert(myStringView); // "Hello_world!"</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.putUTF8CharCode()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+ <dt id="StringView.getUTF8CharLength()"><code>getUTF8CharLength()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.getUTF8CharLength(<em>charCode</em>)</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the number of <a href="#glossary_element" title="Element - glossary">elements</a> occupied by an UTF-8-encoded <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>charCode</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the Unicode representation of a character (<em><a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a></em>).</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert(StringView.getUTF8CharLength("C".charCodeAt(0))); // "C" occupies 1 UTF-8-encoded element...
+alert(StringView.getUTF8CharLength("⁈".charCodeAt(0))); // "⁈" occupies 3 UTF-8-encoded elements...</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.getUTF8CharLength()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+ <dt id="StringView.loadUTF16CharCode()"><code>loadUTF16CharCode()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.loadUTF16CharCode(<em>typedArray</em>, <em>index</em>)</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the single <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a> at the given location from an array of UTF-16-encoded <a href="#glossary_element" title="Element - glossary">elements</a>. An UTF-16 codepoint can occupy up to two UTF-16-encoded <a href="#glossary_element" title="Element - glossary">elements</a>. This function will recompose all these parts into a codepoint.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>typedArray</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> containing the UTF-16 encoded <a href="#glossary_element" title="Element - glossary">elements</a>.</dd>
+   <dt><code>index</code> (required)</dt>
+   <dd>The location to be read.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("Hello world!", "UTF-16"); // an UTF-16 stringView...
+alert(StringView.loadUTF16CharCode(myStringView.rawData, 6)); // 119, which is the character code of "w"</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.loadUTF16CharCode()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+ <dt id="StringView.putUTF16CharCode()"><code>putUTF16CharCode()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.putUTF16CharCode(<em>typedArray</em>, <em>charCode</em>, <em>index</em>)
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Write a single <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a> at the given position into a <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a>. A single UTF-16-encoded codepoint can occupy up to two UTF-16-encoded <a href="#glossary_element" title="Element - glossary">elements</a>. This function will split it into the needed parts and will write them. Returns <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined"><code>undefined</code></a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>typedArray</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed array</a> containing the UTF-16 encoded <a href="#glossary_element" title="Element - glossary">elements</a>.</dd>
+   <dt><code>charCode</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the Unicode representation of a character (<em><a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a></em>).</dd>
+   <dt><code>index</code> (required)</dt>
+   <dd>The location to be overwritten.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">var myStringView = new StringView("Hello world!", "UTF-16"); // an UTF-16 stringView...
+StringView.putUTF16CharCode(myStringView.rawData, "_".charCodeAt(0), 5)
+alert(myStringView); // "Hello_world!"</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.putUTF16CharCode()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+ <dt id="StringView.getUTF16CharLength()"><code>getUTF16CharLength()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.getUTF16CharLength(<em>charCode</em>)
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the number of <a href="#glossary_element" title="Element - glossary">elements</a> occupied by an UTF-16-encoded <a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>charCode</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing the Unicode representation of a character (<em><a href="#glossary_codepoint" title="Codepoint - glossary">codepoint</a></em>).</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert("\uD950\uDF21"); // 0x64321
+alert(StringView.b64ToUint6(0x64321)); // "\uD950\uDF21" occupies 2 UTF-16-encoded elements...</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.getUTF16CharLength()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+ <dt id="StringView.b64ToUint6()"><code>b64ToUint6()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.b64ToUint6(<em>charCode</em>)
+</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the 6-bit <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> corresponding to the given <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a> character code.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>charCode</code> (required)</dt>
+   <dd>A <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> expressing a <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a> character code.</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert(StringView.b64ToUint6("B".charCodeAt(0))); // "B" stands for 1 in base64 encoding...</pre>
+  </dd>
+ </dl>
+ <code>StringView.b64ToUint6()</code> is mainly for internal use and generally is of little utility.</dd>
+ <dt id="StringView.uint6ToB64()"><code>uint6ToB64()</code></dt>
+ <dd>
+ <dl>
+  <dt>Syntax</dt>
+  <dd>
+  <pre class="syntaxbox">StringView.uint6ToB64(<em>uint6</em>)</pre>
+  </dd>
+  <dt>Description</dt>
+  <dd>Returns the <a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding"><em>base64</em></a> character code corresponding to the given 6-bit <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a>.</dd>
+  <dt>Arguments</dt>
+  <dd>
+  <dl>
+   <dt><code>uint6</code> (required)</dt>
+   <dd>A 6-bit unsigned <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">number</a> (0 = <code>uint6</code> &lt; 64).</dd>
+  </dl>
+  </dd>
+  <dt>Examples</dt>
+  <dd>
+  <pre class="brush: js;">alert(String.fromCharCode(StringView.uint6ToB64(1))); // 1 is represented by "B" in base64 encoding...</pre>
+  </dd>
+ </dl>
+
+ <p><code>StringView.uint6ToB64()</code> is mainly for internal use and generally is of little utility.</p>
+ </dd>
+</dl>
+
+<h3 id="Advanced_examples">Advanced examples</h3>
+
+<h4 id="Edit_an_ASCII_part_contained_within_a_binary_file">Edit an ASCII part contained within a binary file</h4>
+
+<p>Let's compile this <a href="http://en.wikipedia.org/wiki/C_%28programming_language%29">C</a> program:</p>
+
+<pre class="brush: c;">#include &lt;stdio.h&gt;
+
+int main () {
+    printf("Hello world!\n");
+    return 0;
+}</pre>
+
+<p>In a 64-bit machine it will result in an output like the following first <code>alert</code>. Let's try to translate the <code>"Hello world!"</code> string into the Italian <code>"Ciao mondo!!"</code>…</p>
+
+<pre class="brush: js;">var swHelloWorld = StringView.makeFromBase64("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AwAAAAAAAAAAAAAAAAAAAAAAAAAYGAAAAAAAAD4CAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAQAAAkAAAAAAAAAAAAAAAAAAAAAAAAMAAgAcAkAAAAAAAAAAAAAAAAAAAAAAAAMAAwA8AkAAAAAAAAAAAAAAAAAAAAAAAAMABABgAkAAAAAAAAAAAAAAAAAAAAAAAAMABQCAAkAAAAAAAAAAAAAAAAAAAAAAAAMABgDgAkAAAAAAAAAAAAAAAAAAAAAAAAMABwAeA0AAAAAAAAAAAAAAAAAAAAAAAAMACAAoA0AAAAAAAAAAAAAAAAAAAAAAAAMACQBIA0AAAAAAAAAAAAAAAAAAAAAAAAMACgBgA0AAAAAAAAAAAAAAAAAAAAAAAAMACwCoA0AAAAAAAAAAAAAAAAAAAAAAAAMADADQA0AAAAAAAAAAAAAAAAAAAAAAAAMADQAQBEAAAAAAAAAAAAAAAAAAAAAAAAMADgCUBUAAAAAAAAAAAAAAAAAAAAAAAAMADwCgBUAAAAAAAAAAAAAAAAAAAAAAAAMAEAC0BUAAAAAAAAAAAAAAAAAAAAAAAAMAEQDoBUAAAAAAAAAAAAAAAAAAAAAAAAMAEgDgBmAAAAAAAAAAAAAAAAAAAAAAAAMAEwDoBmAAAAAAAAAAAAAAAAAAAAAAAAMAFADwBmAAAAAAAAAAAAAAAAAAAAAAAAMAFQD4BmAAAAAAAAAAAAAAAAAAAAAAAAMAFgDICGAAAAAAAAAAAAAAAAAAAAAAAAMAFwDQCGAAAAAAAAAAAAAAAAAAAAAAAAMAGAAACWAAAAAAAAAAAAAAAAAAAAAAAAMAGQAQCWAAAAAAAAAAAAAAAAAAAAAAAAMAGgAAAAAAAAAAAAAAAAAAAAAAAQAAAAQA8f8AAAAAAAAAAAAAAAAAAAAAAAAAAAQA8f8AAAAAAAAAAAAAAAAAAAAACAAAAAQA8f8AAAAAAAAAAAAAAAAAAAAAEwAAAAEAFADwBmAAAAAAAAAAAAAAAAAAIAAAAAIADQBABEAAAAAAAAAAAAAAAAAANQAAAAIADQBwBEAAAAAAAAAAAAAAAAAASAAAAAIADQCwBEAAAAAAAAAAAAAAAAAAXgAAAAEAGQAQCWAAAAAAAAEAAAAAAAAAbQAAAAEAEwDoBmAAAAAAAAAAAAAAAAAAlAAAAAIADQDQBEAAAAAAAAAAAAAAAAAAoAAAAAEAEgDgBmAAAAAAAAAAAAAAAAAAvwAAAAQA8f8AAAAAAAAAAAAAAAAAAAAACAAAAAQA8f8AAAAAAAAAAAAAAAAAAAAAxwAAAAEAEQDYBkAAAAAAAAAAAAAAAAAA1QAAAAEAFADwBmAAAAAAAAAAAAAAAAAAAAAAAAQA8f8AAAAAAAAAAAAAAAAAAAAA4QAAAAAAEgDoBmAAAAAAAAAAAAAAAAAA8gAAAAEAFQD4BmAAAAAAAAAAAAAAAAAA+wAAAAAAEgDgBmAAAAAAAAAAAAAAAAAADgEAAAEAFwDQCGAAAAAAAAAAAAAAAAAAJAEAABIADQCQBUAAAAAAAAIAAAAAAAAANAEAACAAAAAAAAAAAAAAAAAAAAAAAAAAUAEAACAAGAAACWAAAAAAAAAAAAAAAAAAWwEAABIAAAAAAAAAAAAAAAAAAAAAAAAAbQEAABAAGAAQCWAAAAAAAAAAAAAAAAAAdAEAABIADgCUBUAAAAAAAAAAAAAAAAAAegEAABIAAAAAAAAAAAAAAAAAAAAAAAAAmQEAABAAGAAACWAAAAAAAAAAAAAAAAAApgEAACAAAAAAAAAAAAAAAAAAAAAAAAAAtQEAABECGAAICWAAAAAAAAAAAAAAAAAAwgEAABEADwCgBUAAAAAAAAQAAAAAAAAA0QEAABIADQAgBUAAAAAAAGUAAAAAAAAA4QEAABAAGQAYCWAAAAAAAAAAAAAAAAAA5gEAABIADQAQBEAAAAAAAAAAAAAAAAAA7QEAABAAGQAQCWAAAAAAAAAAAAAAAAAA+QEAABIADQAABUAAAAAAABUAAAAAAAAA/gEAACAAAAAAAAAAAAAAAAAAAAAAAAAAEgIAABECGAAQCWAAAAAAAAAAAAAAAAAAHgIAACAAAAAAAAAAAAAAAAAAAAAAAAAAOAIAABIACwCoA0AAAAAAAAAAAAAAAAAAAGluaXQuYwBjcnRzdHVmZi5jAF9fSkNSX0xJU1RfXwBkZXJlZ2lzdGVyX3RtX2Nsb25lcwByZWdpc3Rlcl90bV9jbG9uZXMAX19kb19nbG9iYWxfZHRvcnNfYXV4AGNvbXBsZXRlZC42MzU5AF9fZG9fZ2xvYmFsX2R0b3JzX2F1eF9maW5pX2FycmF5X2VudHJ5AGZyYW1lX2R1bW15AF9fZnJhbWVfZHVtbXlfaW5pdF9hcnJheV9lbnRyeQBoZWxsby5jAF9fRlJBTUVfRU5EX18AX19KQ1JfRU5EX18AX19pbml0X2FycmF5X2VuZABfRFlOQU1JQwBfX2luaXRfYXJyYXlfc3RhcnQAX0dMT0JBTF9PRkZTRVRfVEFCTEVfAF9fbGliY19jc3VfZmluaQBfSVRNX2RlcmVnaXN0ZXJUTUNsb25lVGFibGUAZGF0YV9zdGFydABwdXRzQEBHTElCQ18yLjIuNQBfZWRhdGEAX2ZpbmkAX19saWJjX3N0YXJ0X21haW5AQEdMSUJDXzIuMi41AF9fZGF0YV9zdGFydABfX2dtb25fc3RhcnRfXwBfX2Rzb19oYW5kbGUAX0lPX3N0ZGluX3VzZWQAX19saWJjX2NzdV9pbml0AF9lbmQAX3N0YXJ0AF9fYnNzX3N0YXJ0AG1haW4AX0p2X1JlZ2lzdGVyQ2xhc3NlcwBfX1RNQ19FTkRfXwBfSVRNX3JlZ2lzdGVyVE1DbG9uZVRhYmxlAF9pbml0AA==", "ASCII", 1444, 12);
+
+alert(String.fromCharCode.apply(null, swHelloWorld.bufferView)); // swHelloWorld.buffer contains the whole file
+alert(swHelloWorld); // "Hello world"
+
+/* traslating "Hello world" into italian... */
+
+swHelloWorld.rawData.set((new StringView("Ciao mondo!!", "ASCII")).rawData);
+
+/* download the new executable file... */
+
+location.assign(URL.createObjectURL(new Blob([swHelloWorld.buffer], { "type": "application\/x-executable" })));</pre>
+
+<div class="note"><strong>Note:</strong> The executable above has been compiled with <a href="http://gcc.gnu.org/gcc-4.8/" title="http://gcc.gnu.org/gcc-4.8/">GNU GCC 4.8.1</a> running on a 64-bit machine with <a href="https://www.archlinux.org/" title="https://www.archlinux.org/">Arch GNU/Linux</a>.</div>
+
+<h2 id="Glossary">Glossary</h2>
+
+<dl>
+ <dt id="glossary_element">Element</dt>
+ <dd>An item of the backing array (whether <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array"><code>Uint8Array</code></a>, <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint16Array"><code>Uint16Array</code></a>, <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint32Array"><code>Uint32Array</code></a>, etc.)</dd>
+ <dt id="glossary_codepoint">Codepoint</dt>
+ <dd>An unique number for each Unicode character. It is rappresented by a collection of 1-6 <code>uint8</code> <a href="#glossary_element" title="Element - glossary">elements</a> for <code>UTF-8</code>, 1-2 <code>uint16</code> <a href="#glossary_element" title="Element - glossary">elements</a> for <code>UTF-16</code>, 1 <code>uint32</code> <a href="#glossary_element" title="Element - glossary">element</a> for <code>UCS4</code>, 1 <code>uint8</code> <a href="#glossary_element" title="Element - glossary">element</a> for <code>ASCII</code>, or something else.</dd>
+ <dt id="glossary_byte">Byte</dt>
+ <dd>A collection of 8 <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Bitwise_Operators" title="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Bitwise_Operators">bits</a>.</dd>
+ <dt id="glossary_null_codepoint"><code>NULL</code> codepoint</dt>
+ <dd>The character whose <a href="#glossary_codepoint">codepoint</a> is equal to <code>0</code> (<code>'\0'</code>).</dd>
+</dl>
+
+<h2 id="Notes">Notes</h2>
+
+<ul>
+ <li>When you include the script <strong>stringview.js</strong> into a page, <strong>no variables other than <code>StringView</code> itself will be added to the global scope</strong>.</li>
+ <li><code>StringView</code> is a <strong>highly extensible</strong> library, that anyone can extend by adding methods to the object <code>StringView.prototype</code>.<br>
+  For example, imagine you want to create a method similar to <code>string.replace()</code>, but for <code>stringView</code> objects. Maybe you would like to solve a situation like the following:
+  <pre class="brush: js">var oMyStringView = new StringView("Hello,&amp;nbsp;strange&amp;nbsp;people!"); // UTF-8
+var oMyRegExp = new CLikeRegExp("&amp;nbsp;", "g");
+
+alert(oMyStringView.replace(oMyRegExp, " ")); // "Hello, strange people!\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+
+/* stringView.replace() will be different from string.replace() because it act also on the source: */
+alert(oMyStringView); // "Hello, strange people!\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"</pre>
+  As you can see, the previous example needs you to create two new algorithms: the <code>CLikeRegExp()</code> constructor – a constructor of C-like regular expression objects – and <code>StringView.prototype.replace()</code> – the new method, able to act on <code>stringView</code> instances. Well, just include <strong>stringview.js</strong> to your scope and work on them in another script:
+
+  <pre class="brush: js;">/* A constructor of C-like regular expression objects... */
+function CLikeRegExp (sRegExp, sFlags) {
+    /**
+    *  [...]
+    *
+    *  CONSTRUCTOR CODE HERE!
+    **/
+}
+
+/* A "replace" method for StringView... */
+StringView.prototype.replace = function (oCLikeRegExp, sWith) {
+    /**
+    *  [...]
+    *
+    *  METHOD CODE HERE!
+    **/
+};</pre>
+ </li>
+ <li id="note_about_length">If you want to create a <code>stringView</code> inside a <em>bigger</em> empty buffer, like in the following <a href="http://en.wikipedia.org/wiki/C_%28programming_language%29">C</a> line
+  <pre class="brush: c">/* myBuffer: 12 character followed by 1012 NULLs... */
+char myBuffer[1024] = "Hello world!";</pre>
+  you should do something like this:
+
+  <pre class="brush: js;">var myBuffer = new StringView(1024);
+/* myBuffer: 12 character followed by 1012 NULLs... */
+var myContent = new StringView("Hello world!");
+myBuffer.rawData.set(myContent.rawData, myContent.rawData.length);</pre>
+ </li>
+ <li><code>StringView</code> is a constructor and a collection of methods <strong>whose aim is <em>to work strictly on arrays of numbers</em></strong>, rather than on creating new immutable JavaScript strings. Keep it in mind when you try to extend its <code>prototype</code>.</li>
+ <li>Since <code>stringView</code>, unlike <a href="http://en.wikipedia.org/wiki/C_%28programming_language%29">C</a> strings, has a <code>length</code> property, there is no reason to add a <a href="#glossary_null_codepoint"><code>NULL</code> codepoint</a> (<code>'\0'</code>) after the termination of a string.</li>
+ <li><code>StringView</code> has been proposed as <em>strawman</em> for <a href="http://wiki.ecmascript.org/doku.php?id=harmony:specification_drafts">ES2015</a> on <strong>ECMAScript Bugs</strong>. Everyone can participate in the discussion at <a class="external" href="http://bugs.ecmascript.org/show_bug.cgi?id=1557" title="Bug 1557 — StringView – a proposal for a native typed arrays API ">bug 1557</a> or at <a href="http://esdiscuss.org/topic/need-a-champion-stringview-strawman">esdiscuss</a>.</li>
+</ul>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBuffer"><code>ArrayBuffer</code></a></li>
+ <li><a href="/en-US/docs/Web/API/Encoding_API">Encoding API</a> (and <a href="/en-US/docs/Web/API/TextDecoder">TextDecoder</a>)</li>
+ <li><a href="/en-US/docs/Web/JavaScript/Typed_arrays">Typed arrays</a></li>
+ <li><a href="/en-US/docs/Web/JavaScript/Typed_arrays/ArrayBufferView"><code>ArrayBufferView</code></a></li>
+ <li><a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint8Array"><code>Uint8Array</code></a>, <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint16Array"><code>Uint16Array</code></a>, <a href="/en-US/docs/Web/JavaScript/Typed_arrays/Uint32Array"><code>Uint32Array</code></a></li>
+ <li><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></li>
+ <li><a href="/en-US/docs/Web/API/DOMString"><code>DOMString</code></a></li>
+ <li><a href="/en-US/docs/Web/API/DOMString/Binary">Binary string</a></li>
+ <li><a href="/en-US/docs/Web/JavaScript/Typed_arrays/DataView" title="/en-US/docs/Web/JavaScript/Typed_arrays/DataView"><code>DataView</code></a></li>
+ <li><a href="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding" title="/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding">Base64 encoding and decoding</a></li>
+ <li><a href="http://esdiscuss.org/topic/need-a-champion-stringview-strawman">Need a champion? StringView strawman</a> — @esdiscuss.org</li>
+ <li><a class="external" href="http://bugs.ecmascript.org/show_bug.cgi?id=1557" title="Bug 1557 — StringView – a proposal for a native typed arrays API "><em>bug 1557</em></a> — @bugs.ecmascript.org</li>
+ <li><a href="http://en.wikipedia.org/wiki/Unicode" title="http://en.wikipedia.org/wiki/Unicode">Wikipidia article about Unicode</a></li>
+</ul>

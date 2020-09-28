@@ -1,0 +1,21 @@
+<p>Content states are what Gecko uses to implement the various state-dependent in CSS (examples would be :hover, :active, :focus, :target, :checked). We will focus on describing how changes in content state are handled.</p>
+
+<p>Generally, whenever a node's content state changes, style has to be reresolved (recomputed) for that node and all of its descendants. This is an expensive operation, however, so the style system tries to minimize the number of style reresolves it does. To this end, when a <a href="https://dxr.mozilla.org/mozilla-central/source/content/base/public/nsIDocumentObserver.h" rel="custom">&lt;code&gt;ContentStatesChanged&lt;/code&gt;</a> notification is dispatched for a content node the first thing that's done is to is to check whether the content state change something <em>could</em> affect any styles.</p>
+
+<p>This is done by walking the list of all <a class="external" href="http://www.w3.org/TR/CSS21/selector.html#q2">CSS2.1 simple selectors</a> in all style sheets applied to the page that have a state-dependent pseudo-class as part of the selector. This list is created during the parsing of the stylesheets involved. For each selector in this list we check whether it might have stopped matching the node or started matching it. If that has happened, then the style could depend on the state that changed and we have to reresolve style.</p>
+
+<p>The way we determine whether the selector might have stopped or started matching the node is by just checking whether it matches with the caveat that all the state-dependent pseudo-classes corresponding to the states that changed must be treated as matching (whether they actually do and whether they're negated or not). This is needed to catch both selectors that now match and selectors that no longer match.</p>
+
+<p>For example, say we have the selectors:</p>
+
+<pre>  a:hover
+  a:not(:hover)
+  div:hover</pre>
+
+<p>and the hover state on some node changes. We then try matching the node against these selectors, with the assumption that both <code>:hover</code> and <code>:not(:hover)</code> match the node. So the effect will be that of matching a node against the selectors:</p>
+
+<pre>  a
+  a
+  div</pre>
+
+<p>The code that implements this is in the <a href="http://mxr.mozilla.org/mozilla-central/search?string=PRBool+SelectorMatches%28"><code>SelectorMatches</code> method</a>, which is passed the list of states that changed in the <code>aStateMask</code> parameter.</p>

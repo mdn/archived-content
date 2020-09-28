@@ -1,0 +1,113 @@
+<div>
+ <div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Tutorial/The_Chrome_URL" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Tutorial/Creating_a_Window">Next  »</a></p>
+</div></div>
+<p>In this section, we'll see how to put chrome and XUL files into a package and create the manifest files for them.</p>
+<h2 id="Packages" name="Packages">Packages</h2>
+<p>A package is a set of XUL files and scripts that define the functionality of a user interface. Packages may be installed into Mozilla and referenced with chrome URLs. A package can contain any kinds of files and may be split into subdirectories for different parts of the package. A package can be stored either as a directory or as a JAR archive.</p>
+<h2 id="Manifest_Files" name="Manifest_Files">Manifest files</h2>
+<p>A manifest file describes a package and maps its location on disk to a chrome URL. The manifest files in the chrome directory will be examined when a Mozilla application starts up to see what packages are installed. That means that all you need to do to install a new package is add a new manifest file either into the application chrome directory or the user specific chrome directory. This latter chrome directory is normally the one used since the application directory might not have sufficient permissions to write into it.</p>
+<div class="note">
+ <p><strong>Note:</strong> Starting in <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span>, only the file named <code>chrome.manifest</code> is read automatically; if you need to read multiple manifest files, use the <a href="/en-US/docs/Chrome_Registration#manifest" title="Chrome Registration#manifest"><code>manifest</code></a> command in that file to import additional manifests. Use <a href="/en-US/docs/Chrome_Registration#Manifest_Flags" title="Chrome Registration#Manifest flags">manifest flags</a> to configure the scenarios in which the secondary manifest is imported.</p>
+</div>
+<p>If you just want to try testing privileged XUL code in the Firefox browser, you can do this easily by just using a manifest with only one line in it:</p>
+<ol>
+ <li>Create a new directory somewhere. For example, on a Windows machine, you might use C:\testfiles</li>
+ <li>Create a new <strong>ASCII</strong><sup>1</sup> file called test.manifest in the chrome directory. It doesn't actually matter what the file is called as long as it has the .manifest extension. <sub>( 1. doesn't work with UTF-8 with BOM.) </sub></li>
+ <li>Add the following line to it:</li>
+</ol>
+<pre>content tests file:///C:/testfiles/
+</pre>
+<p>The file path in that line should point to the directory created above. If you aren't sure what the file path is, open that directory in a browser and copy the URL from the address field.</p>
+<p>That's it! Now, all you need to do is add some XUL files into that new directory, and you will be able to load them by typing in a chrome URL of the form <code>chrome://tests/content/&lt;filename&gt;</code>. Of course, you will need to restart the browser for the changes to take effect. If the file doesn't load, make sure that the file path is correct.</p>
+<p>The basic syntax of the lines in the manifest file for content packages is:</p>
+<p>'content &lt;packagename&gt; &lt;filepath&gt;'</p>
+<p>The first field 'content' indicates a content package. For themes, 'skin' is used while 'locale' is used for locales. The packagename in the example above is 'tests', which means that the first field in the chrome URL is 'tests' as in <code>chrome://tests/content/sample.xul</code>. If the package name was 'browser', the chrome URL would be <code>chrome://browser/content/</code>. The final field is the path where the files are located. This can be either a local file path using a file URL or a JAR archive using a jar URL, which will be described in a moment. You can specify multiple packages by including another line in the manifest file.</p>
+<p>The <code>browser.manifest</code> file used by Firefox looks like this:</p>
+<pre>content branding jar:browser.jar!/content/branding/ xpcnativewrappers=yes
+content browser jar:browser.jar!/content/browser/ xpcnativewrappers=yes
+overlay chrome://global/content/viewSource.xul chrome://browser/content/viewSourceOverlay.xul
+overlay chrome://global/content/viewPartialSource.xul chrome://browser/content/viewSourceOverlay.xul
+overlay chrome://browser/content/pageInfo.xul chrome://pippki/content/PageInfoOverlay.xul
+</pre>
+<p>Two packages are listed here, 'branding' and 'browser'. Three overlays are also specified, which allow content from different packages to combine together. Extensions will make the most use of overlays, since they merge their UI with the browser UI.</p>
+<p>The file paths for the branding and browser packages use jar URLs as the content is packaged up into an archive. A JAR archive can be created with a ZIP utility. For a JAR file located in the chrome directory, the syntax is fairly simple:</p>
+<p>jar:&lt;filename.jar&gt;!/&lt;path_in_archive&gt;</p>
+<p>For the browser package, the archive is browser.jar, located alongside the manifest file in the chrome directory. The path 'content/browser' specifies the path inside the archive where the XUL files are located. You won't need to specify a path if you don't have any directories in the archive. In this case, there is, since the files for the branding package are stored in a different path in the same archive.</p>
+<p>For the 'tests' package created above, the files are not packaged into an archive, so a direct file path is used instead. This is good for development since you don't have to package up all the files every time you change them. However, when distributing an application or extension, you will want to package them into an archive to avoid having to install lots of smaller files.</p>
+<p>The xpcnativewrappers=yes part at the end of the manifest line is a flag that may optionally be used. In JavaScript, it is possible for a web page to override built-in functions with their own code. If the xpcnativewrappers flag is specified, it indicates that scripts running in a privileged context don't call these overridden versions, but the original built-in versions instead. Otherwise, if an extension attempted to call the modified versions, it would likely not work properly, or worse, create a security hole. This flag was added to prevent this problem and should always be used for newer extensions, but is left out for older extensions that might not be compatible with the change. For more information about this feature, see <a href="/en-US/docs/XPCNativeWrapper" title="XPCNativeWrapper">XPCNativeWrapper</a>.</p>
+<h2 id="Themes_and_Locales" name="Themes_and_Locales">Themes and Locales</h2>
+<p>The themes and locales, the syntax is similar as for content packages, but you also need to specify the content package you are providing a theme or locale for. For example:</p>
+<pre>skin browser classic/1.0 jar:classic.jar!/skin/classic/browser/
+locale browser en-US jar:en-US.jar!/locale/browser/
+</pre>
+<p>For these, the extra field has been added to indicate that the skin and locale applies to the browser. The skin name is 'classic/1.0'. In this case, a version number is being used as part of the theme name, but that is optional if you are making your own theme. Mozilla doesn't handle the version number in a special way; the version number is just part of the theme name. The locale is 'en-US'. The chrome URLs that these would map to would be <code>chrome://browser/skin</code> and <code>chrome://browser/locale</code>. If you were creating your own theme or locale for the browser, all you need to do is create a manifest file with one of these two lines in it, modified to suit your theme or locale.</p>
+<p>For more information about Themes, see <a href="/en-US/docs/Themes" title="Themes">Themes</a>. For more information about Locales, see <a href="/en-US/docs/Localization" title="Localization">Localization</a>.</p>
+<div class="highlight">
+ <h2 id="Our_example_find_files_dialog" name="Our_example_find_files_dialog">Our example find files dialog</h2>
+ <p>Let's create a manifest file for the find files dialog we'll be creating. You can combine all of the three types into a single file if you wish. This may be done when creating an extension such that all of the parts are in one file. We will do this for the find files dialog. Create a file findfile.manifest in the chrome directory. Add the following to the file:</p>
+ <pre>content findfile file:///findfile/content/
+skin findfile classic/1.0 file:///findfile/skin/
+locale findfile en-US file:///findfile/locale/
+</pre>
+ <p>Create the new directories listed above. It doesn't matter where the directories are created, but the file paths in the manifest file should point to the directories. Naturally, you will want to use directory paths suitable for your system. If we were distributing the package, we would want to package them up into a JAR file, and modify the paths. In this case, we are just creating to demonstrate a manifest file and to prepare directories for examples which will see in the later sections.</p>
+ <p>Note how the second field of the skin and locale lines specifies 'findfile'. This means that the skin and locale modify the findfile package, which was specified on the first line.The three paths above specify subdirectories for each part. You will want to create these subdirectories to keep each part's files separate.</p>
+</div>
+<h2 id="Installing_a_Package" name="Installing_a_Package">Installing a Package</h2>
+<p>For an application to be installed, you will need to create an installer for it, or include it as part of another application. The method used depends on what kind of application you are creating. For extensions, you will need to create an install file <a href="/en-US/docs/Install_Manifests" title="Install_Manifests">install.rdf</a> which describes what will be installed, the author of the extension and which versions of the browser or other applications it is compatible with. <a href="/en-US/docs/Bundles" title="Bundles">A specific directory structure</a> is needed as well since extensions are limited in where the files may be installed to. An extension is packaged up into an <a href="/en-US/docs/XPI" title="XPI">XPI</a> file. XPI is short for <a href="/en-US/docs/XPInstall" title="XPInstall">XPInstall</a> and is used by Mozilla to install components. Like a JAR file, an XPI file is just a ZIP file with a different extension, so you can create and view XPI files with a ZIP utility.</p>
+<p>Firefox's extension manager handles installing extensions packaged into XPI files automatically. It is recommended to upload extensions to the <a class="link-https" href="https://addons.mozilla.org/">Mozilla Add-ons site</a>, where users can locate them for installation. While they may be installed from any site, other sites are not configured to allow installations by default.</p>
+<p>It is also possible to use a install script written in JavaScript to install files. This allows you to copy files to any location and perform other file management tasks. However, applications installed with a script will not be listed in the extension manager and there is no automated method to uninstall them. For this reason, the install scripts are not used often.</p>
+<p>For standalone applications, they can be packaged up using XULRunner. This allows a separate executable file, and the application may be distributed independently of a browser.</p>
+<p>For more information about creating extensions, see <a href="/en-US/docs/Extensions" title="Extensions">Extensions</a>. For more information about XULRunner, see <a href="/en-US/docs/XULRunner" title="XULRunner">XULRunner</a>.</p>
+<h2 id="Older_Applications" name="Older_Applications">Older Applications</h2>
+<p>If you are creating applications for older versions of Mozilla software, that is, before Firefox 1.5 or Mozilla 1.8, the process is a bit more involved. The following describes how to set up a package for earlier versions. This section may be skipped if you are writing new extensions or XUL applications.</p>
+<div class="note">
+ <strong>Note</strong>: This older process does also apply to the new SeaMonkey 1.0 though. The codebase there has not yet adopted the <em>"Manifest"</em> format.</div>
+<pre class="brush:xml">&lt;?xml version="1.0"?&gt;
+
+&lt;RDF:RDF xmlns:RDF="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:chrome="http://www.mozilla.org/rdf/chrome#"&gt;
+
+  &lt;RDF:Seq about="urn:mozilla:package:root"&gt;
+    &lt;RDF:li resource="urn:mozilla:package:myapplication"/&gt;
+  &lt;/RDF:Seq&gt;
+
+  &lt;RDF:Description about="urn:mozilla:package:myapplication"
+          chrome:displayName="Application Title"
+          chrome:author="Author Name"
+          chrome:name="myapplication"
+          chrome:extension="true"/&gt;
+
+&lt;/RDF:RDF&gt;
+</pre>
+<pre>content,install,url,file:///main/app/
+</pre>
+<ol>
+ <li>Create a directory somewhere on your disk. Many people put this as a subdirectory inside Mozilla's chrome directory, but this isn't necessary. The directory could be anywhere and on any disk. Put your XUL files in this directory.</li>
+ <li>Create a file called contents.rdf and place it in this directory. Copy the text in the box below into the new contents.rdf file. This file is used to identify the application id, its name, author, version and so on.</li>
+ <li>Change the highlighted parts of the file above to your own information. The red text 'myapplication' should be the ID of your application. You make this up, but typically, the ID is similar to your application's name. Replace the blue highlighted text above with your application's title and author.</li>
+ <li>If the 'chrome:extension' field is true, the application is a Mozilla Firefox Extension and it will show up in the Extensions window of the browser. If false, it will not appear.</li>
+ <li>Save the contents.rdf and make sure it is in the directory you created in step 1.</li>
+ <li>Open the file &lt;mozilla-directory&gt;/chrome/installed-chrome.txt, where &lt;mozilla-directory&gt; is the directory where Mozilla is installed. Exit Mozilla before you do this.</li>
+ <li>Next, you are going to register the new application with Mozilla so it will know where to find it. Add a line at the end of installed-chrome.txt pointing to the new directory you created in step 1. Change the highlighted text to the file URL below of the directory. Make sure that it URL ends with a slash and that you press enter at the end of the line. If you aren't sure what the URL is, open the directory created in step 1 into a Mozilla browser and copy the URL from the location field. Note that the reference should always be a directory, not a file.</li>
+ <li>Delete the file &lt;mozilla-directory&gt;/chrome/chrome.rdf.</li>
+ <li>Start Mozilla. You should be able to view any XUL files you put into the directory using a URL of the form: <strong>chrome://applicationid/content/file.xul</strong> where file.xul is the filename. Your main XUL file should be applicationid.xul which you can load using the shortcut URL <strong>chrome://applicationid/content/</strong>.</li>
+</ol>
+<p>If you are creating skin and/or locale portions, repeat the steps above, except that the format of the contents.rdf file is slightly different. Look at the contents.rdf files in other applications for details.</p>
+<h2 id="Troubleshooting" name="Troubleshooting">Troubleshooting</h2>
+<p>Creating a chrome package can often be tricky and it is difficult to diagnose problems. Here are a few tips in case you get stuck.</p>
+<ul>
+ <li>Open the file &lt;mozilla-directory&gt;/chrome/chrome.rdf. You should find references to your application ID in there. If not, something is wrong with registration. If it is there, you are probably using the wrong chrome URL when you load the file.</li>
+ <li>Try deleting the &lt;mozilla-directory&gt;/chrome/chrome.rdf file. It will get regenerated. Also delete the entire &lt;mozilla-directory&gt;/chrome/overlayinfo/ directory if you are using overlays.</li>
+ <li>Make sure that the URL in the line you added to installed-chrome.txt ends with a slash and the file itself ends with a blank line.</li>
+ <li>On Windows, file URLs are of the form file:///C:/files/app/, where C is the drive letter.</li>
+ <li>Make sure the contents.rdf file is in the right directory and is well-formed. Open the contents.rdf file in Mozilla to see if it parses as well-formed XML. If not, you will see an error on a yellow background.</li>
+ <li>If you are using a debug build of Mozilla, some info will be printed to the terminal when starting up indicating what chrome applications are being checked. Check if your application is listed.</li>
+ <li>The error message "XML Parsing Error: undefined entity" in your XUL file can be caused by an error in the manifest or in the jar file referenced by the manifest. For example, in &lt;!DOCTYPE window SYSTEM "<code>chrome://fireclipse/locale/fireclipse.dtd</code>"&gt; the dtd file must exist and its directory must be correctly addressed in the "locale" manifest or XML parsing will fail.</li>
+</ul>
+<p>For more information about manifest files, see <a href="/en-US/docs/Chrome_Registration" title="Chrome_Registration">Chrome Registration</a>.</p>
+<p>In the next section, we will start looking into the XUL language.</p>
+<div>
+ <div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Tutorial/The_Chrome_URL" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Tutorial/Creating_a_Window">Next  »</a></p>
+</div></div>

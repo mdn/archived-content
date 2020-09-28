@@ -1,0 +1,127 @@
+<h2 id="Using_SVK_with_Mozilla_CVS" name="Using_SVK_with_Mozilla_CVS">Using SVK with Mozilla CVS</h2>
+<h3 id="Motivation" name="Motivation">Motivation</h3>
+<p>When working with Mozilla, you tend to accumulate patches which need to be reviewed, super-reviewed, and/or approved before they can be committed to the trunk. When you have only a few uncommitted patches, you can get by using cvs diff, and just editing the output to remove other patches before submitting. However, this approach quickly becomes unscalable, especially when you have different fixes in the same tree. Using a distributed versioning system like SVK takes out much of the hassle of managing your patches.</p>
+<h3 id="Choice_of_tools" name="Choice_of_tools">Choice of tools</h3>
+<p>One option is to simply use your own local CVS or Subversion. However, you will likely find that it gets tiresome to merge changes to the live tree back on to patches (without a star-merge command, for example), and performance is probably an issue for trees the size of Mozilla (when it is just for you, commands need to be fast, as waiting for minutes just to manipulate basic patches gets frustrating very quickly).</p>
+<p>Another option is GNU Arch. However, this tool also seems to suffer from severe performance issues on trees the size of Mozilla, as most operations seem to require working with tars of the source (which can take minutes to complete). Bazaar may be another option, but it is also known to suffer from performance problems.</p>
+<p>Some people have reported success with Monotone. See <a href="/en-US/docs/Using_Monotone_With_Mozilla_CVS">Using Monotone With Mozilla CVS</a>.</p>
+<p>I personally have been using SVK, and it has proved fast but convenient.</p>
+<h3 id="Configuring_SVK_for_use_with_Mozilla_CVS" name="Configuring_SVK_for_use_with_Mozilla_CVS">Configuring SVK for use with Mozilla CVS</h3>
+<p>Since we don't want to version control CVS or .mozconfig / .mozconfig.mk files, you need to add them to your global-ignores directive, in /etc/subversion/config or your per-user Subversion (often ~/.subversion/config) configuration file. A line like</p>
+<pre>global-ignores = *.o *.lo *.la #*# .*.rej *.rej .*~ *~ .#* .DS_Store CVS .mozconf*</pre>
+<p>should do it.</p>
+<h2 id="Our_SVK_working_area" name="Our_SVK_working_area">Our SVK working area</h2>
+<p>Now lets set up our working area...</p>
+<pre>svk mkdir -m "Make project root" //mozilla
+svk mkdir -m "Somewhere for branches to go" //mozilla/branches
+svk mkdir -m "Somewhere for temporary branches to go" //mozilla/temp_branches
+</pre>
+<p>Note that if you have never used svk before, the first command will prompt you to create your local depot for storage (just say yes).</p>
+<h3 id="Getting_an_initial_tree" name="Getting_an_initial_tree">Getting an initial tree</h3>
+<p>The next thing to do is get an initial clean Mozilla tree. Follow the normal checkout instructions for this. Put as many trees as you want in MOZ_CO_PROJECT, based on what you are likely to need.</p>
+<p>Do the checkout, and change into the newly checked out directory. Now issue:</p>
+<pre>svk import -m "Import Mozilla from CVS" -t //mozilla/vendor
+</pre>
+<p>From now on, whenever you update, you should put your changes into //mozilla/vendor . In order for things to work nicely, do not commit anything to //mozilla/vendor except when it has come through CVS.</p>
+<h3 id="Setting_up_your_trunk" name="Setting_up_your_trunk">Setting up your trunk</h3>
+<p>The next thing to do is to create your //mozilla/trunk, as a copy of the vendor. Your trunk will be your working area, into which you will merge all your working patches while you wait for them to get committed to CVS (in other words, your greatest-and-latest version of Mozilla).</p>
+<p>To make this, issue:</p>
+<pre>svk cp //mozilla/vendor //mozilla/trunk
+</pre>
+<h3 id="Your_checked-out_directory" name="Your_checked-out_directory">Your checked-out directory</h3>
+<p>Because you used svk import -t, the original checkout directory is suitable for use as a working directory. If you are short on disk space, or like to keep everything together, it is quite possible to use this one directory for everything, and never check out another directory, just by using the svk switch command.</p>
+<p>However, if you do this:</p>
+<ul>
+  <li>You may end up rebuilding a bit more often, due to those pesky timestamps on the files, because svk sw will touch your patches every time you switch to and from vendor.</li>
+  <li>You must commit your patches before you switch back to vendor to update. This means you couldn't, for example, use a cron script to do the updates for you. However, since you are working on branches, and these are private to you, committing broken code is no big deal.</li>
+</ul>
+<p>If you do decide to check out, use:</p>
+<pre>svk co //mozilla/trunk mozilla</pre>
+<p>and then use svk sw when you want to change onto a branch.</p>
+<h3 id="Updating_your_vendor_tree" name="Updating_your_vendor_tree">Updating your vendor tree</h3>
+<p>It may be important to your patch to stay up to date with the Mozilla tree (when the Tinderboxen are green, of course). To update your vendor tree, use a script like the following...</p>
+<pre>#!/usr/bin/perl
+
+system "svk sw //mozilla/vendor";
+
+open STATUS,'svk status|';
+
+while (&lt;STATUS&gt;)
+{
+  print "Error: Tree unclean: " . $_;
+  while (&lt;STATUS&gt;)
+  {
+    print "           ...       " . $_;
+  }
+  die "Exiting due to unclean tree.\n";
+}
+
+close STATUS;
+
+system "cvs up client.mk";
+system "make -f client.mk checkout";
+
+open STATUS,'svk status|';
+
+while (&lt;STATUS&gt;)
+{
+  if (/\?   (.*)[\r\n]+/)
+  {
+    print "svk add " . $1 . "\n";
+    system "svk add " . $1;
+  }
+  elsif (/\!   (.*)[\r\n]+/)
+  {
+    # Delete pruned directories...
+    $name = $1;
+    @parts = split(/\//, $name);
+    $subname = shift(@parts);
+    if (! -e $subname)
+    {
+      print "svk remove $subname\n";
+      system "svk remove $subname";
+    }
+    foreach $part(@parts)
+    {
+      $subname = $subname . "/" . $part;
+      if (! -e $subname)
+      {
+        print "svk remove $subname\n";
+        system "svk remove $subname";
+        last;
+      }
+    }
+  }
+}
+</pre>
+<h3 id="Merging_vendor_changes_into_the_trunk" name="Merging_vendor_changes_into_the_trunk">Merging vendor changes into the trunk</h3>
+<p>To merge vendor changes into the trunk (after completing the above vendor update), use the command</p>
+<pre>svk smerge //mozilla/vendor //mozilla/trunk</pre>
+<p>Always make sure you get vendor on the left and trunk on the right, because you don't want to merge trunk changes into the vendor tree!</p>
+<p>If you get a conflict, I would recommend that you abort, revert the conflicting patches on trunk, re-try the merge, and if necessary, make a new patch from the new trunk and merge any salvageable commits on the bad patch into it.</p>
+<h3 id="Starting_work_on_a_new_patch" name="Starting_work_on_a_new_patch">Starting work on a new patch</h3>
+<p>When starting work on a new patch, copy the trunk, and switch onto the branch, like this...</p>
+<pre>svk cp -m "Branch for Bug 12345: Support Foo Bar" //mozilla/trunk //mozilla/branches/bug12345
+svk sw //mozilla/branches/bug12345
+</pre>
+<p>Now you can edit the tree as you want, and commit to save when finished.</p>
+<h3 id="Merging_changes_on_trunk_into_branches" name="Merging_changes_on_trunk_into_branches">Merging changes on trunk into branches</h3>
+<p>If you want to merge changes on the trunk (including vendor changes which have been merged into the trunk. Never skip from vendor =&gt; branch, always go through trunk or your life will get difficult), use:</p>
+<pre>svk sm //mozilla/trunk //mozilla/branches/bug12345</pre>
+<h3 id="Merging_changes_from_branches_onto_trunk" name="Merging_changes_from_branches_onto_trunk">Merging changes from branches onto trunk</h3>
+<p>You can merge committed changes from the branches back on to the trunk using:</p>
+<pre>svk cm //mozilla/branches/bug12345 //mozilla/trunk</pre>
+<h3 id="Switching_between_patches_you_are_working_on" name="Switching_between_patches_you_are_working_on">Switching between patches you are working on</h3>
+<p>Use the svk sw //mozilla/branches/bug54321 to switch to a different branch.</p>
+<h3 id="Making_patches" name="Making_patches">Making patches</h3>
+<p>There are lots of different patches you can make, but for Bugzilla purposes, you generally want a cumulative one against vendor. To do this, you create a scratch branch (don't worry, these operations are fast, since copies are cheap in SVK).</p>
+<pre>svk cp -m "Create scratch branch" //mozilla/vendor //mozilla/temp_branches/bug12345_patch1
+</pre>
+<p>Next, do a svk log to see what changes you committed to the branch (only counting changes on the branch, not merges). Pick the changes you want, and merge them into the scratch branch as follows:</p>
+<pre>svk merge -m "Branch to scratch branch" -c revisionno //mozilla/branches/bug12345 //mozilla/temp_branches/bug12345_patch1</pre>
+<p>Repeat until all desired revisions are added. Note you can also use the form -r firstrevision:lastrevision instead of -c</p>
+<p>Finally, do a</p>
+<pre>svk diff //mozilla/vendor //mozilla/temp_branches/bug12345_patch1</pre>
+<p>You might also want to remove the temp branch so you don't get confused (it doesn't save disk-space because the revision history is still kept, it doesn't use much either, but it makes it much cleaner if you want to list your temp branches).</p>
+<h3 id="Working_with_multiple_branches_from_CVS" name="Working_with_multiple_branches_from_CVS">Working with multiple branches from CVS</h3>
+<p>For now, I would suggest just repeating the same structure but in a different directory, because I haven't found a way for SVK to know the relationship between the files. This will still allow you to do merges between different CVS branches.</p>

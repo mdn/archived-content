@@ -1,0 +1,260 @@
+<div class="blockIndicator warning">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> </p>
+</div>
+
+<h2 id="Preamble" name="Preamble">Preamble</h2>
+
+<p>Mozilla has configurable, downloadable chrome, meaning that the arrangement and even presence or absence of controls in the main window is not hardwired into the application, but loaded from a separate UI description. In fact, most of Mozilla's windows (and dialogs) will be described using this mechanism. <a href="/en/XUL" title="en/XUL">XUL</a> (pronounced "zool," as if that spelling helped any, and short for "XML User Interface Language") is our name for the language in which these UI descriptions are built.</p>
+
+<p>Window chrome is displayed and managed by the same layout engine that manages HTML content in the browser. UI descriptions, then, look a great deal like HTML 4. XUL is an application of XML. In fact, it <em>is</em> just XML with specific meaning defined for a few element types, and into which HTML can be scattered.</p>
+
+<h2 id="Terms" name="Terms">Terms</h2>
+
+<p>"XPFE" is the term Mozilla-the-organization is using to describe Mozilla-the-browser's Cross Platform Front End, because X and C look similar if you beat them long and hard with a hammer. The intention is to build cross-platform applications like browsers and mail clients from a set of tools designed for that purpose. The intention is <em>not</em> to implement a generic cross-platform application framework. That's been done, and is a great deal of work. We intend to provide a subset of cross-platform functionality suitable for building network applications like browsers, leveraging the cross-platform functionality already built into Gecko, Mozilla's HTML layout engine.</p>
+
+<p>The term "cross-platform UI" is somewhat misleading. UI designers will be able to create UI descriptions which will work on multiple platforms. But proper UI descriptions which take into account various platforms' differing ideas about proper placement of such things as dialog buttons will require some platform-specific work. A single XUL specification can only cross-platform to a degree. UI designers and build engineers will need to maintain separate, platform-specific versions of at least some XUL documents.</p>
+
+<p>"XPToolkit" is rather synonymous with XPFE. Though the former term seems more concrete than the other, and therefore is not an exact replacement, no one is completely certain why we have both.</p>
+
+<p>"XUL" already introduced, is an application of XML used to describe the layout of most windows in the Mozilla browser, including and especially the main, browser window.</p>
+
+<h2 id="Scope" name="Scope">Scope</h2>
+
+<p>This paper makes no attempt to explain requirements. We don't have a current "requirements" document. <a class="external" href="http://www-archive.mozilla.org/xpfe/aom/AOM.html">XPToolkit Architecture</a> is a better place to gain an understanding of such things. This paper contains a short introduction to Mozilla front-end architecture, concentrating on the task of building UIs. It is, as always, incomplete.</p>
+
+<p>Mozilla applications will be built of "small" components like dialog buttons and mail inbox folders, which we collectively term "widgets." Within a widget, drawing and user interactions are completely under control of the individual widget, and set when the widget was built. Relative placement of widgets, their interactions with each other, and optionally some of their configuration, will be controlled by a UI layout specified in a script whose structure is defined in this and related documents.</p>
+
+<p>Widgets are pieces of the application largely self-contained, generally corresponding to a rectangle of window real estate. Widgets will generally live grouped in separate, dynamically loaded libraries. A widget may expect to own a piece of a window (a toolbar or toolbar set), or it may be expected to work within or without a window (menubars, depending on the platform). It may not be a part of the application UI at all.</p>
+
+<p>Widgets will have predefined behaviour, set at compilation. Buttons will respond to the mouse; toolbars will act as containers for buttons. The effect a widget will have on its application will be defined as a combination of predefined application behaviour and linkage between the widgets. This linkage can be accomplished by including JavaScript in the XUL, or by application code which walks the content model after it has been built from XUL, and hooks up event listeners. Generally a real application will use some combination of the two.</p>
+
+<p>Applications, for instance, will have preconceived notions of what to do when they receive an "open file" command. An "open" button is simply a button. It will send its command to the application for processing, generally using some simple JavaScript for linkage.</p>
+
+<p>We are at first primarily concerned with the obvious UI components: toolbars, menus and dialogs. Conceptually, the XUL language will allow someone with a text editor, given a package of components which can work together, the ability to put together an application by specifying something like this (for an application on an OS using menubars across the top of its applications' windows):</p>
+
+<pre class="brush: none;">main window containing
+  menubar area at top across width of window containing
+    menubar (and its contents)
+  toolbar area below menubar across width of window containing
+    main toolbar (and its contents)
+  application-specific content area below toolbar area
+</pre>
+
+<h2 id="Structure_of_a_XUL_File" name="Structure_of_a_XUL_File">Structure of a XUL File</h2>
+
+<p>Our language of choice is <a class="external" href="http://www.w3.org/XML/">XML</a>, flavoured with <a class="external" href="http://www.w3.org/Style/CSS/">CSS</a> stylistic information. Having said that, the details of a particular application of XML; say, the syntax for specifying a toolbar, are left to separate documents describing those particular applications. Check the <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../">XPToolkit index</a> for the most recent list.</p>
+
+<p>Since XUL is a language for describing window layout, there is some overlap in the topics covered by this document and a separate document describing XUL windows. The task of writing a XUL window description is basically the same as the task of writing an HTML content description, with these exceptions: the syntax is XML (not that different from HTML 4), and there are some elements unique to XUL. These elements are widgets and certain infrastructure associated with the behaviour of the window, explained below.</p>
+
+<p>Most of the details of writing a XUL document are identical to those for writing an XML document, a description of which we will leave to other excellent XML documentation which we assume must exist but have never seen. This document will concentrate on XUL-specific features.</p>
+
+<h3 id="A_Word_on_Case_and_Namespaces.2C_and_Filetypes" name="A_Word_on_Case_and_Namespaces.2C_and_Filetypes">A Word on Case and Namespaces, and Filetypes</h3>
+
+<p>XML is of course case sensitive. XUL is equally so. Our current code tends not to be strict about enforcing this, especially for tags and attributes in the HTML namespace. This will change: tags and attributes will, as a rule, always be lower case as suggested in the <a class="external" href="http://www.w3.org/TR/WD-html-in-xml/">XHTML Working Draft</a>.</p>
+
+<p>Mozilla gives a special meaning to XUL files; it expects to find UI descriptions within. For this reason, we've defined a MIME type "text/xul" mapped to files with the extension ".xul". (For standards purposes, we will probably need to change the the mime type to something like "text/x-xul".) These files are processed using the same parser as "text/xml" files (and therefore subject to XML syntax rules, as they should be). It's possible to load a XUL document from an XML file (one named *.xml). The resulting UI will be created using an XML content model. A XUL content model is generated from *.xul files. XML documents support the basic DOM Level 1 Core APIs. XUL documents support an extended set, much as HTML documents support DOM Level 1 HTML APIs. Mozilla's XUL content models also support nifty features like local/remote merging; see the <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../xulrdf.htm">XUL and RDF document</a> for details. In general, you will want to store XUL in *.xul files.</p>
+
+<p>A XUL file can contain XML elements and HTML elements, as well as special elements unique to XUL: XUL elements. <a class="external" href="http://www.w3.org/TR/REC-xml-names/">Namespace</a> declarations for XUL (and HTML, if HTML elements are used) must be included in the file. Namespaces must be treated carefully. Correct namespace usage dictates that the namespace be used only for the tag, not in individual attributes. Rare exceptions to this rule are bugs.</p>
+
+<h3 id="XUL_File_Preamble" name="XUL_File_Preamble">XUL File Preamble</h3>
+
+<p>XUL is XML, and a good XUL file begins with the standard XML version and DOCTYPE statements.</p>
+
+<p>Since XML has no implicit display semantics, there must always be associated stylesheets. Mozilla includes a standard stylesheet, "xul.css". You can load as many style sheets as you wish using repeated processing directives, although you should always make sure to load the xul.css file initially. And finally, any namespaces used in the document must be declared. So a XUL file will begin</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/xul.css" type="text/css"?&gt;
+&lt;!DOCTYPE window&gt;
+&lt;window xmlns:html="http://www.w3.org/1999/xhtml"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+</pre>
+
+<p>The HTML namespace is of course the standard one. The XUL namespace is obviously a temporary one, but at least serves to explain the pronunciation. Note that the above example is using an implicit XUL namespace. This is optional; other examples in this document will on occasion belabor the namespace issue by declaring each use explicitly.</p>
+
+<p>The <code>chrome</code> protocol is another Mozilla extension allowing the exact location of files involved in the chrome description to be moved without affecting the XUL source. So it's just an indirection.</p>
+
+<p>Someday, there will be a complete description of this mechanism at <a href="http://www.mozilla.org/xpfe/xptoolkit/packages.html">packages</a>, but for now there's a good but somewhat out of date document at <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/ConfigChromeSpec.html">Configurable Chrome</a> available for more information.</p>
+
+<h3 id="Scripting" name="Scripting">Scripting</h3>
+
+<p>A XUL interface is only a collection of disconnected widgets until it has been programmed. "Programming" can be as simple as some JavaScript to tie the widgets together and perhaps to give them extra functionality, or as complex as application (C++) code which is free to do ... anything. This paper will concentrate on JavaScript, deeming application programming to be beyond its scope.</p>
+
+<h4 id="JavaScript" name="JavaScript">JavaScript</h4>
+
+<p>XUL can contain HTML content, including JavaScript. JavaScript functions may be added in a fashion similar to HTML. There is no <code>&lt;head&gt;</code> section of a XUL file, so script is just mixed in with the other content, delimited by a <code>script</code> element in the HTML namespace.</p>
+
+<pre class="brush: xml;">&lt;html:script type="application/javascript"&gt;
+  // dialog initialization code
+  function InitWindow() {
+    var checkbox = document.getElementById("remember");
+    if (checkbox)
+      checkbox.checked = true;
+  }
+&lt;/html:script&gt;
+</pre>
+
+<p>JavaScript can be referenced as in HTML documents: as <code>onClick</code> handlers and the like. See individual widget documentation referenced at the <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../">index</a> for a list of attributes accepting JavaScript values.</p>
+
+<p>JavaScript is most safely kept in a separate file and included in the XUL file</p>
+
+<pre class="brush: xml;">&lt;html:script language="javascript" src="our.js"/&gt;
+</pre>
+
+<p>or relegated to the contents of a CDATA section, to prevent the XML parser from choking on JavaScript which may look like XML content (a <code>&lt;</code> character, for instance.)</p>
+
+<pre class="brush: xml;">&lt;html:script type="application/javascript"&gt;
+  &lt;![CDATA[
+    function lesser(a,b) {
+      return a &lt; b ? a : b;
+    }
+  ]]&gt;
+&lt;/html:script&gt;
+</pre>
+
+<h4 id="JavaScript_Extensions" name="JavaScript_Extensions">JavaScript Extensions</h4>
+
+<p>Mozilla has found it necessary to make a few extensions to JavaScript, to support new features not conceived of in a strictly browser environment. These are currently nonstandard, of course, and subject to change for now. Individual extensions are described in individual documents dedicated to the features requiring the extensions.</p>
+
+<h4 id="DOM_Extensions" name="DOM_Extensions">DOM Extensions</h4>
+
+<p>Since XUL is not the same thing as HTML, while XUL documents will support the DOM Level 1 Core API, they will not support the DOM Level 1 HTML API. However, Mozilla supports extended DOM functionality for the XUL content model, patterned after the HTML extensions. At this time these additional DOM methods are available, though the code is of course the most accurate place to look for this information. These interfaces can be found in the directory <code>mozilla/rdf/content/public/idl</code>.</p>
+
+<h5 id="XULDocument" name="XULDocument">XULDocument</h5>
+
+<p><code>XULDocument</code> extends <code>Document</code> in a fashion similar to <code>HTMLDocument</code>'s extension</p>
+
+<pre class="brush: cpp;">interface XULDocument : Document {
+  Element getElementById(in DOMString id);
+  NodeList getElementsByAttribute(in DOMString name, in DOMString value);
+};
+</pre>
+
+<p><code>getElementById</code> works like HTML's <code>getElementById</code>.</p>
+
+<p><code>getElementsByAttribute</code> returns a list of <code>Elements</code> for which the named attribute has the given value. A <code>value</code> of "*" is a wildcard signifying all elements with the attribute.</p>
+
+<h5 id="XULElement" name="XULElement">XULElement</h5>
+
+<p><code>XULElement</code> extends <code>Element</code>.</p>
+
+<pre class="brush: cpp;">interface XULElement : Element {
+  NodeList getElementsByAttribute(in DOMString name, in DOMString value);
+};
+</pre>
+
+<p><code>getElementsByAttribute</code> functions as does its namesake in <code>XULDocument</code>, though this version returns only those elements which match the criteria and are descendants (in CSS selector terminology) of the given element.</p>
+
+<p><code>XULElement</code> also supports other methods for hooking up broadcasters; a function performed automatically by the XUL document loader and therefore not normally used in JavaScript.</p>
+
+<h3 id="XUL_Elements" name="XUL_Elements">XUL Elements</h3>
+
+<p>As mentioned above, a XUL file is mostly an HTML file with XML syntax. A XUL file may contain nothing but HTML elements and be completely functional. But XUL defines several element types unique to itself, which add functionality to the window.</p>
+
+<h4 id="Widgets" name="Widgets">Widgets</h4>
+
+<p>Widgets are generally objects like form controls: buttons, text boxes, tree controls and the like. A window can just as easily contain HTML form elements (using the <code>html</code> namespace) like any HTML content (though there is no need to put them within a <code>FORM</code> element). In fact, XUL largely uses extant widgets from HTML, with a few extensions and additions. Each widget will define a unique XML syntax for describing itself; see the widget documentation referenced at the <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../">index</a> for details.</p>
+
+<h4 id="Other_Infrastructure" name="Other_Infrastructure">Other Infrastructure</h4>
+
+<p>Widgets may have JavaScript event handlers just as in HTML, and are tied together using JavaScript and broadcaster nodes. Broadcaster nodes are declared as <code>&lt;broadcaster&gt;</code> elements in the XUL description, and are involved with the communication of changes of state between widgets. A widget or several widgets can arrange to have the value of one of their attributes be tied to a broadcaster node. This tie is defined within the XUL:</p>
+
+<pre class="brush: xml;">&lt;xul:window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+ &lt;broadcaster id="canGoBack"/&gt;
+ &lt;titledbutton src="resource:/res/toolbar/TB_Back.gif"
+               align="bottom" value="Back" onclick="BrowserBack()"&gt;
+  &lt;observes element="canGoBack" attribute="disabled"/&gt;
+ &lt;/titledbutton&gt;
+&lt;/window&gt;
+</pre>
+
+<p>But it is up to the application code to locate the broadcasters within a window so it can punch them when necessary.</p>
+
+<p>Broadcasters can broadcast any change of state, which can be tied to the value of any attribute in another XUL widget. For more complete documentation, see <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/broadcasters.html">Broadcasters and Observers</a>.</p>
+
+<h2 id="An_Example_Window" name="An_Example_Window">An Example Window</h2>
+
+<p>Below is a complete sample XUL document that describes a window with a menu bar and an HTML content area. The menu bar has a menu, <em>File</em>, with a single menu item that dumps "Hello world!" to the debug console when selected. The content area will display the contents of the file contentframe.html. This code introduces several concepts useful for creating real world windows not explicitly covered in this document. Follow the links for details.</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/xul.css" type="text/css"?&gt;
+&lt;!DOCTYPE window&gt;
+&lt;window id="main-window" xmlns:html="http://www.w3.org/1999/xhtml"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+  &lt;menubar&gt;
+      &lt;menu label="File"&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem label="Hello World!" onclick="alert('Hello world!\n');"/&gt;
+      &lt;/menupopup&gt;
+      &lt;/menu&gt;
+  &lt;/menubar&gt;
+ &lt;html:iframe id="content-frame" src="contentframe.html" flex="100%"/&gt;
+&lt;/window&gt;
+</pre>
+
+<p>The beginning of this example, down through the window tag, is the standard <a href="#XUL_File_Preamble">preamble</a>.</p>
+
+<p>Notice that the example window tag has an id attached to it. Strictly speaking, that is unnecessary for this example. However in practice, most nodes in XUL have these identifiers, which enable the nodes to be retrieved easily using the AOM's <code>getElementById</code> method. Identifiers are also useful for CSS, since rules can be applied to individual elements in XUL using the same # syntax that is possible for HTML elements.</p>
+
+<pre class="brush: css;">#main-window {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+</pre>
+
+<p>For example, the above style rule would apply to the main window and dictates that the window should consume the full width and height available to it in a content area.</p>
+
+<p>The next element in the example declares the menubar. The menubar contains a single menu called "File". This menu contains a single menu item that has a simple JavaScript <code>onclick</code> handler attached to it. This handler fires when the menu is selected by the user, and it dumps the text "Hello world!" to the debug console. (See <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/menus.html">Menu Bars and Menus</a> for details.)</p>
+
+<p>Finally there is an HTML <code>iframe</code>. Note that the frame is qualified with the prefix <code>html:</code>, since it is an HTML object being used inside a default XUL namespace. The frame also has a special attribute called <code>flex</code>, which indicates how much the frame is allowed to stretch to consume available space inside its window. (See <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/boxes.html">The Box System</a> for details).</p>
+
+<h2 id="Idealistic_Future_Direction" name="Idealistic_Future_Direction">Idealistic Future Direction</h2>
+
+<p>Ideally, packages of XUL UI descriptions could be shipped in a single file something like</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="xul.css" type="text/css"?&gt;
+&lt;!DOCTYPE package&gt;
+&lt;package xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+  &lt;window id="main"&gt;
+    ...
+  &lt;/window&gt;
+  &lt;window id="help"&gt;
+    ...
+  &lt;/window&gt;
+&lt;/package&gt;
+</pre>
+
+<p>And a window (or other service) could be instantiated by first parsing the whole package and then picking out a window from its contents</p>
+
+<pre class="brush: cpp;">Package *package = LoadPackage("<span class="nowiki">http://xxx/package.xul</span>");
+InstantiateWindow(package, GetNodeWithID("main");
+</pre>
+
+<p>This happy scheme doesn't work today, because the code expects the result of parsing an XML document to be a window. So currently, a single XUL file must contain a single window.</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="xul.css" type="text/css"?&gt;
+&lt;!DOCTYPE window&gt;
+&lt;window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+  ...
+&lt;/window&gt;
+</pre>
+
+<p>We would like to head more toward the "package" implementation in the future.</p>
+
+<h2 id="Internationalization" name="Internationalization">Internationalization</h2>
+
+<p>For practical reasons, the locale-specific attributes of a UI description would be most happily developed (and possibly distributed) in separate files, where localization can be performed by altering only a subset of the UI description devoted expressly to localization issues. That is, a separate file of localized strings.</p>
+
+<p>Internationalization is discussed more completely in the <a href="/en/XUL_Coding_Style_Guidelines" title="en/XUL Coding Style Guidelines">XUL Coding Style Guidelines</a> document. In brief, Mozilla has settled on <a class="external" href="http://www.w3.org/TR/2004/REC-xml-20040204/#sec-references">XML entities</a> as the mechanism. Entities are a feature of the language and therefore outside the scope of this paper. A XUL file can be made localizeable very easily by substituting entities for any content which may change as the locale changes. The localized text must be defined in a separate <a class="external" href="http://www.w3.org/TR/2004/REC-xml-20040204/#sec-prolog-dtd">DTD</a> or DTD fragment. The whole system is then configured with different locale-specific DTDs, and the correct DTD will be chosen for a given XML file at runtime, depending on the current locale settings. Mozilla will make that decision automatically if the localized XML file specifies its DTD using a <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../ConfigChromeSpec.html">chrome URL</a>, as outlined in <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/../../projects/intl/xul-l10n.html#l12ydependency">XUL Localizability Issues</a>.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:danm@netscape.com">danm@netscape.com</a></li>
+ <li>Last Updated Date: January 31, 2005</li>
+ <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:danm@netscape.com">danm@netscape.com</a></li>
+</ul>
+</div>

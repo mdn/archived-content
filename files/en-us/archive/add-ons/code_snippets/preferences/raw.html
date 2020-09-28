@@ -1,0 +1,439 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This article provides examples for extension developers that wish to use the Mozilla preferences system. Information here applies to the Mozilla Suite, Firefox, Thunderbird, and possibly other Mozilla-based applications. For more details on preferences in Mozilla, see <a href="/en-US/docs/Mozilla/Preferences/Preferences_system" title="Preferences_System">Preferences System</a>.</p>
+
+<p>If you haven't yet, read other documents about Mozilla preferences on MDN (links below in <a href="#Resources">Resources section</a>).</p>
+
+<div class="note"><strong>Note:</strong> This article doesn't cover all available methods for manipulating preferences; please refer to the XPCOM reference pages listed in <a href="#Resources">Resources section</a> for the complete list of methods. The interfaces dealing with preferences are fairly well documented, so using the methods not mentioned here should be straightforward.</div>
+
+<h2 id="XPCOM_interfaces_for_preferences_system" name="XPCOM_interfaces_for_preferences_system">XPCOM interfaces for preferences system</h2>
+
+<p>Mozilla exposes its preferences system through a few XPCOM interfaces. Look in the <a href="#Resources">Resources section</a> below for the link to a list of preferences-related interfaces.</p>
+
+<p>Two used interfaces are <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefService" title="">nsIPrefService</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch" title="">nsIPrefBranch</a></code>.</p>
+
+<p>The preferences service is instantiated in the same way you instantiate any XPCOM service. To get an <code>nsIPrefBranch</code>, either <code>QueryInterface()</code> the pref service (that will give you the root branch) or call <code>nsIPrefService.getBranch()</code> to get a sub-branch.</p>
+
+<p>Here are two examples:</p>
+
+<pre>// Get the root branch
+var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                    .getService(Components.interfaces.nsIPrefBranch);
+</pre>
+
+<pre>// Get the "extensions.myext." branch
+var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                    .getService(Components.interfaces.nsIPrefService);
+prefs = prefs.getBranch("extensions.myext.");
+</pre>
+
+<h2 id="Simple_types" name="Simple_types">Simple types</h2>
+
+<p>There are three types of preferences: <strong>string</strong>, <strong>integer</strong>, and <strong>boolean</strong>. Each entry in the preferences database (<code>prefs.js</code>) has one of those types. There are six methods in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch" title="">nsIPrefBranch</a></code> that read and write preferences: <code>getBoolPref()</code>, <code>setBoolPref()</code>, <code>getCharPref()</code>, <code>setCharPref()</code>, <code>getIntPref()</code>, and <code>setIntPref()</code>. Using them is as easy as:</p>
+
+<pre>// Get the "accessibility." branch
+var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                    .getService(Components.interfaces.nsIPrefService).getBranch("accessibility.");
+
+// prefs is an nsIPrefBranch.
+// Look in the above section for examples of getting one.
+var value = prefs.getBoolPref("typeaheadfind"); // get a pref (accessibility.typeaheadfind)
+prefs.setBoolPref("typeaheadfind", !value); // set a pref (accessibility.typeaheadfind)</pre>
+
+<h2 id="Complex_types" name="Complex_types">Complex types</h2>
+
+<p>As noted in the previous section, each entry in the preferences database (<code>prefs.js</code>) must have a string, an integer, or a boolean value. However, there is a concept of <strong>complex types</strong>, which makes it easier for developers to save and load <code>nsILocalFile</code> and <code>nsISupportsString</code> objects in preferences (as strings — note that from the preferences system's point of view, complex values have a <code>nsIPrefBranch.PREF_STRING</code> type.)</p>
+
+<p>There are two <code>nsIPrefBranch</code> methods implementing the concept — <code>setComplexValue()</code> and <code>getComplexValue()</code>. You can look up their implementations in <a href="https://dxr.mozilla.org/mozilla-central/source/modules/libpref/src/nsPrefBranch.cpp#228" rel="custom">nsPrefBranch.cpp</a>. Here are the IDL definitions:</p>
+
+<pre class="eval">void getComplexValue(in string aPrefName, in nsIIDRef aType,
+                     [iid_is(aType), retval] out nsQIResult aValue);
+void setComplexValue(in string aPrefName, in nsIIDRef aType, in nsISupports aValue);
+</pre>
+
+<p>As you can see, both of them take a parameter, <code>aType</code>, which can have one of the following values (to be precise, you should pass<small> <code>Components.interfaces.nsIWhatever </code> </small>instead of just<code> </code><small><code>nsIWhatever</code>, </small>which is undefined).</p>
+
+<dl>
+ <dt><code><a href="#nsISupportsString">nsISupportsString</a></code></dt>
+ <dd>Used to handle Unicode strings in preferences. Use this when the preference value may contain non-ASCII characters (for example, a user's name).</dd>
+ <dt><code><a href="#nsIPrefLocalizedString">nsIPrefLocalizedString</a></code></dt>
+ <dd>Almost the same as <code>nsISupportsString</code>, but it is handled differently in <code>getComplexValue()</code> when there's no user value for the given preference; see below for details.</dd>
+ <dt><a href="/en-US/docs/Code_snippets/File_I//O" title="Code_snippets/File_I//O"><code>nsILocalFile</code> and <code>nsIRelativeFilePref</code></a></dt>
+ <dd>Store paths in preferences. <code>nsILocalFile</code> is used to store absolute paths, while <code>nsIRelativeFilePref</code> is used to store paths relative to a "special" directory, such as the profile folder.</dd>
+</dl>
+
+<h3 id="nsISupportsString" name="nsISupportsString">nsISupportsString</h3>
+
+<p>As noted above, this is used to handle Unicode strings in preferences. Example:</p>
+
+<pre>// prefs is an nsIPrefBranch
+
+// Example 1: getting Unicode value
+var value = prefs.getComplexValue("preference.with.non.ascii.value",
+      Components.interfaces.nsISupportsString).data;
+
+// Example 2: setting Unicode value
+var str = Components.classes["@mozilla.org/supports-string;1"]
+      .createInstance(Components.interfaces.nsISupportsString);
+str.data = "some non-ascii text";
+prefs.setComplexValue("preference.with.non.ascii.value",
+      Components.interfaces.nsISupportsString, str);
+</pre>
+
+<h3 id="nsIPrefLocalizedString" name="nsIPrefLocalizedString">nsIPrefLocalizedString</h3>
+
+<p>Another complex type supported by Mozilla is <code>nsIPrefLocalizedString</code>. It is similar to <code>nsISupportsString</code>, except that when there is no user value, <code>getComplexValue()</code> gets the default value from a locale file (thus making the default value localizable).</p>
+
+<p>It's easier to explain this by example. Let's say you want to make the default value for the <code>extensions.myext.welcomemessage</code> preference localizable. You should do the following:</p>
+
+<ol>
+ <li>Add this line to some <code>.properties</code> file (for all of your locales), say to <code><a class="external" rel="freelink">chrome://myext/locale/defaults.properties</a></code>:
+
+  <pre>extensions.myext.welcomemessage=Localized default value</pre>
+ </li>
+ <li>Add the default value for <code>extensions.myext.welcomemessage</code>, pointing to that properties file, by adding the following line to your file with <em>default preferences</em> (see below).
+  <pre>pref("extensions.myext.welcomemessage", "chrome://myext/locale/defaults.properties");</pre>
+ </li>
+ <li>Read the preference with <code>getComplexValue</code>, passing <code>nsIPrefLocalizedString</code> as <code>aType</code>:
+  <pre>var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                      .getService(Components.interfaces.nsIPrefService);
+var branch = prefs.getBranch("extensions.myext.");
+var value = branch.getComplexValue("welcomemessage",
+      Components.interfaces.nsIPrefLocalizedString).data;
+</pre>
+ </li>
+</ol>
+
+<p>The code in step 3 will read the default value from <code><a class="external" rel="freelink">chrome://myext/locale/defaults.properties</a></code> when no user value is set, and will behave exactly the same as if <code>nsISupportsString</code> was passed as <code>aType</code> otherwise.</p>
+
+<p><br>
+ Setting <code>nsIPrefLocalizedString</code> preferences is similar to setting <code>nsISupportsString</code>:</p>
+
+<pre class="eval">var pls = Components.classes["@mozilla.org/pref-localizedstring;1"]
+                    .createInstance(Components.interfaces.nsIPrefLocalizedString);
+pls.data = val;
+prefs.setComplexValue("preference.with.non.ascii.value",
+                      Components.interfaces.nsIPrefLocalizedString, pls);
+</pre>
+
+<h3 id="nsILocalFile_and_nsIRelativeFilePref" name="nsILocalFile_and_nsIRelativeFilePref">nsILocalFile and nsIRelativeFilePref</h3>
+
+<p>Please see the <a href="/en-US/docs/Code_snippets/File_I//O#Storing_nsILocalFile_in_preferences" title="Code_snippets/File_I//O">File IO article</a> for details on <code>nsILocalFile</code> and <code>nsIRelativeFilePref</code>.</p>
+
+<h2 id="Default_preferences" name="Default_preferences">Default preferences</h2>
+
+<p><span class="inlineIndicator todo todoInline"><strong>FIXME:</strong> <em>someone should reword this section</em></span> Each preference may have up to two values — the <strong>current</strong> value and the <strong>default</strong> value. That means there are two "pref trees:" current and default, and each of them may or may not have a value for the preference in question.</p>
+
+<p>You can see the list of preferences in <a class="external" href="http://kb.mozillazine.org/About:config">about:config</a> (where available). Preferences that have a user value are bold, and those that don't have a user value are printed in normal font.</p>
+
+<p>You can get both trees using the <code>nsIPrefService.getBranch()</code> and <code>nsIPrefService.getDefaultBranch()</code> functions. See below for details.</p>
+
+<h3 id="The_effect_of_default_preferences_on_get_methods" name="The_effect_of_default_preferences_on_get_methods">The effect of default preferences on <code>get</code> methods</h3>
+
+<p>When one of the <code>get</code> methods of <code>nsIPrefBranch</code> (assuming it's a branch of the tree with current values) is called, it does the following:</p>
+
+<ol>
+ <li>Checks whether the <strong>current</strong> tree has a value for the preference and whether or not the preference is locked.</li>
+ <li>If there's a value of the correct type (for example, <code>getBoolValue()</code> expects a value of type <code>nsIPrefBranch.PREF_BOOL</code>), and the preference is not locked, the method returns that value.</li>
+ <li>If there's a value of the wrong type and the preference is not locked, an <code>NS_ERROR_UNEXPECTED</code> exception is thrown.</li>
+ <li>If the preference is locked or if there is no value for that preference in the <strong>current</strong> tree, the <code>get</code> method checks the default tree.</li>
+ <li>If there's a value of the expected type in the <strong>default</strong> tree, it is returned (with the only exception being that calling <code>getComplexValue()</code> with <code>aType</code> parameter specified as <code>nsIPrefLocalizedString</code>, <a href="#nsIPrefLocalizedString">described above</a>).</li>
+ <li>Otherwise an <code>NS_ERROR_UNEXPECTED</code> exception is thrown.</li>
+</ol>
+
+<p>If the branch is from the <strong>default</strong> tree, the <code>get</code> method doesn't check the tree with current values at all.</p>
+
+<p><small>(This is not exactly how it's coded in <code>libpref</code>, but it's equivalent)</small></p>
+
+<h3 id="Where_the_default_values_are_read_from" name="Where_the_default_values_are_read_from">Where the default values are read from</h3>
+
+<ul>
+ <li>All Mozilla-based applications read <code>(application directory)/defaults/preferences/*.js</code></li>
+ <li>In addition to that, recent versions of Toolkit applications (Firefox 1.0, Thunderbird 1.0, and the like but <strong>not</strong> the Mozilla Suite) read extension defaults -- usually located in<code> (profile folder)/extensions/(ID)/defaults/preferences/</code></li>
+</ul>
+
+<p>These files use simple JavaScript-like syntax. To add a default value for a preference, you should add a line like this to your default preferences file:</p>
+
+<pre class="eval">pref("extensions.extensionname.preferencename", false);
+</pre>
+
+<h3 id="How_to_install_an_extension.27s_defaults_files" name="How_to_install_an_extension.27s_defaults_files">How to install an extension's defaults files</h3>
+
+<p>For Mozilla Suite (not Firefox and Thunderbird), copy them to <code>(appdir)/defaults/pref</code> in your <a href="/en-US/docs/Install.js" title="Install.js">install script</a>.</p>
+
+<p>For Firefox/Thunderbird, just put them in <code>myext.xpi/defaults/preferences/</code>. They will be copied and registered with the preferences system automatically.</p>
+
+<h2 id="More_about_preferences_.22branches.22" name="More_about_preferences_.22branches.22">More about preferences "branches"</h2>
+
+<p>Preference names consist of a few strings separated with dots, and related preferences usually share the same prefix. For example, most accessibility preferences in Mozilla start with "accessibility."</p>
+
+<p>This means that all existing preferences can be imagined as if they were in a tree, like this:</p>
+
+<pre class="eval">+
+|
++-- accessibility
+|         |
+|         +-- typeaheadfind
+|         |         |
+|         |         +-- autostart (<em>accessibility.typeaheadfind.autostart</em>)
+|         |         |
+|         |         +-- enablesound (<em>accessibility.typeaheadfind.enablesound</em>)
+|         |
+|         +-- usebrailledisplay (<em>accessibility.usebrailledisplay</em>)
+|
++-- extensions
+          |
+          +-- lastAppVersion (<em>extensions.lastAppVersion</em>)
+</pre>
+
+<p>This is the metaphor behind <code>nsIPref<strong>Branch</strong></code>. However, you should be aware of the fact that the Mozilla preferences system doesn't treat dots in a special way. For example this code will also read the value of <code><em>accessibility.typeaheadfind.enablesound</em></code> preference:</p>
+
+<pre class="eval">var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                      .getService(Components.interfaces.nsIPrefService);
+var branch = prefs.getBranch("acce");
+var enablesound = branch.getBoolPref("ssibility.typeaheadfind.enablesound");
+</pre>
+
+<p>This is the reason why you should usually pass strings ending with a dot to <code>getBranch()</code>, like <code>prefs.getBranch("accessibility<strong>.</strong>")</code>.</p>
+
+<p>Another caveat you should be aware of is that <code>nsIPrefBranch.getChildList("",{})</code> returns an array of preference names that start with that branch's <code>root</code>, for example</p>
+
+<pre class="eval">var branch = prefs.getBranch("accessibility.");
+var children = branch.getChildList("", {});
+</pre>
+
+<p>will return these items (for the example tree above): <code>"typeaheadfind.autostart", "typeaheadfind.enablesound", and "usebrailledisplay"</code>, not just direct children (<code>"typeaheadfind"</code> and <code>"usebrailledisplay"</code>), as you might have expected.</p>
+
+<h2 id="Using_preference_observers" name="Using_preference_observers">Using preference observers</h2>
+
+<p>Changes a user makes to your extension's preferences, such as through an options dialog, may not take effect until the browser is restarted (e.g., if you have initialized local variables when the browser loads). You may wish for such changes to be applied immediately in your extension. In this case, you can use the <code>nsIPrefBranch2</code> interface to "listen" for changes to preferences in a certain branch. Note that it need not be your own extension's preferences; you can set an observer on any preference or branch. When a change is made to the preferences, you can take the appropriate action (such as reinitializing variables or toggling display properties in XUL components). This technique will work no matter how or where the preferences are changed: in another browser window, directly in the <a class="external" href="http://kb.mozillazine.org/About:config">about:config</a> interface, or even by another extension.</p>
+
+<div class="note"><strong>Note:</strong> During Gecko 13 development, <code>nsIPrefBranch2</code> was deprecated, and its methods moved to <code>nsIPrefBranch</code>. Calling <code>.QueryInterface(Components.interfaces.nsIPrefBranch2)</code> is no longer required, although it still works.</div>
+
+<p>Here is a straightforward example:</p>
+
+<pre class="brush: js">var myPrefObserver = {
+  register: function() {
+    // First we'll need the preference services to look for preferences.
+    var prefService = Components.classes["@mozilla.org/preferences-service;1"]
+                                .getService(Components.interfaces.nsIPrefService);
+
+    // For this.branch we ask for the preferences for extensions.myextension. and children
+    this.branch = prefService.getBranch("extensions.myextension.");
+
+    // Now we queue the interface called nsIPrefBranch2. This interface is described as:
+    // "nsIPrefBranch2 allows clients to observe changes to pref values."
+    // This is only necessary prior to Gecko 13
+    if (!("addObserver" in this.branch))
+        this.branch.QueryInterface(Components.interfaces.nsIPrefBranch2);
+
+    // Finally add the observer.
+    this.branch.addObserver("", this, false);
+  },
+
+  unregister: function() {
+    this.branch.removeObserver("", this);
+  },
+
+  observe: function(aSubject, aTopic, aData) {
+    // aSubject is the nsIPrefBranch we're observing (after appropriate QI)
+    // aData is the name of the pref that's been changed (relative to aSubject)
+    switch (aData) {
+      case "pref1":
+        // extensions.myextension.pref1 was changed
+        break;
+      case "pref2":
+        // extensions.myextension.pref2 was changed
+        break;
+    }
+  }
+}
+myPrefObserver.register();
+</pre>
+
+<p>And next, here is a more evolved version of the previous code better fit for code reuse both within a project and across projects (for example, using <a href="/en-US/docs/JavaScript_code_modules" title="JavaScript_code_modules">JavaScript code modules</a>):</p>
+
+<pre class="brush: js">/**
+ * @constructor
+ *
+ * @param {string} branch_name
+ * @param {Function} callback must have the following arguments:
+ *   branch, pref_leaf_name
+ */
+function PrefListener(branch_name, callback) {
+  // Keeping a reference to the observed preference branch or it will get
+  // garbage collected.
+  var prefService = Components.classes["@mozilla.org/preferences-service;1"]
+    .getService(Components.interfaces.nsIPrefService);
+  this._branch = prefService.getBranch(branch_name);
+  this._branch.QueryInterface(Components.interfaces.nsIPrefBranch2);
+  this._callback = callback;
+}
+
+PrefListener.prototype.observe = function(subject, topic, data) {
+  if (topic == 'nsPref:changed')
+    this._callback(this._branch, data);
+};
+
+/**
+ * @param {boolean=} trigger if true triggers the registered function
+ *   on registration, that is, when this method is called.
+ */
+PrefListener.prototype.register = function(trigger) {
+  this._branch.addObserver('', this, false);
+  if (trigger) {
+    let that = this;
+    this._branch.getChildList('', {}).
+      forEach(function (pref_leaf_name)
+        { that._callback(that._branch, pref_leaf_name); });
+  }
+};
+
+PrefListener.prototype.unregister = function() {
+  if (this._branch)
+    this._branch.removeObserver('', this);
+};
+
+var myListener = new PrefListener(
+  "extensions.myextension.",
+  function(branch, name) {
+    switch (name) {
+      case "pref1":
+        // extensions.myextension.pref1 was changed
+        break;
+      case "pref2":
+        // extensions.myextension.pref2 was changed
+        break;
+    }
+  }
+);
+
+myListener.register(true);
+</pre>
+
+<div class="warning"><strong>Note:</strong> You need to keep a reference to the preference branch you are observing (unless it is the root branch) or it will get garbage collected and will never notify you. After it's garbage collected, you won't receive notifications anymore, so use the provided examples above, and <u><strong>don't write something like the following code</strong></u>:</div>
+
+<pre class="brush: js"><code>// DON'T DO THIS
+Components.classes["@mozilla.org/preferences-service;1"]
+    .getService(Components.interfaces.nsIPrefService)
+    .getBranch("myextension.prefs.")
+    .QueryInterface(Components.interfaces.nsIPrefBranch2)
+    .addObserver("", this, false);</code>
+</pre>
+
+<h2 id="Using_prefHasUserValue.28.29" name="Using_prefHasUserValue.28.29">Using <code>prefHasUserValue()</code></h2>
+
+<p><code>nsIPrefBranch.prefHasUserValue(<em>preference</em>)</code> checks whether the preference has been changed from the default value. If so, it will return <code>true</code>, otherwise <code>false</code>. In particular, when no default value exists for a preference, <code>prefHasUserValue()</code> indicates whether a preference exists.</p>
+
+<p>Attempting to read a nonexistent preference using one of the <code>get*Pref</code> methods will throw an exception. Using <code>prefHasUserValue()</code> lets you check if the preference exists before attempting to read it. For example:</p>
+
+<pre class="eval">if (prefs.prefHasUserValue("mypref")) {
+  alert(prefs.getCharPref("mypref"));
+}
+</pre>
+
+<p>Note that the <code>getCharPref()</code> call may throw error even if the preference exists, for example if it has a different type.</p>
+
+<p>As of Firefox 54, you can pass a default value as the second argument to any <code>get*Pref</code> method. The default value will be returned if the preference doesn't exist - no exception will be thrown. So you could use, for instance:</p>
+
+<pre class="eval">alert(prefs.getCharPref("mypref", "no value stored"));
+</pre>
+
+<p>Be careful with this technique because prior to Firefox 54, the additional (default) value will be ignored and an exception would still be thrown in this case.</p>
+
+<h2 id="Using_preferences_in_extensions" name="Using_preferences_in_extensions">Using preferences in extensions</h2>
+
+<p>If you're writing your extension for one of the Toolkit applications (Firefox, Thunderbird, Nvu), you should provide default values for your extension's preferences (see above for information on how to do it). It has the following benefits:</p>
+
+<ul>
+ <li>You don't have to duplicate default values in various parts of your code.</li>
+ <li>The code for reading preferences is simplified, since you don't need to worry about the <code>get</code> methods throwing exceptions.</li>
+</ul>
+
+<h2 id="JavaScript_wrappers_for_preferences_system" name="JavaScript_wrappers_for_preferences_system">JavaScript wrappers for preferences system</h2>
+
+<p>There are a few JavaScript wrappers to make your life easier:</p>
+
+<ul>
+ <li><code><a class="external" href="http://mozilla.doslash.org/prefutils" rel="freelink">http://mozilla.doslash.org/prefutils</a><code> </code></code></li>
+ <li><code><a class="external" rel="freelink">chrome://global/content/nsUserSettings.js</a></code></li>
+ <li><code><a class="link-https" href="https://wiki.mozilla.org/Labs/JS_Modules" rel="freelink">https://wiki.mozilla.org/Labs/JS_Modules</a></code></li>
+</ul>
+
+<h2 id="How_to_Save_Preferences" name="How_to_Save_Preferences">How to save preferences</h2>
+
+<p>To save preferences into the default location:</p>
+
+<pre class="eval">var prefService = Components.classes["@mozilla.org/preferences-service;1"]
+                               .getService(Components.interfaces.nsIPrefService);
+prefService.savePrefFile(null);
+</pre>
+
+<h2 id="check_For_Existence" name="check_For_Existence">Checking for existence of a key</h2>
+
+<p>If you try to get the value of a nonexistent preference, an error will be thrown:</p>
+
+<pre>Error: NS_ERROR_UNEXPECTED: Component returned failure code: 0x8000ffff (NS_ERROR_UNEXPECTED) [nsIPrefBranch.getCharPref]</pre>
+
+<p>To avoid such errors, you should check whether the key exists or not using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPrefService#getPrefType()">nsIPrefService.getPrefType()</a></code>, as shown below:</p>
+
+<p><a> </a></p>
+
+<pre class="eval"><a>var prefServiceBranch = Components.classes["@mozilla.org/preferences-service;1"]
+                               .getService(Components.interfaces.nsIPrefService).getBranch("");
+if(prefServiceBranch.getPrefType('extensions.myext.key')){
+    //key exist!
+}
+</a></pre>
+
+<h2 id="Resources" name="Resources"><a>Examples</a></h2>
+
+<p><a> </a></p>
+
+<ul>
+ <li><a href="https://gist.github.com/Noitidart/e0d3c21ab38822fbfd17">GitHub - Gist :: _ff-addon-template-bootstrapPrefsSkeleton</a> - <a>This Gist here is a fully working example of a fully funcitonal preferences skeleton, it uses the observer example from above. This example also uses a technique to trigger an onChange function that can be defined per preference and has the old value and along with the new value of the preference. It also uses a technique so you can just do prefs.preferenceName.setval('blah') instead of having to branch.setCharPref etc.</a></li>
+</ul>
+
+<h2 id="Resources" name="Resources"><a>Resources</a></h2>
+
+<p><a> </a></p>
+
+<ul>
+ <li><a>Other documentation on preferences </a><a> </a>
+
+  <ul>
+   <li><a href="/en-US/docs/Preferences_API" title="Preferences_API">Preferences API</a></li>
+   <li><a href="/en-US/docs/Mozilla/Preferences/A_brief_guide_to_Mozilla_preferences">A Brief Guide to Mozilla Preferences</a> — describes preferences system from user's/administrator's POV</li>
+  </ul>
+ </li>
+ <li>Mozilla XPCOM interfaces of the preferences system
+  <ul>
+   <li>Most used interfaces (these are frozen and will not change): <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch" title="">nsIPrefBranch</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefService" title="">nsIPrefService</a></code></li>
+   <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch2" title="">nsIPrefBranch2</a></code> interface (before Gecko 1.8 it was called <code>nsIPrefBranchInternal</code>)</li>
+  </ul>
+ </li>
+ <li><a href="/en-US/docs/Mozilla/Preferences/Preferences_system" title="Preferences_System">Preferences System</a> - an easy way to create a XUL Options window for your extension or application</li>
+ <li><a href="/en-US/docs/Firefox_Sync/Syncing_custom_preferences" title="Firefox Sync/Syncing custom preferences">Syncing preferences across clients</a> using Sync</li>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/modules/libpref/" rel="custom">LXR pages for libpref</a>, the source code module that implements the preferences system</li>
+ <li>A <a class="external" href="http://mozilla.doslash.org/prefutils" rel="freelink">JavaScript wrapper for preferences API</a></li>
+ <li><a href="/en-US/docs/Adding_preferences_to_an_extension" title="Adding_preferences_to_an_extension">Adding preferences to an extension</a> — a simple tutorial with a working extension that illustrates the use of preference observers</li>
+ <li><a href="/en-US/docs/Extensions/Inline_Options" title="Extensions/Inline_Options">Inline Options</a> - How to use the new preference UI that appears inline in the Add-on Manager window starting in Firefox 7 .</li>
+</ul>
+
+<div style="border: 1px dashed grey; padding: 2px; position: absolute; display: inline; font-family: arial,sans-serif; font-size: 9px;"><span class="inlineIndicator todo todoInline"><strong>FIXME:</strong> </span></div>

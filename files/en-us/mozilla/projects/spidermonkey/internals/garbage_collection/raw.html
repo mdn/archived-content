@@ -1,0 +1,183 @@
+<div>{{SpiderMonkeySidebar("Internals")}}</div>
+
+<div></div>
+
+<h2 id="Design_overview">Design overview</h2>
+
+<p>SpiderMonkey has a mark-sweep garbage collection (GC) with incremental marking mode, generational collection, and compaction. Much of the GC work is performed on helper threads.</p>
+
+<h2 id="Principal_data_structures">Principal data structures</h2>
+
+<h3 id="Cell">Cell</h3>
+
+<p>A <strong>Cell </strong>is the unit of memory that is allocated and collected by the GC, as used externally. In other words, from the point of view of the rest of the engine, the job of the GC is to allocate cells and automatically collect them.</p>
+
+<p>Cell is the base class for all classes that are allocated by the GC, e.g., JSObject.</p>
+
+<h3 id="Allocation_Kind">Allocation Kind</h3>
+
+<p>Cells are classified by allocation kind. The allocation kind determines the size of the object and the finalization behavior. Allocation kind is defined by <strong>enum AllocKind</strong>.</p>
+
+<p>Arenas always hold objects of the same allocation kind. Thus, an arena holds objects all of the same size and finalization behavior.</p>
+
+<h3 id="Compartments">Compartments</h3>
+
+<p>The JS heap is partitioned into compartments. Some key properties of compartments are:</p>
+
+<ul>
+ <li>Every cell (JS heap object) belongs to at most one compartment. (Some cells are shared across all compartments in a Zone.)</li>
+ <li>An object may not hold a direct pointer to an object in another compartment. Instead, it must store a wrapper for the other object. This allows compartments to be used for security checks: objects in the same compartment have the same access requirements, so no checks are needed, but checks may be done when traversing cross-compartment wrappers.</li>
+ <li>The engine may GC a single compartment without GCing the others. The engine can also GC a set of compartments without GCing the rest. Cross-compartment wrappers are used as roots for single- and multi-compartment GCs.</li>
+</ul>
+
+<p>Compartments are a fundamental cross-cutting concept in SpiderMonkey (see also <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/Compartments" title="https://developer.mozilla.org/en/SpiderMonkey/SpiderMonkey_compartments">Compartments</a>), though anything related to memory is now more concerned with Zones, especially GC.</p>
+
+<h3 id="Zone">Zone</h3>
+
+<p style="line-height: 23.3333339691162px;"><span style="line-height: 23.3333339691162px;">A z</span>one is a collection of compartments. <span style="line-height: 23.3333339691162px;">Zones mainly serve as boundaries for GCs: the garbage collector collects at the level of a zone, not an individual compartment. Unlike compartments, zones </span><span style="line-height: 23.3333339691162px;">have no special security properties. Some properties of zones are:</span></p>
+
+<ul style="line-height: 23.3333339691162px;">
+ <li>Every compartment belongs to exactly one zone</li>
+ <li>Every JS heap object belongs to exactly one zone.</li>
+ <li>Objects from the same zone but different compartments can share an arena.</li>
+ <li>Objects from different zones cannot be stored in the same arena. </li>
+ <li><span style="line-height: 23.3333339691162px;">A zone remains alive as long as any JS heap objects in the zone are alive.</span></li>
+</ul>
+
+<h3 id="Chunk">Chunk</h3>
+
+<p>A Chunk is the largest internal unit of memory allocation.</p>
+
+<p>A chunk is 1MB and contains Arenas, padding, the mark bitmap (ChunkBitmap), a bitmap of decommitted arenas, and a chunk header (ChunkInfo).</p>
+
+<p>The ChunkInfo contains a list of unallocated Arenas, starting at ChunkInfo::freeArenasHead and linked through ArenaHeader::next. The ChunkInfo also contains some basic stats, such as the number of free arenas.</p>
+
+<h3 id="Arena">Arena</h3>
+
+<p>An Arena is an internal unit of memory allocation.</p>
+
+<p>An Arena is one page (4096 bytes on almost all platforms) and contains an ArenaHeader, a few pad bytes, and then an array of aligned elements. All elements in an Arena have the same allocation kind and size.</p>
+
+<p>Every Arena maintains a list of free spans, starting at ArenaHeader::firstFreeSpanOffets. The last cell in each free span (except the last one) holds a <strong>FreeSpan </strong>for the next free span.</p>
+
+<h3 id="Free_Span">Free Span</h3>
+
+<p><strong>struct FreeSpan</strong> represents a contiguous sequence of free cells <strong>[first,last]</strong> within an Arena. FreeSpan contains functions to allocate from the free span.</p>
+
+<h3 id="Mark_Bitmap">Mark Bitmap</h3>
+
+<p>The mark bitmap is represented by <strong>ChunkBitmap</strong>.</p>
+
+<p>The mark bitmap has two bits per GC cell, so that it can represent both regular liveness marking ("marked black") as well as reachability from cycle-collected objects ("marked gray"). Mark bits are allocated based on the minimum cell size, thus an object comprised of larger cells consumes multiple bits in the bitmap (but only uses two of them.)</p>
+
+<h2 id="Exact_Stack_Rooting_API">Exact Stack Rooting API</h2>
+
+<div class="note">
+<p><strong>Note</strong>: the information here is about the implementation of GC roots and their use within SpiderMonkey. For information on how the rooting APIs should be used by embedders, read:<a href="/en-US/docs/SpiderMonkey/GC_Rooting_Guide" title="/en-US/docs/SpiderMonkey/GC_Rooting_Guide"> GC Rooting Guide</a>.</p>
+</div>
+
+<p>This information has been split out into a separate article: <a href="/en-US/docs/SpiderMonkey/Internals/GC/Exact_Stack_Rooting" title="/en-US/docs/SpiderMonkey/Internals/GC/Exact_Stack_Rooting">Exact Stack Rooting</a>.</p>
+
+<h2 id="Marking">Marking</h2>
+
+<p>TODO</p>
+
+<h2 id="Incremental_marking">Incremental marking</h2>
+
+<p>Incremental marking means being able to do a bit of marking work, then let the mutator (JavaScript program) run a bit, then do another bit of marking work. Thus, instead of one long pause for marking, the GC does a series of short pauses. The pauses can be set to be 10ms or less.</p>
+
+<p>There is always a possibility that a long pause will be required. If the allocation rate is high during incremental GC, the engine may run out of memory before finishing the incremental GC. If so, the engine must immediately restart a full, non-incremental GC in order to reclaim some memory and continue execution.</p>
+
+<h3 id="Incremental_write_barrier">Incremental write barrier</h3>
+
+<h4 id="The_problem_that_requires_a_write_barrier">The problem that requires a write barrier</h4>
+
+<p>Incremental GC requires a write barrier for correctness.</p>
+
+<p>TODO decent diagrams<img alt="Very poor diagram showing IGC hazard that requires a write barrier" src="https://mdn.mozillademos.org/files/5187/IGC-hazard.png" style="height: 400px; width: 640px;"></p>
+
+<p>The basic problem is as follows (see Dictionary for color terms). Say object A is black and contains a pointer field. Let object B be white. Now let the incremental slice stop, so the mutator resumes. If the mutator stores B into A, so that A contains a pointer to B, and deletes all existing pointers to B, then:</p>
+
+<ul>
+ <li>B is live, because A is black and contains a pointer to B.</li>
+ <li>B will not be marked, because B is only reachable through A and we are all done with A, because A is black.</li>
+ <li>Thus, B is live but will be collected.</li>
+</ul>
+
+<p>The write barrier is a piece of code that runs just before a pointer store occurs and records just enough information to make sure that live objects don't get collected.</p>
+
+<h4 id="The_SpiderMonkey_incremental_write_barrier">The SpiderMonkey incremental write barrier</h4>
+
+<p>SpiderMonkey uses a (relatively!) simple, common incremental write barrier called a <strong>snapshot-at-the-beginning allocate-black barrier</strong>.</p>
+
+<p>To understand how this barrier works, first assume that we're going to do an incremental GC during which no new objects are allocated, just to keep things simple. How do we make sure the GC doesn't collect any live objects? One way would be to make sure that every object that was live at the beginning of the incremental GC gets marked. (This means if an object has all references to it dropped during this incremental GC, it will be collected on the <em>next </em>incremental GC.) This is called <strong>snapshot-at-the-beginning</strong> because it is <em>conceptually</em> equivalent to taking a snapshot of live objects at the beginning of the incremental GC and marking all those objects. No such snapshot is physically taken--doing so would require a full nonincremental mark!</p>
+
+<p>The implementation of the snapshot-at-the-beginning barrier is simple. The barrier fires whenever the mutator is about to overwrite a location that holds a GC pointer. The barrier marks the pointed-to object black, and pushes any outgoing edges onto the mark stack. The key observation is that the only way an object can get 'lost' and not marked is if all pointers to the object are overwritten. Thus, if whenever we're about to overwrite a pointer to an object we mark the object black first, then no objects can get 'lost'.</p>
+
+<p>Now consider allocations. A newly allocated object wasn't present at the beginning of the GC, so the snapshot-at-the-beginning barrier doesn't do it any good. But we do need to make sure the object doesn't get collected if it's live. This is easily done by simply marking new objects immediately upon allocation during an incremental GC, thus the name <strong>allocate-black</strong>.</p>
+
+<h4 id="The_SpiderMonkey_incremental_read_barrier">The SpiderMonkey incremental read barrier</h4>
+
+<p>The textbook version of incremental GC has only a write barrier. SpiderMonkey also needs a read barrier for weak references (see Dictionary). This is because weak references have a similar problem as is solved by the incremental write barrier above, but cannot use the same solution.</p>
+
+<p>By definition, a weak reference should not hold a target live by itself. That means that we can't trace weak references when we encounter them during GC graph traversal. Instead, we append them to a list. After marking everything live we scan through the list to null out references to garbage.</p>
+
+<p>But this also means that pre-barriers are inadequate to prevent incremental GC from missing edges due to graph mutation. Live cells will be marked either because they're reachable or because they were marked by a pre-barrier before being removed from the graph. But reachable weak references aren't traced! So you could read one out and write it behind the frontier and no pre-barriered removal will mark it (it's not being removed, just read). So <a href="https://searchfox.org/mozilla-central/rev/33cc9e0331da8d9ff3750f1e68d72d61201176cb/js/src/gc/Barrier.h#98" rel="nofollow">we barrier the read instead</a>; if you ever read a weak reference in the middle of an ongoing incremental GC, then the target of the weak ref will be marked.</p>
+
+<h4 id="Implementation_details">Implementation details</h4>
+
+<p>Write barriers have a runtime cost, so SpiderMonkey tries to skip them when an incremental GC cycle is not active. Each Zone has a flag <code>needsIncrementalBarrier()</code> that indicates whether barriers are required.</p>
+
+<p>For each type <code>T</code> such that fields of type <code>T*</code> need a write barrier, there is a function<code>T::writeBarrierPre(old)</code>. For example, fields of type <code>JSObject*</code> need a write barrier, so there is a function <code>JSObject::writeBarrierPre(JSObject* old)</code>. If <code><strong>zone-&gt;needsIncrementalBarrier()</strong></code>, then <code>writeBarrierPre()</code> marks <code>old</code>. That's it.</p>
+
+<p>The class <code>Heap&lt;T&gt;</code> is provided to make it easy to invoke write barriers. A <code>Heap&lt;T&gt;</code> encapsulates a <strong>T*</strong> and invokes the write barrier whenever assigned to. Thus, object fields of GC-pointer type should normally be defined as type Heap&lt;T&gt;. The class <strong>HeapValue </strong>does the same thing for Value. <strong>HeapSlot </strong>(and the related class <strong>HeapSlotArray</strong>) is the same, but for object slots. <strong>HeapId </strong>is the same, but for jsid.</p>
+
+<p>Object private fields must be handled specially. The private field itself is opaque to the engine, but it may point to things that need to be marked, e.g., an array of JSObject pointers. In this example, if the private field is overwritten, the JSObject pointers could be 'lost', so a write barrier must be invoked to mark them. <strong>js::NativeObject::privateWriteBarrierPre</strong> takes care of this by invoking the JSObject's class trace hook before the private field is set.</p>
+
+<p>Another detail is that write barriers can be skipped when initializing fields of newly allocated objects, because no pointer is being overwritten.</p>
+
+<h2 id="Sweeping">Sweeping</h2>
+
+<p>TODO</p>
+
+<h2 id="Generational_GC">Generational GC</h2>
+
+<p>TODO</p>
+
+<h2 id="GC_Statistics_API">GC Statistics API</h2>
+
+<p>You can access the light statistics the GC keeps at runtime through the <a href="/en-US/docs/SpiderMonkey/Internals/GC/Statistics_API" title="/en-US/docs/SpiderMonkey/Internals/GC/StatisticsAPI">GC Statistics API</a>.</p>
+
+<h2 id="Source_files">Source files</h2>
+
+<p><strong>gc/GC.{h,cpp}  </strong>Defines GC internal API functions, including entry points to trigger GC.</p>
+
+<p><strong>gc/Barrier[-inl].h</strong>  Implements incremental and generational write barriers.</p>
+
+<p><strong>gc/Cell.h</strong> Defines <code>Cell</code> and <code>TenuredCell</code>.</p>
+
+<p><strong>gc/Heap.h</strong>  Defines <code>Chunk</code>, <code>ChunkInfo</code>, <code>ChunkBitmap</code>, <code>Arena</code>, <code>ArenaHeader</code>, <code>Cell</code>, and <code>FreeSpan</code> structures that define the heart of the GC heap's structures.</p>
+
+<p><strong>gc/Marking.{h,cpp}</strong>  Defines all marking functions for the various garbage-collected things.</p>
+
+<p><strong>gc/Memory.{h,cpp}</strong>  Contains a few functions for mapping and unmapping pages, along with platform-specific implementations. The map/unmap functions are used by <code>GC.cpp</code> to allocate and release chunks. There are also functions to commit or decommit memory, i.e., tell the OS that certain pages are not being used and can be thrown away instead of paged to disk.</p>
+
+<p><strong>gc/Root.h</strong>  Defines classes for noting variables as GC roots.</p>
+
+<p><strong>gc/Statistics.{h,cpp}</strong>  Defines <strong>struct Statistics</strong>, which stores SpiderMonkey GC performance counters.</p>
+
+<h2 id="Dictionary_of_terms">Dictionary of terms</h2>
+
+<p><strong>black  </strong>In common CS terminology, an object is black during the mark phase if it has been marked and its children are gray (have been queued for marking). An object is black after the mark phase if it has been marked. In SpiderMonkey, an object is black if its black mark bit is set.</p>
+
+<p><strong>gray  </strong>In common CS terminology, an object is gray during the mark phase if it has been queued for marking. In SpiderMonkey, an object is queued for marking if it is on the mark stack and is not black. Thus, the gray objects from CS literature are not represented explicitly. See also: <strong>gray</strong>, below.</p>
+
+<p><strong>gray</strong> SpiderMonkey instead uses "gray" to refer to objects that are not black, but are reachable from "gray roots". Gray roots are used by the Gecko cycle collector to find cycles that pass through the JS heap.</p>
+
+<p><strong>Handle</strong>  In our GC, a <strong>Handle </strong>is a pointer that has elsewhere been registered by a root. In other words, it is an updatable pointer to a GC thing (it is essentially a <code>Cell**</code> that the GC knows about.)</p>
+
+<p><strong>root </strong>A starting point to the GC graph traversal, a root is known to be alive for some external reason (one other than being reachable by some other part of the GC heap.)</p>
+
+<p><strong>weak pointer </strong> In common CS terminology, a weak pointer is one that doesn't keep the pointed-to value live for GC purposes. Typically, a weak pointer value has a get() method that returns a null pointer if the object has been GC'd. In Gecko/SpiderMonkey, a weak pointer is a pointer to an object that can be GC'd that is not marked through. Thus, there is no get() method and no protection against the pointed-to value getting GC'd--the programmer must ensure that the lifetime of the pointed-to object contains the lifetime of the weak pointer. TODO make sure this is correct.</p>
+
+<p><strong>white  </strong>In common CS terminology, an object is white during the mark phase if it has not been seen yet. An object is white after the mark phase if it has not been marked. In SpiderMonkey, an object is white if it is not gray or black; i.e., it is not marked and it is not on the mark stack.</p>

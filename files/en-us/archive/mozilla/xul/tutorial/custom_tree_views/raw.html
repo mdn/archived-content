@@ -1,0 +1,134 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Tree_Selection" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Tree_View_Details">Next  »</a></p>
+</div>
+
+<p>The tree view holds the data to be displayed in the tree.</p>
+
+<h3 id="Creating_a_Custom_View" name="Creating_a_Custom_View">Creating a Custom View</h3>
+
+<p>So far, we have only been using the built-in content tree view. In this section, we will look at creating a custom view. This is necessary when the page has a lot of data or that data is highly nested. For instance, 5000 rows of treeitems would load too slowly. You might also implement a custom view when you want to perform computations on the data to be displayed. Since the view can store and retrieve the data in the most suitable manner for the kind of data used, the tree can be used even when there are hundreds of thousands of rows to be displayed.</p>
+
+<div class="note">Note: The tree-related interfaces changed in <a href="/en/Gecko" title="en/Gecko">Gecko</a> 1.8. See <a href="/en/Tree_Widget_Changes" title="en/Tree_Widget_Changes">Tree Widget Changes</a> for details.</div>
+
+<p>To implement a custom view, you will need to create an object which implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeView" title="">nsITreeView</a></code> interface. You can create these objects in <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a>, but you will need a separate object for each tree. Naturally, since a custom tree view is being used, the content tree view will not be used, so the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treeitem" title="treeitem">treeitem</a></code></code>, <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treerow" title="treerow">treerow</a></code></code>, and <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treecell" title="treecell">treecell</a></code></code> elements will have no purpose since the custom view will get its data from elsewhere. Thus, you can just leave the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treechildren" title="treechildren">treechildren</a></code></code> element empty. The following example shows this:</p>
+
+<pre class="brush: xml">&lt;tree id="my-tree" flex="1"&gt;
+  &lt;treecols&gt;
+    &lt;treecol id="namecol" label="Name" flex="1"/&gt;
+    &lt;treecol id="datecol" label="Date" flex="1"/&gt;
+  &lt;/treecols&gt;
+  &lt;treechildren/&gt;
+&lt;/tree&gt;
+</pre>
+
+<p>To assign data to be displayed in the tree, the view object needs to be created which is used to indicate the value of each cell, the total number of rows plus other optional information. The tree will call methods of the view to get the information that it needs to display.</p>
+
+<p>In general, although the tree view has thirty or so functions that may be implemented, you only need to implement the ones that the tree will call. Three methods that you should implement are listed below.</p>
+
+<dl>
+ <dt>rowCount</dt>
+ <dd>This property should be set to the total number of rows in the tree.</dd>
+</dl>
+
+<dl>
+ <dt>getCellText( row , column )</dt>
+ <dd>This method should return the text contents at the specified row and column. This will be called to display data for each cell. The rows are supplied as numeric values starting at 0. The columns are <code>TreeColumn</code> objects. In the older versions of Mozilla (before <a href="/en/Firefox_1.5_for_developers" title="en/Firefox_1.5_for_developers">Firefox 1.5</a> or Mozilla 1.8), the columns are supplied as the values of the id attribute on the columns. If you need a id attribute like older versions, the <code>id</code> property of <code>TreeColumn</code> can be used.</dd>
+ <dt>setTree( tree )</dt>
+ <dd>This method is called once to set the tree element on the view.</dd>
+</dl>
+
+<p>Here is an example of defining such as object, which can be called whatever you want:</p>
+
+<pre class="brush: js">//Moz 1.8
+var treeView = {
+    rowCount : 10000,
+    getCellText : function(row,column){
+      if (column.id == "namecol") return "Row "+row;
+      else return "February 18";
+    },
+    setTree: function(treebox){ this.treebox = treebox; },
+    isContainer: function(row){ return false; },
+    isSeparator: function(row){ return false; },
+    isSorted: function(){ return false; },
+    getLevel: function(row){ return 0; },
+    getImageSrc: function(row,col){ return null; },
+    getRowProperties: function(row,props){},
+    getCellProperties: function(row,col,props){},
+    getColumnProperties: function(colid,col,props){}
+};
+</pre>
+
+<p>The functions in the example not described above do not need to perform any action, but they must be implemented as the tree calls them to gather additional information.</p>
+
+<p>This example can be used for a tree with 10,000 rows. The contents of the cells in the first column will be set to the text 'Row X' where X is the row number. The contents of the cells in the second column will be set to 'February 18'. The if statement in the function <code>getCellText()</code> compares the <code>id</code> property of the <code>column</code> argument to the text 'namecol'. This text 'namecol' corresponds to the <code>id</code> of the first <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treecol" title="treecol">treecol</a></code></code> in the example above. This example is very simple of course -- in reality you would have more complex data in each cell.</p>
+
+<p>The final step is to associate the view object with the tree. The tree has a property <code>view</code>, which can be assigned to the view object declared above. We can assign a value to this property at any time to set or change the view.</p>
+
+<pre>function setView(){
+    document.getElementById('my-tree').view = treeView;
+}
+</pre>
+
+<p>The following presents the example together. An inline script has been used here to simplify the example. Normally, you would put the script in an external script file.</p>
+
+<h4 id="Example_custom_tree" name="Example_custom_tree">Example custom tree</h4>
+
+<p><a href="https://developer.mozilla.org/samples/xultu/examples/ex_treeview_1.xul.txt">Source</a></p>
+
+<div class="float-right"><img alt="Image:treeview1.png" class="internal" src="/@api/deki/files/903/=Treeview1.png"></div>
+
+<pre class="brush: js">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css"?&gt;
+
+&lt;window title="Tree Example" id="tree-window"
+   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+   onload="setView();"&gt;
+
+&lt;script&gt;
+//Moz 1.8
+var treeView = {
+    rowCount : 10000,
+    getCellText : function(row,column){
+      if (column.id == "namecol") return "Row "+row;
+      else return "February 18";
+    },
+    setTree: function(treebox){ this.treebox = treebox; },
+    isContainer: function(row){ return false; },
+    isSeparator: function(row){ return false; },
+    isSorted: function(){ return false; },
+    getLevel: function(row){ return 0; },
+    getImageSrc: function(row,col){ return null; },
+    getRowProperties: function(row,props){},
+    getCellProperties: function(row,col,props){},
+    getColumnProperties: function(colid,col,props){}
+};
+
+function setView(){
+    document.getElementById('my-tree').view = treeView;
+}
+&lt;/script&gt;
+
+&lt;tree id="my-tree" flex="1"&gt;
+  &lt;treecols&gt;
+    &lt;treecol id="namecol" label="Name" flex="1"/&gt;
+    &lt;treecol id="datecol" label="Date" flex="1"/&gt;
+  &lt;/treecols&gt;
+  &lt;treechildren/&gt;
+&lt;/tree&gt;
+
+&lt;/window&gt;
+</pre>
+
+<p>In the image, you can see two columns, each with data taken from the <code>getCellText()</code> function. The <code>setView()</code> function has been called in the <code>onload()</code> handler for the window, but you could also set the view later if you wish. You can change the view at any time.</p>
+
+<p>One thing to note is that the <code>getCellText()</code> function is only called when necessary to display the contents. In the 10,000 row example above, <code>getCellText()</code> is only called for the cells that are currently displayed. In the image, only seven rows are displayed, the last only partially, so <code>getCellText()</code> will be called only 14 times, one for each row and column. It is called for other rows when the user scrolls through them. This makes the tree much more efficient.</p>
+
+<p>Note that the view object is also available for trees using the built-in content view. You can use this to get the cell labels and other information.</p>
+
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITreeView" title="">nsITreeView</a></code> interface lists all of the properties and methods that you can implement for the tree view. We'll look at more of these in the next section.</p>
+
+<p>Next, we'll look at more features of tree views.</p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Tree_Selection" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Tree_View_Details">Next  »</a></p>
+</div>

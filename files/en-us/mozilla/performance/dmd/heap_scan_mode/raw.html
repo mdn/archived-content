@@ -1,0 +1,154 @@
+<p dir="ltr" id="docs-internal-guid-eb750110-f8fb-c394-a8df-fbb27cb3dcd9">Firefox’s DMD heap scan mode tracks the set of all live blocks of malloc-allocated memory and their allocation stacks, and allows you to log these blocks, and the values stored in them, to a file. When combined with cycle collector logging, this can be used to investigate leaks of refcounted cycle collected objects, by figuring out what holds a strong reference to a leaked object.</p>
+
+<p dir="ltr" id="docs-internal-guid-eb750110-f8fc-68cf-fcad-5f0de12e5c2a"><strong>When should you use this?</strong> DMD heap scan mode is intended to be used to investigate leaks of cycle collected (CCed) objects. DMD heap scan mode is a "tool of last resort" that should only be used when all other avenues have been tried and failed, except possibly <a href="/en-US/docs/Mozilla/Performance/Refcount_tracing_and_balancing">ref count logging</a>. It is particularly useful if you have no idea what is causing the leak. If you have a patch that introduces a leak, you are probably better off auditing all of the strong references that your patch creates before trying this.</p>
+
+<p dir="ltr">The particular steps given below are intended for the case where the leaked object is alive all the way through shutdown. You could modify these steps for leaks that go away in shutdown by collecting a CC and DMD log prior to shutdown. However, in that case it may be easier to use refcount logging, or rr with a conditional breakpoint set on calls to <code>Release()</code> for the leaking object, to see what object actually does the release that causes the leaked object to go away.</p>
+
+<h2 dir="ltr" id="Prerequisites">Prerequisites</h2>
+
+<ul dir="ltr">
+ <li>A debug DMD build of Firefox. <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Performance/DMD">This page</a> describes how to do that. This should probably be an optimized build. Non-optimized DMD builds will generate better stack traces, but they can be so slow as to be useless.</li>
+ <li>The build is going to be very slow, so you may need to disable some shutdown checks. First, in <code>toolkit/components/terminator/nsTerminator.cpp</code>, delete everything in <code>RunWatchDog</code> but the call to <code>NS_SetCurrentThreadName</code>. This will keep the watch dog from killing the browser when shut down takes multiple minutes. Secondly, you may need to comment out the call to <code>MOZ_CRASH("NSS_Shutdown failed");</code> in <code>xpcom/build/XPCOMInit.cpp</code>, as this also seems to trigger when shutdown is extremely slow.</li>
+ <li>You need the cycle collector analysis script <code>find_roots.py</code>, which can be downloaded as part of <a href="https://github.com/amccreight/heapgraph">this repo on Github</a>.</li>
+</ul>
+
+<h2 id="Generating_Logs">Generating Logs</h2>
+
+<p>The next step is to generate a number of log files. You need to get a shutdown CC log and a DMD log, for a single run.</p>
+
+<p><strong>Definitions</strong> I'll write <code>$objdir</code> for the object directory for your Firefox DMD build, <code>$srcdir</code> for the top level of the Firefox source directory, and <code>$heapgraph</code> for the location of the heapgraph repo, and <code>$logdir</code> for the location you want logs to go to. <code>$logdir</code> should end in a path separator. For instance, <code>~/logs/leak/</code>.</p>
+
+<p dir="ltr" id="docs-internal-guid-32346173-41c0-3f11-fee5-613f6094990e">The command you need to run Firefox will look something like this:</p>
+
+<p dir="ltr"><code>XPCOM_MEM_BLOAT_LOG=1 MOZ_CC_LOG_SHUTDOWN=1 MOZ_DISABLE_CONTENT_SANDBOX=t MOZ_CC_LOG_DIRECTORY=$logdir MOZ_CC_LOG_PROCESS=content MOZ_CC_LOG_THREAD=main MOZ_DMD_SHUTDOWN_LOG=$logdir MOZ_DMD_LOG_PROCESS=tab ./mach run --dmd --mode=scan</code></p>
+
+<p dir="ltr">Breaking this down:</p>
+
+<ul dir="ltr">
+ <li><code>XPCOM_MEM_BLOAT_LOG=1</code>: This reports a list of the counts of every object created and destroyed and tracked by the XPCOM leak tracking system. From this chart, you can see how many objects of a particular type were leaked through shutdown. This can come in handy during the manual analysis phase later, to get evidence to support your hunches. For instance, if you think that an <code>nsFoo</code> object might be holding your leaking object alive, you can use this to easily see if we leaked an <code>nsFoo</code> object.</li>
+ <li><code>MOZ_CC_LOG_SHUTDOWN=1</code>: This generates a cycle collector log during shutdown. Creating this log during shutdown is nice because there are less things unrelated to the leak in the log, and various cycle collector optimizations are disabled. A garbage collector log will also be created, which you may not need.</li>
+ <li><code>MOZ_DISABLE_CONTENT_SANDBOX=t</code>: This disables the content process sandbox, which is needed because the DMD and CC log files are created directly by the child processes.</li>
+ <li><code>MOZ_CC_LOG_DIRECTORY=$logdir</code>: This selects the location for cycle collector logs to be saved.</li>
+ <li><code>MOZ_CC_LOG_PROCESS=content MOZ_CC_LOG_THREAD=main</code>: These options specify that we only want CC logs for the main thread of content processes, to make shutdown less slow. If your leak is happening in a different process or thread, change the options, which are listed in <code>xpcom/base/nsCycleCollector.cpp</code>.</li>
+ <li><code>MOZ_DMD_SHUTDOWN_LOG=$logdir</code>: This option specifies that we want a DMD log to be taken very late in XPCOM shutdown, and the location for that log to be saved. Like with the CC log, we want this log very late to avoid as many non-leaking things as possible.</li>
+ <li><code>MOZ_DMD_LOG_PROCESS=tab</code>: As with the CC, this means that we only want these logs in content processes, in order to make shutdown faster. The allowed values here are the same as those returned by <code>XRE_GetProcessType()</code>, so adjust as needed.</li>
+ <li>Finally, the <code>--dmd</code> option need to be passed in so that DMD will be run. <code>--mode=scan</code> is needed so that when we get a DMD log the entire contents of each block of memory is saved for later analysis.</li>
+</ul>
+
+<p dir="ltr" id="docs-internal-guid-32346173-41c4-3e5e-a9e1-ef5dddafbc81">With that command line in hand, you can start Firefox. Be aware that this may take multiple minutes if you have optimization disabled.</p>
+
+<p dir="ltr">Once it has started, go through the steps you need to reproduce your leak. If your leak is a ghost window, it can be handy to get an <code>about:memory</code> report and write down the PID of the leaking process. You may want to wait 10 or so seconds after this to make sure as much as possible is cleaned up.</p>
+
+<p dir="ltr">Next, exit the browser. This will cause a lot of logs to be written out, so it can take a while.</p>
+
+<h2 dir="ltr" id="Analyzing_the_Logs">Analyzing the Logs</h2>
+
+<h5 dir="ltr" id="Getting_the_PID_and_address_of_the_leaking_object">Getting the PID and address of the leaking object</h5>
+
+<p dir="ltr" id="docs-internal-guid-32346173-41c6-f7a9-9b05-6417895c930c">The first step is to figure out the <strong>PID</strong> of the leaking process. The second step is to figure out <strong>the address of the leaking object</strong>, usually a window. Conveniently, you can usually do both at once using the cycle collector log. If you are investigating a leak of <code>www.example.com</code>, then from <code>$logdir</code> you can do <code>"grep nsGlobalWindow cc-edges* | grep example.com"</code>. This looks through all of the windows in all of the CC logs (which may leaked, this late in shutdown), and then filters out windows where the URL contains <code>example.com</code>.</p>
+
+<p dir="ltr">The result of that grep will contain output that looks something like this:</p>
+
+<p dir="ltr"><code>cc-edges.15873.log:0x7f0897082c00 [rc=1285] nsGlobalWindowInner # 2147483662 inner https://www.example.com/</code></p>
+
+<p dir="ltr">* <code>cc-edges.15873.log</code>: The first part is the file name where it was found. <code>15873</code> is the PID of the process that leaked. You'll want to write down the name of the file and the PID. Let's call the file <code>$cclog</code> and the pid <code>$pid</code>.</p>
+
+<p dir="ltr">* <code>0x7f0897082c00</code>: This is the address of the leaking window. You'll also want to write that down. Let's call this <code>$winaddr</code>.</p>
+
+<p dir="ltr">If there are multiple files, you'll end up with one that looks like <code>cc-edges.$pid.log</code> and one or more that look like <code>cc-edges.$pid-$n.log</code> for various values of <code>$n</code>. You want the one with the largest <code>$n</code>, as this was recorded the latest, and so it will contain the least non-garbage.</p>
+
+<h5 dir="ltr" id="Identifying_the_root_in_the_cycle_collector_log">Identifying the root in the cycle collector log</h5>
+
+<p dir="ltr" id="docs-internal-guid-32346173-41ca-a2dd-b317-1168edd1d6bf">The next step is to figure out why the cycle collector could not collect the window, using the <code>find_roots.py</code> script from the heapgraph repository. The command to invoke this looks like this:</p>
+
+<p dir="ltr"><code> python $heapgraph/find_roots.py $cclog $winaddr</code></p>
+
+<p dir="ltr">This may take a few seconds. It will eventually produce some output. You'll want to save a copy of this output for later.</p>
+
+<p dir="ltr">The output will look something like this, after a message about loading progress:</p>
+
+<p dir="ltr"><code>0x7f0882fe3230 [FragmentOrElement (xhtml) script https://www.example.com]</code></p>
+
+<p dir="ltr"><code>    --[[via hash] mListenerManager]--&gt; 0x7f0899b4e550 [EventListenerManager]</code></p>
+
+<p dir="ltr"><code>    --[mListeners event=onload listenerType=3 [i]]--&gt; 0x7f0882ff8f80 [CallbackObject]</code></p>
+
+<p dir="ltr"><code>    --[mIncumbentGlobal]--&gt; 0x7f0897082c00 [nsGlobalWindowInner # 2147483662 inner https://www.example.com]</code></p>
+
+<p dir="ltr"><code>    Root 0x7f0882fe3230 is a ref counted object with 1 unknown edge(s).</code></p>
+
+<p dir="ltr"><code>    known edges:</code></p>
+
+<p dir="ltr"><code>      0x7f08975a24c0 [FragmentOrElement (xhtml) head https://www.example.com] --[mAttrsAndChildren[i]]--&gt; 0x7f0882fe3230</code></p>
+
+<p dir="ltr"><code>      0x7f08967e7b20 [JS Object (HTMLScriptElement)] --[UnwrapDOMObject(obj)]--&gt; 0x7f0882fe3230</code></p>
+
+<p dir="ltr">The first two lines mean that the script element <code>0x7f0882fe3230</code> contains a strong reference to the EventListenerManager <code>0x7f0899b4e550</code>. "[via hash] mListenerManager" is a description of that strong reference. Together, these lines show a chain of strong references from an object the cycle collector thinks needs to be kept alive, <code>0x7f0899b4e550</code>, to the object<code> 0x7f0897082c00</code> that you asked about. Most of the time, the actual chain is not important, because the cycle collector can only tell us about what went right. Let us call the address of the leaking object (<code>0x7f0882fe3230</code> in this case) <code>$leakaddr</code>.</p>
+
+<p dir="ltr">Besides <code>$leakaddr</code>, the other interesting part is the chunk at the bottom. It tells us that there is 1 unknown edge, and 2 known edges. What this means is that the leaking object has a refcount of 3, but the cycle collector was only told about these two references. In this case, a head element and a JS object (the JS reflector of the script element). We need to figure out what the unknown reference is from, as that is where our leak really is.</p>
+
+<h5 dir="ltr" id="Figure_out_what_is_holding_the_leaking_object_alive.">Figure out what is holding the leaking object alive.</h5>
+
+<p dir="ltr">Now we need to use the DMD heap scan logs. These contain the contents of every live block of memory.</p>
+
+<p dir="ltr">The first step to using the DMD heap scan logs is to do some pre-processing for the DMD log. Stacks need to be symbolicated, and we need to clamp the values contained in the heap. Clamping is the same kind of analysis that a conservative GC does: if a word-aligned value in a heap block points to somewhere within another heap block, replace that value with the address of the block.</p>
+
+<p dir="ltr">Both kinds of preprocessing are done by the <code>dmd.py</code> script, which can be invoked like this:</p>
+
+<p dir="ltr"><code>$objdir/dist/bin/dmd.py --clamp-contents dmd-$pid.log.gz</code></p>
+
+<p dir="ltr">This can take a few minutes due to symbolification, but you only need to run it once on a log file.</p>
+
+<p dir="ltr">After that is done, we can finally find out which objects (possibly) point to other objects, using the block_analyzer script:</p>
+
+<p dir="ltr"><code>python $srcdir/memory/replace/dmd/block_analyzer.py dmd-$pid.log.gz $leakaddr</code></p>
+
+<p dir="ltr">This will look through every block of memory in the log, and give some basic information about any block of memory that (possibly) contains a pointer to that object. You can pass some additional options to affect how the results are displayed. “-sfl 10000 -a” is useful. The -sfl 10000 tells it to not truncate stack frames, and -a tells it to not display generic frames related to the allocator.</p>
+
+<p dir="ltr">Caveat: I think block_analyzer.py does not attempt to clamp the address you pass into it, so if it is an offset from the start of the block, it won’t find it.</p>
+
+<p dir="ltr"><code>block_analyzer.py</code> will return a series of entries that look like this (with the [...] indicating where I have removed things):</p>
+
+<p dir="ltr"><code>0x7f089306b000 size = 4096 bytes at byte offset 2168</code></p>
+
+<p dir="ltr"><code> nsAttrAndChildArray::GrowBy[...]</code></p>
+
+<p dir="ltr"><code> nsAttrAndChildArray::InsertChildAt[...]</code></p>
+
+<p dir="ltr"><code> [...]</code></p>
+
+<p dir="ltr"><code>0x7f089306b000</code> is the address of the block that contains <code>$leakaddr</code>. 144 bytes is the size of that block. That can be useful for confirming your guess about what class the block actually is. The byte offset tells you were in the block the pointer is. This is mostly useful for larger objects, and you can potentially combine this with debugging information to figure out exactly what field this is. The rest of the entry is the stack trace for the allocation of the block, which is the most useful piece of information.</p>
+
+<p dir="ltr">What you need to do now is to go through every one of these entries and place it into three categories: strong reference known to the cycle collector, weak reference, or something else! The goal is to eventually shrink down the “something else” category until there are only as many things in it as there are unknown references to the leaking object, and then you have your leaker.</p>
+
+<p dir="ltr">To place an entry into one of the categories, you must look at the code locations given in the stack trace, and see if you can tell what the object is based on that, then compare that to what <code>find_roots.py</code> told you.</p>
+
+<p dir="ltr">For instance, one of the strong references in the CC log is from a head element to its child via <code>mAttrsAndChildren</code>, and that sounds a lot like this, so we can mark it as being a strong known reference.</p>
+
+<p dir="ltr">This is an iterative process, where you first go through and mark off the things that are easily categorizable, and repeat until you have a small list of things to analyze.</p>
+
+<h5 dir="ltr" id="Example_analysis_of_block_analyzer.py_results">Example analysis of block_analyzer.py results</h5>
+
+<p dir="ltr">In one debugging session where I was investigating the leak from bug 1451985, I eventually reduced the list of entries until this was the most suspicious looking entry:</p>
+
+<p dir="ltr"><code>0x7f0892f29630 size = 392 bytes at byte offset 56</code></p>
+
+<p dir="ltr"><code> mozilla::dom::ScriptLoader::ProcessExternalScript[...]</code></p>
+
+<p dir="ltr"><code> [...]</code></p>
+
+<p dir="ltr">I went to that line of <code>ScriptLoader::ProcessExternalScript()</code>, and it contained a call to ScriptLoader::CreateLoadRequest(). Fortunately, this method mostly just contains two calls to <code>new</code>, one for <code>ScriptLoadRequest</code> and one for <code>ModuleLoadRequest</code>. (This is where an unoptimized build comes in handy, as it would have pointed out the exact line. Unfortunately, in this particular case, the unoptimized build was so slow I wasn’t getting any logs.) I then looked through the list of leaked objects generated by <code>XPCOM_MEM_BLOAT_LOG</code> and saw that we were leaking a <code>ScriptLoadRequest</code>, so I went and looked at its class definition, where I noticed that <code>ScriptLoadRequest</code> had a strong reference to an element that it wasn’t telling the cycle collector about, which seemed suspicious.</p>
+
+<p dir="ltr">The first thing I did to try to confirm that this was the source of the leak was pass the address of this object into the cycle collector analysis log, <code>find_roots.py</code>, that we used at an earlier step. That gave a result that contained this:</p>
+
+<p dir="ltr"><code>0x7f0882fe3230 [FragmentOrElement (xhtml) script [...]</code></p>
+
+<p dir="ltr"><code>    --[mNodeInfo]--&gt; 0x7f0897431f00 [NodeInfo (xhtml) script]</code></p>
+
+<p dir="ltr"><code>          [...]</code></p>
+
+<p dir="ltr"><code>    --[mLoadingAsyncRequests]--&gt; 0x7f0892f29630 [ScriptLoadRequest]</code></p>
+
+<p dir="ltr">This confirms that this block is actually a ScriptLoadRequest. Secondly, notice that the load request is being held alive by the very same script element that is causing the window leak! This strongly suggests that there is a cycle of strong references between the script element and the load request. I then added the missing field to the traverse and unlink methods of ScriptLoadRequest, and confirmed that I couldn’t reproduce the leak.</p>
+
+<p dir="ltr">Keep in mind that you may need to run <code>block_analyzer.py</code> multiple times. For instance, if the script element was being held alive by some container being held alive by a runnable, we’d first need to figure out that the container was holding the element. If it isn’t possible to figure out what is holding that alive, you’d have to run block_analyzer again. This isn’t too bad, because unlike ref count logging, we have the full state of memory in our existing log, so we don’t need to run the browser again.</p>

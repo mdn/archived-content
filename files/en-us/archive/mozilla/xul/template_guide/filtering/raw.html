@@ -1,0 +1,91 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Additional_Navigation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Static_Content">Next  »</a></p>
+</div>
+
+<h3 id="Adjusting_the_Query" name="Adjusting_the_Query"> Adjusting the Query </h3>
+<p>Sometimes you may wish to change the query at a later time. For example, you wish the user to be able to select a value from a list, and the template results should be filtered based on that value. This can be done by modifying the DOM nodes inside the query and rebuilding the template. For instance, to apply a filter, you might add a new &lt;triple&gt; element. To remove the filter, the &lt;triple&gt; should be removed again. Let's assume that we've given an id of 'cond' to the <code><a href="/en-US/docs/Mozilla/Tech/XUL/query" title="query">query</a></code> tag.
+</p>
+<pre>function applyFilter(country)
+{
+  var cond = document.getElementById("cond");
+  var triple = document.getElementById("filterTriple");
+  if (country) {
+    if (!triple) {
+      triple = document.createElement("triple");
+      triple.id = "filterTriple";
+      triple.setAttribute("subject", "?photo");
+      triple.setAttribute("predicate", "http://www.xulplanet.com/rdf/country");
+    }
+    triple.setAttribute("object", country);
+    cond.appendChild(triple);
+  }
+  else if (triple) {
+    cond.removeChild(triple);
+  }
+
+  document.getElementById("photosList").builder.rebuild();
+}
+</pre>
+<p>The 'country' argument to the applyFilter function holds the value to filter by. If this is set, we add a filter, otherwise we remove it. The code is fairly straightforward. A new &lt;triple&gt; element is created and the object attribute is set to the value to filter by. For example, the resulting triple for the Netherlands might be:
+</p>
+<pre>&lt;triple subject="?photo"
+        predicate="http://www.xulplanet.com/rdf/country"
+        object="http://www.daml.org/2001/09/countries/iso#NL"/&gt;
+</pre>
+<p>This triple is then appended to the query. The triple is given an id so that it can be found later if a different filter is applied. Naturally, we only want to apply one filter at a time, so we can just reuse the same triple for each filter. When removing the filter, we only need to remove the triple from the query. This example only adds one triple, but you could add others, or add &lt;member&gt; elements. Whether a triple or member is added or removed, the template must be rebuilt by calling the rebuild method. This method will remove all of the existing generated content, delete all of the internal information pertaining to the results, and start again as if the template were just being examined for the first time. The template will be parsed again and the data examined for new results.
+</p><p>You can <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex16.xul">view a complete example</a> of this in action. A menulist is used to allow one to select either a specific country, or select All to show all of the photos. When a choice is made, the applyFilter function as shown above is called and the template content gets rebuilt with the desired filter applied.
+</p><p>In this example, the menulist is hard-coded to contain the items that we know are in the datasource. Next, we'll look at also generating this list using a template.
+</p>
+<h3 id="Generating_a_Filter_Menu" name="Generating_a_Filter_Menu"> Generating a Filter Menu </h3>
+<p>Templates may be used to generate any type of content. It is common to use a template to generate the items on a menu or in a listbox or tree. The syntax is the same regardless of what type of content is being created. In the previous example, we hard-coded a menulist with the list of countries, but we could also generate this list from the datasource. The same datasource may used for both the photos list and the menulist. Even though the same datasource is used, it will only be loaded once and both templates will be notified when the data has loaded.
+</p><p>We will need to add some information to the datasource in order to specify the list of countries that are available. There are two possibilities. First, a separate Seq could be added listing the countries. Then, a simple &lt;member&gt; element can be used to iterate over it. Or, we could use an RDF type to specify the countries. Then, we could just look for all resources that were of the 'Country' type. We'll use this method here since we've already seen examples of generating results from a container.
+</p><p>An RDF type can be assigned to a node by using the predicate '<span class="nowiki">http://www.w3.org/1999/02/22-rdf-syntax-ns#type</span>' set to a resource for that type. In RDF/XML, a syntax shortcut may be used which involves replacing the Description tag with the type. We need to add the type to the two countries in the datasource, as well as ensure that the namespace is declared on the root RDF tag:
+</p>
+<pre>&lt;nso:Country about="http://www.daml.org/2001/09/countries/iso#IT"
+             dc:title="Italy"/&gt;
+
+&lt;nso:Country about="http://www.daml.org/2001/09/countries/iso#NL"
+             dc:title="Netherlands"/&gt;
+</pre>
+<p>The type of these two resources, when expanded with the namespace (not shown here), will be '<span class="nowiki">http://www.daml.org/2001/09/countries/country-ont#Country</span>'. The resulting RDF triples for the first country will be:
+</p>
+<pre>http://www.daml.org/2001/09/countries/iso#IT
+  -&gt; http://www.w3.org/1999/02/22-rdf-syntax-ns#type
+  -&gt; http://www.daml.org/2001/09/countries/country-ont#Country
+
+http://www.daml.org/2001/09/countries/iso#IT
+  -&gt; http://purl.org/dc/elements/1.1/title
+  -&gt; Italy
+</pre>
+<p>The type is just like any other triple in the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-photos4.rdf">datasource</a>, so we don't need any special syntax to navigate over it. We just need to use the right predicate to look for all the countries. You might wonder what the ref attribute or starting point should be set to since there is no container for the countries. Actually, we can just use the type as the starting point.
+</p>
+<pre>&lt;menulist datasources="template-guide-photos4.rdf"
+          ref="http://www.daml.org/2001/09/countries/country-ont#Country"&gt;
+</pre>
+<p>Remember that the only requirement is that the starting point be a resource, but it doesn't matter what resource is used. The query statements will need to iterate over the arcs pointing into the type resource. Since we want the arcs pointing into the type, we need to determine the source or subject of a triple. Look at the resulting RDF triples above again if this is unclear. The starting node is '<span class="nowiki">http://www.daml.org/2001/09/countries/country-ont#Country</span>'. We need to iterate over the 'type' predicate to find the individual countries. A second triple is used to get the title for the country.
+</p>
+<pre>&lt;query&gt;
+  &lt;content uri="?start"/&gt;
+  &lt;triple subject="?country"
+          predicate="http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+          object="?start"/&gt;
+  &lt;triple subject="?country"
+          predicate="http://purl.org/dc/elements/1.1/title"
+          object="?countrytitle"/&gt;
+&lt;/query&gt;
+</pre>
+<p>The action body will need to generate a &lt;menuitem&gt; for each result. It will also need to include a &lt;menupopup&gt; around all of the items. Since we only want to generate a single menupopup, it should go outside of the element with the uri attribute. Only the contents at the element with the uri attribute and below are copied for each result. The elements above are not.
+</p>
+<pre>&lt;action&gt;
+  &lt;menupopup&gt;
+    &lt;menuitem uri="?country" label="?countrytitle" value="?country"/&gt;
+  &lt;/menupopup&gt;
+&lt;/action&gt;
+</pre>
+<p>The result will be two generated menuitems, one for each country, inside a menupopup. The value attribute is assigned the ?country variable so that the applyFilter function can use this value easily for filtering. The
+<a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex17.xul">complete example</a> shows this working. Note that due to a bug with template generation in menulists when the datasource hasn't loaded yet, you may have to load the example twice to get it work. This issue only affects the menulist element. Several workarounds can be used in this simple example. First, you could move the &lt;menupopup&gt; element outside of the template and put the datasources attribute on it instead of the &lt;menulist&gt; element. This will work in this simple example, but has the disadvantage that the builder won't be able to generate the content lazily only when the popup is opened. Another workaround is to just rebuild the template once the data has been loaded.
+</p><p>Next, we will look at how to add the All choice to the menu, which won't be generated from the datasource.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Additional_Navigation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Static_Content">Next  »</a></p>
+</div>

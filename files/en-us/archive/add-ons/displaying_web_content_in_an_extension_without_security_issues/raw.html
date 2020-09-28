@@ -1,0 +1,76 @@
+<p>One of the most common security issues with extensions is execution of remote code in privileged context. A typical example is an RSS reader extension that would take the content of the RSS feed (HTML code), format it nicely and insert into the extension window. The issue that is commonly overlooked here is that the RSS feed could contain some malicious JavaScript code and it would then execute with the privileges of the extension — meaning that it would get full access to the browser (cookies, history etc) and to user’s files. These issues can easily be avoided by making use of the existing security mechanisms in the Mozilla codebase. The following article explains these security mechanisms, ideally an extension that needs to display web content (which is always potentially dangerous) will use all of them.</p>
+<h2 id="Displaying_untrusted_data_as_content">Displaying untrusted data as content</h2>
+<p>In Firefox, there is a distinction between chrome and content documents. The top document in a window is always a chrome document. If you look at the frames it loads, those will usually be chrome documents as well. However, if the document is loaded into <code>&lt;iframe type="content"&gt;</code> or <code>&lt;browser type="content"&gt;</code>, it will be considered a content document, and so will be all the frames it loads (the "type" attribute is ignored at that point). So if we look at the frame hierarchy there is a boundary between chrome and content, and at that boundary a number of security mechanisms apply. In particular, a content document can only go up in the frame hierarchy until the topmost content document, it cannot access the chrome documents above it. This means for example that JavaScript code <code>top.location.href = "about:blank"</code> will only unload the content document but won’t have any effect on the chrome.</p>
+<div class="note"><strong>Note:</strong> This has really nothing to do with the source of the document. If you open "<a class=" external" rel="freelink">chrome://foo/content/foo.xul</a>" in the browser, it will open as a content document despite having extended privileges. This also means that you won’t be able to establish a security boundary between your extension and untrusted data if your extension opens as a tab in the browser — so displaying your extension in a browser tab is a bad choice.</div>
+<div class="note"><strong>Note:</strong> Dynamic changes of the "type" attribute have no effect, the frame type is read out when the frame element is inserted into the document and never again. So the usual rule is: don’t change the value of the "type" attribute. But if you really have to do this, you will also have to remove the frame element from the document and insert it back.</div>
+<h2 id="Not_giving_privileges_to_documents_that_contain_untrusted_data">Not giving privileges to documents that contain untrusted data</h2>
+<p>The privileges that a document gets depend on where it comes from. For example, "<a class=" external" rel="freelink">chrome://foo/content/foo.xhtml</a>" will have full privileges, "<a class=" external" href="http://example.com/foo.xhtml" rel="freelink">http://example.com/foo.xhtml</a>" will be allowed to access example.com, "<a class=" external" rel="freelink">file:///c:/foo.xhtml</a>" will be allowed to read files from disk (with some restrictions). As for the document that displays untrusted data, you don’t want it to have any privileges at all. Here the "data:" protocol is useful. This protocol is special because it inherits the privileges from its parent document. However, if a "data:" document is the topmost content document, there is no parent document (remember, content documents have no access to the chrome documents above them) and consequently no privileges. So in the simplest case you would have:</p>
+<pre class="brush: html">&lt;iframe type="content" src="data:text/html,%3Chtml%3E%3Cbody%3E%3C/body%3E%3C/html%3E"/&gt;
+</pre>
+<p>But usually you don’t want to start with an empty document, you would rather want to load some template into the frame:</p>
+<pre class="brush: js">var request = new XMLHttpRequest();
+request.open("GET", "chrome://foo/content/template.html", false);
+request.send(null);
+frame.setAttribute("src", "data:text/html," + encodeURIComponent(request.responseText));
+</pre>
+<p>That way you can have the template in your extension but still strip it off all privileges when it is loaded in a frame.</p>
+<h2 id="Restricting_what_documents_that_contain_untrusted_data_can_do">Restricting what documents that contain untrusted data can do</h2>
+<p>There are several restrictions that can be applied per frame. Here it is most important to disable JavaScript and plugins. It won’t harm disabling everything else as well unless it is really required:</p>
+<pre class="brush: js">frame.docShell.allowAuth = false;
+frame.docShell.allowImages = false;
+frame.docShell.allowJavascript = false;
+frame.docShell.allowMetaRedirects = false;
+frame.docShell.allowPlugins = false;
+frame.docShell.allowSubframes = false;
+</pre>
+<p>But what about interactivity, for example if you want a certain reaction to mouse clicks? This can be done as well, by placing the event handler on the frame tag (meaning that it is outside the restricted document and can execute without restrictions):</p>
+<pre class="brush: html">&lt;iframe type="content" onclick="handleClick(event);"/&gt;
+</pre>
+<p>And the event handler would look like that:</p>
+<pre class="brush: js">function handleBrowserClick(event)
+{
+  // Only react to left mouse clicks
+  if (event.button != 0)
+    return;
+
+  // Default action on link clicks is to go to this link, cancel it
+  event.preventDefault();
+
+  if (event.target instanceof HTMLAnchorElement &amp;&amp; event.target.href)
+    openLinkInBrowser(event.target.href);
+}
+</pre>
+<h2 id="Safe_HTML_manipulation_functions">Safe HTML manipulation functions</h2>
+<p>When it comes to displaying the data, it is tempting to generate some HTML code and to insert it into the document via <code>innerHTML</code>. And scripts won’t run anyway when inserted via <code>innerHTML</code>, right? Well, not quite. It is right that <code>&lt;script&gt;alert('xss')&lt;/script&gt;</code> won’t run if inserted via <code>innerHTML</code>. But <code>&lt;img src="does_not_exist" onerror="alert('xss')"&gt;</code> for example will still run JavaScript code, and there are many more possibilities. So properly sanitizing input is still required when using <code>innerHTML</code> and it is far from trivial.</p>
+<p>It is much easier to use DOM manipulation methods that won’t have unexpected side-effects. For example, your template document might have this code:</p>
+<pre class="brush: html">&lt;style type="text/css"&gt;
+  #entryTemplate { display: none; }
+&lt;/style&gt;
+
+&lt;div id="entryTemplate"&gt;
+  &lt;div class="title"&gt;&lt;/div&gt;
+  &lt;div class="description"&gt;&lt;/div&gt;
+&lt;/div&gt;
+</pre>
+<p>Now to insert a new entry in the document you would do the following:</p>
+<pre class="brush: js">var template = doc.getElementById("entryTemplate");
+var entry = template.cloneNode(true);
+entry.removeAttribute("id");
+entry.getElementsByClassName("title")[0].textContent = title;
+entry.getElementsByClassName("description")[0].textContent = description;
+template.parentNode.appendChild(entry);
+</pre>
+<p>The important difference here is that the result will always have the same structure as the template tag. <code>cloneNode()</code> always creates a copy and <code>textContent</code> only manipulates text. So there is no chance of accidentally adding new elements or attributes.</p>
+<p>But what if you have to display HTML rather than only text, e.g. an RSS feed entry? Extension authors will often come up with flawed attempts to sanitize HTML code. Instead, <a class="internal" href="/en/XPCOM_Interface_Reference/nsIScriptableUnescapeHTML#parseFragment.28.29" title="En/nsIScriptableUnescapeHTML#parseFragment()">nsIScriptableUnescapeHTML.parseFragment()</a> method should be used that is meant for just that scenario:</p>
+<pre class="brush: js">var target = entry.getElementsByClassName("description")[0];
+var fragment = Components.classes["@mozilla.org/feed-unescapehtml;1"]
+                         .getService(Components.interfaces.nsIScriptableUnescapeHTML)
+                         .parseFragment(description, false, null, target);
+target.appendChild(fragment);
+</pre>
+<p>This will add the HTML code to the specified node — minus all the potentially dangerous content.</p>
+<h2 id="See_also">See also</h2>
+<ul> <li><a class="internal" href="/en/DOM/XMLHttpRequest" title="En/XMLHttpRequest">XMLHttpRequest</a></li> <li><a class="internal" href="/en/DOM/XMLHttpRequest/Using_XMLHttpRequest" title="En/Using XMLHttpRequest">Using XMLHttpRequest</a></li> <li><a class="internal" href="/en/Components.utils.evalInSandbox" title="En/Components.utils.evalInSandbox"><code>evalInSandbox</code>()</a></li>
+</ul>
+<div class="originaldocinfo"> <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2> <ul> <li>Author(s): Wladimir Palant</li> <li>Last Updated Date: 2009-01-28</li> </ul>
+</div>

@@ -1,0 +1,523 @@
+---
+title: Extending a Protocol
+slug: Mozilla/IPDL/Extending_a_Protocol
+tags:
+  - IPDL
+---
+<h2 id="Quick_Start_Extending_a_Protocol">Quick Start: Extending a Protocol</h2>
+
+<p>This tutorial implements a simple ping-pong style IPDL protocol, which sends a message from the content process (main thread) to the chrome process (UI Thread). The tutorial is designed for beginners and will walk you through all the steps you need to get things working.  </p>
+
+<p>The tutorial is designed for browser engineers who are implementing DOM/Web APIs that need to, for example, send a message to the OS or spin up something off the main thread - so it's biased towards supporting W3C/WHATWG DOM APIs. </p>
+
+<h3 id="What_are_we_going_to_implement">What are we going to implement?</h3>
+
+<p>tl:dr: you can see the <a href="https://phabricator.services.mozilla.com/D41718">final implementation of PEcho.ipdl</a> as a diff in Phabricator. </p>
+
+<p>To make this tutorial less abstract (more fun!), we are going to implement a JS method called <code>echo()</code> on the <code>Navigator</code> interface. The method will take one argument, a <code>DOMString,</code> which we will pass to the parent process. Then we will send that same string back to the child process.</p>
+
+<p>The WebIDL for this will be:</p>
+
+<pre class="brush: WebIDL">partial interface Navigator {
+  Promise&lt;DOMString&gt; echo(DOMString someString);
+};</pre>
+
+<p>Learning goals are: </p>
+
+<ul>
+ <li>Extending an existing IPDL protocol.</li>
+ <li>Simple message passing.</li>
+ <li>Working with MozPromises and JS promises. </li>
+ <li>Managing child actors with reference counting.</li>
+</ul>
+
+<p>Visually, it's going to look something like this (except for the Operating System bit, which we are not actually going to do - just to illustrate what we could do):</p>
+
+<p><img alt="IPDL tree, who manages who" src="https://mdn.mozillademos.org/files/16852/overview.png" style="height: 369px; width: 927px;"></p>
+
+<p>Let's start by implementing the WebIDL above. </p>
+
+<h3 id="Implementing_the_navigator.echo()">Implementing the <code>navigator.echo()</code></h3>
+
+<ol>
+ <li>In your favorite editor, open <strong>dom/webidl/Navigator.webidl</strong></li>
+ <li>At the end of the file, add:
+  <pre class="brush: WebIDL">partial interface Navigator {
+  [Throws]
+  Promise&lt;DOMString&gt; echo(DOMString aString);
+};</pre>
+ </li>
+ <li>Now we need to implement the <code>Echo()</code> method in C++, so open up <strong>./dom/base/Navigator.h</strong> and let's add the method definition, so under <code>public:</code>:
+  <pre class="brush: cpp">already_AddRefed&lt;Promise&gt; Echo(const nsAString&amp; aString, ErrorResult&amp; aRv);
+</pre>
+
+  <p>We use <code>nsAString&amp;</code> as the DOMString comes in from JS as UTF-16. This will matter later, as we will need to convert it to UTF-8 (using <code>nsCString</code>) to send it to the parent process.</p>
+ </li>
+ <li>Now let's implement the method in <strong>./dom/base/Navigator.cpp</strong>  - we add a little bit of error boilerplate stuff, as is customary:
+  <pre class="brush: cpp">already_AddRefed&lt;Promise&gt; Navigator::Echo(const nsAString&amp; aString, ErrorResult&amp; aRv) {
+  if (!mWindow || !mWindow-&gt;GetDocShell()) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  RefPtr&lt;Promise&gt; echoPromise = Promise::Create(mWindow-&gt;AsGlobal(), aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  // Message passing magic will happen here!
+  return echoPromise.forget();
+}
+</pre>
+ </li>
+ <li>Ok, let's <code>./mach build</code> and make sure everything is compiling ok. Once it's compiled, <code>./mach run</code> and you should be able to spin up the developer console and type:
+  <pre class="brush: js">navigator.echo("hi!");
+</pre>
+  That will return a pending <code>Promise</code> that never settles. Our goal is now to get that to settle with the value we sent in.</li>
+</ol>
+
+<h3 id="IPDL_basics">IPDL basics </h3>
+
+<p>While you are compiling, let's cover some IPDL basics.</p>
+
+<p>In IPDL there two kinds of "actors" - a "parent" and "child" - these actors are literally implemented as C++ classes, so they are more than just abstract ideas.</p>
+
+<p>Usually, a child wants to send messages to the parent to do something off main thread for us. And we generally want the parent to let a child know when some work is done - and send some confirmation or result data back to the child.</p>
+
+<p>Sometimes, the parent will want to notify all its children of something. So communication can go in both directions. In this tutorial, we are just going to cover a child talking to a parent, and  the parent responding with some data.  </p>
+
+<p>In order to manage parent-child relationships, IPDL uses a tree herirachy to manage the creation of children. As DOM APIs have access to the Window object, we generally want to use the "<code>PWindowGlobal</code>" protocol to manage things for us: this protocol is convinient because we can easily access it from the <code>Window</code> object... so as long as we can get a hold of a Window object, we can get it to do useful things for us (as we shall soon see!).</p>
+
+<p>In our case, our protocol, which we will call PEcho.ipdl, will send a message to a parent, and the parent will respond with the message we sent. As a heirarchy, this will look like this:</p>
+
+<p><img alt="IPDL tree, who manages who" src="https://mdn.mozillademos.org/files/16853/pglobal.png" style="height: 175px; width: 349px;"></p>
+
+<p>This means that, <strong>PWindowGlobal.ipdl</strong>:</p>
+
+<ul>
+ <li>Manages: meaning that <strong>PWindowGlobal.ipdl</strong> is responsible managing the creation of instances of PEcho children and the parent. And the inverse is also true, as you will soon see: PEcho.idpl will need explicitly state that PWindowGlobal.ipdl is managing it.   </li>
+ <li>Includes: this is kinda like "<code>#includes</code>" in C++, except it's not a preprocessor directive. It just includes the defintion and makes it available to PWindowGlobal.ipdl.</li>
+ <li>Constructs: by which we mean, PWindowGlobal is in charge of contructing the parent/child relationship. Without this, we can't send messages.  </li>
+</ul>
+
+<p>Anyway, let's put the above into practice by creating our custom protocol: <strong>PEcho.ipdl</strong>. </p>
+
+<h3 id="Custom_protocol_-_PEcho.ipdl">Custom protocol - PEcho.ipdl</h3>
+
+<p>This next part requires us to both specify the protocol and actually implement everything in C++. It's quite involved and, unfortunately, all steps need to be done before we can successfully  recompile. We will try to compile our code as we go, noting what we need to do along the way.   </p>
+
+<p>To be sure, IPDL looks like a crazy mix of WebIDL, C++ header files, and ES6. The syntax should hopefully be fairly obvious though. Unfortunately, it's not really fully documented anywhere - and the IPDL parser gets easily confused (hence us excluding comments below).  </p>
+
+<h4 id="Creating_the_protocol_PEcho.ipdl">Creating the protocol PEcho.ipdl </h4>
+
+<p>Let's start by saving the following file to <strong>./dom/ipc/PEcho.ipdl</strong>. We will explain what all the parts mean below. Note that the file's name and the protocol name must match. </p>
+
+<pre class="brush: ipdl">include protocol PWindowGlobal;
+
+namespace mozilla {
+namespace dom {
+
+async refcounted protocol PEcho
+{
+manager PWindowGlobal;
+
+parent:
+  async Echo(nsCString data) returns (nsCString aResult);
+  async __delete__();
+};
+
+} // namespace dom
+} // namespace mozilla
+</pre>
+
+<p>Now, edit "<strong>./dom/ipc/moz.build</strong>" file and add <code>'PEcho.ipdl',</code> to the <code>IPDL_SOURCES</code> array. Remember that it needs to be in alphabetical order or it won't compile. </p>
+
+<p>Breaking it down:</p>
+
+<ul>
+ <li><strong>include protocol PWindowGlobal; - </strong>We include PWindowGlobal, because it's going to manage the protocol for us.</li>
+ <li><strong>async refcounted protocol PEcho {....} - </strong>This protocol is "<code>async</code>", meaning we are going to use MozPromises. It's also "<strong>refcounted</strong>", meaning it we can use <code>RefPtr&lt;&gt; </code>for instances that can be cycle collected.</li>
+ <li><strong>manager PWindowGlobal;</strong> - We explicitly state that <code>PWindowGlobal</code> is our manager.</li>
+ <li><strong>parent: - </strong>These are the messages that the parent is able to recieve. Note that the child doesn't need to receive any messages. This is because of "async" and "returns" forms a MozPromise. </li>
+ <li><strong>async Echo(nsCString data) returns (nsCString aResult); - </strong>The "returns" here translates to a MozPromise, with a resolver that will settle a promise with the expected value.</li>
+ <li><strong>async __delete__();</strong> - This is called when an instance is deleted. It lets you do cleanup if needed.</li>
+</ul>
+
+<p>Ok, if we now try to compile this (<strong>./mach build</strong>), it will say:</p>
+
+<pre class="brush: bash">|manager| declaration in protocol `PEcho' does not match any |manages| declaration in protocol `PWindowGlobal'</pre>
+
+<p>That's good! It means the syntax is correct, and now we need to PWindowGlobal.ipdl to manage our PEcho protocol.</p>
+
+<h4 id="Updating_PWindowGlobal.ipdl">Updating PWindowGlobal.ipdl</h4>
+
+<p>Open up <strong>./dom/ipc/PWindowGlobal.ipdl</strong>.</p>
+
+<p>We need to add the following things:</p>
+
+<ol>
+ <li>At the top of the file: <code>include protocol PEcho;</code> </li>
+ <li>After "<code>manager PBrowser or PInProcess;</code>", add: <code>manages PEcho;</code></li>
+ <li>Finally, under <code>parent:</code> add <code>  async PEcho();</code>  - this is the "constructor" part  we talked about before, which will allow us to eventually send messages. </li>
+</ol>
+
+<p>So roughly, it looks like this (things in bold is what we added). </p>
+
+<pre class="brush: cpp">// Stuff..
+
+<strong>include protocol PEcho</strong>;
+
+async protocol PWindowGlobal
+{
+  // stuff...
+
+  <strong>manages PEcho;
+</strong>
+  child:
+   // stuff...
+
+  parent:
+<strong>   async PEcho();</strong>
+
+  // more stuff...
+}
+</pre>
+
+<p>If the above additions are unclear, please see the <a href="https://phabricator.services.mozilla.com/D41718">final implementation of PEcho</a> as a diff in Phabricator - search for "PWindowGlobal.ipdl".</p>
+
+<p>Congrats! We've now set up the bi-directional relationship between PWindowGlobal and PEcho at the protocol level. We've told Gecko who manages who, and what messages we want to send. </p>
+
+<p>Now we actually need to implement the "EchoChild" and "EchoParent" actors to handle sending and receiving messages. And we also need to implement the actual management of these objects by dom/ipc/WindowGlobalChild.{h|cpp} and dom/ipc/WindowGlobalParent.{h|cpp}.</p>
+
+<p>If we now do <code>./mach build</code>, it complains that "fatal error: 'mozilla/dom/EchoChild.h' file not found". That gives us a good place to start. </p>
+
+<h4 id="Defining_EchoChild.h">Defining EchoChild.h</h4>
+
+<p>Create <strong>./dom/ipc/EchoChild.h</strong>, and define it as follows - the inline comments describe what's going on:</p>
+
+<pre class="brush: cpp">#ifndef mozilla_dom_EchoChild_h
+#define mozilla_dom_EchoChild_h
+
+// We include the protocol, which is automatically generated for us.
+#include "mozilla/dom/PEchoChild.h"
+
+namespace mozilla {
+namespace dom {
+
+// Note that EchoChild extends the protocol implementation.
+// the protocol implementation will give us the actual
+// methods for sending messages, as we will soon see.
+class EchoChild final : public PEchoChild {
+  friend class PEchoChild;
+
+  // Allows us to participate in reference counting
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EchoChild, final)
+
+ public:
+  explicit EchoChild();
+
+ protected:
+  void ActorDestroy(ActorDestroyReason aWhy) override;
+
+  // We get SendEcho(nsCString&amp; aString) from the superclass.
+
+ private:
+  ~EchoChild() = default;
+  bool mActorAlive;
+};
+
+}  // end of namespace dom
+}  // end of namespace Mozilla
+</pre>
+
+<p>And add the <code>EchoChild.h</code> to <strong>dom/ipc/moz.build</strong>, as part of the <code>EXPORTS.mozilla.dom</code> array. Again, remember that this must be in alphabetical order! </p>
+
+<p>Compiling this will now complain: "<code>fatal error: 'mozilla/dom/EchoParent.h' file not found</code>", so let's define <strong>EchoParent.h</strong>. </p>
+
+<h4 id="Defining_EchoParent.h">Defining EchoParent.h</h4>
+
+<p>Like before, create <strong>./dom/ipc/EchoParent.h</strong>, and code it as follows - the inline comments describe what's going on. Note the <strong>RecvEcho()</strong>, we finally get to define where a message is received, yay!:</p>
+
+<pre class="brush: cpp">#ifndef mozilla_dom_EchoParent_h
+#define mozilla_dom_EchoParent_h
+
+#include "mozilla/dom/PEchoParent.h"
+
+namespace mozilla {
+namespace dom {
+
+class EchoParent final : public PEchoParent {
+  friend class PEchoParent;
+
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EchoParent, final)
+
+ public:
+  EchoParent();
+
+ protected:
+  // We receive messages via Recv* prefixed methods!
+  mozilla::ipc::IPCResult RecvEcho(const nsCString&amp; aString,
+                                   EchoParent::EchoResolver&amp;&amp; aResolver);
+
+  mozilla::ipc::IPCResult Recv__delete__() override;
+
+  void ActorDestroy(ActorDestroyReason aWhy) override;
+
+ private:
+  ~EchoParent() = default;
+  bool mActorAlive;
+};
+
+}  // end of namespace dom
+}  // end of namespace mozilla
+
+#endif
+</pre>
+
+<p>Now, and add the <code>EchoParent.h</code> to <strong>dom/ipc/moz.build</strong>, as part of the <code>EXPORTS.mozilla.dom</code> array. Again, remember that this must be in alphabetical order!</p>
+
+<p>Ok, if we now try to compile, it should complain that "error: no member named 'AllocPEchoParent' in 'mozilla::dom::WindowGlobalParent'". This is part of WindowGlobalParent managing our protocol for us. So let's add that. </p>
+
+<h4 id="Defining_WindowGlobalParent's_AllocDeallocPEchoParent()">Defining WindowGlobalParent's Alloc/DeallocPEchoParent()</h4>
+
+<p>Open up <strong>dom/ipc/WindowGlobalParent.h</strong> and we are going to add two things:</p>
+
+<ol>
+ <li>At the top, add <code>#include "mozilla/dom/EchoParent.h"</code></li>
+ <li>And then, as part of the WindowGlobalParent class definition, add the following two public methods:
+  <pre class="brush: cpp">already_AddRefed&lt;EchoParent&gt; AllocPEchoParent();
+
+bool DeallocPEchoParent(PEchoParent* aActor);
+</pre>
+ </li>
+</ol>
+
+<p>Natrually, we will have to do the Alloc/Dealloc dance for the children too. So, let's do that now.</p>
+
+<h4 id="Defining_WindowGlobalChild's_AllocDeallocPEchoChild()"> Defining WindowGlobalChild's Alloc/DeallocPEchoChild()</h4>
+
+<p>Same as above, now open up <strong>dom/ipc/WindowGlobalChild.h</strong> and we are going to add two things:</p>
+
+<ol>
+ <li>At the top, add <code>#include "mozilla/dom/EchoChild.h"</code></li>
+ <li>And then, as part of the WindowGlobalChild class definition, add the following two public methods:
+  <pre class="brush: cpp">already_AddRefed&lt;EchoChild&gt; AllocPEchoChild();
+
+bool DeallocPEchoChild(PEchoChild* aActor);
+</pre>
+ </li>
+</ol>
+
+<p>Super tedious, we know... nearly there though!</p>
+
+<p>Let's give this a compile and see how we are doing! We should see <strong>./mach build </strong>make significant progress now, but obviously, wihtout a backing cpp implementation, it's not going to do much.</p>
+
+<p>Let's implement the .cpp files, starting with <strong>WindowGlobalParent.cpp</strong>.   </p>
+
+<h4 id="Implementing_methods_on_WindowGlobalParent.cpp">Implementing methods on WindowGlobalParent.cpp</h4>
+
+<p>Open up <strong>dom/ipc/WindowGlobalParent.cpp</strong> and let's implement:</p>
+
+<ul>
+ <li><code>AllocPEchoParent() </code></li>
+ <li><code>DeallocPEchoParent(PEchoParent* aActor)</code></li>
+</ul>
+
+<p>So, let's add:</p>
+
+<pre class="brush: cpp">already_AddRefed&lt;EchoParent&gt; WindowGlobalParent::AllocPEchoParent() {
+  puts("WindowGlobalParent::AllocPEchoParent was called");
+  RefPtr&lt;EchoParent&gt; actor = new EchoParent();
+  return actor.forget();
+}
+
+bool WindowGlobalParent::DeallocPEchoParent(
+    PEchoParent* aActor) {
+  RefPtr actor =
+      dont_AddRef(static_cast(aActor));
+  return true;
+}
+</pre>
+
+<p>The "puts()" there will help us see what's going on once we get things going. Naturally, we want to remove that once we done implementing.</p>
+
+<h4 id="Implementing_methods_on_WindowGlobalChild.cpp">Implementing methods on WindowGlobalChild.cpp</h4>
+
+<p>So, now we need to do the child.</p>
+
+<p>Open up <strong>dom/ipc/WindowGlobalChild.cpp</strong> and let's implement:</p>
+
+<ul>
+ <li><code>AllocPEchoChild() </code></li>
+ <li><code>DeallocPEchoChild(PEchoChild* aActor)</code></li>
+</ul>
+
+<pre class="brush: cpp">already_AddRefed&lt;EchoChild&gt; WindowGlobalChild::AllocPEchoChild() {
+  RefPtr&lt;EchoChild&gt; actor = new EchoChild();
+  return actor.forget();
+}
+
+bool WindowGlobalChild::DeallocPEchoChild(PEchoChild* actor) {
+  delete actor;
+  return true;
+}</pre>
+
+<p>And now finally, let's implement EchoChild.cpp and EchoParent.cpp.</p>
+
+<h4 id="Implementing_EchoChild.cpp">Implementing EchoChild.cpp</h4>
+
+<p>This is a little one. Create <strong>dom/ipc/EchoChild.cpp </strong>and implement: </p>
+
+<pre class="brush: cpp">#include "EchoChild.h"
+
+namespace mozilla {
+namespace dom {
+
+EchoChild::EchoChild() : mActorAlive(true) {}
+
+void EchoChild::ActorDestroy(ActorDestroyReason aWhy) {
+  mActorAlive = false;
+}
+
+}  // end of namespace dom
+}  // end of namespace mozilla</pre>
+
+<p>Ok, now add 'EchoChild.cpp' to the UNIFIED_SOURCES of <strong>dom/ipc/moz.build</strong>. Remember alphabetical order for the 1000th time!</p>
+
+<h4 id="Implementing_EchoParent.cpp">Implementing EchoParent.cpp</h4>
+
+<p>And now, we can finally implement <strong>dom/ipc/EchoParent.cpp</strong>. This is the exciting one, as it the one that actually receives the IPC message via <code>RecvEcho()</code>.</p>
+
+<pre class="brush: cpp">#include "EchoParent.h"
+
+namespace mozilla {
+namespace dom {
+
+EchoParent::EchoParent() : mActorAlive(true) {}
+
+mozilla::ipc::IPCResult EchoParent::RecvEcho(
+    const nsCString&amp; aString, EchoParent::EchoResolver&amp;&amp; aResolver) {
+  puts("[EchoParent] RecvEcho() - yay!");
+  aResolver(aString); // Let's send it back!
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EchoParent::Recv__delete__() {
+  mActorAlive = false;
+  return IPC_OK();
+}
+
+void EchoParent::ActorDestroy(ActorDestroyReason aWhy) {
+  mActorAlive = false;
+}
+
+}  // end of namespace dom
+}  // end of namespace mozilla</pre>
+
+<p>Ok, now add 'EchoParent.cpp' to the UNIFIED_SOURCES of <strong>dom/ipc/moz.build</strong>. Remember alphabetical order, again... sorry!</p>
+
+<p>This should compile now, so run <strong>./mach build</strong>... but it doesn't yet do anything. We need to now got back to Navigator.cpp and get it to send the message for us!</p>
+
+<h3 id="Back_to_Navigator">Back to Navigator</h3>
+
+<p>Ok, we now have all the things we need to send a message and get a response, we just need to put it all together.</p>
+
+<p>This part can be a bit confusing, so if in doubt see the <a href="https://phabricator.services.mozilla.com/D41718">final implementation of PEcho</a> as a diff in Phabricator. Just look for <strong>Navigator.h</strong> and <strong>Navigator.cpp</strong>.</p>
+
+<h4 id="Additions_to_Navigator.h">Additions to Navigator.h</h4>
+
+<p>Firstly, let's make sure we create the child actor (EchoChild) instance, which will allow us to send the message. In creating the instance, we will also make sure the right "Alloc" magic happens, so we can actually send messages. </p>
+
+<p>To <strong>dom/base/Navigator.h</strong>, let's add the following method and member, along with the other members. So, essentially, the stuff to add in bold:</p>
+
+<pre class="brush: cpp">// find this:
+namespace mozilla {
+namespace dom {
+// add:
+<strong>class EchoChild;
+
+</strong>// Make this private:
+<strong>EchoChild* GetEchoChild(ErrorResult&amp; aRv);</strong>
+
+// other stuff already in the file... scroll to the end and add private member:
+<strong>RefPtr&lt;EchoChild&gt; mEchoChild;</strong>
+} // namespace dom
+} // namespace mozilla</pre>
+
+<h4 id="Navigator.cpp_-_GetEchoChild()">Navigator.cpp - GetEchoChild()</h4>
+
+<p>Now, add the following includes at the top of the file:</p>
+
+<pre class="brush: cpp">#include "mozilla/dom/EchoChild.h"
+#include "mozilla/dom/WindowGlobalChild.h"</pre>
+
+<p>To the "NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Navigator)" we can now tell Gecko that <code><strong>mEchoChild</strong></code> can participate, so let's add:</p>
+
+<pre class="brush: cpp">NS_IMPL_CYCLE_COLLECTION_UNLINK(mEchoChild)
+</pre>
+
+<p>Now, the <code>GetEchoChild()</code> private method will do the intial setup for us.</p>
+
+<pre class="brush: cpp">EchoChild* Navigator::GetEchoChild(ErrorResult&amp; aRv) {
+  if (!mEchoChild) {
+    if (!mWindow) {
+      aRv.Throw(NS_ERROR_UNEXPECTED);
+      return nullptr;
+    }
+    auto windowGlobalChild = mWindow-&gt;GetWindowGlobalChild();
+    // Let's get us a child!
+    mEchoChild = windowGlobalChild-&gt;AllocPEchoChild();
+    // Let's make sure it's initialized and ready to send messages.
+    windowGlobalChild-&gt;SendPEchoConstructor(mEchoChild);
+  }
+  return mEchoChild;
+}
+</pre>
+
+<p>And finally... we can now finally finish off <code>::Echo()</code>:</p>
+
+<pre class="brush: cpp">already_AddRefed&lt;Promise&gt; Navigator::Echo(const nsAString&amp; aString,
+                                          ErrorResult&amp; aRv) {
+  if (!mWindow || !mWindow-&gt;GetDocShell()) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  RefPtr&lt;Promise&gt; echoPromise = Promise::Create(mWindow-&gt;AsGlobal(), aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  ErrorResult rv;
+  auto echoChild = GetEchoChild(rv);
+
+  puts("[Navigator.cpp] sending Echo!");
+  // Let's send aString to the parent!
+  // We convert the string to UTF8
+  echoChild-&gt;SendEcho(NS_ConvertUTF16toUTF8(aString))
+      -&gt;Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          // Resolve lambda
+          [echoPromise](const nsCString&amp; returnedString) {
+            puts("[Navigator.cpp] yay, we got a message back!");
+            // Send the string back out a UTF16
+            echoPromise-&gt;MaybeResolve(NS_ConvertUTF8toUTF16(returnedString));
+          },
+          // Reject lambda
+          [echoPromise](mozilla::ipc::ResponseRejectReason&amp;&amp; aReason) {
+            puts("[Navigator.cpp] boo, something went wrong!");
+            echoPromise-&gt;MaybeReject(NS_ERROR_UNEXPECTED);
+          });
+  return echoPromise.forget();
+}
+</pre>
+
+<p>Now, <strong>./mach build; ./mach run</strong>.<strong> </strong></p>
+
+<h3 id="Trying_it_out">Trying it out</h3>
+
+<p>In the developer console, you should now be able to do:</p>
+
+<pre class="brush: js">navigator.echo("this is a test").then(console.log);</pre>
+
+<p>If you see "this is a test", then all has gone well. </p>
+
+<p>Done! see the <a href="https://phabricator.services.mozilla.com/D41718">final implementation of PEcho</a> as a diff in Phabricator.</p>

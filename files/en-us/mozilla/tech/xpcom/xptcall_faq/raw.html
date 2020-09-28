@@ -1,0 +1,74 @@
+<h3 id="What_is_xptcall.3F" name="What_is_xptcall.3F">What is <code>xptcall</code>?</h3>
+
+<p><code>xptcall</code> is a small low level XPCOM method call library. It is implemented using platform specific C/C++ and assembly language code. It is used to facilitate cross language and cross thread method calls. Porting this code is required in order to make Mozilla run on any given platform.</p>
+
+<h3 id="Why_does_xptcall_exist.3F" name="Why_does_xptcall_exist.3F">Why does <code>xptcall</code> exist?</h3>
+
+<p><code>xptcall</code> exists for two reasons:</p>
+
+<ol>
+ <li>To support invoking arbitrary methods on XPCOM interfaces.</li>
+ <li>To support dynamically impersonating any XPCOM interface.</li>
+</ol>
+
+<p>Both of these facilities are required by <a href="en/XPConnect">XPConnect</a>. These facilities are also used by <code><a href="en/NsISupports_proxies">xpcom/proxy</a></code>. It may also be used by other subsystems in the future.</p>
+
+<p>The <code>xptcall</code> approach was chosen over an approach that would have required generating stub code for calling and implementing all interfaces. Though the chosen approach requires some core platform specific code, it has minimal footprint and is extendable to work with <strong>any</strong> valid XPCOM interface without requiring additional per platform compiled code to be distributed.</p>
+
+<h3 id="What_does_xptcall_really_do.3F" name="What_does_xptcall_really_do.3F">What does <code>xptcall</code> really do?</h3>
+
+<p>The core <em>invoke</em> function has the declaration:</p>
+
+<pre class="eval"> XPTC_PUBLIC_API(nsresult)
+ XPTC_InvokeByIndex(nsISupports* that,
+                    PRUint32 methodIndex,
+                    PRUint32 paramCount,
+                    nsXPTCVariant* params);
+</pre>
+
+<p><code>nsXPTCVariant</code> is a discriminated union of the types that can be passed as parameters to the target function (including <code>void*</code> to represent arbitrary pointer types).</p>
+
+<p>Given the correct set of parameters, this function can call any method on any XPCOM interface. XPConnect uses information from <a class="external" href="http://www.mozilla.org/scriptable/typelib_file.html">typelib</a> files to reflect arbitrary XPCOM interfaces into JavaScript and to make calls from JavaScript to XPCOM using <code>XPTC_InvokeByIndex</code>. The information in the typelibs allows XPConnect to convert function parameters and build the <code>nsXPTCVariant</code> array required to make this call.</p>
+
+<p>The <em>stubs</em> (or impersonation) facility of <code>xptcall</code> allows for implementing a class which can, at runtime, pretend to be <strong>any</strong> XPCOM interface. This is done by providing a vtbl full of generic function stubs in <code>xptcall</code>. These stubs forward calls to a shared function whose job it is to use the typelib information to extract the parameters from the platform specific calling convention to build an array of variants to hold the parameters and then call an inherited method which can then do whatever it wants with the call. This code also does the platform specific cleanup as the call returns.</p>
+
+<p><strong>This all works and is being used in Mozilla today on <a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/reflect/xptcall/status.html" rel="custom">numerous platforms</a>.</strong></p>
+
+<h3 id="Why_can.27t_xptcall_just_be_implemented_in_C_or_C.2B.2B.3F" name="Why_can.27t_xptcall_just_be_implemented_in_C_or_C.2B.2B.3F">Why can't <code>xptcall</code> just be implemented in C or C++?</h3>
+
+<p>Neither of these two facilities can be done in a fully cross platform way. Nor can they generally be done fully in C or C++. Let's take them one at a time to see why.</p>
+
+<p>The <em>invoke</em> facility requires code that can build and invoke an arbitrary call frame. The C++ compiler builds such call frames all the time. But the compiler builds frames customized <em>at compile time</em> for the specific signature of the callee. <code>xptcall</code> needs to be able to call <strong>any</strong> valid XPCOM method signature and it needs to specify this at runtime.</p>
+
+<p>The <em>stubs</em> facility needs to impersonate the full vtbl full of methods for any given valid XPCOM interface (including ancestor methods). There are a few ways to do this. We could run the compiler at runtime and dynamically build and load stubs. Or, we could write a bunch of platform specific code to build interface specific vtbls and method stubs. The method I choose was to use a single large vtbl with a lot of small generic stubs. This minimizes the platform specific code as much as possible. Again, you just can't write code in C to do all this. The varargs stuff goes part way, but is just not enough.</p>
+
+<p>If anyone has credible ideas about how to get the required functionality in a cross platform way and/or without resorting to assembly code I'd love to hear about it.</p>
+
+<h3 id="Is_xptcall_a_platform_requirement_for_Mozilla.3F" name="Is_xptcall_a_platform_requirement_for_Mozilla.3F">Is <code>xptcall</code> a platform requirement for Mozilla?</h3>
+
+<p>Yes. Mozilla will not run properly without a functioning port of <code>xptcall</code>. Non-functional stub code exists to allow building <code>xptcall</code> on non-supported platforms. But any browser feature that relies on XPConnect will fail. Any platform that does not do <code>xptcall</code> is in trouble. We need to get moving on getting <code>xptcall</code> working everywhere!</p>
+
+<h3 id="What_platforms_are_supported.3F" name="What_platforms_are_supported.3F">What platforms are supported?</h3>
+
+<p>The growing list:</p>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/reflect/xptcall/status.html" rel="custom">Porting status</a></li>
+</ul>
+
+<h3 id="Where_can_I_find_other_resources.3F" name="Where_can_I_find_other_resources.3F">Where can I find other resources?</h3>
+
+<p>The code is at: <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/reflect/xptcall" rel="custom">xpcom/reflect/xptcall</a></code></p>
+
+<p>A new porting guide is at: <a class="external" href="En/Xptcall_Porting_Guide" title="https://developer.mozilla.org/editor/fckeditor/core/editor/En/Xptcall_Porting_Guide">https://developer.mozilla.org/En/Xptcall_Porting_Guide</a> </p>
+
+<p>Pre-implementation proposals are <a class="external" href="http://www.mozilla.org/scriptable/zero-generated-code-proposal.html">here</a> and <a class="external" href="http://www.mozilla.org/scriptable/zero-ASM-proposal.html">here</a>.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:jband@netscape.com">John Bandhauer &lt;jband@netscape.com&gt;</a></li>
+ <li>Originally Published: 02 September 1999</li>
+</ul>
+</div>

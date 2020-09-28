@@ -1,0 +1,60 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p><strong><code>JSNative</code></strong> is the type of many JSAPI callbacks. In particular, APIs such as {{jsapixref("JS_InitClass")}} and {{jsapixref("JS_DefineFunctions")}} create custom methods on JavaScript objects that are implemented as <code>JSNative</code> callbacks provided by the application, written in C/C++ code.</p>
+
+<p>The term "native" here refers to C/C++ code as opposed to JavaScript code.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush cpp">typedef bool
+(* JSNative)(JSContext *cx, unsigned argc, JS::Value *vp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which the native function is being called. Provides request. <em>In <code><a href="/en-US/docs/JS_THREADSAFE#Requests">JS_THREADSAFE</a></code> builds, the JavaScript engine calls this callback only from within an active request on <code>cx</code>.  The callback does not need to call <code>JS_BeginRequest()</code>).</em></td>
+  </tr>
+  <tr>
+   <td><code>argc</code></td>
+   <td><code>unsigned</code></td>
+   <td>The number of arguments supplied to the function by the caller (as opposed to, say, the number of arguments the function is specified to take in its {{jsapixref("JSFunctionSpec")}}).</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("JS::Value", "JS::Value *")}}</td>
+   <td>The arguments, the <code>this</code> argument, the return-value slot, and the callee <code>Function</code> object are accessible through this pointer using macros described below.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JSNative</code> is the type of native implementations of JavaScript functions.  Full documentation of how to define a <code>JSNative</code> (or a <code>JSFastNative</code>, the equivalent <code>typedef</code> which preceded it) is available in the API header <a href="https://hg.mozilla.org/mozilla-central/file/default/js/public/CallArgs.h" title="http://hg.mozilla.org/mozilla-central/file/default/js/public/CallArgs.h"><code>"js/CallArgs.h"</code></a> {{ Jsapi_minversion_inline("24") }}.  This header is new, but the semantics it describes are applicable to all recent SpiderMonkey releases.  The preferred way to implement a function is to use the {{jsapixref("JS::CallArgs")}} structure defined there; the macros providing equivalent functionality are deprecated.</p>
+
+<p>The behavior of a <code>JSNative</code> is implemented using a <code>JS::CallArgs</code> structure {{ Jsapi_minversion_inline("17") }}. (This structure is now provided in <code>"js/CallArgs.h"</code> {{ Jsapi_minversion_inline("24") }} as well as through <code>"jsapi.h"</code>.) This structure encapsulates access to the callee function, <code>this</code>, the function call's arguments, and the eventual return value.</p>
+
+<p>On success, the callback must set <code>JS::CallArgs::rval()</code> or call <code>JS_SET_RVAL</code> (at least once) and return <code>true</code>. Otherwise it should either report an error (using e.g. {{jsapixref("JS_ReportError")}} or {{jsapixref("JS_ReportOutOfMemory")}}) or raise an exception (using {{jsapixref("JS_SetPendingException")}}), and the callback must return <code>false</code>. (Returning <code>false</code> without reporting an error or raising an exception terminates the script with an uncatchable error. This has limited use cases; it's used to implement Firefox's "slow script" dialog, for example.)</p>
+
+<div class="warning">
+<p>When a <code>JSNative</code> is called, no {{jsapixref("JSStackFrame")}} is generated. This causes the function not to appear on the stack in JavaScript debuggers. It also means that applications that implement {{jsapixref("JSCheckAccessOp")}} or {{jsapixref("JSCheckAccessIdOp")}} in terms of APIs such as {{jsapixref("JS_FrameIterator")}} and {{jsapixref("JS_StackFramePrincipals")}}, must take extra care, as the native function's principals will be missing from the stack.</p>
+</div>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JSNative") }}</li>
+ <li>{{jsapixref("JS::CallArgs")}}</li>
+ <li>{{jsapixref("JS_ReportError")}}</li>
+ <li>{{jsapixref("JS_ReportOutOfMemory")}}</li>
+ <li>{{jsapixref("JS_SetPendingException")}}</li>
+</ul>

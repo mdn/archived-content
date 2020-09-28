@@ -1,0 +1,149 @@
+---
+title: Creating JavaScript jstest reftests
+slug: Mozilla/Projects/SpiderMonkey/Creating_JavaScript_tests/jsreftests
+tags:
+  - ECMAScript
+  - Guide
+  - JavaScript
+  - test
+---
+<div class="summary">
+<p>The js/src/tests directories test files are run by the jstest harness in the shell and the reftest harness in the browser. This directory contains tests of SpiderMonkey conformance to ECMAScript as well as SpiderMonkey non-standard extenstions to ECMAScript.</p>
+</div>
+
+<h2 id="Directory_Overview">Directory Overview</h2>
+
+<p>In the js/src/tests directory, there are a few important subdirectories.</p>
+
+<h3 id="non262_tests"><strong>non262 </strong>tests</h3>
+
+<p>The directory js/src/tests/non262/ should contain all tests of the following type:</p>
+
+<ul>
+ <li>Regressions of SpiderMonkey</li>
+ <li>Non-standard SpiderMonkey extensions to the JavaScript language</li>
+ <li>Test of "implementation-defined" details of the ECMAScript Standard
+  <ul>
+   <li>For example, the <a href="https://tc39.github.io/ecma262/#sec-math.pi">exact definition of pi</a> or some details of <a href="https://tc39.github.io/ecma262/#sec-array.prototype.sort">array sorting</a>.</li>
+  </ul>
+ </li>
+</ul>
+
+<p>You should not add tests of the following type:</p>
+
+<ul>
+ <li>Tests of the JIT
+  <ul>
+   <li>Test of JIT correctness belong in the jit-test suite, read more <a href="/Mozilla/Projects/SpiderMonkey/Creating_JavaScript_tests">here</a>.</li>
+  </ul>
+ </li>
+ <li>Performance tests or stress tests</li>
+ <li>Tests of SpiderMonkey's comformance to the ECMAScript Standard</li>
+</ul>
+
+<p>A brief history: In 2017, SpiderMonkey started comsuming Test262, a comprehensive tests suite for ECMAScript implementations. Before using Test262, SpiderMonkey had a fair number of internal tests of conformance to ECMAScript, and many of those tests remain in the js/src/non262 directory as regressions.</p>
+
+<h3 id="test262_tests"><strong>test262 </strong>tests</h3>
+
+<p><a href="https://github.com/tc39/test262/blob/master/README.md">Test262</a> is the implementation conformance test suite for the latest drafts of <a href="https://tc39.github.io/ecma262/">ECMAScript Language Specification</a>, as well as <a href="https://tc39.github.io/ecma402/">Internationalization API Specification</a> and <a href="https://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf">The JSON Data Interchange Format</a>. It is maintained by TC39, the ECMAScript Standard's technical committee. Mozilla manually imports these tests into the js/src/tests/test262 directory.</p>
+
+<p>You should contribute directly to Test262 in the following scenarios:</p>
+
+<ul>
+ <li>You are writing tests for the  implementation of a new feature or feature proposal for ECMAScript.
+  <ul>
+   <li>If tests for the new feature proposal do not yet exist in Test262 (they might!), contributing to Test262 will allow all other JavaScript implementors to use your tests as well.</li>
+  </ul>
+ </li>
+ <li>You would like to contribute tests of an ECMAScript, Intl or JSON feature insufficiently covered by Test262.</li>
+</ul>
+
+<p>At the time of this writing, Mozilla imports Test262 tests in to the directory js/src/tests/test262. When importing Test262, the test file's in-file metadata is translated from Test262 format to a format readibly by the  jstest harness. If you are contributing directly to Test262, you must submit the tests in the Test262 format, which you can see in the <a href="https://github.com/tc39/test262">Test262 git repository </a>and read about <a href="https://github.com/tc39/test262/blob/master/CONTRIBUTING.md">here</a>.</p>
+
+<p>An update script exists in the js/src/tests directories to fetch and reformat the Test262 suite, see <code>test262-update.py</code>.</p>
+
+<p><span style="display: none;"> </span></p>
+
+<h2 id="Creating_the_test_case_file" name="Creating_the_test_case_file">Writing a new test file</h2>
+
+<p>Please read the high level advice for test writing in the parent article <a href="/Mozilla/Projects/SpiderMonkey/Creating_JavaScript_tests">here</a>.</p>
+
+<p>jstests has a special requirement:</p>
+
+<ul>
+ <li>The call to reportCompare in every jstest is required by the test harness. Except in old tests or <em>super</em> strange new tests, it should be the last line of the test.</li>
+</ul>
+
+<h3 id="Choosing_the_comparison_function" name="Choosing_the_comparison_function">Comparison functions and shared test functionality</h3>
+
+<p>The jstest runner loads the code in <code>js/src/tests/shell.js</code> for every test. Additionally, it loads every <code>shell.js</code> and <code>broswer.js</code> file in the subdirectories on the path from <code>js/src/tests</code> to the location of your test. If you have functionality several tests share in a given folder, you can add the functionality to the shell.js or broswer.js file in the directory.</p>
+
+<h4 id="assertEq">assertEq</h4>
+
+<p><code>assertEq(v1, v2[, message])</code> checks that v1 and v2 are the same value. If they're not, throw an exception (which will cause the test to fail).</p>
+
+<h4 id="reportCompare" name="reportCompare">reportCompare</h4>
+
+<p><code>reportCompare(expected, actual, description)</code> is somewhat like assertEq(actual, expected, description) except that the first two arguments are swapped, failures are reported via stdout rather than by throwing exceptions, and the matching is fuzzy in an unspecified way. For example, reportCompare sometimes considers numbers to be the same if they are "close enough" to each other, even if the == operator would return false.</p>
+
+<pre class="brush: js">expected = 3;
+actual   = 1 + 2;
+reportCompare(expected, actual, '3==1+2');
+</pre>
+
+<h4 id="compareSource" name="compareSource">compareSource</h4>
+
+<p><code>compareSource(expected, actual, description)</code> is used to test if the decompilation of a JavaScript object (conversion to source code) matches an expected value. Note that tests which use <code>compareSource</code> should be located in the <code>decompilation</code> sub-suite of a suite. For example, to test the decompilation of a simple function you could write:</p>
+
+<pre class="brush: js">var f  = (function () { return 1; });
+expect = 'function () { return 1; }';
+actual = f + '';
+compareSource(expect, actual, 'decompile simple function');
+</pre>
+
+<h3 id="Handling_shell_or_browser_specific_features" name="Handling_shell_or_browser_specific_features">Handling shell or browser specific features</h3>
+
+<p>jstests run both in the browser and in the JavaScript shell.</p>
+
+<p>If your test needs to use browser-specific features, either:</p>
+
+<ul>
+ <li>make the test silently pass if those features aren't present; or</li>
+ <li>write a mochitest instead (preferred); or</li>
+ <li>at the top of the test, add the comment  <code>// skip-if(xulRuntime.shell)</code>, so that it only runs in the browser.</li>
+</ul>
+
+<p>If your test needs to use shell-specific features, like gc(), either:</p>
+
+<ul>
+ <li>make the test silently pass if those features aren't present; or</li>
+ <li>make it a jit-test (so that it never runs in the browser); or</li>
+ <li>at the top of the test, add the comment <code>// skip-if(!xulRuntime.shell)</code>, so that it only runs in the shell.</li>
+</ul>
+
+<p>It is easy to make a test silently pass; anyone who has written JS code for the Web has written this kind of if-statement:</p>
+
+<pre class="brush: js">if (typeof gc === 'function') {
+    var arr = [];
+    arr[10000] = 'item';
+    gc();
+    assertEq(arr[10000], 'item', 'gc must not wipe out sparse array elements');
+} else {
+    print('Test skipped: no gc function');
+}
+reportCompare(0, 0, 'ok');
+</pre>
+
+<h3 id="Handling_abnormal_test_terminations" name="Handling_abnormal_test_terminations">Handling abnormal test terminations</h3>
+
+<p>Some tests can terminate abnormally even though the test has technically passed. Earlier we discussed the deprecated approach of using the <code>-n</code> naming scheme to identify tests whose PASSED, FAILED status is flipped by the post test processing code in <code>jsDriver.pl</code> and <code>post-process-logs.pl</code>. A different approach is to use the <code>expectExitCode(exitcode)</code> function which outputs a string:</p>
+
+<pre>--- NOTE: IN THIS TESTCASE, WE EXPECT EXIT CODE &lt;exitcode&gt; ---</pre>
+
+<p>that tells the post-processing scripts <code>jsDriver.pl</code> or <code>post-process-logs.pl</code> that the test passes if the shell or browser terminates with that exit code. Multiple calls to <code>expectExitCode</code> will tell the post-processing scripts that the test actually passed if any of the exit codes are found when the test terminates.</p>
+
+<p>This approach has limited use, however. In the JavaScript shell, an uncaught exception or out of memory error will terminate the shell with an exit code of 3. However, an uncaught error or exception will not cause the browser to terminate with a non-zero exit code. To make the situation even more complex, newer C++ compilers will abort the browser with a typical exit code of <code>5</code> by throwing a C++ exception when an out of memory error occurs. Simply testing the exit code does not allow you to distinguish the variety of causes a particular abnormal exit may have.</p>
+
+<p>In addition, some tests pass if they do not crash; however, they may not terminate unless killed by the test driver.</p>
+
+<p>A modification will soon be made to the JavaScript tests to allow an arbitrary string to be output which will be used to post process the test logs to better determine if a test has passed regardless of its exit code.</p>

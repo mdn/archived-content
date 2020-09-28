@@ -1,0 +1,283 @@
+---
+title: Monitoring downloads
+slug: Archive/Mozilla/Monitoring_downloads
+tags:
+  - Download Manager
+  - Firefox 3
+---
+<p></p><div class="overheadIndicator obsolete obsoleteHeader"><p><strong><span title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div>This interface is deprecated as of Firefox 26. Please use <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Downloads.jsm">Downloads.jsm</a> instead.<p></p>
+
+<p> Firefox 3 makes it easier than ever to monitor the status of downloads. Although it was possible to do so in previous versions of Firefox, it was previously only possible for one observer to do so at a time. Firefox 3 introduces new API that allows any number of listeners to observe downloads.</p>
+
+<p>This article demonstrates how to monitor downloads in Firefox 3, using the Download Manager. As a nice bonus, it also demonstrates how to use the <a href="/en/Storage" title="en/Storage">Storage</a> API to issue <a href="http://www.sqlite.org/" class="external">sqlite</a> commands on a database. The result is a window you can open by choosing "Download log" in the Tools menu, which lists all downloads that have been started since you installed the extension. In the list is the name of the file, the start and end times of the download, the download speed, and the status of the download. A tooltip is included that displays the full source URL of the file.</p>
+
+<p><a href="http://developer.mozilla.org/samples/extension-samples/DownloadLogger.zip" class="external">Download the full sample.</a></p>
+
+<h3 id="Setting_up" name="Setting_up">Setting up</h3>
+
+<p>When the extension loads, it will do some housekeeping chores. In particular, it needs to get an instance of the Download Manager's <code><a href="/en/nsIDownloadManager" title="en/nsIDownloadManager">nsIDownloadManager</a></code> interface and create the database into which its data will be stored.</p>
+
+<pre class="eval"> onLoad: function() {
+   // initialization code
+   this.initialized = true;
+   this.strings = document.getElementById("downloadlogger-strings");
+
+   this.dlMgr = Components.classes["@mozilla.org/download-manager;1"]
+                          .getService(Components.interfaces.nsIDownloadManager);
+
+   this.dlMgr.addListener(downloadlogger);
+
+   // Open the database, placing its file in the profile directory
+
+   this.dbFile = Components.classes["@mozilla.org/file/directory_service;1"]
+                    .getService(Components.interfaces.nsIProperties)
+                    .get("ProfD", Components.interfaces.nsIFile);
+   this.dbFile.append("downloadlogger.sqlite");
+
+   // Get access to the storage service and open the database
+
+   this.storageService = Components.classes["@mozilla.org/storage/service;1"]
+                       .getService(Components.interfaces.mozIStorageService);
+
+   var dbConn = this.storageService.openDatabase(this.dbFile);
+
+   // Now create the table; if it already exists, this fails, but we don't care!
+
+   dbConn.executeSimpleSQL("CREATE TABLE items (source TEXT, size INTEGER," +
+                           " startTime INTEGER, endTime INTEGER," +
+                           " speed REAL, status INTEGER)");
+   dbConn.close();
+ },
+</pre>
+
+<p>This is fairly simple stuff. The Download Manager instance is cached into a member variable in the <code>downloadlogger</code> object for reuse later, and its <code>addListener()</code> method is called to start listening for download status updates. The database file is opened, and an sqlite <code>CREATE TABLE</code> command is executed to create the table.</p>
+
+<p>Finally, the database is closed.</p>
+
+<div class="note"><strong>Note:</strong> The <code><a href="/en/mozIStorageConnection" title="en/mozIStorageConnection">mozIStorageConnection</a></code> method <code>close()</code> is being added to Firefox 3 alpha 8; in prior versions of Firefox, there is no way to explicitly close the database. Instead, it is closed when the garbage collector disposes of the connection object.</div>
+
+<h3 id="Handling_download_state_changes" name="Handling_download_state_changes">Handling download state changes</h3>
+
+<p>Once the code above is run, our <code>onDownloadStateChange()</code> method is called whenever a download's state changes. This is part of the <code><a href="/en/nsIDownloadProgressListener" title="en/nsIDownloadProgressListener">nsIDownloadProgressListener</a></code> interface.</p>
+
+<p>That code looks like this:</p>
+
+<pre class="eval"> onDownloadStateChange: function(aState, aDownload) {
+   var statement;
+
+   switch(aDownload.state) {
+     case Components.interfaces.nsIDownloadManager.DOWNLOAD_DOWNLOADING:
+
+       // Add a new row for the download being started; each row includes the
+       // source URI, size, and start time.  The end time and download speed
+       // are both set to 0 at first, since we don't know those yet.
+
+       // status is the same status value that came from the download manager.
+
+       var dbConn = this.storageService.openDatabase(this.dbFile);
+       statement = dbConn.createStatement("REPLACE INTO items VALUES " +
+                                          "(?1, ?2, ?3, 0, 0.0, 0)");
+
+       statement.bindStringParameter(0, aDownload.source.spec);
+       statement.bindInt64Parameter(1, aDownload.size);
+       statement.bindInt64Parameter(2, aDownload.startTime);
+       statement.execute();
+       statement.reset();
+       dbConn.close();
+       break;
+
+     // Record the completion (whether failed or successful) of the download
+
+     case Components.interfaces.nsIDownloadManager.DOWNLOAD_FINISHED:
+     case Components.interfaces.nsIDownloadManager.DOWNLOAD_FAILED:
+     case Components.interfaces.nsIDownloadManager.DOWNLOAD_CANCELED:
+       this.logTransferCompleted(aDownload);
+       break;
+   }
+ },
+</pre>
+
+<p>We're interested in four states. If the download's state, indicated by the <code>aDownload.state</code> field, is <code>Components.interfaces.nsIDownloadManager.DOWNLOAD_DOWNLOADING</code>, the file has begun to download. The <code>aDownload</code> object is an <code><a href="/en/nsIDownload" title="en/nsIDownload">nsIDownload</a></code> object.</p>
+
+<p>In that case, we create a new row in our database for the new file by opening the database and building a <code>REPLACE INTO</code> sqlite command. The first three rows are set to the values of the source URI, file size, and start time fields from the download object. The remaining rows are set to zeroes since that's not information we have at the moment.</p>
+
+<p>If the download's state indicates that the download is finished, canceled, or failed, we call our <code>logTransferCompleted</code> routine to update the log to indicate that state change. That code looks like this:</p>
+
+<pre class="eval"> logTransferCompleted: function(aDownload) {
+     var endTime = new Date();                // Current time is the end time
+
+     // Issue the REPLACE sqlite command to update the record.  We find a
+     // record for the same source URI and start time, then update the end
+     // time, size, and speed entries in the record.  By matching on both
+     // source URI and start time, we support logging multiple downloads of
+     // the same file.
+
+     var dbConn = this.storageService.openDatabase(this.dbFile);
+     var statement = dbConn.createStatement("UPDATE items SET size=?1, " +
+         "endTime=?2, speed=?3, status=?4 WHERE source=?5 and startTime=?6");
+     statement.bindInt64Parameter(0, aDownload.size);
+     statement.bindInt64Parameter(1, endTime.getTime());
+     statement.bindDoubleParameter(2, aDownload.speed);
+     statement.bindInt32Parameter(3, aDownload.state);
+     statement.bindStringParameter(4, aDownload.source.spec);
+     statement.bindInt64Parameter(5, aDownload.startTime);
+     statement.execute();
+     statement.reset();
+     dbConn.close();
+ },
+</pre>
+
+<p>This simply opens the database and builds and executes a <code>UPDATE</code> sqlite command that finds the download item whose source URI and start time match the download that has completed and updates its information. By looking for a record with both the same URI and start time, we properly support the case where the user downloads the same file multiple times.</p>
+
+<h3 id="Displaying_the_download_log" name="Displaying_the_download_log">Displaying the download log</h3>
+
+<p>The download log window's code is encapsulated in an object called <code>downloadlogger_dlwindow</code>. Since this is a simple example, it's a one-shot log window; it doesn't monitor for further changes to the log. It simply displays the state of downloads at the moment the window was opened.</p>
+
+<p>That means all its work can be done in its load event handler, which looks like this:</p>
+
+<pre class="eval"> onLoad: function() {
+   // Open the database
+
+   this.dbFile = Components.classes["@mozilla.org/file/directory_service;1"]
+                    .getService(Components.interfaces.nsIProperties)
+                    .get("ProfD", Components.interfaces.nsIFile);
+   this.dbFile.append("downloadlogger.sqlite");
+
+   // Get access to the storage service and open the database
+
+   this.storageService = Components.classes["@mozilla.org/storage/service;1"]
+                       .getService(Components.interfaces.mozIStorageService);
+
+   var dbConn = this.storageService.openDatabase(this.dbFile);
+
+   var loglist = document.getElementById("loglist");
+
+   var statement = dbConn.createStatement("SELECT * FROM items");   // Get all items in table
+   try {
+     while (statement.executeStep()) {
+       var row = document.createElement('listitem');
+
+       // Add the cells to the row
+
+       var cell = document.createElement('listcell');
+       var sourceStr = statement.getString(0);
+       row.setAttribute("tooltiptext", sourceStr);
+       sourceStr = sourceStr.slice(sourceStr.lastIndexOf("/")+1);
+       cell.setAttribute("label", sourceStr);   // Source
+       row.appendChild(cell);
+
+       cell = document.createElement('listcell');
+       cell.setAttribute("label", (statement.getInt64(1) / 1024).toFixed(1) + "KB");    // Size
+       cell.setAttribute("style", "text-align:right");
+       row.appendChild(cell);
+
+       var theDate = new Date(statement.getInt64(2) / 1000);        // Start time
+       cell = document.createElement('listcell');
+       var dateStr = theDate.toLocaleString();
+       cell.setAttribute("label", dateStr);
+       row.appendChild(cell);
+
+       theDate = new Date(statement.getInt64(3));            // End time
+       cell = document.createElement('listcell');
+       dateStr = theDate.toLocaleString();
+       cell.setAttribute("label", dateStr);
+       row.appendChild(cell);
+
+       var speed = statement.getDouble(4) / 1024.0;
+       cell = document.createElement('listcell');
+       cell.setAttribute("label", speed.toFixed(1) + "KB/sec");
+       cell.setAttribute("style", "text-align:right");
+       row.appendChild(cell);
+
+       var status = statement.getInt32(5);
+       var style = "color:black";
+       cell = document.createElement('listcell');
+
+       var statusStr;
+
+       switch(status) {
+         case 0:
+           statusStr = "Downloading";
+           break;
+         case 1:
+           statusStr = "Complete";
+           style = "color:green";
+           break;
+         case 2:
+           statusStr = "Failed";
+           style = "color:red";
+           break;
+         case 3:
+           statusStr = "Canceled";
+           style = "color:purple";
+           break;
+         case 4:
+           statusStr = "Paused";
+           style = "color:blue";
+           break;
+         case 5:
+           statusStr = "Queued";
+           style = "color:teal";
+           break;
+         case 6:
+           statusStr = "Blocked";
+           style = "color:white background-color:red";
+           break;
+         case 7:
+           statusStr = "Scanning";
+           style = "color:silver";
+           break;
+         default:
+           statusStr = "Unknown";
+           break;
+       }
+       cell.setAttribute("label", statusStr);
+       cell.setAttribute("style", style);
+       row.appendChild(cell);
+
+       loglist.appendChild(row);
+     }
+   } finally {
+     statement.reset();
+     dbConn = null;
+   }
+ }
+</pre>
+
+<p>This code is fairly simple. It starts by opening the sqlite database containing the log information, then creates a <code>SELECT</code> SQL statement to pull all entries from the database.</p>
+
+<p>To iterate over the results, we use a <code>while</code> loop that calls the <code><a href="/en/mozIStorageStatement" title="en/mozIStorageStatement">mozIStorageStatement</a></code> object's <code>executeStep()</code> method. Each time that method is called, one row of the results is fetched.</p>
+
+<p>After that, the list row object is created, and each entry in the search result is fetched and inserted into the appropriate list cell.</p>
+
+<p>The interesting bits to take away from this:</p>
+
+<ul>
+ <li><code><a href="/en/mozIStorageStatement" title="en/mozIStorageStatement">mozIStorageStatement</a></code> has several data getter routines for fetching search results, including <code>getString()</code>, <code>getDouble()</code>, and <code>getInt64()</code>. These methods take as a parameter the zero-based index number of the column whose value you wish to retrieve.</li>
+ <li>Note that the start time is being divided by 1000 before we create a JavaScript <code>Date</code> object from it. That's to adjust the value from the granularity stored in the database to that expected by JavaScript.</li>
+ <li>To right-justify the numeric columns, we set the appropriate cells' <code>style</code> attribute to <code>text-align:right</code>.</li>
+</ul>
+
+<h3 id="Exercises_for_the_reader" name="Exercises_for_the_reader">Exercises for the reader</h3>
+
+<p>There are some obvious things that could be done to improve this extension. If you're learning to use the Download Manager or Storage APIs, they're things you might look into doing for practice:</p>
+
+<ul>
+ <li>Add code to update the download log window on the fly, instead of generating a static list when it's first opened.</li>
+</ul>
+
+<ul>
+ <li>Add additional statistics. What's the average download speed across all downloads? What times of day do you get the best download performance?</li>
+</ul>
+
+<ul>
+ <li>Add buttons to delete items from the log, or to delete all items that have finished downloading.</li>
+</ul>
+
+<ul>
+ <li>Add searching.</li>
+</ul>
+
+<h3 id="See_also" name="See_also">See also</h3>
+
+<p><a href="/en/Storage" title="en/Storage">Storage</a>, <code><a href="/en/nsIDownloadManager" title="en/nsIDownloadManager">nsIDownloadManager</a></code>, <code><a href="/en/nsIDownload" title="en/nsIDownload">nsIDownload</a></code>, <code><a href="/en/nsIDownloadProgressListener" title="en/nsIDownloadProgressListener">nsIDownloadProgressListener</a></code></p>

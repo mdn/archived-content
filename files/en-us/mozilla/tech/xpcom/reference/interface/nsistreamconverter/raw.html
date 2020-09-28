@@ -1,0 +1,97 @@
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/streamconv/public/nsIStreamConverter.idl" rel="custom">netwerk/streamconv/public/nsIStreamConverter.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+Provides an interface to implement when you have code that converts data from one type to another.
+</span>
+
+<div style="background: #eee; padding: 2px;">
+Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code>
+<span style="text-align: right; float: right;">Last changed in Gecko 1.7 </span></div>
+</div><p></p>
+<p>Suppose you had code that converted plain text into HTML. You could implement this interface to allow everyone else to use your conversion logic using a standard api.</p>
+<h5 id="Stream_converter_users">Stream converter users</h5>
+<p>There are currently two ways to use a stream converter:</p>
+<ol>
+ <li><strong>Synchronous:</strong> Stream to Stream. You can supply the service with a stream of type X and it will convert it to your desired output type and return a converted (blocking) stream to you.</li>
+ <li><strong>Asynchronous:</strong> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> to <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code>. You can supply data directly to the converter by calling it's <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIStreamListener#OnDataAvailable()">nsIStreamListener.OnDataAvailable()</a></code> method. It will then convert that data from type X to your desired output type and return converted data to you via the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> you passed in by calling its <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIStreamListener#OnDataAvailable()">nsIStreamListener.OnDataAvailable()</a></code> method.</li>
+</ol>
+<h5 id="Stream_converter_suppliers">Stream converter suppliers</h5>
+<p>Registering a stream converter: Stream converter registration is a two step process. First of all the stream converter implementation must register itself with the component manager using a contractid in the format below. Second, the stream converter must add the contractid to the registry.</p>
+<p>Stream converter contractid format (the stream converter root key is defined in this file):</p>
+<pre>@mozilla.org/streamconv;1?from=FROM_MIME_TYPE&amp;to=TO_MIME_TYPE
+</pre>
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#asyncConvertData()">asyncConvertData</a>(in string aFromType, in string aToType, in nsIStreamListener aListener, in nsISupports aCtxt);</code></td>
+  </tr>
+  <tr>
+   <td><code>nsIInputStream <a href="#convert()">convert</a>(in nsIInputStream aFromStream, in string aFromType, in string aToType, in nsISupports aCtxt);</code></td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Methods" name="Methods">Methods</h2>
+<h3 id="asyncConvertData()" name="asyncConvertData()">asyncConvertData()</h3>
+<p><strong>Asynchronous version:</strong> Converts data arriving via the converter's <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIStreamListener#OnDataAvailable()">nsIStreamListener.OnDataAvailable()</a></code> method from one type to another, pushing the converted data out to the caller via <code>aListener::OnDataAvailable()</code>.</p>
+<p>Use this method when you want to proxy (and convert) <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> callbacks asynchronously.</p>
+<pre class="eval">void asyncConvertData(
+  in string aFromType,
+  in string aToType,
+  in nsIStreamListener aListener,
+  in nsISupports aCtxt
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl>
+ <dt>
+  <code>aFromType</code></dt>
+ <dd>
+  The MIME type of the original/raw data.</dd>
+ <dt>
+  <code>aToType</code></dt>
+ <dd>
+  The MIME type of the converted data.</dd>
+ <dt>
+  <code>aListener</code></dt>
+ <dd>
+  The listener who receives the converted data.</dd>
+ <dt>
+  <code>aCtxt</code></dt>
+ <dd>
+  Either an opaque context, or a converter specific context (implementation specific).</dd>
+</dl>
+<h3 id="convert()" name="convert()">convert()</h3>
+<p><strong>Synchronous version:</strong> Converts a stream of one type, to a stream of another type.</p>
+<p>Use this method when you have a stream you want to convert.</p>
+<pre class="eval">nsIInputStream convert(
+  in nsIInputStream aFromStream,
+  in string aFromType,
+  in string aToType,
+  in nsISupports aCtxt
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl>
+ <dt>
+  <code>aFromStream</code></dt>
+ <dd>
+  The stream representing the original/raw data.</dd>
+ <dt>
+  <code>aFromType</code></dt>
+ <dd>
+  The MIME type of <code>aFromStream</code>.</dd>
+ <dt>
+  <code>aToType</code></dt>
+ <dd>
+  The MIME type of the returned stream.</dd>
+ <dt>
+  <code>aCtxt</code></dt>
+ <dd>
+  Either an opaque context, or a converter specific context (implementation specific).</dd>
+</dl>
+<h6 id="Return_value" name="Return_value">Return value</h6>
+<p>The converted stream.</p>
+<div class="note">
+ <strong>Note:</strong> The returned stream may not already be converted. An efficient stream converter implementation will converter data on demand rather than buffering the converted data until it is used.</div>

@@ -1,0 +1,119 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div>{{ obsolete_header("jsapi52") }}</div>
+
+<div> </div>
+
+<div class="summary">
+<p>Get or specify the error reporting mechanism for an application.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JSErrorReporter
+JS_GetErrorReporter(JSRuntime *rt);
+
+JSErrorReporter
+JS_SetErrorReporter(JSRuntime *rt, JSErrorReporter er);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSRuntime *")}}</td>
+   <td>Pointer to a JS runtime whose errors should be reported via your function. </td>
+  </tr>
+  <tr>
+   <td><code>er</code></td>
+   <td><code>JSErrorReporter</code></td>
+   <td>The user-defined error reporting function to use in your application, described below.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Callback_Syntax" name="Callback_Syntax">Callback Syntax</h3>
+
+<pre class="brush: cpp">typedef void
+(* JSErrorReporter)(JSContext *cx, const char *message, JSErrorReport *report);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which the error happened.</td>
+  </tr>
+  <tr>
+   <td><code>message</code></td>
+   <td><code>const char *</code></td>
+   <td>An error message.</td>
+  </tr>
+  <tr>
+   <td><code>report</code></td>
+   <td>{{jsapixref("JSErrorReport", "JSErrorReport *")}}</td>
+   <td>An error report record containing additional details about the error.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JS_SetErrorReporter</code> enables you to define and use your own error reporting mechanism in your applications. The reporter you define is automatically passed a {{jsapixref("JSErrorReport")}} structure when an error occurs and has been parsed by {{jsapixref("JS_ReportError")}}. <code>JS_SetErrorReporter</code></p>
+
+<p><code>JS_GetErrorReporter</code> returns the value set by <code>JS_SetErrorReporter</code>.</p>
+
+<p>Typically, the error reporting mechanism you define should log the error where appropriate (such as to a log file), and display an error to the user of your application. The error you log and display can make use of the information passed about the error condition in the <code>JSErrorReport</code> structure.</p>
+
+<p>The error reporter callback must not reenter the JSAPI. Like all other SpiderMonkey callbacks, the error reporter callback must not throw a C++ exception.</p>
+
+<p>Note that JS_SetErrorReporter has no facility to directly pass a user data pointer to the error reporting function. You can work around this by using the JS_SetRuntimePrivate and JS_GetRuntimePrivate methods. Example code with error handling omitted:</p>
+
+<pre>    class MyRequest {
+    public:
+
+      void execute() {
+        auto rt = JS_NewRuntime(memlimit);
+        JS_SetRuntimePrivate(rt, this);
+        JS_SetErrorReporter(rt, &amp;MyRequest::dispatchError);
+        // execute JS
+      }
+
+      void onError(const std::string&amp; error) {
+        // handle error
+      }
+
+      static void dispatchError(
+          JSContext* ctx,
+          const char* message,
+          JSErrorReport* report) {
+        auto rt = JS_GetRuntime(ctx);
+        auto rt_userdata = JS_GetRuntimePrivate(rt);
+        if (rt_userdata) {
+          auto req = static_cast&lt;MyRequest*&gt;(rt_userdata);
+          req-&gt;onError(message);
+        }
+      }
+
+    };</pre>
+
+<h2 id="See_Also" name="See_Also"> </h2>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_GetErrorReporter") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_SetErrorReporter") }}</li>
+ <li>{{bug(1277278)}} - JS_SetErrorReporter is renamed to JS::SetWarningReporter</li>
+</ul>

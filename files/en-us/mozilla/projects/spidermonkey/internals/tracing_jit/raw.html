@@ -1,0 +1,97 @@
+<div class="warning">
+<p>This document is talking about deprecated feature.</p>
+</div>
+
+<p>The tracing JIT in SpiderMonkey consists of a generic, low level component called nanojit which is co-maintained between Adobe and Mozilla, and a SpiderMonkey-specific high level component called jstracer. The nanojit component is language agnostic, and contains no knowledge about SpiderMonkey or any other part of the Mozilla codebase. The jstracer component consists of a <em>monitor</em> and a <em>recorder</em>. The monitor watches the executing SpiderMonkey interpreter. When the monitor determines that the interpreter has entered a region of code that would benefit from native compilation, the monitor activates the recorder. The recorder records the activity of the interpreter, using nanojit to build an efficient, native representation of the execution called a <em>fragment</em>. The monitor then calls into the native code stored in the fragment.</p>
+
+<p>A schematic diagram of the components of the tracing JIT follows:</p>
+
+<p> <img alt="TraceMonkey.png" class="default internal" src="/@api/deki/files/3045/=TraceMonkey.png" style="height: 565px; width: 800px;"></p>
+
+<h3 id="Generic_low_level_component_nanojit*">Generic low level component: nanojit/*</h3>
+
+<p>The files in the <code>nanojit</code> directory define the nanojit component.</p>
+
+<h4 id="nanojitLIR.*"><code>nanojit/LIR.*</code></h4>
+
+<p>The <code>nanojit/LIR.cpp</code> and <code>nanojit/LIR.h</code> files define the intermediate representation <a class="internal" href="/En/Nanojit/LIR" title="En/Nanojit/LIR">LIR</a>, which is used as input to nanojit. LIR is a conventional three-address, linear SSA code. A single instruction of LIR is called a <code>LIns</code>, short for "LIR instruction". <code>LIns</code> values are depicted in blue in the schematic diagram. In contrast, a single native instruction is called a <code>NIns</code>, and is depicted in red in the schematic diagram.</p>
+
+<p>The recorder in jstracer inserts <code>LIns</code> values into a LIR buffer held in a page, itself contained within a logical fragment, and the nanojit compilation pipeline and <code>Assembler</code> transform the <code>LIns</code> values into <code>NIns</code> values.</p>
+
+<h4 id="nanojitFragmento.*">nanojit/Fragmento.*</h4>
+
+<p>The <code>nanojit/Fragment.cpp</code> and <code>nanojit/Fragmento.cpp</code> files define the <code>Fragment</code> and <code>Fragmento</code> classes. A <code>Fragmento</code> is a resource-management object that allocates and stores a set of <code>Fragment</code>s and <code>Page</code>s, and manages their lifecycle. A <code>Fragmento</code> <em>owns</em> its associated <code>Fragment</code>s.</p>
+
+<p>A <code>Fragment</code> represents a single linear code sequence, typically terminating in a jump to another <code>Fragment</code> or back to the beginning of the <code>Fragment</code>. A <code>Fragment</code>'s code is stored in a set of associated <code>Page</code>s and <code>GuardRecord</code>s allocated from the <code>Fragment</code>'s owning <code>Fragmento</code>. A <code>Fragment</code> initially holds no pages. As the compilation pipeline inserts LIR instructions (<code>LIns</code> values) into the <code>Fragment</code>, it allocates <code>Page</code>s to store the LIR code. Later, when the <code>Fragment</code> is assembled, it will allocate <code>Page</code>s for the native code (<code>NIns</code> values) produced by the <code>Assembler</code>. When the <code>Fragment</code> is destroyed, it returns its <code>Page</code>s to the <code>Fragmento</code> for reuse.</p>
+
+<h4 id="nanojitAssembler.*"><code>nanojit/Assembler.*</code></h4>
+
+<p>The <code>nanojit/Assembler.cpp</code> and <code>nanojit/Assembler.h</code> files define the class <code>Assembler</code>, which transforms <code>LIns</code> values into <code>NIns</code> values. In other words, an <code>Assembler</code> transforms LIR code into native code. An <code>Assembler</code> is also able to modify existing fragments of native code, by rewriting native jump instructions to jump to new locations. In this way the <code>Assembler</code> can "patch together" multiple fragments, so that program control can flow from one fragment into another, or back out of generated code and into the interpreter.</p>
+
+<p>An <code>Assembler</code> is the only component of the tracing JIT that reads or writes native code. Therefore an <code>Assembler</code> contains several machine-specific methods which are implemented in the accompanying <code>nanojit/Native*.*</code> files.</p>
+
+<p>An <code>Assembler</code> runs in a single pass over its input, transforming one <code>LIns</code> value to zero or more <code>NIns</code> values. It is important to keep in mind that this pass runs <em>backwards</em> from the last <code>LIns</code> in the input LIR code to the first, generating native code in reverse. Running backwards sometimes makes the logic difficult to follow, but it is an essential factor in maintaining the <code>Assembler</code>'s high speed and small size.</p>
+
+<p>In the SpiderMonkey tracing JIT there is only ever one <code>Assembler</code> active at a time, associated with the currently active <code>Fragmento</code>.</p>
+
+<h4 id="nanojitRegAlloc.*">nanojit/RegAlloc.*</h4>
+
+<p>Nanojit's register allocator. This is a <em>local</em> register allocator, meaning that it does not allocate registers across basic blocks. It is correspondingly very simple: register allocation is done immediately, step-by-step as code is being generated. A running tally is kept of assignments between registers and LIR operands, and any time a new LIR operand is required in a register a new one is assigned from the list of free registers. When all registers are in use, the least-often-used register currently in use is spilled.</p>
+
+<h4 id="nanojitNative*.*">nanojit/Native*.*</h4>
+
+<p>The files Nativei386.h, Nativei386.cpp, NativeARM.h, NativeARM.cpp, etc. each define architecture-specific methods within the Assembler class. Only one architecture-specific variant is included into any given build of the Assembler; the architecture is selected and fixed when the build is configured.</p>
+
+<p>The architecture-specific methods found in these files are the only functions within nanojit or TraceMonkey that emit raw bytes of machine-code into memory.</p>
+
+<h3 id="SpiderMonkey-specific_high_level_component_jstracer.*">SpiderMonkey-specific high level component: jstracer.*</h3>
+
+<p>The files <code>jstracer.cpp</code> and <code>jstracer.h</code> contain a the mechanisms of monitoring and recording the activity of the interpreter.</p>
+
+<p>Each SpiderMonkey <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="En/SpiderMonkey/JSAPI Reference/JSRuntime">JSContext</a> holds a <em>trace monitor</em> of type <code>JSTraceMonitor</code>.</p>
+
+<p>The trace monitor maintains some book-keeping information, as well as the collection of recorded <code>Fragment</code>s, held in a hashtable keyed by the interpreter's program counter and global object shape at the time of recording.</p>
+
+<p>At any moment, the trace monitor is in one of three major states: <strong>monitoring</strong>, <strong>recording</strong>, or <strong>executing</strong>. The transitions between these states are somewhat complex and delicate, but the overall picture is simple:</p>
+
+<p><img alt="TraceStates.png" class="default internal" src="/@api/deki/files/3519/=TraceStates.png" style="height: 305px; width: 547px;"></p>
+
+<h4 id="Monitoring">Monitoring</h4>
+
+<p>The trace monitor's initial state is <strong>monitoring</strong>. This means that SpiderMonkey is interpreting bytecode. Every timeSpiderMonkey interprets a backward-jump bytecode, the monitor makes note of the number of times the jump-target program-counter (<em>PC</em>) value has been jumped-to. This number is called the <em>hit count</em> for the PC. If the hit count of a particular PC reaches a threshold value, the target is considered <em>hot</em>.</p>
+
+<p>When the monitor decides a target PC is hot, it looks in a hashtable of fragments to see if there is a fragment holding native code for that target PC. If it finds such a fragment, it transitions to <strong>executing</strong> mode. Otherwise it transitions to <strong>recording</strong> mode.</p>
+
+<h4 id="Recording">Recording</h4>
+
+<p>When the trace monitor enters <strong>recording</strong> mode, it constructs a new <em>trace recorder</em>, of type <code>TraceRecorder</code>. It then passes control back to the SpiderMonkey interpreter. The interpreter continues interpreting bytecode, but with an important difference: each bytecode it interprets is also sent to the trace monitor and <em>recorded</em> in the monitor's trace recorder.</p>
+
+<p>Recording mode is temporary -- ideally it only lasts as long as it takes to record a single iteration of a loop in the interpreter -- and can end in a number of ways. All transitions out of <strong>recording</strong> mode eventually involve returning to <strong>monitoring</strong> mode:</p>
+
+<ul>
+ <li>If the recorder is asked to record a bytecode that it cannot, for various low-level reasons, faithfully record, the recorder may choose to <em>abort</em> the recording. Aborting a recording is always an option in tracemonkey, and on abort the monitor simply discards the recorder and its fragment and returns to <strong>monitoring</strong> mode. The monitor also keeps track of how many times it has attempted to record a trace starting at each PC value, so if a particular PC causes too many aborted recordings, the monitor <em>blacklists</em> the PC and will not attempt recording it any longer.</li>
+ <li>If the recorder completes recording at a backward branch back to the initial PC value that triggered <strong>recording</strong> mode, it is said to have successfully <em>closed the loop</em>. A closed loop is passed through the nanojit Assembler and thereby compiled to native machine code. The associated fragment is placed in the monitor's fragment table and the monitor returns to <strong>monitoring</strong> mode, with a high likelihood of immediately transitioning to <strong>executing</strong> mode on the next bytecode interpreted. The compiled fragment of code returned to the monitor on successful loop-close is called a <em>trace</em>.</li>
+ <li>If the recorder is asked to record a bytecode that implies a call to a <em>native function</em> elsewhere in SpiderMonkey -- some helper function written in C -- and that native happens to re-enter the interpreter to interpret yet more bytecode, and furthermore if that bytecode itself contains a hot PC that has not yet been traced, the trace monitor may be asked to begin <em>nested recording.</em> This is the same as normal <strong>recording</strong> mode, except that the outermost recorder is placed on a deferred-abort stack. When the innermost recorder completes -- successfully or otherwise -- every recorder on the deferred abort stack is aborted. This process is called <em>deep aborting</em> the suspended recorders.</li>
+</ul>
+
+<h4 id="Executing">Executing</h4>
+
+<p>When the monitor interprets a backward jump to a PC that it <em>has</em> a compiled trace of machine code for, the monitor enters <strong>executing</strong> mode. This mode is relatively simple compared to recording mode.</p>
+
+<ul>
+ <li>First the monitor allocates a <em>native stack</em> for the trace to use, and a <em>state</em> structure containing various key pointers into the SpiderMonkey interpreter's state, including a pointer to the native stack.</li>
+ <li>It then <em>imports</em> the set of <code>jsval</code> values from the SpiderMonkey interpreter that the trace is known to read or write during its execution. This set was determined during recording, and the imported values are stored locally within the native stack during execution.</li>
+ <li>The monitor then calls into the native code of the trace, passing in a pointer to the state structure as the sole argument.</li>
+ <li>The native code of the trace runs, modifying the state structure and native stack, as well as calling native SpiderMonkey C functions, and reading from and writing to objects in the SpiderMonkey heap. The native code returns a pointer to a structure called a <em>side exit</em>.</li>
+ <li>The monitor inspects the side exit and, depending on the exit condition, <em>reconstructs</em> a certain number of interpreter frames and <em>flushes</em> a certain set of writes back to the SpiderMonkey heap. Frame reconstruction is necessary because a trace may inline a number of function calls, and may exit before those function calls return. Write flushing is necessary because all writes to imported values in the native stack are deferred until trace-exit, as an optimization.</li>
+ <li>If the side exit condition indicates that the trace exited successfully -- simply running out of native code or hitting a branch condition that no native code yet exists to handle -- the monitor will inspect the hit count for the trace-exiting PC. If that PC has itself grown hot, the monitor will immediately transition to <strong>recording</strong> mode starting with the exiting PC. Otherwise it will return to <strong>monitoring</strong> mode.</li>
+ <li>If the side exit condition indicates that the trace exited unsuccessfully -- due to encountering sufficient memory pressure to trigger a garbage collection, running out of native stack space, expiring a timer or any similar abnormal condition -- the monitor returns to <strong>monitoring</strong> mode.</li>
+</ul>
+
+<p>Some other terminology may be helpful when reading the code:</p>
+
+<ul>
+ <li>The term <em>guard</em> denotes a condition that is checked by an executing trace to confirm that some assumptions made during recording still hold. If guard's condition fails to hold, the guard either jumps to an exit or, if the guard has been extended, jumps to a sub-trace that has been recorded under the opposite assumption as the guard was checking. For example, when recording any conditional branch in the SpiderMonkey bytecode, a guard will be incorported into the trace that checks the branch is taken the same way during execution as it was during recording. If this guard fails once, the trace will exit. If it fails enough times to become hot, the monitor will record an alternative sub-trace beginning at the guard and patch the code into the existing guard. Thereafter, when the guard fails it will jump to the specialized sub-trace.</li>
+ <li>The term <em>bail</em> denotes "exiting a trace due to to a failed guard". When a guard bails, it means that there is no logic in the trace to handle the failed guard, and so the exit condition encodes the state of the interpreter <em>before</em> the guarded condition. The interpreter then re-executes the guarded condition, which will always succeed since the interpreter handles all outcomes of such a condition dynamically.</li>
+ <li>The term <em>deep bail</em> denotes a special case of bailing: when a trace calls a native SpiderMonkey C function that gets part-way through executing and then forces a trace-exit (possibly due to a nested C function depending on not-yet-flushed state in the trace). A deep bail is special only insofar as it requires flushing the full set of deferred writes in the trace if it occurs (and further, requires that all registers holding temporary trace operands have flushed to the native stack before execution). Bailing from a regular guard involves executing precise per-guard write-flushing code, as the guard encodes a specific failed condition on a specific set of operands, and so the exit code can be much more fine-grained about and reconstructing the pre-bail state. A<em> </em>deep bail must be conservative because it is forced by the failure of an unknown condition elsewhere in native SpiderMonkey C code.</li>
+</ul>

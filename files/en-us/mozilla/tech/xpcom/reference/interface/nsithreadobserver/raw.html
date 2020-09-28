@@ -1,0 +1,132 @@
+<p></p>
+
+<p>The <code>nsIThreadObserver</code> interface may be implemented to let an observer implement a layered event queue.</p>
+
+<p>The implementation of this interface <strong>must</strong> be thread safe.</p>
+
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/threads/nsIThreadInternal.idl" rel="custom">xpcom/threads/nsIThreadInternal.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+<i>Please add a summary to this article.</i>
+</span>
+
+<div style="background: #eee; padding: 2px;">
+<span> </span>
+<span style="text-align: right; float: right;">Last changed in Gecko 1.9 (Firefox 3)</span></div>
+</div><p></p>
+
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></p>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#afterProcessNextEvent()">afterProcessNextEvent</a>(in nsIThreadInternal thread, in unsigned long recursionDepth);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#onDispatchedEvent()">onDispatchedEvent</a>(in nsIThreadInternal thread);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#onProcessNextEvent()">onProcessNextEvent</a>(in nsIThreadInternal thread, in boolean mayWait, in unsigned long recursionDepth);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="afterProcessNextEvent()" name="afterProcessNextEvent()">afterProcessNextEvent()</h3>
+
+<p>Called by the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code> method <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIThread#ProcessNextEvent()">nsIThread.ProcessNextEvent()</a></code> after an event is processed. This method is only called on the target thread.</p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> It is valid to change the thread's observer during a call to this method.</div><p></p>
+
+<pre class="eval">void afterProcessNextEvent(
+  in nsIThreadInternal thread,
+  in unsigned long recursionDepth
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>thread</code></dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code> on which the event was processed.</dd>
+ <dt><code>recursionDepth</code></dt>
+ <dd>The number of calls to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIThread#ProcessNextEvent()">nsIThread.ProcessNextEvent()</a></code> on the call stack in addition to the current call.</dd>
+</dl>
+
+<h3 id="onDispatchedEvent()" name="onDispatchedEvent()">onDispatchedEvent()</h3>
+
+<p>Called after an event has been dispatched to the thread. This method may be called from any thread.</p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> It is valid to change the thread's observer during a call to this method.</div><p></p>
+
+<pre class="eval">void onDispatchedEvent(
+  in nsIThreadInternal thread
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>thread</code></dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code> on which the event was dispatched.</dd>
+</dl>
+
+<h3 id="onProcessNextEvent()" name="onProcessNextEvent()">onProcessNextEvent()</h3>
+
+<p>Called by the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code> method <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIThread#ProcessNextEvent()">nsIThread.ProcessNextEvent()</a></code> before an event is processed. This method is only called on the target thread.</p>
+
+<p>It is valid to change the thread\'s observer during a call to this method.</p>
+
+<pre class="eval">void onProcessNextEvent(
+  in nsIThreadInternal thread,
+  in boolean mayWait,
+  in unsigned long recursionDepth
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>thread</code></dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code> on which the event is going to be processed.</dd>
+ <dt><code>mayWait</code></dt>
+ <dd><code>true</code> if the method is allowed to block the calling thread. This parameter will be <code>false</code> during thread shutdown.</dd>
+ <dt><code>recursionDepth</code></dt>
+ <dd>The number of calls to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIThread#ProcessNextEvent()">nsIThread.ProcessNextEvent()</a></code> on the call stack in addition to the current call.</dd>
+</dl>
+
+<h2 id="Example" name="Example">Example</h2>
+
+<p>It is possible to overlay processing events for a GUI toolkit on top of the events for a thread:</p>
+
+<pre class="eval">var NativeQueue;
+Observer = {
+  onDispatchedEvent(thread) {
+    NativeQueue.signal();
+  }
+  onProcessNextEvent(thread, mayWait, recursionDepth) {
+    if (NativeQueue.hasNextEvent()) {
+      NativeQueue.processNextEvent();
+    }
+    while (mayWait &amp;&amp; !thread.hasPendingEvent()) {
+      NativeQueue.wait();
+      NativeQueue.processNextEvent();
+    }
+  }
+};
+</pre>
+
+<h2 id="See_also" name="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en/The_Thread_Manager" title="en/The_Thread_Manager">The Thread Manager</a></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadManager" title="">nsIThreadManager</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThread" title="">nsIThread</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadPool" title="">nsIThreadPool</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadInternal" title="">nsIThreadInternal</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadEventFilter" title="">nsIThreadEventFilter</a></code></li>
+</ul>

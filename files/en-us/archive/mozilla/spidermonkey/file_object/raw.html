@@ -1,0 +1,179 @@
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> This section describes the <code>File</code> component of the SpiderMonkey JavaScript interpreter. <code>File</code> is non-standard, not generally compiled into distributions, is a potential source of huge security holes, and not well tested.</p>
+</div>
+
+<h3 id="Getting_Started">Getting Started</h3>
+
+<p>In order to use the File object from your JavaScript programs, you must enable it by setting the make variable JS_HAS_FILE_OBJECT during the compilation of your Spidermonkey engine.</p>
+
+<p>If you are building a standalone version of Spidermonkey (see: <a href="/En/SpiderMonkey/Build_Documentation" title="En/SpiderMonkey/Build_Documentation">SpiderMonkey Build Documentation</a>), this variable can be added on the make command line, like so:</p>
+
+<pre class="brush: none;">cd mozilla/js/src
+make -f Makefile.ref JS_HAS_FILE_OBJECT=1
+</pre>
+
+<p>Alternatively, if you are building a larger product (such as a browser) and want to include the File object, you may need to perform minor Makefile surgery.</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p><strong><em>Non-Standard</em> Server-Side Object</strong></p>
+
+<p>This object lets you work files and directories on the local filesystem, and create OS pipelines. Creating a pipeline involves spawning arbitrary processes; this means that <em>giving a script access to the <code>File</code> object is exactly equivalent to giving the script <strong>access to the UNIX shell</strong> or DOS command interpreter.</em></p>
+
+<p>Filesystem access is implemented with <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/priofnc.html">NSPR I/O Functions</a>, and as such shares many semantics. Pipelines are implemented with the <code>popen()</code> system call. There is currently no support for <code>p2open()</code>-like semantics.</p>
+
+<p>Here is the original proposal for this object, and a status update from December 1998: <a class="external" href="http://www.mozilla.org/js/js-file-object.html" rel="freelink">http://www.mozilla.org/js/js-file-object.html</a></p>
+
+<h3 id="Created_By">Created By</h3>
+
+<p>The <code>File</code> constructor:</p>
+
+<pre class="brush: js;">new File();
+new File(<em>filename</em>);</pre>
+
+<h3 id="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>filename</code></dt>
+ <dd>Name of the file we want to work with. Directories and pipelines are considered special files. Pipelines either begin or end with the pipe (<code>|</code>) symbol.</dd>
+</dl>
+
+<h3 id="Description">Description</h3>
+
+<p>Filenames are specified as strings that have an implementation defined format. Use of standard "file:" URLs is encouraged. If no argument is supplied to the constructor, the current working directory is the file object that is returned.</p>
+
+<p>Examples of possible prefix strings are "/" to indicate the Unix root directory, "c:" to specify a Windows drive letter, and "file:" to indicate a file URL.</p>
+
+<p>When a file is constructed, leading and trailing spaces are removed from the filename, so <code>new File(" abc.txt      ")</code> just creates a file called abc.txt. Filenames starting and ending with the pipe symbol (<code>|</code>) are interpreted as pipes. Readable pipelines (i.e. pipe to programs generating output on stdout) begin with the pipe symbol; writeable pipelines end with the pipe symbol. Bi-directional pipelines are not supported.</p>
+
+<h2 id="Properties">Properties</h2>
+
+<h3 id="Static_Properties">Static Properties</h3>
+
+<dl>
+ <dt><code><a href="/en/SpiderMonkey/File_object/input">File.input</a></code></dt>
+ <dd>A File object that represents the standard input (stdin).</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/output">File.currentDir</a></code></dt>
+ <dd>A File object that represents the standard output (stdout).</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/error">File.currentDir</a></code></dt>
+ <dd>A File object that represents the standard error (stderr).</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/currentDir">File.currentDir</a></code></dt>
+ <dd>A File object referring to the current directory; this property may be set.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/separator">File.separator</a></code></dt>
+ <dd>The system name separator (slash on UNIX).</dd>
+</dl>
+
+<h3 id="Instance_Properties">Instance Properties</h3>
+
+<dl>
+ <dt><code><a href="/en/SpiderMonkey/File_object/length">File.length</a></code></dt>
+ <dd>The length of the file in bytes, or the number of entries in the directory. Note: calculating the length of the directory is very expensive.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/parent">File.parent</a></code></dt>
+ <dd>The directory containing the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/path">File.path</a></code></dt>
+ <dd>The canonical path to the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/name">File.name</a></code></dt>
+ <dd>The name of the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/isDirectory">File.isDirectory</a></code></dt>
+ <dd>True if the file is a directory.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/isFile">File.isFile</a></code></dt>
+ <dd>True if the file is a file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/exists">File.exists</a></code></dt>
+ <dd>True if the file exists.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/canRead">File.canRead</a></code></dt>
+ <dd>True if the file can be read.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/canWrite">File.canWrite</a></code></dt>
+ <dd>True if the file can be written.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/canAppend">File.canAppend</a></code></dt>
+ <dd>True if the file is in append mode.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/canReplace">File.canReplace</a></code></dt>
+ <dd>True if the file is in replace mode.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/isOpen">File.isOpen</a></code></dt>
+ <dd>True if the file is open.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/type">File.type</a></code></dt>
+ <dd>A string specifying the type of data or encoding contained in the file. Currently <code>"ascii"</code> (ASCII), <code>"binary"</code> (UTF-8) or <code>"unicode"</code> (UCS-2). (XXX Note -- ASCII might imply ASCIIZ)</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/mode">File.mode</a></code></dt>
+ <dd>A string describing the <a href="/en/SpiderMonkey/File_object/mode" title="en/SpiderMonkey/File_object/mode">mode</a> used to open the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/creationTime">File.creationTime</a></code></dt>
+ <dd>A <code>Date</code> object representing the time when the file was created.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/lastModified">File.lastModified</a></code></dt>
+ <dd>A <code>Date</code> object representing the time when the file was last modified.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/size">File.size</a></code></dt>
+ <dd>The length of the file in bytes; undefined(?) for directories and pipelines.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/hasRandomAccess">File.hasRandomAccess</a></code></dt>
+ <dd>True if random access is supported for this file. Binary (UTF-8) files and pipelines (including <code>File.intput</code>) do not support random access.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/hasAutoFlush">File.hasAutoFlush</a></code></dt>
+ <dd>Force a flush on each line break? (readonly)</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/position">File.position</a></code></dt>
+ <dd>The file position. Writing to the property moves the file pointer.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/isNative">File.isNative</a></code></dt>
+ <dd>True if the file is backed by a native stdio FILE stream. (i.e. file.input, file.output, file.error or a pipeline)</dd>
+</dl>
+
+<h2 id="Methods">Methods</h2>
+
+<dl>
+ <dt><code><a href="/en/SpiderMonkey/File_object/open">File.open()</a></code></dt>
+ <dd>Opens the file, specifying file <a href="/en/SpiderMonkey/File_object/mode" title="en/SpiderMonkey/File_object/mode">mode</a> and type.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/close">File.close()</a></code></dt>
+ <dd>Closes the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/remove">File.remove()</a></code></dt>
+ <dd>Removes the file, provided it is not open.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/copyTo">File.copyTo()</a></code></dt>
+ <dd>Creates a verbatim copy of the file at a new location.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/renameTo">File.renameTo()</a></code></dt>
+ <dd>Removes the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/flush">File.flush()</a></code></dt>
+ <dd>Flushes the operating system's write buffers for the file and blocks until any pending data has been committed to disk.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/seek">File.seek()</a></code></dt>
+ <dd>Moves the file position pointer forward or backwards.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/read">File.read()</a></code></dt>
+ <dd>Read a fixed number of bytes from the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/readln">File.readln()</a></code></dt>
+ <dd>Read line from the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/readAll">File.readAll()</a></code></dt>
+ <dd>Read the entire file in, returning an array of lines.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/write">File.write()</a></code></dt>
+ <dd>Write bytes to the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/writeln">File.writeln()</a></code></dt>
+ <dd>Write bytes to the file, followed by a line separator, flushing the buffer if file.<code>hasAutoflush</code>.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/writeAll">File.writeAll()</a></code></dt>
+ <dd>Writes an array of lines to the file, obeying the same semantics as <code>writeln</code>.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/list">File.list()</a></code></dt>
+ <dd>Get a list of files, potentially matching a regular expression filter, from the file. Only has meaning when the file is a directory.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/mkdir">File.mkdir()</a></code></dt>
+ <dd>Create a directory. Directory will be created in the same directory as the file, unless the file is a directory, in which case, the directory will be created in that directory. XXX</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/toString">File.toString()</a></code></dt>
+ <dd>Returns the canonical path to the file.</dd>
+ <dt><code><a href="/en/SpiderMonkey/File_object/toURL">File.toURL()</a></code></dt>
+ <dd>Returns a file:// URL describing the file relative to the local file system. URL is URI-encoded.</dd>
+</dl>
+
+<h2 id="Examples">Examples</h2>
+
+<h4 id="Example_Hello_world">Example: Hello, world</h4>
+
+<pre class="brush: js;">File.output.writeln("Hello, world");</pre>
+
+<h4 id="Example_Writing_a_new_file">Example: Writing a new file</h4>
+
+<pre class="brush: js;">var file = new File("myfile.txt");
+file.open("write,create", "text");
+file.writeln("The quick brown fox jumped over the lazy dogs");
+file.close();</pre>
+
+<h4 id="Example_Reading_from_a_file">Example: Reading from a file</h4>
+
+<pre class="brush: js;">var data;
+var file = new File("myfile.txt");
+file.open("read", "text");
+data = file.readln();
+file.close();
+</pre>
+
+<h4 id="Example_Sending_mail_through_a_pipeline">Example: Sending mail through a pipeline</h4>
+
+<pre class="brush: js;">var mail = new File("|/usr/lib/sendmail <a class="link-mailto" href="mailto:foo@bar.com" rel="freelink">foo@bar.com</a>");
+mail.writeln("I love JavaScript.\nPipe support is especially good!");
+mail.close();
+</pre>

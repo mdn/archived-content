@@ -1,0 +1,88 @@
+<p>{{ Fx_minversion_header(3) }} Gecko 1.9 key handling changed significantly after Beta 5 ({{ Bug(359638) }}, {{ Bug(429510) }} and the bugs on which they depend). The changes were risky so late in the release schedule, but they were necessary for fixing the many key handling bugs.</p>
+
+<h3 id="charCode_of_DOM_keypress_event" name="charCode_of_DOM_keypress_event"><code>charCode</code> of DOM keypress event</h3>
+
+<p>If a keypress event is fired without any modifier keys (<kbd>Ctrl</kbd>/<kbd>Alt</kbd>(<kbd>Option</kbd>)/<kbd>Meta</kbd>(<kbd>Win</kbd>/<kbd>Command</kbd>)), then the properties of the event are the same as they were in Gecko1.8.1. That is, when the currently selected keyboard layout produces a Unicode character (according to the current state of <kbd>CapsLock</kbd> and <kbd>NumLock</kbd>), the <code>charCode</code> property contains that character.</p>
+
+<p>When the keypress event includes modifier keys, sometimes the <code>charCode</code> value is replaced with an ASCII character according to the following rules.</p>
+
+<p>The accel key depends on the platform. <kbd>Ctrl</kbd> is the accel key on Windows and Linux, while <kbd>Meta</kbd> (i.e. <kbd>Command</kbd>) is the accel key on Mac.</p>
+
+<p>When the accel key is down, the <code>charCode</code> of a keypress event may be replaced with a character from a Latin keyboard layout <strong>only</strong> when the original character is not an ASCII character.</p>
+
+<p>This behavior helps the internationalization of web applications that have custom shortcut keys. If Gecko doesn't replace the <code>charCode</code> with an ASCII character, the web application developers would need to consider all non-Latin keyboard layouts (Arabic, Greek, Hebrew, Russian, etc.).</p>
+
+<p>The <code>charCode</code> value depends on the state of <kbd>CapsLock</kbd> and <kbd>NumLock</kbd> (except they are currently ignored if <kbd>Alt</kbd> (<kbd>Option</kbd>) is down on Mac - see {{ Bug(432953) }}). There are also some differences between the platforms, as described in the following sections.</p>
+
+<h4 id="Windows" name="Windows">Windows</h4>
+
+<p>The <code>charCode</code> is replaced only when <kbd>Ctrl</kbd> is down but <kbd>Alt</kbd> is <strong>not</strong> down.</p>
+
+<p>If the OS-provided character cannot be entered without using the <kbd>Ctrl</kbd> key, then, Gecko does not replace the character. e.g., <kbd>Ctrl+Shift+'2'</kbd> on Persian keyboard layout inputs a ZWNJ, though <kbd>Shift+'2'</kbd> inputs '@', and so, if Gecko were to replace the <code>charCode</code> in this case, users would not be able to input ZWNJ ({{ Bug(414130) }}).</p>
+
+<p>Otherwise, Gecko can replace the <code>charCode</code> with an ASCII character. However, Gecko replaces the <code>charCode</code> only when the key pressed corresponds to a Latin letter (<code>VK_A</code> to <code>VK_Z</code>), numeral (<code>VK_0</code> to <code>VK_9</code>), Plus sign (<code>VK_OEM_PLUS</code>), or Minus sign key (<code>VK_OEM_MINUS</code>).</p>
+
+<p>Note that replacing the original (non-ASCII) characters on these keys means that there are some accessibility issues for non-Latin keyboard layout users as many non-ASCII characters will not be available for shortcuts. Therefore, web application developers should use only letters, ASCII numerals, plus sign, and minus sign for custom shortcut keys.</p>
+
+<h4 id="Linux" name="Linux">Linux</h4>
+
+<p>The <code>charCode</code> is replaced only when <kbd>Ctrl</kbd> is down but <kbd>Alt</kbd> and <kbd>Meta</kbd> are <strong>not</strong> down.</p>
+
+<p>If the character provided by the keyboard layout cannot be entered without <kbd>Ctrl</kbd> key, then, Gecko does not replace the character (as on Windows).</p>
+
+<h4 id="Mac" name="Mac">Mac</h4>
+
+<p>The <code>charCode</code> is replaced when <kbd>Meta</kbd> (<kbd>Command</kbd>) or <kbd>Ctrl</kbd> is down.</p>
+
+<p>If the current keyboard layout is Dvorak-QWERTY layout or a non-Latin layout, the <kbd>Command</kbd> key switches the keyboard layout to the US QWERTY keyboard layout temporary. Gecko uses the character from this keyboard layout for the <kbd>Ctrl</kbd> key also.</p>
+
+<p>However, when <kbd>Ctrl</kbd> is down, Gecko 1.9 currenly only replaces the <code>charCode</code> only when the key corresponds to a basic Latin letter. This behavior is a bug, this behavior will be changed in a future major release ({{ Bug(432951) }}).</p>
+
+<h3 id="Alternative_charCodes_for_internal_key_handling" name="Alternative_charCodes_for_internal_key_handling">Alternative <code>charCode</code>s for internal key handling</h3>
+
+<p>This section documents only Gecko internal keypress event handling, so Web application developers can ignore this section.</p>
+
+<p>Gecko replaces the <code>charCode</code> of DOM keypress events for accelerator key handling, but that is not enough.</p>
+
+<h4 id="Problem_1" name="Problem_1">Problem 1</h4>
+
+<p>The Zoom-in shortcut handler in Firefox is defined as <code>&lt;key key="+" modifiers="accel"/&gt;</code>. However, the <kbd>Shift</kbd> key must be used to enter <kbd>'+'</kbd> on US keyboard layout, and so the state of the Shift key causes the modifiers not to match those specified in the handler.</p>
+
+<p>For the US keyboard layout, a related handler is defined with <code>&lt;key key="=" modifiers="accel"/&gt;</code>, so that users do not need to use the Shift key to access the Zoom-in shortcut. Of course, this is not much help to users with other keyboard layouts. e.g., on a Japanese keyboard, <kbd>'+'</kbd> is entered with <kbd>Shift+';'</kbd> ({{ Bug(339723) }}).</p>
+
+<h4 id="Problem_2" name="Problem_2">Problem 2</h4>
+
+<p>The access keys for the menu items are specified with the localized characters on some localized builds. These localized access keys work fine with the keyboard layout of the locale.</p>
+
+<p>However, users with the same non-Latin keyboard layouts would also like to be able to use Latin access keys of en-US builds (including nightly builds) without needing to switch keyboard layout ({{ Bug(399939) }}).</p>
+
+<h4 id="Problem_3" name="Problem_3">Problem 3</h4>
+
+<p>Users with non-Latin keyboard layouts would like to be able to use Latin access keys in web pages without switching to a Latin layout ({{ Bug(429510) }}).</p>
+
+<h4 id="Problem_4" name="Problem_4">Problem 4</h4>
+
+<p>The <kbd>Shift</kbd> key must be down (with default preferences) to use accesskeys in web contents on Windows and Linux. This makes it impossible for users to distinguish between accesskeys using two different characters on the same key (when the Shift modifier is usually used to select one of the characters). The pairs of characters that might be on the same key depend on the keyboard layout.</p>
+
+<p>({{ Bug(359638) }} partially addressed this issue by trying both characters on the key, but {{ Bug(303192) }} would provide a complete solution.)</p>
+
+<h4 id="Solution" name="Solution">Solution</h4>
+
+<p>The following rules apply:</p>
+
+<ul>
+ <li>Key handlers should be provided with information about all the possible meanings of the event.</li>
+ <li>A handler on the innermost element should handle a key event even when the event does not match exactly and there is an outer element with a handler that does match exactly ({{ Bug(433192) }}).</li>
+ <li>When handling web content accesskeys, the handlers should consider both characters that are available on the key (without and with <kbd>Shift</kbd>). The character that is normally entered without <kbd>Shift</kbd> is preferred. (Chrome accesskey, including menu accesskey, handling is currently similar, but this should not be relied on. There should be no chrome access keys with punctuation characters or other characters that would normally require depressing the Shift key.)</li>
+ <li>During accel key handling, if the event includes the <kbd>Shift</kbd> modifier, but an alternative <code>charCode</code> is not a bicameral letter (i.e., it does not have upper and lower case forms), then the <kbd>Shift</kbd> modifier state should be ignored if there is no exactly matching handler (requiring Shift to be down). (When <kbd>Option</kbd> (<kbd>Alt</kbd>) on Mac is down, the <kbd>Alt</kbd> modifier should be ignored in the same way, but this is not implemented in Gecko 1.9. See {{ Bug(306585) }}).</li>
+ <li>During accel key handling, if the character is a bicameral letter, the <kbd>Shift</kbd> key should never be ignored. i.e., <kbd>Ctrl+Shift+'C'</kbd> should not execute <kbd>Ctrl+'C'</kbd> ({{ Bug(433192) }}).</li>
+ <li>During accel key handling, when <kbd>Shift</kbd> is not down and the character without <kbd>Shift</kbd> is not a numeral but the character with <kbd>Shift</kbd> is a numeral, the key may be one of the numeral keys in the top row of a French AZERTY keyboard layout (or similar). Because numerals are common in short cuts, the numeral from the key should be considered as a low priority shortcut key candidate ({{ Bug(429219) }}).</li>
+</ul>
+
+<p>These conditions are complex, and the handling rules may be modified if new issues are discovered. XUL application developers should use <code>key</code> elements for handling accel keys, so as to make use of the handling logic already provided for these elements. XUL applications should <strong>not</strong> attempt to implement shortcuts by interpreting <code>keypress</code> events. Similarly, applications should use the <code>accesskey</code> attribute for access keys, rather than attempting to interpret <code>keypress</code> events.</p>
+
+<p>In the unfortunately situation where XUL applications attempt to implement their own shortcut key handling, the decentralized implementation may need to be rewritten <strong>every time</strong> any of the above process is changed.</p>
+
+<h4 id="Implementation" name="Implementation">Implementation</h4>
+
+<p>The native keypress event records all the possible meanings of the key event in <code>nsKeyEvent::alternativeCharCodes</code> in <a class="external" href="http://mxr.mozilla.org/mozilla/source/widget/public/nsGUIEvent.h">nsGUIEvent.h</a>. However, it should usually not be necessary to access these directly. It is better to use the logic already in <code>nsContentUtils::GetAccelKeyCandidates()</code> for accel key handling, and <code>nsContentUtils::GetAccessKeyCandidates()</code> for access key handling (See <a class="external" href="http://mxr.mozilla.org/mozilla/source/content/base/public/nsContentUtils.h">nsContentUtils.h</a> and <a class="external" href="http://mxr.mozilla.org/mozilla/source/content/base/src/nsContentUtils.cpp">nsContentUtils.cpp</a>).</p>

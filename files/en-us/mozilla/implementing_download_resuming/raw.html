@@ -1,0 +1,34 @@
+<p>This document describes how an embedder or other Gecko/Necko-using application can implement download resuming.</p>
+
+<p>The interfaces in question exist in the form they are described here since Gecko 1.8a4 (<a href="/en-US/docs/Mozilla/Firefox/Releases/1.5">Firefox 1.5</a>, SeaMonkey 1.0, XULRunner 1.8.0.1).</p>
+
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>Various protocols support getting partial files. This means that if a download was interrupted, it can be resumed from that point on, rather than regetting the whole file. The Necko implementations of HTTP 1.1 (<a class="external exrernal-icon" href="https://tools.ietf.org/html/rfc2616" title="RFC about Hypertext Transfer Protocol -- HTTP/1.1">RFC 2616</a>) as well as FTP support this feature.</p>
+
+<p>Not only is the ability to specify a start position important, but it's also important to have some assurance that the file did not change since the initial download attempt. That would lead to a situation where the first part of the file corresponds to the initial version, while the latter part belongs to a different version, leading to an unusable result.</p>
+
+<h2 id="The_interface" name="The_interface">The interface</h2>
+
+<p>Resuming is done using the {{ interface("nsIResumableChannel") }} interface. The expected way to use it is this:</p>
+
+<ul>
+ <li>For all downloads that happen, get the <code>entityID</code> from the channel, and store it for later use. The entity ID is what ensures that the file remains unchanged. This can also be used to check whether the download is resumable: if it is not (e.g. the server is not using HTTP 1.1), then accessing this attribute will throw an <code>NS_ERROR_NOT_RESUMABLE</code> exception.</li>
+ <li>If the download gets interrupted, Necko will call the stream listener's <code>onStopRequest</code> method with a failure status. (TODO: document what webbrowserpersist/exthandler do). The front-end code can then notify the user of this, and offer to resume the download.</li>
+</ul>
+
+<h2 id="Resuming_a_download" name="Resuming_a_download">Resuming a download</h2>
+
+<p>In order to resume a download, you should create a channel as usual (using {{ interface("nsIIOService") }}). Then, you can check if it implements {{ interface("nsIResumableChannel") }}. If it does not, the protocol does not support resuming. Otherwise, call <code>resumeAt</code> with the desired start position, and the previously stored entity ID. (It is possible to pass an empty string as the ID; however, this means that you have no assurance that the file remained unchanged)</p>
+
+<p>Now, you can open the channel as usual (using {{ ifmethod("nsIChannel","asyncOpen") }} in the common case) and write to the file in the <code>onDataAvailable</code> notifications. You may want to use {{ interface("nsISimpleStreamListener") }} to simplify this task; to get progress notifications, you can implement {{ interface("nsIProgressEventSink") }} and set an interface requester as the <code>notificationCallbacks</code> of the channel that gives out such an event sink (this needs to be done before calling <code>asyncOpen</code>).</p>
+
+<div class="note"><strong>Note:</strong> In versions of Firefox prior to 3.0 alpha 7, {{ interface("nsIWebBrowserPersist") }} cannot append to existing files (as opposed to overwriting them), and is therefore not usable for this task (see {{ Bug(129921) }}).</div>
+
+<h3 id="Detecting_when_a_file_changed" name="Detecting_when_a_file_changed">Detecting when a file changed</h3>
+
+<p>If the file changed (that is, the entity ID does not match), then Necko will notify the stream listener with an <code>NS_ERROR_ENTITY_CHANGED</code> error code. The front-end may want to offer the user to get the new file from scratch in such a case.</p>
+
+<h3 id="Resuming_not_supported" name="Resuming_not_supported">Resuming not supported</h3>
+
+<p>In some cases, it's not possible to detect whether the server supports resuming until the user actually tries to resume. In such a case, the stream listener will get an <code>NS_ERROR_NOT_RESUMABLE</code> status. Here, too, the front-end may want to offer downloading the entire file from scratch.</p>

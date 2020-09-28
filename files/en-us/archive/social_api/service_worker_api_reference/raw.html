@@ -1,0 +1,275 @@
+<p></p><div class="overheadIndicator nonStandard nonStandardHeader">
+      <p><strong><span title="This API has not been standardized."><i class="icon-warning-sign"> </i></span> Non-standard</strong><br>
+      This feature is non-standard and is not on a standards track. Do not use it on production sites facing the Web: it will not work for every user. There may also be large incompatibilities between implementations and the behavior may change in the future.</p>
+      </div><p></p>
+
+<p></p>
+
+<p></p><div class="overheadIndicator obsolete obsoleteHeader"><p><strong><span title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete since Gecko 48 (Firefox 48 / Thunderbird 48 / SeaMonkey 2.45)</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div><p></p>
+
+<div class="warning">
+<p>Service Workers based on SocialAPI are deprecated, and were removed in Firefox 48.  You can use <a href="/en-US/docs/Web/API/ServiceWorker_API">Service Workers</a> or <a href="/en-US/docs/Web/API/SharedWorker">Shared Workers</a> to accomplish some of the same capabilities.</p>
+</div>
+
+<div class="note">
+<p>This Service worker is part of Mozilla's Social API. If you are looking for information on the new W3C ServiceWorker proposal for caching, http response control , etc., go to the <a href="/en-US/docs/Web/API/ServiceWorker_API">ServiceWorker landing page</a> instead.</p>
+</div>
+
+<h3 id="Service_Worker_Reference">Service Worker Reference</h3>
+
+<p>A Service Worker inherits all the limitations and behaviors available to HTML5 Shared Workers. It can create XMLHttpRequests, use WebSockets, receive messages from windows and the browser, use IndexedDB, and post messages to other windows.</p>
+
+<p>The Worker can use the <code>ononline</code>, <code>onoffline</code>, and <code>navigator.online</code> methods and properties that are available to all Workers to obtain notification of the browser's online/offline status.</p>
+
+<p>In addition to the standard methods, Service Workers have access to additional functionality, all of which is implemented using messages sent and received by worker "message ports". As message ports are inherently asynchronous, any message that requires a response will involve two messages - one for the request and one for the response. Not all messages require a response - this is part of the message specification. Messages that don't require a response are analogous to an unsolicited 'event'. If a message does require a response, then the response must always be sent on the same port as the request and in general, the 'topic' of the response will be the topic of the request with "-response" appended.</p>
+
+<p>Service workers are expected to provide a function at global scope, named <code>onconnect</code>. The browser will invoke <code>onconnect</code> at startup time, passing in an event. The worker should access the <code>ports</code> property of this event to extract a stable communication port back to the browser, and persist it for the life of the worker, like this:</p>
+
+<pre class="brush: js"><code>var apiPort;
+var ports = [];
+onconnect = function(e) {
+    var port = e.ports[0];
+    ports.push(port);
+    port.onmessage = function (msgEvent)
+    {
+        var msg = msgEvent.data;
+        if (msg.topic == "social.port-closing") {
+            if (port == apiPort) {
+                apiPort.close();
+                apiPort = null;
+            }
+            return;
+        }
+        if (msg.topic == "social.initialize") {
+            apiPort = port;
+            initializeAmbientNotifications();
+        }
+    }
+}
+
+// send a message to all provider content
+function broadcast(topic, data) {
+  for (var i = 0; i &lt; ports.length; i++) {
+    ports[i].postMessage({topic: topic, data: data});
+  }
+}
+</code></pre>
+
+<p>Every message has a data element with 2 fields; 'topic' and 'data'. The topic identifies which method or event is being used, and the data specifies additional data unique to the topic. All standardized methods and events have topics that begin with "social." - this means services are free to use topics without this prefix as a private implementation detail (for example, to communicate between some content from the service and the service's worker).</p>
+
+<h3 id="Message_Serialization">Message Serialization</h3>
+
+<p>For a message with topic <code>topic</code> and arguments (arg1:val1, arg2:val2), construct an object like:</p>
+
+<pre><code>{ topic: topic, data: { arg1: val1, arg2: val2 } }
+</code></pre>
+
+<h3 id="Control_Messages_sent_to_Service_Workers">Control Messages sent to Service Workers</h3>
+
+<h4 id="social.initialize"><code>social.initialize</code></h4>
+
+<p>Sent by the browser during startup. When a worker's JavaScript has been successfully loaded and evaluated, the browser will send a message with this topic.  When the worker receives the <code>social.initalize event</code>, it should send both the <code>social.user-profile</code> and, if Page Marks are supported [as of Fx23], the <code>social.page-mark-config</code> message.</p>
+
+<h4 id="social.port-closing"><code>social.port-closing</code></h4>
+
+<p>Sent by the browser during worker shutdown, when a MessagePort to the worker is about to be closed. This will be the last message the worker receives on the port.</p>
+
+<h3 id="Control_Messages_sent_from_Service_Workers_to_the_browser">Control Messages sent from Service Workers to the browser</h3>
+
+<h4 id="social.reload-worker"><code>social.reload-worker</code></h4>
+
+<p>Sent by the worker to request the browser to reload the worker.</p>
+
+<h4 id="social.cookies-get"><code>social.cookies-get</code></h4>
+
+<p>Sent by the worker to request the browser to respond with a list of same-origin cookies for the provider. The browser will respond with a <code>social.cookies-get-response</code> message.</p>
+
+<h4 id="social.request-chat"><code>social.request-chat</code></h4>
+
+<p>Sent by the worker to request the browser to open a new floating chat panel with the specified url. Chat windows opened by the worker will be opened in a minimized mode.</p>
+
+<p><em>Arguments:</em></p>
+
+<p><strong>url</strong></p>
+
+<blockquote>
+<p>String, required.  The url to the chat page to open in the window.</p>
+</blockquote>
+
+<h3 id="Ambient_Notification_Control">Ambient Notification Control</h3>
+
+<h4 id="social.user-profile"><code>social.user-profile</code></h4>
+
+<p>Sent by the worker to set the properties for the provider icon and user profile data used for the toolbar button. If the user's portrait and userName are absent, the button UI will indicate a logged out state. When indicating logged out state, status icons set via <code>social.ambient-notification</code> will be removed. A service that does not handle user login should send this message with values appropriate to the website, such as the site icon, home url, and brand name.</p>
+
+<p><em>Arguments:</em></p>
+
+<p><strong>iconURL</strong></p>
+
+<blockquote>
+<p>String, required. If supplied, specifies the URL to a 16x16 pixel image used for the status icon. The iconURL can be a data url with encoded image to avoid additional http requests (e.g., "data:image/png;base64,...data...").</p>
+</blockquote>
+
+<p><strong>portrait</strong></p>
+
+<blockquote>
+<p>String, optional. If supplied, specifies the URL to a 48x48 pixel image of the user. The portrait can be a data url with encoded image to avoid additional http requests.</p>
+</blockquote>
+
+<p><strong>userName</strong></p>
+
+<blockquote>
+<p>String, optional. Account name displayed with the portrait in the provider menu.</p>
+</blockquote>
+
+<p><strong>displayName</strong></p>
+
+<blockquote>
+<p>String, required. Real name of the user used for display purposes in various UI elements.</p>
+</blockquote>
+
+<p><strong>profileURL</strong></p>
+
+<blockquote>
+<p>String, required. URL to the logged in user's profile page. This will be opened in a normal browser tab when the username is clicked on.</p>
+</blockquote>
+
+<h4 id="social.ambient-notification"><code>social.ambient-notification</code></h4>
+
+<p>Sent by the worker to update or create an ambient notification icon. One is sent for each icon. A user must be logged in to show status icons, and you must call <code>social.user-profile</code> prior to calling <code>social.ambient-notification</code> to set status icons.</p>
+
+<p><em>Arguments:</em></p>
+
+<p><strong>label</strong></p>
+
+<blockquote>
+<p>String, optional.  An label for the icon tooltip, which otherwise defaults to the name given in the manifest.</p>
+</blockquote>
+
+<p><strong>iconURL</strong></p>
+
+<blockquote>
+<p>String, optional. If supplied, specifies the URL to a 16x16 pixel image used for the status icon. The iconURL can be a data url with encoded image to avoid additional http requests (e.g., "data:image/png;base64,...data...").</p>
+</blockquote>
+
+<p><strong>counter</strong></p>
+
+<blockquote>
+<p>Number, optional. Specifies a number that will be overlaid over the icon, typically used to convey an <code>unread</code> concept.</p>
+</blockquote>
+
+<p><strong>contentPanel</strong></p>
+
+<blockquote>
+<p>String, optional. Specifies the URL of content that will be displayed in the popup panel for the icon.</p>
+</blockquote>
+
+<h3 id="Active_Notification_Control">Active Notification Control</h3>
+
+<h4 id="social.notification-create"><code>social.notification-create</code></h4>
+
+<p>Sent by the worker to create and display a notification object. This requests that the browser notify the user of an immediately-relevant change in state. See <a href="https://developer.mozilla.org/en/DOM/navigator.mozNotification">https://developer.mozilla.org/en/DOM/navigator.mozNotification</a> for more detail. When the user clicks on the notification, the <code>social.notification-action</code> message is sent to the worker. The title of the notification will always be the name of the provider.</p>
+
+<p>NOTE: We want to augment the mozNotification object defined in the docs with an additional "type" field. Details TBD. NOTE: No way of allowing duration and no way exposed to "cancel" a notification (assumption is they are very short-lived). Is this OK?</p>
+
+<p><em>Arguments:</em></p>
+
+<p><strong>id</strong></p>
+
+<blockquote>
+<p>String: An ID for the notification. This ID will not be displayed but will be passed back via a <code>social.notification-action</code> event if the user clicks on the notification.</p>
+</blockquote>
+
+<p><strong>type</strong></p>
+
+<blockquote>
+<p>String: The Type string should be consistent for each <strong>type</strong> of notification. This may be used by some notification systems to provide user-level filtering of notifications. A provider may choose any string for the type, but should keep the type strings consistent and descriptive for each type of action. For example, chat notifications should always have the same type string. Suggested/example notifications include:</p>
+</blockquote>
+
+<ul>
+ <li>social.providername.chat-request</li>
+ <li>social.providername.friend-request</li>
+ <li>social.providername.activity (e.g., someone posted to your activity stream)</li>
+</ul>
+
+<p><strong>icon</strong></p>
+
+<blockquote>
+<p>String/null. The URL of an image to be placed in the notification. While this can be any valid URL, implementers are strongly encouraged to use a data URL to minimize latency.</p>
+</blockquote>
+
+<p><strong>body</strong></p>
+
+<blockquote>
+<p>String: The body of the notification message. This body will be rendered as a hyperlink and may be clicked. HTML markup is not supported.</p>
+</blockquote>
+
+<p><strong>action</strong></p>
+
+<blockquote>
+<p>String: An action to perform when the user clicks on the notification. If no action is provided, the notification is not clickable. Currently the only actions supported are <strong><em>link</em></strong>, <strong><em>callback</em></strong>, and <strong><em>openServiceWindow</em></strong>. If the action is defined, actionArgs should also be defined.</p>
+</blockquote>
+
+<p><strong>actionArgs</strong></p>
+
+<blockquote>
+<p>Object: An object with arguments for actions (above). Supported actions and their actionArgs are:</p>
+</blockquote>
+
+<ul>
+ <li>link
+  <ul>
+   <li>toURL: String: url to open in a new browser tab</li>
+  </ul>
+ </li>
+</ul>
+
+<h4 id="social.notification-action"><code>social.notification-action</code></h4>
+
+<p>Sent to the worker as a response to a "callback" notification, after the user has clicked on the notification.</p>
+
+<p><em>Arguments: None</em></p>
+
+<p><strong>id</strong></p>
+
+<blockquote>
+<p>String: the ID of the notification that was clicked.</p>
+</blockquote>
+
+<p><strong>action</strong></p>
+
+<blockquote>
+<p>String: The <strong>action</strong> sent in <code>social.notification-create</code>.</p>
+</blockquote>
+
+<p><strong>actionArgs</strong></p>
+
+<blockquote>
+<p>Object: The <strong>actionArgs</strong> sent in <code>social.notification-create</code>.</p>
+</blockquote>
+
+<h3 id="Upgrading_the_Manifest">Upgrading the Manifest</h3>
+
+<p><strong>Available starting Firefox 24</strong></p>
+
+<p>You may fetch and set your manifest data. This allows you to check if the manifest for your provider in Firefox is up to date, and allows you to update the manifest if necessary. When you update your manifest, any content loaded from your provider will be reloaded automatically. It is recommended you use the version attribute on the manifest to track versioning of your provider.</p>
+
+<h4 id="social.manifest-get"><code>social.manifest-get</code></h4>
+
+<p>Sent by the worker to request the installed manifest data from Firefox. This message can be sent at any time. Firefox will respond with a social.manifest message containing the manifest data.</p>
+
+<p><em>Arguments: None</em></p>
+
+<h4 id="social.manifest-set"><code>social.manifest-set</code></h4>
+
+<p>Sent by the worker to update the installed manifest data in Firefox. This message can be sent at any time. Firefox will reload the provider after saving the new manifest.</p>
+
+<p><em>Arguments:</em></p>
+
+<p><strong>data</strong></p>
+
+<blockquote>
+<p>JSON Object. The manifest data.</p>
+</blockquote>
+
+<h3 id="sect1"> </h3>

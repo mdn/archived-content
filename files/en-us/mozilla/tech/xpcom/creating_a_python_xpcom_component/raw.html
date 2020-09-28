@@ -1,0 +1,91 @@
+<p><a href="http://books.mozdev.org/html"><em>Creating Applications with Mozilla</em></a> already provides <a href="http://books.mozdev.org/html/mozilla-chp-8-sect-2.html">a tutorial</a> for making a simple JavaScript or C++ component (implementing the <code>nsISimple</code> interface). Here is how to make the same component in Python using <a href="/en-US/docs/PyXPCOM" title="PyXPCOM">PyXPCOM</a>.</p>
+<p>(Note that some details may be missing.)</p>
+<h2 id="Preparation" name="Preparation">Preparation</h2>
+<p>If a binary of PyXPCOM is not available, you will need to build it - see <a href="/en-US/docs/Building_PyXPCOM" title="Building_PyXPCOM">Building PyXPCOM.</a></p>
+<div class="note">
+  Tip: you can achieve a copy of binary of PyXPCOM from <a href="http://pyxpcomext.mozdev.org/" title="http://pyxpcomext.mozdev.org/">PythonExt</a>; simply unpack xpi and take everything you need.</div>
+
+<p>If you wish to use PyXPCOM from a normal Python executable, you will need to tell Python where it can find the PyXPCOM library. This is probably best done by setting a PYTHONPATH variable pointing at the 'bin/python' directory in the application. This is not necessary when your components are loaded by Mozilla as the Python loader modifies sys.path.</p>
+<p>Then you can</p>
+<pre>import xpcom
+</pre>
+<p>in any Python module (mostly, in your component).</p>
+<h2 id="Defining_the_interface" name="Defining_the_interface">Defining the interface</h2>
+<p>Make a file named "nsIPySimple.idl" to define the interface:</p>
+<pre>#include "nsISupports.idl"
+[scriptable, uuid(2b324e9d-a322-44a7-bd6e-0d8c83d94883)]
+interface nsIPySimple : nsISupports
+{
+    attribute string yourName;
+    void write( );
+    void change(in string aValue);
+};
+</pre>
+<p>This is the same as the <code>nsISimple</code> interface used <a href="http://books.mozdev.org/html/mozilla-chp-8-sect-2.html">here</a>. Theoretically, because several components can share an interface, the same file could be used.</p>
+<p>Pay special attention to types here - Python and JavaScript are both loosely-typed, so it's fairly easy to pass information from one to the other.</p>
+<p>Note: There are exceptions; see <a href="http://aspn.activestate.com/ASPN/Mail/Message/pyxpcom/2484414">this discussion</a> for information on the use of <code>string</code> and <code>wstring</code> for unicode transfer. See <a href="http://www.mozilla.org/scriptable/xpidl/idl-authors-guide/rules.html">here</a> for info on describing interfaces, and on which types can be used.</p>
+<h3 id="Registering_the_interface" name="Registering_the_interface">Registering the interface</h3>
+<p>In the "components" directory, execute :</p>
+<pre>../xpidl -m typelib -w -v -I /usr/share/idl/mozilla/ nsIPySimple.idl
+</pre>
+<p>On Windows you must point to the idl directory as part of your Mozilla build. For example:</p>
+<pre>xpidl.exe -m typelib -w -v -I C:\source\mozilla\obj-i686-pc-mingw32\dist\idl foo.idl
+</pre>
+<p>xpidl will then create nsIPySimple.xpt, which should be placed correctly (e.g., in the 'components' directory).</p>
+<h2 id="Implementing_the_component" name="Implementing_the_component">Implementing the component</h2>
+<p>Unlike C++, PyXPCOM does much of the work for you.</p>
+<p>Make a file named "py_simple.py" for the actual code (again, in the 'components' directory):</p>
+<pre>from xpcom import components, verbose
+
+class PySimple: #PythonTestComponent
+    _com_interfaces_ = components.interfaces.nsIPySimple
+    _reg_clsid_ = "{c456ceb5-f142-40a8-becc-764911bc8ca5}"
+    _reg_contractid_ = "@mozilla.org/PySimple;1"
+    def __init__(self):
+        self.yourName = "a default name" # or mName ?
+
+    def __del__(self):
+        if verbose:
+            print "PySimple: __del__ method called - object is destructing"
+
+    def write(self):
+        print self.yourName
+
+    def change(self, newName):
+        self.yourName = newName
+</pre>
+<p>Then register your component; the procedure is the same for any component, but will not work if Python components weren't enabled.</p>
+<p>To register the component, <code>touch</code> the .autoreg (a hidden file) in the bin directory, or delete xpti.dat. Then, the next time Mozilla starts, it will rebuild the index of components, including any new one in the 'components' directory. It is helpful to then start Mozilla from the command line to see if new components register successfully.</p>
+<h3 id="Generating_implementation_templates" name="Generating_implementation_templates">Generating implementation templates</h3>
+<p>The module xpcom.xpt is used internally to process type information, but it has a nice feature - it can spit out a template for a Python implementation of any interface.</p>
+<p>Just execute this file as a script with the interface name as a param. For example:</p>
+<pre>% cd c:\mozilla\bin\python\xpcom
+% python xpt.py nsISample
+class nsISample:
+    _com_interfaces_ = xpcom.components.interfaces.nsISample
+    # If this object needs to be registered, the following 2 are also needed.
+    # _reg_clsid_ = "{a new clsid generated for this object}"
+    # _reg_contractid_ = "The.Object.Name"
+
+    def get_value( self ):
+        # Result: string
+        pass
+    def set_value( self, param0 ):
+        # Result: void - None
+        # In: param0: string
+        pass
+</pre>
+<p>As you can see, the output is valid Python code, with basic signatures and useful comments for each of the methods.</p>
+<h2 id="Testing_it" name="Testing_it">Testing it</h2>
+<p>To see this work, you will have to start Firefox from the command line, since that'll be where the stuff will be printed out.</p>
+<h2 id="External_links" name="External_links">External links</h2>
+<ul>
+  <li><a href="http://books.mozdev.org/html/mozilla-chp-8-sect-2.html">Creating XPCOM components</a>, on which this short tutorial is based.</li>
+  <li>A three-part tutorial on <a href="http://www-128.ibm.com/developerworks">ibm developerWorks</a>:
+    <ul>
+      <li><a href="http://www-128.ibm.com/developerworks/webservices/library/co-pyxp1/">Getting to know PyXPCOM</a> - info on building PyXPCOM (and maybe Mozilla) to get it to work.</li>
+      <li><a href="http://www-128.ibm.com/developerworks/webservices/library/co-pyxp2.html">Getting started with PyXPCOM, part 2</a> - accessing xpcom from Python.</li>
+      <li><a href="http://www-128.ibm.com/developerworks/webservices/library/co-pyxp3/">Getting started with PyXPCOM, part 3</a> - Creating your own components. The problem with this one is that the <a href="http://www-128.ibm.com/developerworks/webservices/library/co-pyxp3/listing2.html">sample code they give</a> is slightly broken (it ends with a "retu" which shouldn't be there. I haven't tried it, but it looks like nothing is missing, so getting rid of the "retu" should make it work fine.).</li>
+    </ul>
+  </li>
+</ul>

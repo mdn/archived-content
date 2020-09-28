@@ -1,0 +1,142 @@
+<p>This article will hopefully explain how to update your XulRunner application using the same method that Firefox, Thunderbird, Songbird, and ChatZilla use.</p>
+
+<h3 id="Getting_Started" name="Getting_Started">Getting Started</h3>
+
+<ul>
+ <li>You will need the following utility scripts from <a class="external" href="http://lxr.mozilla.org/mozilla/source/tools/update-packaging/" rel="freelink">http://lxr.mozilla.org/mozilla/sourc...ate-packaging/</a> (or local source of XulRunner)
+
+  <ul>
+   <li>common.sh</li>
+   <li>make_full_update.sh</li>
+  </ul>
+ </li>
+</ul>
+
+<ul>
+ <li>You will need mar / mar.exe to build a complete update patch.
+  <ul>
+   <li>You will need to compile a unix/linux executable mar from mozilla/modules/libmar. As far as I can tell enabling the options --enable-updater and --enable-update-packaging on your configure will build you mar. Compiled versions of mar are available in the <a class="external" href="/en/Gecko_SDK" title="en/Gecko_SDK">Gecko SDK</a> under the folder /host/bin for your OS.</li>
+  </ul>
+ </li>
+</ul>
+
+<p>In order to generate SHA1 hashes I installed <a class="external" href="http://mcrypt.hellug.gr/shash/">shash</a>.</p>
+
+<h3 id="Application_Settings" name="Application_Settings">Application Settings</h3>
+
+<p>You will need to configure the following settings in your application:</p>
+
+<h4 id="Branding" name="Branding">Branding</h4>
+
+<p>The update process uses branding information, setup branding for your application as described here: <a class="external" href="/en/docs/XULRunner_tips#Branding" title="en/docs/XULRunner_tips#Branding">XulRunner Tips</a></p>
+
+<h4 id="Branding" name="Branding">Icons</h4>
+
+<p>The updater process for Linux systems requires updater.png to be in your &lt;application folder&gt;/icons/, see <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=706846" title="https://bugzilla.mozilla.org/show_bug.cgi?id=706846">https://bugzilla.mozilla.org/show_bug.cgi?id=706846</a></p>
+
+<h4 id="Preferences" name="Preferences">Preferences</h4>
+
+<pre>// Whether or not app updates are enabled
+pref("app.update.enabled", true);
+
+// This preference turns on app.update.mode and allows automatic download and
+// install to take place. We use a separate boolean toggle for this to make
+// the UI easier to construct.
+pref("app.update.auto", true);
+
+// Defines how the Application Update Service notifies the user about updates:
+//
+// AUM Set to:        Minor Releases:     Major Releases:
+// 0                  download no prompt  download no prompt
+// 1                  download no prompt  download no prompt if no incompatibilities
+// 2                  download no prompt  prompt
+//
+// See chart in nsUpdateService.js.in for more details
+//
+pref("app.update.mode", 1);
+
+// If set to true, the Update Service will present no UI for any event.
+pref("app.update.silent", false);
+
+// Update service URL:
+// You do not need to use all the %VAR% parameters. Use what you need, %PRODUCT%,%VERSION%,%BUILD_ID%,%CHANNEL% for example
+pref("app.update.url", "https://yourserver.net/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+
+// URL user can browse to manually if for some reason all update installation
+// attempts fail.
+pref("app.update.url.manual", "http://yourserver.net/yourpage");
+
+// A default value for the "More information about this update" link
+// supplied in the "An update is available" page of the update wizard.
+pref("app.update.url.details", "http://yourserver.net/yourpage");
+
+// User-settable override to app.update.url for testing purposes.
+//pref("app.update.url.override", "");
+
+// Interval: Time between checks for a new version (in seconds)
+//           default=1 day
+pref("app.update.interval", 86400);
+
+// Interval: Time before prompting the user to download a new version that
+//           is available (in seconds) default=1 day
+pref("app.update.nagTimer.download", 86400);
+
+// Interval: Time before prompting the user to restart to install the latest
+//           download (in seconds) default=30 minutes
+pref("app.update.nagTimer.restart", 1800);
+
+// Interval: When all registered timers should be checked (in milliseconds)
+//           default=5 seconds
+pref("app.update.timer", 600000);
+
+// Whether or not we show a dialog box informing the user that the update was
+// successfully applied. This is off in Firefox by default since we show a
+// upgrade start page instead! Other apps may wish to show this UI, and supply
+// a whatsNewURL field in their brand.properties that contains a link to a page
+// which tells users what's new in this new update.
+pref("app.update.showInstalledUI", false);
+
+// 0 = suppress prompting for incompatibilities if there are updates available
+//     to newer versions of installed addons that resolve them.
+// 1 = suppress prompting for incompatibilities only if there are VersionInfo
+//     updates available to installed addons that resolve them, not newer
+//     versions.
+pref("app.update.incompatible.mode", 0);
+
+</pre>
+
+<h3 id="Update_Server" name="Update_Server">Update Server</h3>
+
+<p>Follow the instructions <a class="external" href="/en/docs/Setting_up_an_update_server" title="en/docs/Setting_up_an_update_server">here</a> to setup an update server for your XULRunner application to query.</p>
+
+<p>I opted for the simpler approach of not using the update php script. HTTPS is recommended but not required (yet).</p>
+
+<h4 id="update.xml" name="update.xml">update.xml</h4>
+
+<p>The format is outlined <a class="external" href="http://wiki.mozilla.org/Software_Update:updates.xml_Format">here</a></p>
+
+<h3 id="Process" name="Process">Process</h3>
+
+<p>As best I can tell here's how the update process works.</p>
+
+<ol>
+ <li>At the scheduled interval the application checks the update server for update.xml, search for the correct one using the Software name, versions, build id's, channels, and other information like locales.</li>
+ <li>If the update.xml file doesn't exist there is no update.</li>
+ <li>Update.xml contains only information about the update.
+  <ol>
+   <li>It points to the update mar file (a Mozilla Archive) which contains all files which are going to be updates</li>
+   <li>It also contains a SHA1 hash and file size used for verification of the update.</li>
+  </ol>
+ </li>
+ <li>If an update file is found that correctly describes an update your application, or rather xulrunner, will download the update, verify it with the hash and filesize and install. It will then prompt the user to restart the application.</li>
+</ol>
+
+<h3 id="Resources" name="Resources">Resources</h3>
+
+<ul>
+ <li><a class="external" href="http://wiki.mozilla.org/Software_Update" rel="freelink">http://wiki.mozilla.org/Software_Update</a></li>
+ <li><a class="external" href="http://wiki.mozilla.org/UpdateGeneration" rel="freelink">http://wiki.mozilla.org/UpdateGeneration</a></li>
+ <li>http://developer.mozilla.org/en/docs/Setting_up_an_update_server</li>
+ <li><a class="external" href="http://chatzilla.rdmsoft.com/xulrunner/update/" rel="freelink">http://chatzilla.rdmsoft.com/xulrunner/update/</a></li>
+ <li>http://developer.mozilla.org/en/docs/XULRunner_tips</li>
+</ul>

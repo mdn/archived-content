@@ -1,0 +1,213 @@
+---
+title: Code snippets
+slug: Archive/Mozilla/Firefox_Sync/Code_snippets
+---
+<p>This page documents how to perform custom actions with Firefox Sync via JavaScript.</p>
+<p>All of the in this page must be executed in a chrome-privileged console. To access a chrome-privileged console, open an about page (like about:about) then open a Web Console via the Web Developer menu.</p>
+<h3 id="Tabs_from_Other_Computers">Tabs from Other Computers</h3>
+<p>This snippet shows how to load all tabs from other computers.</p>
+<pre>Components.utils.import("resource://services-sync/main.js");
+
+// Obtain a reference to the main Firefox window.
+let mainWindow = <span><span>window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)</span></span>
+<span>                       .getInterface(Components.interfaces.nsIWebNavigation)
+                       </span><span>.QueryInterface(Components.interfaces.nsIDocShellTreeItem)
+                       </span><span>.rootTreeItem
+                       </span><span>.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                       </span><span>.getInterface(Components.interfaces.nsIDOMWindow);  </span>
+
+// Obtain a reference to Sync's Tabs "engine."
+let tabsEngine = Weave.Service.engineManager.get("tabs");
+
+// Iterate over each client having data.
+for each (let client in tabsEngine.getAllClients()) {
+  for each (let tab in client.tabs) {
+    let url = tab.urlHistory[0];
+
+    // Load the tab via the <a href="/en/Code_snippets/Tabbed_browser" title="/en/Code_snippets/Tabbed_browser">tabbed browser API.</a>
+    mainWindow.gBrowser.addTab(url);
+  }
+}
+</pre>
+<h2 id="Partially_corrupt_a_server">Partially corrupt a server</h2>
+<pre>Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+
+function deletePath(path) {
+  let resource = new Resource(Weave.Service.storageURL + path);
+  resource.setHeader("X-Confirm-Delete", "1");
+  return resource.delete();
+}
+
+// Delete meta/global:
+deletePath("meta/global");
+
+// Delete keys:
+deletePath("crypto/keys");
+
+// Delete server:
+deletePath("");
+</pre>
+<h2 id="Corrupt_a_single_engine_on_the_server">Corrupt a single engine on the server</h2>
+<pre>let ENGINE = "bookmarks";
+Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+Components.utils.import("resource://services-sync/util.js");
+let r = new Resource(Weave.Service.storageURL + "meta/global");
+let g = r.get();
+let envelope = JSON.parse(g);
+let payload  = JSON.parse(envelope.payload);
+payload.engines[ENGINE].syncID = Weave.Utils.makeGUID(); // Or any other GUID you like.
+payload.engines[ENGINE].version = 0; // Or any other version number you like.
+envelope.payload = JSON.stringify(payload);
+r.put(JSON.stringify(envelope));
+
+</pre>
+<h2 id="Generate_new_keys">Generate new keys</h2>
+<pre>// Clients always wipe the server when they generate new keys.
+Components.utils.import("resource://services-sync/main.js");
+Weave.Service._freshStart();
+
+// If you want to do it without wiping the server (which will cause corruption!):
+Weave.Service.generateNewSymmetricKeys();
+</pre>
+<h2 id="Print_out_a_list_of_large_bookmark_records">Print out a list of large bookmark records</h2>
+<pre>// Change '1000' as appropriate.
+Components.utils.import("resource://services-sync/engines.js");
+Components.utils.import("resource://services-sync/engines/bookmarks.js");
+let bme = Weave.Service.engineManager.get("bookmarks");
+
+let ids = Object.keys(bme._store.getAllIDs());
+for each (let id in ids) {
+  let record = bme._store.createRecord(id, "bookmarks");
+  let len = record.toString().length;
+  if (len &gt; 1000) {
+    console.log("ID: " + id + ", len = " + len + ", " + record.title);
+  }
+}
+</pre>
+<h2 id="Print_an_alphabetically_sorted_list_of_members_of_a_collection">Print an alphabetically sorted list of members of a collection</h2>
+<pre>Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+
+let ids = JSON.parse(new Resource(Weave.Service.storageURL + "bookmarks").get());
+for each (let id in ids.sort()) {
+  console.log("  " + id);
+}
+</pre>
+<h2 id="Get_a_count_of_the_number_of_members_of_a_collection_on_the_server">Get a count of the number of members of a collection on the server</h2>
+<pre>let collection = "passwords";
+Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+JSON.parse(new Resource(Weave.Service.storageURL + collection).get()).length;
+</pre>
+<h2 id="Dump_the_cleartext_of_each_record_in_a_collection_to_the_console.">Dump the cleartext of each record in a collection to the console.</h2>
+<pre>let collection = "forms";
+
+Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/record.js");
+
+let recordType = Weave.Engines.get(collection)._recordObj;
+let coll = new Collection(Weave.Service.storageURL + collection, recordType);
+coll.full = true;
+coll.recordHandler = function(item) {
+  item.collection = collection;
+  item.decrypt();
+  console.log(item.cleartext);
+};
+coll.get();
+</pre>
+<h2 id="Print_an_individual_record">Print an individual record</h2>
+<pre>let collection = "history";
+let id = "GUID_GOES_HERE";
+
+Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/record.js");
+
+let recordType = Weave.Engines.get(collection)._recordObj;
+let coll = new Collection(Weave.Service.storageURL + collection, recordType);
+coll.full = true;
+coll.ids = [id];
+coll.recordHandler = function(item) {
+  item.collection = collection;
+  item.decrypt();
+  console.log(item.cleartext);
+};
+
+coll.get();
+</pre>
+<h2 id="Count_types_of_bookmark_records">Count types of bookmark records</h2>
+<pre class="brush: js">  Components.utils.import("resource://services-sync/main.js");
+  Components.utils.import("resource://services-sync/record.js");
+
+  let deleted = 0;
+  let items   = {};
+
+  let collection = "bookmarks";
+  let recordType = Weave.Engines.get(collection)._recordObj;
+  let coll = new Collection(Weave.Service.storageURL + collection, recordType);
+
+  coll.full = true;
+  coll.limit = null;
+
+  coll.recordHandler = function(item) {
+    item.collection = collection;
+    item.decrypt();
+    if (item.deleted) {
+      deleted++;
+    } else {
+      items[item.type] = 1 + (items[item.type] || 0);
+    }
+  };
+  coll.get();
+  console.log("Deleted: " + deleted + ", " + JSON.stringify(items));
+</pre>
+<h2 id="Get_a_log_from_XUL_Fennec">Get a log from XUL Fennec</h2>
+<ul>
+ <li>View about:sync-log.</li>
+ <li>Long-tap the log in question. Choose "Save Link".</li>
+ <li>Open a mail client. Click Attach.</li>
+ <li>Choose "File Manager" as the handler.</li>
+ <li>Navigate to "Downloads", pick correct file.</li>
+</ul>
+<h2 id="Watch_live_Sync_logs">Watch live Sync logs</h2>
+<ul>
+ <li>Set services.sync.log.appender.console to Trace.</li>
+</ul>
+<h2 id="Bump_metaglobal's_modified_time">Bump meta/global's modified time</h2>
+<pre>Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+
+function getPath(path) {
+  let r = new Resource(Weave.Service.storageURL + path);
+  let g = r.get();
+  return [g, r];
+};
+
+let [g, r] = getPath("meta/global");
+r.put(g);
+</pre>
+<h2 id="Delete_and_restore_a_record">Delete and restore a record</h2>
+<pre>Components.utils.import("resource://services-sync/main.js");
+Components.utils.import("resource://services-sync/resource.js");
+Components.utils.import("resource://services-sync/record.js");
+
+// For example:
+let id = "iASOkUOZpIxZ"
+let collection = "bookmarks";
+
+let resource = new Resource(Weave.Service.storageURL + collection + "/" + id);
+let del = new CryptoWrapper(collection, id);
+
+del.deleted = true;
+del.encrypt();
+
+// Save the old value.
+let old = resource.get();
+
+// Delete.
+resource.put(del);
+
+// Restore the old value.
+resource.put(old);
+</pre>

@@ -1,0 +1,62 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("js1.8.5") }}</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning!</strong> <code>JSObjectOps</code> is not a supported API. Details of the API may change from one release to the next. This documentation should be considered SpiderMonkey internals documentation, not API documentation. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=408416">bug 408416</a> for details.</p>
+</div>
+
+<div class="summary">
+<p>The <strong><code><a href="en/JSObjectOps">JSObjectOps</a>.newObjectMap</code></strong> callback is called whenever a new object is created. It creates a <code><a href="en/JSObjectMap">JSObjectMap</a></code> that completely controls the new object's behavior.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef JSObjectMap * (*JSNewObjectMapOp)(JSContext *cx, jsrefcount nrefs,
+    JSObjectOps *ops, JSClass *clasp, JSObject *obj);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td><code><a href="en/JSContext">JSContext</a> *</code></td>
+   <td>Pointer to the JS context in which the new object is being created.</td>
+  </tr>
+  <tr>
+   <td><code>nrefs</code></td>
+   <td><code><a href="en/Jsrefcount">jsrefcount</a></code></td>
+   <td>The initial reference count for the new <code>JSObjectMap</code>.</td>
+  </tr>
+  <tr>
+   <td><code>ops</code></td>
+   <td><code><a href="en/JSObjectOps">JSObjectOps</a> *</code></td>
+   <td>The <code>ops</code> for the new <code>JSObjectMap</code>.</td>
+  </tr>
+  <tr>
+   <td><code>clasp</code></td>
+   <td><code><a href="en/JSClass">JSClass</a> *</code></td>
+   <td>The <code>JSClass</code> of the new object.</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td><code><a href="en/JSObject">JSObject</a> *</code></td>
+   <td>The new object.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<div class="note">
+<p><strong>Note:</strong> The JSAPI does not expose the data structure that would be necessary to develop new <code>JSObjectMap</code> subclasses. An application that implements <code>JSObjectOps</code> must therefore either implement the <code>newObjectMap</code> by including the non-public header <code>jsobj.h</code>, or obtain the default <code>NewObjectMapOp</code> by calling the {{jsapixref("JSClass", "JSClass.getObjectOps")}} callback of a standard <code>JSClass</code>.</p>
+</div>
+
+<p>Create a new instance of (a concrete subclass of) <code>JSObjectMap</code> (see {{ Source("js/src/jsobj.h", "jsobj.h") }}), with the <code>nrefs</code> and <code>ops</code> members initialized from the same-named parameters, and with the <code>nslots</code> and <code>freeslot</code> members initialized according to <code>ops</code> and <code>clasp</code>. Return null on error, non-null on success.</p>
+
+<p><code>JSObjectMap</code>s are reference-counted by generic code in the engine. Usually, the <code>nrefs</code> parameter to <code>JSObjectOps.newObjectMap</code> will be <code>1</code>, to count the ref returned to the caller on success. After a successful construction, some number of <code>js_HoldObjectMap</code> and <code>js_DropObjectMap</code> calls ensue. When <code>nrefs</code> reaches <code>0</code> due to a <code>js_DropObjectMap</code> call, <code>JSObjectOps.destroyObjectMap</code> will be called to dispose of the map.</p>

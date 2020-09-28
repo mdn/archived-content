@@ -1,0 +1,147 @@
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>A binding can specify an <em>anonymous content template</em> using the <code>content</code>  element. This template describes a content tree that will be generated around the bound element during binding attachment. An element declared in a bound document using a single tag can then be constructed out of multiple child elements, and this implementation is hidden from the bound document.</p>
+
+<p>For example, the HTML file upload control appears in most browsers as a composite widget consisting of a text field and a button. A sample XBL binding for the file widget might look as follows:</p>
+
+<pre>&lt;binding id="fileupload"&gt;
+  &lt;content&gt;
+    &lt;html:input type="text"/&gt;
+    &lt;html:input type="button"/&gt;
+  &lt;/content&gt;
+&lt;/binding&gt;
+</pre>
+
+<p>Because this content is not visible to its parent element, it is said to be <code>anonymous content</code>.</p>
+
+<h2 id="Scoping_and_Access_Using_the_DOM" name="Scoping_and_Access_Using_the_DOM">Scoping and access using the DOM</h2>
+
+<p>When a binding is attached and certain conditions are met, the children of the binding's <code>content</code> element are cloned. Elements and attributes in the XBL namespace are never cloned. For content generated underneath the bound element, the topmost nodes' <code>parentNode</code> pointers are set to the bound element. When anonymous content elements are built above the bound element, the topmost elements' <code>parentNode</code> pointers are set to the bound element's <code>parentNode</code>. All anonymous nodes' <code>ownerDocument</code> pointers are set to the bound document at the time of generation.</p>
+
+<p>In effect the anonymous content exists in its own insulated pocket within the document. Using <code>parentNode</code>, anonymous content nodes can refer to their explicit parents, but explicit parents have no knowledge of their anonymous children. The anonymous content is not accessible via the <code>childNodes</code> list for the bound element, nor is it accessible using <code>firstChild</code>/<code>nextSibling</code> to iterate over the children of the bound element.  The anonymous content is accessible only through special methods like <a href="/en-US/docs/XBL/XBL_1.0_Reference/DOM_Interfaces#getAnonymousNodes" title="https://developer.mozilla.org/En/XBL/XBL_1.0_Reference/DOM_Interfaces#getAnonymousNodes"><code>getAnonymousNodes</code></a> and <a href="/en-US/docs/XBL/XBL_1.0_Reference/DOM_Interfaces#getAnonymousElementByAttribute" title="https://developer.mozilla.org/En/XBL/XBL_1.0_Reference/DOM_Interfaces#getAnonymousElementByAttribute"><code>getAnonymousElementByAttribute</code></a>.</p>
+
+<p>Anonymous content introduces the concept of <em>scope</em> to nodes within a document. Because anonymous content elements can also have bindings attached that generate their own anonymous content, this scoping can be taken to an arbitrary level of nesting.</p>
+
+<p>Explicit content is said to be at the <em>document-level scope</em>. Anonymous content nodes are in their own <em>binding-level scopes</em>. Binding scopes are determined by the bound element that contains the binding responsible for the generation of the anonymous nodes.</p>
+
+<p>The scope of an element can be determined using the <code>getBindingParent</code> method on the <code>DocumentXBL</code> interface. See <a href="/en-US/docs/XBL/XBL_1.0_Reference/DOM_Interfaces#The_DocumentXBL_Interface" title="XBL/XBL_1.0_Reference/DOM_Interfaces#The_DocumentXBL_Interface">section 3</a> for more information. This method returns the bound element in the enclosing scope that is responsible for the anonymous node. If invoked on an element at the document-level scope, it returns null.</p>
+
+<p>DOM methods that can be invoked on elements (e.g., <code>getElementsByTagName</code>) will only see nodes that are in the same scope. Methods invoked on the document (e.g., <code>getElementById</code>) only see nodes that are at the document-level scope.</p>
+
+<h2 id="Content_Generation" name="Content_Generation">Content generation</h2>
+
+<h3 id="Rules_for_Generation" name="Rules_for_Generation">Rules for generation</h3>
+
+<p>Whenever bindings are attached to an element, anonymous content will potentially be generated or destroyed. When a new binding is attached, the bindings in its explicit 'inherits' chain are checked to see if any have anonymous content templates. The most derived binding in the chain with a template is the one used to determine if anonymous content should be generated.</p>
+
+<p>Anonymous content is only generated from a template if there are insertion points defined within the template for all of the explicit content found underneath the bound element at the time the check for generation is made. If the binding specifies no insertion points for explicit content, then anonymous content will only be constructed if the bound element has no explicit children.</p>
+
+<p>Assuming that all explicit children have valid insertion points, the anonymous content is generated underneath the bound element. The binding responsible for the generation is referred to as the <em>primary generating binding</em>. Whenever the primary generating binding changes on a bound element, all anonymous nodes in the scope of the bound element are destroyed.</p>
+
+<h2 id="Attribute_Forwarding" name="Attribute_Forwarding">Attribute forwarding</h2>
+
+<p>Attributes on anonymous content elements can be tied to attributes on the bound element. Whenever the attribute is set or removed on the bound element, the corresponding attribute on the anonymous content is also set or removed. On any anonymous content element in a template, an <code>inherits</code> attribute can be used to specify a comma-separated list of attributes that should be inherited. Attributes with namespaces can be defined using a namespace prefix and the attribute name separate by a colon.</p>
+
+<p>For example, on the HTML file upload control, the anonymous textfield can be set up to automatically inherit the <code>value</code> attribute from the bound element.</p>
+
+<pre>&lt;xbl:binding id="fileUploadControl"&gt;
+  &lt;xbl:content&gt;
+    &lt;html:input type="text" xbl:inherits="value"/&gt;
+    &lt;html:input type="button" value="Browse..."/&gt;
+  &lt;/xbl:content&gt;
+&lt;/xbl:binding&gt;
+</pre>
+
+<p>Each entry in the <code>inherits</code> list can either simply list an attribute (such as <code>value</code> in the example above), or it can specify an = separated pair consisting of the attribute on the anonymous content that should be tied to the attribute on the bound element. The anonymous content attribute is listed first.</p>
+
+<p>The special value <code>xbl:text</code> can be used in an = separated pair, where the prefix defined is the XBL namespace. When specified on the left-hand side of the pair it indicates that the attribute on the right-hand side should be stored as text nodes underneath the anonymous element. When used on the right-hand side, it indicates that any raw text nodes that are explicit children of the bound element should be coalesced and the resulting value should be stored as the attribute on the left-hand side.</p>
+
+<p>The <code>xbl:text</code> value cannot occur by itself in the list. It may be used only in an = separated pair.</p>
+
+<p>Note that the <code>inherits</code> attribute is never cloned when content is generated from a template.</p>
+
+<h2 id="Insertion_Points" name="Insertion_Points">Insertion points</h2>
+
+<h3 id=".3Cchildren.3E_and_.3Celement.3E" name=".3Cchildren.3E_and_.3Celement.3E">&lt;children<strong><code>&gt;</code></strong></h3>
+
+<p><img alt="Interleaving Anonymous Content" src="/@api/deki/files/974/=Xbl_image_1.png"></p>
+
+<p>XBL bindings can interleave anonymous content between bound elements and their explicit children. They do so using XBL <code>children</code> tags. Any number of <code>children</code> tags may be used in a binding's anonymous content template. The location at which a <code>children</code> tag occurs is called an <em>insertion point</em>.</p>
+
+<p>There are two types of insertion points: explicit and inherited. Explicit insertion points specify locations at which the explicit children of a bound element are inserted. Explicit insertion points are only used if they are found on the primary generating binding. Explicit insertion points on other bindings are ignored.</p>
+
+<p>Inherited insertion points are used to place the anonymous content generated by the next binding in the chain that contributes anonymous content. That binding can define inherited insertion points for its base binding as well. This pattern continues all the way up the binding chain.</p>
+
+<p><s>XPath selectors</s> specified using the <code>includes</code> attribute determine which insertion point a given child should be placed under. [Actually, only tag names may be specified; see the <code>includes</code> attribute description in <a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#children"><code>&lt;children</code>&gt; element reference</a>, {{bug(174614)}} and {{bug(51527)}}.] If no attribute is specified, an insertion point is considered generic and will match on all content.</p>
+
+<p>The insertion point used for a given piece of content is the first encountered with a selector whose node set matches the element when doing a depth-first walk of the content template.</p>
+
+<p>Note that <code>children</code> elements are never cloned when content is generated from a template.</p>
+
+<h3 id="Handling_DOM_Changes" name="Handling_DOM_Changes">Handling DOM changes</h3>
+
+<p>Insertion points continuing to be used as elements are inserted or removed from the DOM. Whenever an element is inserted or appended, all insertion points are checked following all the same rules that applied when first placing explicit children during anonymous content generation. If no insertion point is found for the newly-inserted child, then the binding is no longer a fit for the bound element, and all anonymous content will be destroyed.</p>
+
+<p>Whenever an element is removed, it simply disappears from its insertion point along with all anonymous content that was generated by the element.</p>
+
+<p>It is possible to manipulate the anonymous content contained underneath a bound element using standard DOM APIs. If anonymous content that contains an insertion point is removed, then any explicit children found underneath the insertion point are relocated to any other insertion points that match. Again, if all the children cannot be relocated, then the anonymous content is destroyed.</p>
+
+<p>{{mediawiki.external('Editor\'s Note: Should there be an API for retrieving insertion points, for dynamically creating new insertion points, or for removing insertion points? Perhaps on ElementXBL?')}}</p>
+
+<h2 id="Event_Flow_and_Targeting" name="Event_Flow_and_Targeting">Event flow and targeting</h2>
+
+<h3 id="Flow_and_Targeting_Across_Scopes" name="Flow_and_Targeting_Across_Scopes">Flow and targeting across scopes</h3>
+
+<p>DOM events can fire on anonymous targets just as they can on explicit targets. As long as the event flows within the same scope, it is no different from the behavior outlined in the <a class="external" href="http://www.w3.org/TR/2000/PR-DOM-Level-2-Events-20000927/">DOM Level 2 Events specification</a>.</p>
+
+<p>Events flow through the final transformed content model after all elements have been repositioned through the usage of <code>children</code> tags.</p>
+
+<p>Whenever events flow from an anonymous element in a bound element's scope to the bound element itself, one of two actions occurs. Either the event is retargeted so that the bound element becomes the target, or the event is stopped and flow proceeds to the next phase. Whenever an event is retargeted, the <code>target</code> field of the event is set to the bound element. The original anonymous content responsible for the event can be obtained from a new field of the event object: <code>originalTarget</code>.</p>
+
+<p>The action taken (retarget vs. stop) is specific to the event type. In general, UI events are retargeted and mutation events are stopped. Exceptions to the rule are noted below.</p>
+
+<h3 id="Focus_and_Blur_Events" name="Focus_and_Blur_Events">Focus and blur events</h3>
+
+<p>When a focus or blur event crosses a scope boundary, the bound element is checked to see if it is focusable (i.e., if the user agent would normally fire a focus or blur event on the element). If the bound element is focusable, then the event is retargeted. If not, then the event is stopped. If anonymous content underneath a focusable bound element blurs and anonymous content also underneath the bound element takes focus, then the blur and focus events are both stopped. As far as the bound element is concerned, it retains focus throughout the two events.</p>
+
+<p>Anonymous content can receive focus when the user tabs through the document. The same rules apply. If the anonymous content is focusable, it can be tabbed into, but if the bound element is not focusable, the event will be stopped before it reaches the bound element.</p>
+
+<p>In HTML4 the <code>tabindex</code> attribute can be used to specify the tab order for focusable elements. This attribute can be specified on anonymous content. Each scope has a unique tab order. The tabindex values used in one scope are ignored by other scopes.</p>
+
+<p>As an example, consider the HTML file upload control. It is a focusable element that in turn is made up of two focusable anonymous elements: a textfield and a button. Tab indices can be specified on the textfield and the button to dictate the order in which the components of the file control should be accessed when tabbing.</p>
+
+<p>When the user tabs such that the file control should become focused, the user agent determines if any anonymous content should also become focused, using the tab order specified by the anonymous content elements. It then generates a focus event on the textfield inside the file control. As this event flows across scopes, it is retargeted to be a focus event on the file control itself.</p>
+
+<p>Focus events should also be stopped if the bound element is already focused. For example, if the user has already focused the textfield within an HTML file upload control, then the file upload control is now also focused. If the user then focuses the button inside the file upload control, the focus event generated for the button is stopped before it reaches the file control, since the file control is already focused.</p>
+
+<p>Because content in multiple scopes can be focused, the CSS <code>:focus</code> pseudo-element is hierarchical. Style rules can be written with the assumption that they will match (in the above example) both the file control and the element focused inside the file control. In other words, an arbitrary chain of elements can be in the <code>:focus</code> state at the same time.</p>
+
+<h3 id="Mouseover_and_Mouseout_Events" name="Mouseover_and_Mouseout_Events">Mouseover and mouseout events</h3>
+
+<p>Mouseover and mouseout events are retargeted if the mouse genuinely enters or exits the bound element (in addition to entering or exiting some anonymous content). If, however, the user has simply moved the mouse from one anonymous element to another, without entering or exiting the bound element itself, then the event is stopped.</p>
+
+<p>For example, if the user enters the HTML file upload control from the left, a mouseover event is generated for the anonymous textfield. Because this event also constitutes a mouseover of the file control itself, the event is retargeted when it flows across scopes. If the user then moves the mouse from the textfield to the button, a mouseout is generated for the textfield, followed by a mouseover of the button.</p>
+
+<p>Since neither of these events constitutes a mouseover or mouseout of the file control itself, the events are not allowed to flow to the file control. If the user continues moving to the right and leaves the button, then the mouseout generated will be retargeted, since the file control will also have been exited.</p>
+
+<h2 id="Anonymous_Content_and_CSS" name="Anonymous_Content_and_CSS">Anonymous content and CSS</h2>
+
+<h3 id="Selectors_and_Scopes" name="Selectors_and_Scopes">Selectors and scopes</h3>
+
+<p>Bindings can interleave anonymous elements between the bound element and its explicit children. See <a href="#Insertion_Points">Insertion Points</a> for more information. In this situation, a new tree emerges that is different from the explicit content node tree. In addition to having a single explicit parent (the bound element) the explicit children also have an arbitrary set of anonymous parents (created by bindings when child insertion points were used). Child, descendant, and sibling selectors will match on any path of anonymous and explicit elements.</p>
+
+<p>As far as CSS is concerned, anonymous content nodes are children (or descendants) of the bound element, they are ancestors of explicit content, and they are siblings of the explicit content. Style rules using the child, descendant, or sibling selectors transparently cross bind scopes and operate on the altered and original content models.</p>
+
+<p>The final modified content tree determines how CSS properties (e.g., fonts and colors) are inherited. An element either ends up underneath its explicit parent (just as in the content model), or it ends up being nested through a series of insertion points. When nested, it inherits from the innermost anonymous parent.</p>
+
+<h3 id="Binding_Stylesheets" name="Binding_Stylesheets">Binding stylesheets</h3>
+
+<p>A binding file can load stylesheets using the <code>stylesheet</code> element. By default these stylesheets apply to the bound element and to all anonymous content generated by all bindings attached to the bound element. These sheets have the same origin as the sheet with the rule responsible for the binding. Stylesheets loaded by bindings that are attached using the DOM are treated as author-level sheets.</p>
+
+<p>{{mediawiki.external('Editor\'s Note: Binding inheritance complicates this cascade, since an author-level DOM binding could inherit from a user-level binding. If both load sheets, what level do those sheets belong to in the cascade?')}}</p>
+
+<p>Sheets are always walked from the innermost scope to the outermost scope. With this ordering a binding that defines a widget can define a default look for the widget that can then be easily overridden by a client of the widget. For multiple bindings attached to the same element, the sheets are walked from the base binding down to the most derived binding.</p>
+
+<p>Bindings can fine-tune the control of the stylesheet scoping with the <code>inheritstyle</code> attribute, which indicates whether or not author sheets defined at outer scopes affect the anonymous content generated by the binding. For the primary generating binding only, this attribute is checked to see if any author sheets at outer levels of scoping should be applied to the anonymous content generated by the bindings attached to the bound element. If this attribute is set, the rules specified in any author sheets at outer scopes are not walked. By default, stylesheets specified in bindings files are applied only to the bound element and to anonymous content generated by bindings attached to the element.</p>
+
+<p>User agent sheets and user sheets are always applied to all scopes.</p>

@@ -1,0 +1,118 @@
+<div class="summary">
+<p>IDL file: <a href="http://dxr.mozilla.org/mozilla-central/source/dom/base/nsIMessageManager.idl">mozilla-central/source/dom/base/nsIMessageManager.idl</a></p>
+
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></p>
+</div>
+
+<p>This interface is used to load frame scripts.</p>
+
+<h2 id="Methods">Methods</h2>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <td>
+    <p><code>void loadFrameScript(in AString aURL,<br>
+                          in boolean aAllowDelayedLoad,<br>
+                         [optional] in boolean aRunInGlobalScope)</code></p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>void removeDelayedFrameScript(in AString aURL);</code></td>
+  </tr>
+  <tr>
+   <td><code>jsval getDelayedFrameScripts();</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="loadFrameScript()">loadFrameScript()</h3>
+
+<p>Load a script in the remote frame. Frame scripts are loaded as soon as <code>loadFrameScript()</code> is called.</p>
+
+<p>If this function is called on a <code>ChromeMessageBroadcaster</code> (for example, a <a href="/en-US/docs/User:wbamberg/Multiprocess_Firefox-2/Message_manager/Message_manager_overview#Global_frame_message_manager">global frame message manager</a> or a <a href="/en-US/docs/User:wbamberg/Multiprocess_Firefox-2/Message_manager/Message_manager_overview#Window_message_manager">window message manager</a>) then:</p>
+
+<ul>
+ <li><code>loadFrameScript()</code> will load the frame script independently into each applicable frame: every open frame in the given window for the window message manager, or every frame in every window for the global message manager</li>
+ <li>if <code>aAllowDelayedLoad</code> is <code>true</code>, then the script will also be loaded into any applicable new frames opened after the <code>loadFrameScript()</code> call. Otherwise it will only be loaded into frames that exist at the time of the call.</li>
+</ul>
+
+<p>If this function is called on a <code>ChromeMessageSender</code>:</p>
+
+<ul>
+ <li>it will load the frame script only into this <code>ChromeMessageSender</code>'s frame</li>
+ <li><code>aAllowDelayedLoad</code> should always be <code>true</code>. It's possible that the frame for this <code>ChromeMessageSender</code> is not yet available at the time of the <code>loadFrameScript()</code> call, and if you pass <code>false</code> in this situation, your process script won't be loaded.</li>
+</ul>
+
+<p>For example:</p>
+
+<pre class="brush: js  language-js"><code class="language-js"><code class="language-js"><span class="keyword token">let</span> windowMM <span class="operator token">=</span> window<span class="punctuation token">.</span>messageManager<span class="punctuation token">;</span></code></code><code class="language-js">
+</code><code class="language-js"><code class="language-js">windowMM</code></code><code class="language-js"><span class="punctuation token">.</span><span class="function token">loadFrameScript<span class="punctuation token">(</span></span><span class="string token">'data:,dump("foo\n");'</span><span class="punctuation token">,</span> <span class="keyword token">true</span><span class="punctuation token">)</span><span class="punctuation token">;</span></code></pre>
+
+<p>This will load a separate instance of the frame script into every tab open in the window associated with this window message manager. As the user opens new tabs in this window, copies of the script will be loaded into these new tabs, as well.</p>
+
+<p>Frame scripts are essentially per-tab, so they don't get reloaded when the user navigates. If you want a frame script to do something whenever a new document is loaded, you can listen for the <a class="new" href="https://developer.mozilla.org/en/docs/Observer_Notifications"><code>document-element-inserted</code></a> notification.</p>
+
+<h4 id="Parameters">Parameters</h4>
+
+<table class="fullwidth-table standard-table" style="height: 68px; width: 1128px;">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>aURL</code></td>
+   <td>String</td>
+   <td>URL for the script to load. aURL must be the absolute URL. <code>data:</code> URLs are also supported. For example <code>data:,dump("foo\n");</code></td>
+  </tr>
+  <tr>
+   <td><code>aAllowDelayedLoad</code></td>
+   <td>Boolean</td>
+   <td>If <code>true</code>, this flag means that the frame script will be loaded into any new frames opened after the <code>loadFrameScript()</code> call, until <code><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFrameScriptLoader#removeDelayedFrameScript()">removeDelayedFrameScript()</a></code></code> is called for that script.</td>
+  </tr>
+  <tr>
+   <td><code>aRunInGlobalScope</code></td>
+   <td>Boolean</td>
+   <td>
+    <p>Optional, defaults to <code>false</code>.</p>
+
+    <p>By default, frame scripts each have their own scope, so they can declare global variables without causing conflicts with any other frame scripts. If present and set to <code>true</code>, this flag switches off that behavior, meaning that the script's scope is shared with any other frame scripts in the same frame that have also set the flag.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="removeDelayedFrameScript()">removeDelayedFrameScript()</h3>
+
+<p>Removes <code>aURL</code> from the list of scripts which support delayed load.</p>
+
+<p>This cancels the effect of the <code>aAllowDelayedLoad</code> flag, meaning that the loader will no longer load the script into new frames. If you used <code>aAllowDelayedLoad</code>, you should call this as part of your cleanup (for example, when your add-on is disabled or uninstalled).</p>
+
+<h4 id="Parameters_2">Parameters</h4>
+
+<table class="fullwidth-table standard-table" style="height: 68px; width: 1128px;">
+ <tbody>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <td><code>aURL</code></td>
+   <td>String</td>
+   <td>URL for the script to remove.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="getDelayedFrameScripts()">getDelayedFrameScripts()</h3>
+
+<p>Returns all delayed scripts that will be loaded once a (remote) frame becomes available. The return value is a list of pairs <code>[&lt;URL&gt;, &lt;WasLoadedInGlobalScope&gt;]</code>.</p>
+
+<h4 id="Returns">Returns</h4>
+
+<p>List of the delayed scripts. Each script is returned as a pair: <code>[&lt;URL&gt;, &lt;WasLoadedInGlobalScope&gt;]</code>.</p>

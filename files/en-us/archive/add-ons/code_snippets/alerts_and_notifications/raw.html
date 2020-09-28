@@ -1,0 +1,79 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<h2 id="Basic_modal_alert">Basic modal alert</h2>
+
+<p><img alt="alert.png" class="default internal" src="/@api/deki/files/4118/=alert.png"></p>
+
+<pre class="brush: js">alert('hello');
+</pre>
+
+<h2 id="Pop-ups">Pop-ups</h2>
+
+<p><img alt="notify.png" class="default internal" src="/@api/deki/files/4117/=notify.png"></p>
+
+<p>The following code presents a non-modal pop-up, which automatically disappears after an appropriate delay. It uses <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAlertsService" title="">nsIAlertsService</a></code>. This works on Windows, Linux and (if <a class="external" href="http://www.growl.info/" title="http://www.growl.info/">Growl</a> is installed) Mac OS X:</p>
+
+<pre class="brush: js">function popup(title, text) {
+  try {
+    Components.classes['@mozilla.org/alerts-service;1']
+              .getService(Components.interfaces.nsIAlertsService)
+              .showAlertNotification(null, title, text, false, '', null);
+  } catch(e) {
+    // prevents runtime error on platforms that don't implement nsIAlertsService
+  }
+}
+</pre>
+
+<p>If you need to display a comparable alert on a platform that doesn't support <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAlertsService" title="">nsIAlertsService</a></code>, you can do this:</p>
+
+<pre class="brush: js">function popup(title, msg) {
+  var image = null;
+  var win = Components.classes['@mozilla.org/embedcomp/window-watcher;1']
+                      .getService(Components.interfaces.nsIWindowWatcher)
+                      .openWindow(null, 'chrome://global/content/alerts/alert.xul',
+                                  '_blank', 'chrome,titlebar=no,popup=yes', null);
+  win.arguments = [image, title, msg, false, ''];
+}</pre>
+
+<h2 id="Using_notification_box">Using notification box</h2>
+
+<p>Another way of <span class="seoSummary">non-modal notification and further interaction with users</span> is using of XUL elements <a href="/en/XUL/notificationbox" title="en/XUL/notificationbox"><code>notificationbox</code></a> and <a href="/en/XUL/notification" title="en/XUL/notification"><code>notification</code></a> (implicitly). However it is possible to use only buttons and a label there.</p>
+
+<p><img alt="notificationbox2.png" class="default internal" src="/@api/deki/files/4115/=notificationbox2.png"></p>
+
+<pre class="brush: js">var message = 'Another pop-up blocked';
+var box = gBrowser.getNotificationBox();
+var notification = box.getNotificationWithValue('popup-blocked');
+if (notification) {
+    notification.label = message;
+}
+else {
+    var buttons = [{
+        label: 'Button',
+        accessKey: 'B',
+        popup: 'blockedPopupOptions',
+        callback: null
+    }];
+
+    let priority = box.PRIORITY_WARNING_MEDIUM;
+    box.appendNotification(message, 'popup-blocked',
+                           'chrome://browser/skin/Info.png',
+                            priority, buttons);
+}
+</pre>

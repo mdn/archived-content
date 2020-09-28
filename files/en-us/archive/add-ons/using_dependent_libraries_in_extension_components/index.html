@@ -1,0 +1,247 @@
+---
+title: Using Dependent Libraries In Extension Components
+slug: Archive/Add-ons/Using_Dependent_Libraries_In_Extension_Components
+tags:
+  - Add-ons
+  - Extensions
+---
+<p>Extensions with binary components sometimes need to depend on other shared libraries (for example, libraries provided by a third party). The Firefox extension system does not provide automatic support for loading these dependent libraries, but it is possible to load these libraries explicitly using a <strong>component stub</strong>.</p>
+<p>The basic strategy of the stub is to dynamically load the dependent libraries, then load the component library and continue registration. Sample code is below, and can be built by placing the two files in <code>extensions/stub</code> and configuring with <code>--enable-extensions=stub</code></p>
+<h3 id="Extension_File_Structure" name="Extension_File_Structure">Extension File Structure</h3>
+<p>Using the stub slightly changes how components are packaged in the extension directory structure. Note that the "real" component is no longer in the components/ directory, it is in the libraries/ directory.</p>
+<pre class="eval"><var>extension-directory</var>/install.rdf
+<var>extension-directory</var>/libraries/dependent1.dll
+<var>extension-directory</var>/libraries/dependent2.dll
+<var>extension-directory</var>/libraries/component.dll
+<var>extension-directory</var>/components/interface1.xpt
+<var>extension-directory</var>/components/interface2.xpt
+<var>extension-directory</var>/components/bsmedberg_stub.dll
+</pre>
+<h3 id="extensions.2Fstub.2FMakefile.in" name="extensions.2Fstub.2FMakefile.in">extensions/stub/Makefile.in</h3>
+<pre># Copyright (c) 2005 Benjamin Smedberg &lt;benjamin@smedbergs.us&gt;
+
+DEPTH = ../..
+srcdir = @srcdir@
+topsrcdir = @top_srcdir@
+VPATH = @srcdir@
+
+include $(DEPTH)/config/autoconf.mk
+
+MODULE = bsmedberg
+LIBRARY_NAME = bsmedberg_stub
+IS_COMPONENT = 1
+FORCE_SHARED_LIB = 1
+
+REQUIRES = \
+	xpcom \
+	string \
+	$(NULL)
+
+CPPSRCS = bdsStubLoader.cpp
+
+EXTRA_DSO_LDOPTS += \
+	$(DIST)/lib/$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+	$(XPCOM_FROZEN_LDOPTS) \
+        $(NSPR_LIBS) \
+	$(NULL)
+
+include $(topsrcdir)/config/rules.mk
+
+DEFINES += -DMOZ_DLL_PREFIX=\"$(DLL_PREFIX)\"</pre>
+<h3 id="extensions.2Fstub.2FbdsStubLoader.cpp" name="extensions.2Fstub.2FbdsStubLoader.cpp">extensions/stub/bdsStubLoader.cpp</h3>
+<pre>// Copyright (c) 2005 Benjamin Smedberg &lt;benjamin@smedbergs.us&gt;
+
+#include "nscore.h"
+#include "nsModule.h"
+#include "prlink.h"
+#include "nsILocalFile.h"
+#include "nsStringAPI.h"
+#include "nsCOMPtr.h"
+
+static char const *const kDependentLibraries[] =
+{
+  // dependent1.dll on windows, libdependent1.so on linux
+
+  MOZ_DLL_PREFIX "dependent1" MOZ_DLL_SUFFIX,
+  MOZ_DLL_PREFIX "dependent2" MOZ_DLL_SUFFIX,
+  nsnull
+
+  // NOTE: if the dependent libs themselves depend on other libs, the subdependencies
+  // should be listed first.
+};
+
+// component.dll on windows, libcomponent.so on linux
+static char kRealComponent[] = MOZ_DLL_PREFIX "component" MOZ_DLL_SUFFIX;
+
+nsresult
+NSGetModule(nsIComponentManager* aCompMgr,
+            nsIFile* aLocation,
+            nsIModule* *aResult)
+{
+  nsresult rv;
+
+  // This is not the real component. We want to load the dependent libraries
+  // of the real component, then the component itself, and call NSGetModule on
+  // the component.
+
+  // Assume that we're in &lt;extensiondir&gt;/components, and we want to find
+  // &lt;extensiondir&gt;/libraries
+
+  nsCOMPtr&lt;nsIFile&gt; libraries;
+  rv = aLocation-&gt;GetParent(getter_AddRefs(libraries));
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsCOMPtr&lt;nsILocalFile&gt; library(do_QueryInterface(libraries));
+  if (!library)
+    return NS_ERROR_UNEXPECTED;
+
+  library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING("libraries"));
+  library-&gt;AppendNative(NS_LITERAL_CSTRING("dummy"));
+
+  // loop through and load dependent libraries
+  for (char const *const *dependent = kDependentLibraries;
+       *dependent;
+       ++dependent) {
+    library-&gt;SetNativeLeafName(nsDependentCString(*dependent));
+    PRLibrary *lib;
+    library-&gt;Load(&amp;lib);
+    // 1) We don't care if this failed!
+    // 2) We are going to leak this library. We don't care about that either.
+  }
+
+  library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING(kRealComponent));
+
+  PRLibrary *lib;
+  rv = library-&gt;Load(&amp;lib);
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsGetModuleProc getmoduleproc = (nsGetModuleProc)
+    PR_FindFunctionSymbol(lib, NS_GET_MODULE_SYMBOL);
+
+  if (!getmoduleproc)
+    return NS_ERROR_FAILURE;
+
+  return getmoduleproc(aCompMgr, aLocation, aResult);
+}</pre>
+<h3 id="Notes" name="Notes">extensions/stub/bdsStubLoader.cpp (for Mac OS X)</h3>
+<p>The code as written above won't work for Mac OS X.  Dependant libraries on the mac must be loaded with a special system function <code>NSAddImage()</code> with the flag <code>NSADDIMAGE_OPTION_MATCH_FILENAME_BY_INSTALLNAME</code>.  The following are the necessary modifications you will need in order to write a stub loader for an OS X extension.  You will also need to make sure you are properly linking the XPCOM glue libraries.  See <a href="/En/XPCOM%20Glue" class="internal" title="En/XPCOM Glue">XPCOM Glue</a> for the proper flags on how to link to the glue libraries.</p>
+<pre>/*
+ *  OS X Stubloader
+ *  Original stubloader code by Benjamin Smedberg &lt;benjamin@smedbergs.us&gt; Copyright (c) 2005
+ *  Adapted for OS X by Walter Johnson &lt;zinkyu@gmail.com&gt;, Sept. 2008
+ */
+
+//Include the stuff from Mozilla Glue that we need
+#include "nsILocalFile.h"
+#include "nsStringAPI.h"
+#include "nsCOMPtr.h"
+
+//Include things from the mach-o libraries that we need for loading the libraries.
+#include &lt;mach-o/loader.h&gt;
+#include &lt;mach-o/dyld.h&gt;
+
+static char const *const kDependentLibraries[] =
+{
+	// dependent1.dll on windows, libdependent1.so on linux, libdependent1.dylib on Mac
+
+  MOZ_DLL_PREFIX "dependent1" MOZ_DLL_SUFFIX,
+  MOZ_DLL_PREFIX "dependent2" MOZ_DLL_SUFFIX,
+  nsnull
+
+	// NOTE: if the dependent libs themselves depend on other libs, the subdependencies
+	// should be listed first.
+};
+
+// component.dll on windows, libcomponent.so on linux, libcomponent.dylib on Mac
+static char kRealComponent[] = MOZ_DLL_PREFIX "component" MOZ_DLL_SUFFIX;
+
+// Forward declaration of a convienience method to look up a function symbol.
+static void* LookupSymbol(const mach_header* aLib, const char* aSymbolName);
+
+extern "C" NS_EXPORT nsresult
+NSGetModule(nsIComponentManager* aCompMgr, nsIFile* aLocation, nsIModule* *aResult)
+{
+	nsresult rv;
+
+	// This is not the real component. We want to load the dependent libraries
+	// of the real component, then the component itself, and call NSGetModule on
+	// the component.
+
+	// Assume that we're in &lt;extensiondir&gt;/components, and we want to find
+	// &lt;extensiondir&gt;/libraries
+
+	nsCOMPtr&lt;nsIFile&gt; libraries;
+	rv = aLocation-&gt;GetParent(getter_AddRefs(libraries));
+	if (NS_FAILED(rv))
+		return rv;
+
+	nsCOMPtr&lt;nsILocalFile&gt; library(do_QueryInterface(libraries));
+	if (!library)
+		return NS_ERROR_UNEXPECTED;
+
+	library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING("libraries"));
+	library-&gt;AppendNative(NS_LITERAL_CSTRING("dummy"));
+
+	nsCString path;
+	// loop through and load dependent libraries
+	for (char const *const *dependent = kDependentLibraries;
+		 *dependent;
+		 ++dependent)
+	{
+		library-&gt;SetNativeLeafName(nsDependentCString(*dependent));
+
+		rv = library-&gt;GetNativePath(path);
+		if (NS_FAILED(rv)) return rv;
+
+		//At this point, we would have used PRLibrary *lib;  library-&gt;Load(&amp;lib);
+		//But we can't use that in OS X.  Instead, we use NSAddImage.
+
+		NSAddImage(path.get(), NSADDIMAGE_OPTION_RETURN_ON_ERROR |
+							   NSADDIMAGE_OPTION_WITH_SEARCHING |
+							   NSADDIMAGE_OPTION_MATCH_FILENAME_BY_INSTALLNAME);
+		// 1) We don't care if this failed!  If you update your dependencies in your component,
+		//    but forget to remove a dependant library in the stubloader, then we don't want to
+		//    fail loading the component since the dependant library isn't required.
+		//
+		// 2) We are going to leak this library.  We don't care about that either.
+		//    NSAddImage adds the image to the process.  When the process terminates, the library
+		//    will be properly unloaded.
+	}
+
+	library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING(kRealComponent));
+	rv = library-&gt;GetNativePath(path);
+	if (NS_FAILED(rv)) return rv;
+
+	const mach_header * componentlib = NSAddImage(path.get(), NSADDIMAGE_OPTION_RETURN_ON_ERROR |
+								  NSADDIMAGE_OPTION_WITH_SEARCHING |
+								  NSADDIMAGE_OPTION_MATCH_FILENAME_BY_INSTALLNAME);
+	if (componentlib == NULL) return NS_ERROR_UNEXPECTED;
+
+	//Find the NSGetModule procedure of the real component and “pass the buck”.
+	nsGetModuleProc getmoduleproc = (nsGetModuleProc)LookupSymbol(componentlib, "_NSGetModule");
+	if (!getmoduleproc) return NS_ERROR_FAILURE;
+	return getmoduleproc(aCompMgr, aLocation, aResult);
+}
+
+// Convienience method grabbed from
+// http://mxr.mozilla.org/mozilla-central/source/xpcom/glue/standalone/nsGlueLinkingOSX.cpp .
+// Deprecated API calls have been removed.
+static void* LookupSymbol(const mach_header* aLib, const char* aSymbolName)
+{
+	NSSymbol sym = nsnull;
+	if (aLib) {
+		sym = NSLookupSymbolInImage(aLib, aSymbolName,
+		          NSLOOKUPSYMBOLINIMAGE_OPTION_BIND | NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR);
+	}
+	if (!sym)
+		return nsnull;
+
+	return NSAddressOfSymbol(sym);
+}
+
+</pre>
+<p>   </p><h3 id="Notes" name="Notes">Notes</h3>
+<ul> <li>Code samples are licensed under the <a href="/Project:en/Copyrights" title="Project:en/Copyrights">MIT license</a>.</li> <li>This code only works on Firefox 1.5 and later. As written it uses only frozen APIs.</li> <li>OS X code was built using the 10.4 universal SDK.</li>
+</ul>

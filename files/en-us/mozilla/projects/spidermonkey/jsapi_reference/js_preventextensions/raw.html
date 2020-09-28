@@ -1,0 +1,92 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Attempts to forbid the addition of any new properties to an object.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="eval">// Added in SpiderMonkey 45
+
+bool
+JS_PreventExtensions(JSContext *cx, JS::HandleObject obj, JS::ObjectOpResult &amp;result);
+
+// Obsolete since JSAPI 39
+
+bool
+JS_PreventExtensions(JSContext *cx, JS::HandleObject obj, bool *succeeded);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>Object to be made non-extensible.</td>
+  </tr>
+  <tr>
+   <td><code>result</code></td>
+   <td>{{jsapixref("JS::ObjectOpResult", "JS::ObjectOpResult &amp;")}}</td>
+   <td>(out parameter) Receives the result of the operation. {{ Jsapi_minversion_inline("45") }}</td>
+  </tr>
+  <tr>
+   <td><code>succeeded</code></td>
+   <td><code>bool *</code></td>
+   <td>Outparam indicating, on JSAPI success, whether the object is now non-extensible. {{ obsolete_inline("jsapi39") }}</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>All JavaScript objects recognize the concept of <em>extensibility</em>: whether new properties may be added to the object.  In some situations, it may be convenient to prohibit new properties.  In JavaScript this may be accomplished using the {{jsxref("Object.preventExtensions")}} method.  The similar JSAPI method is <code>JS_PreventExtensions</code>.</p>
+
+<div class="note">
+<p>The failure-mode information below is new as of SpiderMonkey 36.  Before then, <code>JS_PreventExtensions</code> did not accept a <code>succeeded</code> argument; in those cases where <code>*succeeded</code> would be set to false, <code>JS_PreventExtensions</code> would throw a <code>TypeError</code> and return false.</p>
+</div>
+
+<p>Unlike {{jsxref("Object.preventExtensions")}}, <code>JS_PreventExtensions</code> doesn't necessarily throw a {{jsxref("Global_Objects/TypeError", "TypeError")}} if the object couldn't be made non-extensible.  There are instead two modes of failure: through internal error, and because the object denied the attempt.</p>
+
+<p>The first case occurs when something went wrong internally, not necessarily because the object chose not to become non-extensible.  For example, if making the object requires an allocation, and that allocation fails, out-of-memory might be reported, and <code>JS_PreventExtensions</code> would return false.  This might also occur if the object is a proxy, and some internal state of the proxy means that no coherent behavior is possible.  For example, if the object is a {{jsxref("Global_Objects/Proxy/revocable", "revocable proxy", "", 1)}} that has been revoked, it makes no sense to say that an attempt to prevent extensions either succeeded or failed: it's a category error.  Thus in this case <code>JS_PreventExtensions</code> will throw an error.</p>
+
+<pre class="brush: js">var target = {};
+var handler = {};
+var pair = Proxy.revocable(target, handler);
+
+var proxy = pair.proxy;
+var revoke = pair.revoke;
+
+revoke();
+
+// bool succeeded;
+// bool rv = JS_PreventExtensions(cx, proxy, &amp;succeeded);
+// // rv == false, succeeded is indeterminate</pre>
+
+<p>The second case occurs when no internal error is encountered, but the object simply refuses to be made non-extensible.  For example, a proxy might refuse to be made non-extensible; this refusal would show up in the post-call value of <code>*succeeded</code>.</p>
+
+<pre class="brush: js">var target = {};
+var handler = { preventExtensions: function(obj) { return false; } };
+var obj = new Proxy(target, handler);
+
+// bool succeeded;
+// bool rv = JS_PreventExtensions(cx, obj, &amp;succeeded);
+// // rv == true, succeeded == false</pre>
+
+<p>Note that as with most JSAPI methods, <code>*succeeded</code> is only set if <code>JS_PreventExtensions</code> returns true (that is, does not fail).  Thus you should always check the return value of <code>JS_PreventExtensions</code>, and only if that is true check the value of <code>*succeeded</code>.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_PreventExtensions") }}</li>
+ <li>{{bug(1113369)}} -- added <code>result</code> parameter</li>
+</ul>

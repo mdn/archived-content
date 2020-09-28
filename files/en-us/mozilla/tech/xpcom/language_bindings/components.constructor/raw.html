@@ -1,0 +1,109 @@
+<h3 id="Summary" name="Summary">Summary</h3>
+
+<p>Creates a JavaScript function which can be used to create or construct new instances of XPCOM components.</p>
+
+<h3 id="Syntax" name="Syntax">Syntax</h3>
+
+<pre class="eval">var func = [ new ] Components.Constructor(<em>contractID</em> [, <em>interfaceName</em> [, <em>initializer</em> ] ]);
+</pre>
+
+<h3 id="Parameters" name="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>contractID</code></dt>
+ <dd>A string containing the contract ID of the component</dd>
+ <dt><code>interfaceName</code></dt>
+ <dd>If given, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISupports#QueryInterface()">nsISupports.QueryInterface()</a></code> will be called on each newly-created instance with the interface named by this string</dd>
+ <dt><code>initializer</code></dt>
+ <dd>If given, a string containing the name of a function which will be called on the newly-created instance, using the arguments provided to the created function when called</dd>
+</dl>
+
+<h3 id="Description" name="Description">Description</h3>
+
+<p><code>Components.Constructor()</code> is a handy shortcut for creating instances of XPCOM components. It eliminates the clutter of typing <code>Components.classes</code>, <code>Components.interfaces</code>, <code>createInstance</code>, and so on every time you wish to create an instance. It also gives creation of XPCOM objects more <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a>-like syntax. Another important benefit is that it precomputes some of the computation it does, so using a function returned from <code>Components.Constructor()</code> to create XPCOM objects is faster than creating the object from base principles, as demonstrated below. (This benefit is also partly a result of having to travel through the layer between the JavaScript engine and XPCOM fewer times.)</p>
+
+<p>The behavior of functions returned by <code>Components.Constructor()</code> varies depending upon the arguments given to <code>Components.Constructor()</code> when called. If only one argument is given, that argument is the <a href="/en/Contract_ID" title="en/Contract_ID">contract ID</a> of the XPCOM component to create. The component is then returned immediately, with only the base interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code> available on it; you must call <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISupports#QueryInterface()">nsISupports.QueryInterface()</a></code> on it to call methods on the object. For example:</p>
+
+<pre class="brush: js">var BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream;1");
+var bis = new BinaryInputStream();
+print(bis.toString()); // "[xpconnect wrapped nsISupports]"
+
+try
+{
+  // someInputStream is an existing nsIInputStream
+  // throws because bis hasn't been QI'd to nsIBinaryInputStream
+  bis.setInputStream(someInputStream);
+}
+catch (e)
+{
+  bis.QueryInterface(Components.interfaces.nsIBinaryInputStream);
+  bis.setInputStream(someInputStream); // succeeds now
+}
+</pre>
+
+<p>If two arguments are given, the created instance will be <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISupports#QueryInterface()">nsISupports.QueryInterface()</a></code>'d to the XPCOM interface whose name is the second argument:</p>
+
+<pre class="brush: js">var BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream;1",
+                                               "nsIBinaryInputStream");
+var bis = new BinaryInputStream();
+print(bis.toString()); // "[xpconnect wrapped nsIBinaryInputStream]"
+
+// someInputStream is an existing nsIInputStream
+bis.setInputStream(someInputStream); // succeeds
+</pre>
+
+<p>If three arguments are given, then in addition to being <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISupports#QueryInterface()">nsISupports.QueryInterface()</a></code>'d, the instance will also have had an initialization method called on it. The arguments used with the initialization method are the arguments passed to the <code>Components.Constructor()</code>-created function when called:</p>
+
+<pre class="brush: js">var BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream;1",
+                                               "nsIBinaryInputStream",
+                                               "setInputStream");
+try
+{
+  // throws, because number of arguments isn't equal to the number of
+  // arguments nsIBinaryInputStream.setInputStream takes
+  var bis = new BinaryInputStream();
+}
+catch (e)
+{
+  // someInputStream is an existing nsIInputStream
+  bis = new BinaryInputStream(someInputStream); // succeeds
+  var bytes = bis.readByteArray(<em>someNumberOfBytes</em>); // succeeds
+}
+</pre>
+
+<p>Compare instance creation from base principles with instance creation using <code>Components.Constructor()</code>; the latter is much easier to read than the former (particularly if you're creating instances of a component in many different places):</p>
+
+<pre class="brush: js">var bis = Components.classes["@mozilla.org/binaryinputstream;1"]
+                    .createInstance(Components.interfaces.nsIBinaryInputStream);
+bis.setInputStream(someInputStream);
+</pre>
+
+<pre class="brush: js">// assumes BinaryInputStream was initialized previously
+var bis = new BinaryInputStream(someInputStream);
+</pre>
+
+<p><code>Components.Constructor()</code> is purely syntactic sugar (albeit speedy and pretty syntactic sugar) for actions that can be accomplished using other common methods. It is equivalent to the following JavaScript function:</p>
+
+<pre class="brush: js">function Components_Constructor(contractID, interfaceName, initializer)
+{
+  var ccArgs = arguments;
+
+  function ctor()
+  {
+    var instance = Components.classes[contractID]
+                             .createInstance(Components.interfaces.nsISupports);
+
+    if (ccArgs.length &gt; 1)
+    {
+      instance.QueryInterface(Components.interfaces[interfaceName]);
+
+      if (ccArgs.length &gt; 2)
+        instance[initializer].apply(instance, arguments);
+    }
+
+    return instance;
+  }
+
+  return ctor;
+}
+</pre>

@@ -1,0 +1,385 @@
+<div>{{SpiderMonkeySidebar("Internals")}}</div>
+
+<div class="note">The JIT coach feature was removed in <a href="/en-US/docs/">Bug 1614622</a>. This page contains only historic information about this feature.</div>
+
+<div class="note">
+<p>Note: This page is an in-progress documentation of JIT optimization strategies planned to support the "JIT Coach" feature intended for inclusion in Firefox developer tools.  This page has two intended uses:</p>
+
+<p>1. Provide a repository of JIT Optimization Strategy information which the JIT Coach tool can parse to display in its UI.</p>
+
+<p>2. Provide a user-browsable documentation of optimization strategies, how they work, how they are defeated, and options for how to re-enable them.</p>
+</div>
+
+<p>SpiderMonkey's optimizing JIT, IonMonkey, uses various strategies to optimize operations. The most commonplace operations that are relevant for fast program execution are property accesses and function calls.</p>
+
+<p>Optimization information is currently collected for the following operations:</p>
+
+<ul>
+ <li><a href="#getprop">GetProperty</a> (<code>obj.prop</code>)</li>
+ <li><a href="#setprop">SetProperty</a> (<code>obj.prop = val</code>)</li>
+ <li><a href="#getelem">GetElement</a> (<code>obj[elemName]</code>)</li>
+ <li><a href="#setelem">SetElement</a> (<code>obj[elemName] = val</code>)</li>
+ <li><a href="#call">Call</a> (<code>func(...)</code>)</li>
+</ul>
+
+<p>At each operation site, IonMonkey tries a battery of <em>strategies</em>, from the most optimized but most restrictive to the least optimized but least restrictive. For each strategy attempted, its <em>outcome</em> is tracked. An outcome is either success or a reason why the strategy failed to apply.</p>
+
+<p>This page documents the various optimization strategies and their outcomes. It provides information on what they attempt to do, what general level of speed-up they provide, what kind of program characteristics can prevent them from being used, and common ways to enable the engine to utilize that optimization.</p>
+
+<h2 id="GetProperty"><a name="getprop"></a>GetProperty</h2>
+
+<h3 id="GetProperty_ArgumentsLength">GetProperty_ArgumentsLength</h3>
+
+<p>Attempts to optimize an <code>arguments.length</code> property access. This optimization only works if the arguments object is used in well-understood ways within the function. The function containing the <code>arguments.length</code> is allowed to use the arguments object in the following ways without disabling this optimization:</p>
+
+<ul>
+ <li>Access <code>arguments.length</code></li>
+ <li>Access <code>arguments.callee</code></li>
+ <li>Access individual args using <code>arguments[i]</code></li>
+ <li>Save <code>arguments</code> into variables, as long as those variables cannot be accessed by any nested function, and as long as there exists no <code>eval</code> anywhere within the function or nested function definitions.</li>
+ <li>Call a function using <code>f.apply(obj, arguments)</code></li>
+</ul>
+
+<p>If the function contains any use of the <code>arguments</code> object that falls out of the cases defined above, this optimization will be suppressed. In particular, <code>arguments</code> cannot be returned from the function, or passed as an argument into calls (except for the <code>apply</code> case above).</p>
+
+<h3 id="GetProp_ArgumentsCallee">GetProp_ArgumentsCallee</h3>
+
+<p>Attempts to optimize an <code>arguments.callee</code> property access. This optimization only works if the arguments object is used in well-understood ways within the function. The function containing the <code>arguments.callee</code> is allowed to use the arguments object in the following ways without disabling this optimization:</p>
+
+<ul>
+ <li>Access <code>arguments.length</code></li>
+ <li>Access <code>arguments.callee</code></li>
+ <li>Access individual args using <code>arguments[i]</code></li>
+ <li>Save <code>arguments</code> into variables, as long as those variables cannot be accessed by any nested function, and as long as there exists no <code>eval</code> anywhere within the function or nested function definitions.</li>
+ <li>Call a function using <code>f.apply(obj, arguments)</code></li>
+</ul>
+
+<p>If the function contains any use of the <code>arguments</code> object that falls out of the cases defined above, this optimization will be suppressed. In particular, <code>arguments</code> cannot be returned from the function, or passed as an argument into calls (except for the <code>apply</code> example listed above).</p>
+
+<h3 id="GetProp_InferredConstant">GetProp_InferredConstant</h3>
+
+<p>Attempts to optimize an access to a property that seems to be a constant. It applies to property accesses on objects which are global-like in that there is only one instance of them per program. This includes global objects, object literals defined at the top-level of a script, and top-level function objects.</p>
+
+<p>This optimization makes the assumption that a property that has not changed after it was first assigned, is likely a constant property. It then directly inlines the value of the property into hot code that accesses it. For example, in the following code:</p>
+
+<pre><code>var Constants = {};
+Constants.N = 100;
+
+function testArray(array) {
+  for (var i = 0; i &lt; array.length; i++) {
+    if (array[i] &gt; Constants.N)
+      return true;
+  }
+  return false;
+}
+</code></pre>
+
+<p>Will have the loop compiled into the following when <code>testArray</code> gets hot.</p>
+
+<pre><code>for (var i = 0; i &lt; array.length; i++) {
+  if (array[i] &gt; 100)
+    return true;
+}
+</code></pre>
+
+<p>When this optimization is successful, property access is eliminated entirely and replaced with an inline constant.</p>
+
+<h3 id="GetProp_Constant">GetProp_Constant</h3>
+
+<p>Attempts to optimize reading a property that contains a uniquely-typed (or "singleton") object. With uniquely-typed objects, it is guaranteed that no other object has that same type. Unique (or "singleton") types are assigned to certain kinds of objects, like global objects, top-level functions, and object literals declared at the top-level of a script. If a property has always contained the same uniquely-typed object, then the engine can use the unique type to map back to a specific object, and eliminate the property access, replacing it with a constant reference to the object.</p>
+
+<p>When this optimization is successful, property access is eliminated entirely and replaced with an inline constant. The different success and failure conditions are documented below:</p>
+
+<h3 id="GetProp_StaticName">GetProp_StaticName</h3>
+
+<p>Attempts to optimize a property access on <code>window</code> which refers to a property on the global object.</p>
+
+<h3 id="GetProp_TypedObject">GetProp_TypedObject</h3>
+
+<p>Optimizes accesses to properties on TypedObjects.</p>
+
+<h3 id="GetProp_DefiniteSlot">GetProp_DefiniteSlot</h3>
+
+<p>Optimizes access to a well-known regular property on an object. For this optimization to succeed, the property needs to be well-defined on the object. For objects constructed by constructor functions, this means that the property needs to be defined in the constructor, before any complex logic occurs within the constructor.</p>
+
+<p>This is the best case for a regular "field" type property that is not turned into a constant. It compiles down to a single CPU-level load instruction.</p>
+
+<pre><code>function SomeConstructor() {
+    this.x = 10;    // x is a definite slot property
+    this.y = 10;    // y is a definite slot property
+    someComplicatedFunctionCall();
+    this.z = 20;    // z is not a definite slot property.
+}
+</code></pre>
+
+<p>In the above example, the properties <code>x</code> and <code>y</code> can always be determined to exist on any instance of <code>SomeConstructor</code> at definite locations, allowing the engine to infer deterministically the position of <code style="font-size: 15px;">x</code> without a shape guard.</p>
+
+<p>This optimization can fail for a number of reasons. If the types observed at the property access are polymorphic (more than one type), this optimization cannot succeed. Furthermore, even if the object type is monomorphic, the optimization will fail if the property being accessed is not a definite slot as described above.</p>
+
+<h3 id="GetProp_Unboxed">GetProp_Unboxed</h3>
+
+<p>Similar to <code>GetProp_DefiniteSlot</code>. Unboxed property reads are possible on properties which satisfy all the characteristics of a definite slot, and additionally have been observed to only store values of one kind of value.</p>
+
+<p>Consider the following constructor:</p>
+
+<pre><code>function Point(x, y) {
+    this.x = x;
+    this.y = y;
+}
+</code></pre>
+
+<p>If only integers are ever stored in the <code>x</code> and <code>y</code> properties, then the instances of <code>Point</code> will be represented in an "unboxed" mode - with the property values stored as raw 4-byte values within the object.</p>
+
+<p>Objects which have the unboxed optimization are more compact.</p>
+
+<h3 id="GetProp_CommonGetter">GetProp_CommonGetter</h3>
+
+<p>Optimizes access to properties which are implemented by a getter function, where the getter is shared between multiple types.</p>
+
+<p>This optimization applies most often when the property access site is polymorphic, but all the object types are derived variants of a single base class, where the property access refers to a getter on the base class.</p>
+
+<p>Consider the following example: function Base() {} Base.prototype = { get x() { return 3; } };</p>
+
+<pre><code>function Derived1() {}
+Derived1.prototype = Object.create(Base.prototype);
+
+function Derived2() {}
+Derived1.prototype = Object.create(Base.prototype);
+</code></pre>
+
+<p>If a property access for <code>d.x</code> sees only instances of both <code>Derived1</code> and <code>Derived2</code> for <code>d</code>, it can optimize the access to <code>x</code> to a call to the getter function defined on <code>Base</code>.</p>
+
+<p>This optimization applies to shared getters on both pure JS objects as well as DOM objects.</p>
+
+<h3 id="GetProp_InlineAccess">GetProp_InlineAccess</h3>
+
+<p>Optimizes a polymorphic property access where there are only a few different types of objects seen, and the property on all of the different types is determinable through a shape-check.</p>
+
+<p>If a property access is monomorphic and the property's location is determinable from the object's shape, but the property is not definite (see: GetProp_DefiniteProperty), then this optimization may be used.</p>
+
+<p>Alternatively, if the property access is polymorphic, but only has a few different shapes observed at the access site, this optimization may be used.</p>
+
+<p>This optimization compiles down to one or more shape-guarded direct loads from the object. The following pseudocode describes the kind of machine code generated by this optimization:</p>
+
+<pre><code>if obj.shape == Shape1 then
+  obj.slots[0]
+elif obj.shape == Shape2 then
+  obj.slots[5]
+elif obj.shape == Shape3 then
+  obj.slots[2]
+...
+end
+</code></pre>
+
+<h3 id="GetProp_Innerize">GetProp_Innerize</h3>
+
+<p>Attempts to optimize a situation where a property access of the form <code>window.PROP</code> can be directly translated into a property access on the inner global object.</p>
+
+<p>This optimization will always fail on property accesses which are not on the window object.</p>
+
+<p>It is useful because accessing global names via the 'window' object is a common idiom in web programming.</p>
+
+<h3 id="GetProp_InlineCache">GetProp_InlineCache</h3>
+
+<p>This is the worst-case scenario for a property access optimization. This strategy is used when all the others fail. The engine simply inserts an inline cache at the property access site.</p>
+
+<p>Inline caches start off as a jump to a separate piece of code called a "fallback". The fallback calls into the interpreter VM (which is very slow) to perform the operation, and then decides if the operation can be optimized in that particular case. If so, it generates a new "stub" (or freestanding piece of jitcode) and changes the inline cache to jump to the stub. The stub attempts to optimize further occurrences of that same kind of operation.</p>
+
+<p>Inline caches are an order of magnitude slower than the other optimization strategies, and are an indication that the type inference engine has failed to collect enough information to guide the optimization process.</p>
+
+<h2 id="SetProperty"><a name="setprop"></a>SetProperty</h2>
+
+<h3 id="SetProp_CommonSetter">SetProp_CommonSetter</h3>
+
+<p>Optimizes access to properties which are implemented by a setter function, where the setter is shared between multiple types.</p>
+
+<p>This optimization applies most often when the property access site is polymorphic, but all the object types are derived variants of a single base class, where the property access refers to a setter on the base class.</p>
+
+<p>Consider the following example: function Base() {} Base.prototype = { set x(val) { ... } };</p>
+
+<pre><code>function Derived1() {}
+Derived1.prototype = Object.create(Base.prototype);
+
+function Derived2() {}
+Derived1.prototype = Object.create(Base.prototype);
+</code></pre>
+
+<p>If a property write for <code>d.x = val</code> sees only instances of both <code>Derived1</code> and <code>Derived2</code> for <code>d</code>, it can optimize the write to <code>x</code> to a call to the setter function defined on <code>Base</code>.</p>
+
+<p>This optimization applies to shared setters on both pure JS objects as well as DOM objects.</p>
+
+<h3 id="SetProp_TypedObject">SetProp_TypedObject</h3>
+
+<p>Optimizes accesses to properties on TypedObjects.</p>
+
+<h3 id="SetProp_DefiniteSlot">SetProp_DefiniteSlot</h3>
+
+<p>Optimizes a write to a well-known regular property on an object. For this optimization to succeed, the property needs to be well-defined on the object. For objects constructed by constructor functions, this means that the property needs to be defined in the constructor, before any complex logic occurs within the constructor.</p>
+
+<p>This is the best case for a regular "field" type property that is not turned into a constant. It compiles down to a single CPU-level load instruction.</p>
+
+<pre><code>function SomeConstructor() {
+    this.x = 10;    // x is a definite slot property
+    this.y = 10;    // y is a definite slot property
+    someComplicatedFunctionCall();
+    this.z = 20;    // z is not a definite slot property.
+}
+</code></pre>
+
+<p>In the above example, the properties <code>x</code> and <code>y</code> can always be determined to exist on any instance of <code>SomeConstructor</code> at definite locations, allowing the engine to infer deterministically the position of <code>x</code> without a shape guard.</p>
+
+<p>This optimization can fail for a number of reasons. If the types observed at the property access are polymorphic (more than one type), this optimization cannot succeed. Furthermore, even if the object type is monomorphic, the optimization will fail if the property being written is not a definite slot as described above.</p>
+
+<h3 id="SetProp_Unboxed">SetProp_Unboxed</h3>
+
+<p>Similar to <code>SetProp_DefiniteSlot</code>. Unboxed property writes are possible on properties which satisfy all the characteristics of a definite slot, and additionally have been observed to only store values of one kind of value.</p>
+
+<p>Consider the following constructor:</p>
+
+<pre><code>function Point(x, y) {
+    this.x = x;
+    this.y = y;
+}
+</code></pre>
+
+<p>If only integers are ever stored in the <code>x</code> and <code>y</code> properties, then the instances of <code>Point</code> will be represented in an "unboxed" mode - with the property values stored as raw 4-byte values within the object.</p>
+
+<p>Objects which have the unboxed optimization are more compact.</p>
+
+<h3 id="SetProp_InlineAccess">SetProp_InlineAccess</h3>
+
+<p>Optimizes a polymorphic property write where there are only a few different types of objects seen, and the property on all of the different types is determinable through a shape-check.</p>
+
+<p>If a property write is monomorphic and the property's location is determinable from the object's shape, but the property is not definite (see: GetProp_DefiniteProperty), then this optimization may be used.</p>
+
+<p>Alternatively, if the property write is polymorphic, but only has a few different shapes observed at the access site, this optimization may be used.</p>
+
+<p>This optimization compiles down to one or more shape-guarded direct stores to the object. The following pseudocode describes the kind of machine code generated by this optimization:</p>
+
+<pre><code>if obj.shape == Shape1 then
+  obj.slots[0] = val
+elif obj.shape == Shape2 then
+  obj.slots[5] = val
+elif obj.shape == Shape3 then
+  obj.slots[2] = val
+...
+end
+</code></pre>
+
+<h3 id="SetProp_InlineCache">SetProp_InlineCache</h3>
+
+<p>This is the worst-case scenario for a property access optimization. This strategy is used when all the others fail. The engine simply inserts an inline cache at the property write site.</p>
+
+<p>Inline caches start off as a jump to a separate piece of code called a "fallback". The fallback calls into the interpreter VM (which is very slow) to perform the operation, and then decides if the operation can be optimized in that particular case. If so, it generates a new "stub" (or freestanding piece of jitcode) and changes the inline cache to jump to the stub. The stub attempts to optimize further occurrences of that same kind of operation.</p>
+
+<p>Inline caches are an order of magnitude slower than the other optimization strategies, and are an indication that the type inference engine has failed to collect enough information to guide the optimization process.</p>
+
+<h2 id="GetElement"><a name="getelem"></a>GetElement</h2>
+
+<h3 id="GetElem_TypedObject">GetElem_TypedObject</h3>
+
+<p>Attempts to optimized element accesses on array Typed Objects.</p>
+
+<h3 id="GetElem_Dense">GetElem_Dense</h3>
+
+<p>Attempts to optimize element accesses on densely packed array objects. Dense arrays are arrays which do not have any 'holes'. This means that the array has valid values for all indexes from <code>0</code> to <code>length-1</code>.</p>
+
+<h3 id="GetElem_TypedStatic">GetElem_TypedStatic</h3>
+
+<p>Attempts to optimize element accesses on a typed array that can be determined to always refer to the same array object. If this optimization succeeds, the 'array' object is treated as a constant, and is not looked up or retrieved from a variable.</p>
+
+<h3 id="GetElem_TypedArray">GetElem_TypedArray</h3>
+
+<p>Attempts to optimize element accesses on a typed array.</p>
+
+<h3 id="GetElem_String">GetElem_String</h3>
+
+<p>Attempts to optimize element accesses on a string.</p>
+
+<h3 id="GetElem_Arguments">GetElem_Arguments</h3>
+
+<p>Attempts to optimize element accesses on the <code>arguments</code> special object available in functions. This optimization only works if the arguments object is used in well-understood ways within the function. The function containing the <code>arguments.length</code> is allowed to use the arguments object in the following ways without disabling this optimization:</p>
+
+<ul>
+ <li>Access <code>arguments.length</code></li>
+ <li>Access <code>arguments.callee</code></li>
+ <li>Access individual args using <code>arguments[i]</code></li>
+ <li>Save <code>arguments</code> into variables, as long as those variables cannot be accessed by any nested function, and as long as there exists no <code>eval</code> anywhere within the function or nested function definitions.</li>
+ <li>Call a function using <code>f.apply(obj, arguments)</code></li>
+</ul>
+
+<p>If the function contains any use of the <code>arguments</code> object that falls out of the cases defined above, this optimization will be suppressed. In particular, <code>arguments</code> cannot be returned from the function, or passed as an argument into calls (except for the <code>apply</code> case above).</p>
+
+<h3 id="GetElem_ArgumentsInlined">GetElem_ArgumentsInlined</h3>
+
+<p>Similar to GetEelem_Arguments, but optimizes cases where the access on <code>arguments</code> is happening within an inlined function. In these cases, an access of the form <code>arguments[i]</code> can be directly translated into a direct reference to the corresponding argument value in the inlined call.</p>
+
+<p>Consider the following: function foo(arg) { return bar(arg, 3); } function bar() { return arguments[0] + arguments[1]; }</p>
+
+<p>In the above case, if <code>foo</code> is compiled with Ion, and the call to <code>bar</code> is inlined, then this optimization can transform the entire procedure to the following pseudo-code:</p>
+
+<pre><code>compiled foo(arg):
+    // inlined call to bar(arg, 3) {
+    return arg + 3;
+    // }
+</code></pre>
+
+<h3 id="GetElem_InlineCache">GetElem_InlineCache</h3>
+
+<p>This is the worst-case scenario for an element access optimization. This strategy is used when all the others fail. The engine simply inserts an inline cache at the property write site.</p>
+
+<p>Inline caches start off as a jump to a separate piece of code called a "fallback". The fallback calls into the interpreter VM (which is very slow) to perform the operation, and then decides if the operation can be optimized in that particular case. If so, it generates a new "stub" (or freestanding piece of jitcode) and changes the inline cache to jump to the stub. The stub attempts to optimize further occurrences of that same kind of operation.</p>
+
+<p>Inline caches are an order of magnitude slower than the other optimization strategies, and are an indication that the type inference engine has failed to collect enough information to guide the optimization process.</p>
+
+<h2 id="SetElement"><a name="setelem"></a>SetElement</h2>
+
+<h3 id="SetElem_TypedObject">SetElem_TypedObject</h3>
+
+<p>Attempts to optimized element writes on array Typed Objects.</p>
+
+<h3 id="SetElem_TypedStatic">SetElem_TypedStatic</h3>
+
+<p>Attempts to optimize element writes on a typed array that can be determined to always refer to the same array object. If this optimization succeeds, the 'array' object is treated as a constant, and is not looked up or retrieved from a variable.</p>
+
+<h3 id="SetElem_TypedArray">SetElem_TypedArray</h3>
+
+<p>Attempts to optimize element writes on a typed array.</p>
+
+<h3 id="SetElem_Dense">SetElem_Dense</h3>
+
+<p>Attempts to optimize element writes on densely packed array objects. Dense arrays are arrays which do not have any 'holes'. This means that the array has valid values for all indexes from <code>0</code> to <code>length-1</code>.</p>
+
+<h3 id="SetElem_Arguments">SetElem_Arguments</h3>
+
+<p>Attempts to optimize element writes to the <code>arguments</code> special object available in functions. This optimization only works if the arguments object is used in well-understood ways within the function. The function containing the <code>arguments.length</code> is allowed to use the arguments object in the following ways without disabling this optimization:</p>
+
+<ul>
+ <li>Access <code>arguments.length</code></li>
+ <li>Access <code>arguments.callee</code></li>
+ <li>Access individual args using <code>arguments[i]</code></li>
+ <li>Save <code>arguments</code> into variables, as long as those variables cannot be accessed by any nested function, and as long as there exists no <code>eval</code> anywhere within the function or nested function definitions.</li>
+ <li>Call a function using <code>f.apply(obj, arguments)</code></li>
+</ul>
+
+<p>If the function contains any use of the <code>arguments</code> object that falls out of the cases defined above, this optimization will be suppressed. In particular, <code>arguments</code> cannot be returned from the function, or passed as an argument into calls (except for the <code>apply</code> case above).</p>
+
+<h3 id="SetElem_InlineCache">SetElem_InlineCache</h3>
+
+<p>This is the worst-case scenario for a element write optimization. This strategy is used when all the others fail. The engine simply inserts an inline cache at the property write site.</p>
+
+<p>Inline caches start off as a jump to a separate piece of code called a "fallback". The fallback calls into the interpreter VM (which is very slow) to perform the operation, and then decides if the operation can be optimized in that particular case. If so, it generates a new "stub" (or freestanding piece of jitcode) and changes the inline cache to jump to the stub. The stub attempts to optimize further occurrences of that same kind of operation.</p>
+
+<p>Inline caches are an order of magnitude slower than the other optimization strategies, and are an indication that the type inference engine has failed to collect enough information to guide the optimization process.</p>
+
+<h2 id="Call"><a name="call"></a>Call</h2>
+
+<h3 id="Call_Inline">Call_Inline</h3>
+
+<p>A function call <code>f(x)</code> usually pushes a frame onto the call stack. Inlining a call site conceptually copies the body of the callee function and pastes it in place of the call site and avoids pushing a new execution frame. Usually, hot functions do well to be inlined. This is one of the most important optimizations the JIT performs.</p>
+
+<p>Ion inlines both interpreted (i.e., written in JavaScript) functions and native (i.e., built-ins such as <code>Math.sin</code> implemented in C++).</p>
+
+<p>A successfully inlined call site has the outcome Inlined.</p>
+
+<p>Failure to inline comes in two flavors: unable (e.g., unable to determine exact callee) and unwilling (e.g., heuristics concluded that the time-space tradeoff will not pay off).</p>

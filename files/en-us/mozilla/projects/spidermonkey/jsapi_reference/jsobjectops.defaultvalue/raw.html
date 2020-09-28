@@ -1,0 +1,57 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("js1.8.5") }}</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning!</strong> <code>JSObjectOps</code> is not a supported API. Details of the API may change from one release to the next. This documentation should be considered SpiderMonkey internals documentation, not API documentation. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=408416">bug 408416</a> for details.</p>
+</div>
+
+<div class="summary">
+<p>The JavaScript engine calls the <strong><code>JSObjectOps.defaultValue</code></strong> and <strong>{{jsapixref("JSClass", "JSClass.convert")}}</strong> callbacks to convert objects to primitive values.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef JSBool (*JSConvertOp)(JSContext *cx, JSObject *obj, JSType type,
+    jsval *vp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to the JS context in which the conversion is needed.</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JSObject *")}}</td>
+   <td>The object to be converted.</td>
+  </tr>
+  <tr>
+   <td><code>type</code></td>
+   <td>{{jsapixref("JSType")}}</td>
+   <td>The target type.</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("Jsval", "jsval *")}}</td>
+   <td>Out parameter. On success, the callback must store the converted value here.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>The <strong><code>JSObjectOps.defaultValue</code></strong> callback corresponds to the <span class="nowiki">[[DefaultValue]]</span> method defined in <span class="pl-s1"><span class="pl-s">ECMA 262-3 §</span></span>8.6.2.6. Many expressions in the ECMAScript language, such as <code>a+b</code>, involve implicit conversion of the operands using <span class="nowiki">[[DefaultValue]]</span>.</p>
+
+<p>The default <span class="nowiki">[[DefaultValue]]</span> behavior for ordinary objects is as described in ES5 §8.12.8. It calls the JavaScript methods <code>obj.valueOf()</code> and/or <code>obj.toString()</code>. Provide a custom <code>JSObjectOps.defaultValue</code> callback to implement customized <span class="nowiki">[[DefaultValue]]</span> behavior.</p>
+
+<p>The <strong><code>JSClass.convert</code></strong> callback should convert <code>obj</code> to the given <code>type</code>, returning <code>JS_TRUE</code> with the resulting value in <code>*vp</code> on success, and returning <code>JS_FALSE</code> on error or exception. On success, <code>*vp</code> must be a primitive value: per ES5 §8.12.8, every object "must ensure that its <span class="nowiki">[[DefaultValue]]</span> internal method can return only primitive values." Debug builds of SpiderMonkey will assert if a convert callback is successful but leaves <code>*vp</code> holding a primitive value.</p>
+
+<p>{{jsapixref("JS_PropertyStub", "JS_ConvertStub")}} implements the default behavior for the <code>JSClass.convert</code> hook, which is to call <code>obj.valueOf()</code> and <code>obj.toString()</code> in accordance with the algorithm in ES5 §8.12.8.</p>

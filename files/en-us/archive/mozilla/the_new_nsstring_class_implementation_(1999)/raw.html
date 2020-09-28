@@ -1,0 +1,148 @@
+<div class="warning">
+ <p>In fact, it's very unlikely this is really the page you want. If you happen to see dbaron lying around somewhere, please direct him here so he can fix this message. In the meantime, try the <a href="/en-US/docs/Mozilla_internal_string_guide" title="\/en-US\/docs\/Mozilla_internal_string_guide"><b>XPCOM string guide</b></a>—but note that that article bears a warning of its own!</p>
+</div>
+<p>This document is intended to briefly describe the new nsString class architecture, and discuss the implications on memory management, optimizations, internationalization and usage patterns.</p>
+<p>Disclaimer: I absolutely hate string classes. No one has ever devised one that more than 2 programmers can agree on. So, why then am I proposing this? Well, nsString has served us well so far, but it's in need of a facelift. And XPCOM has really taken off, so nsString needs to be brought into alignment.</p>
+<h3 id="Justification" name="Justification">Justification</h3>
+<p>The nsString class is a wide character string class used throughout all of Gecko (and other modules) as the default implementation. However, it suffers from a few implementation details which need to be addressed and that are the subject of this document. The deficiencies of the current implementation are:</p>
+<ol>
+ <li>Class based -- making it unsuitable for cross-dll usage due to fragility</li>
+ <li>Little intrinsic i18n support</li>
+ <li>Few efficiencies, notably a lack of support for narrow (1-byte) character strings</li>
+ <li>No support for external memory management policy</li>
+ <li>Lack of XPCOM interface</li>
+</ol>
+<p>Notable features of the new nsStrImpl implementation are:</p>
+<ol>
+ <li>Intrinsic support for 1 and 2 byte character widths</li>
+ <li>Provides automatic conversion between strings with different character sizes</li>
+ <li>Inviolate base structure eliminates class fragility problem; safe across DLL boundaries</li>
+ <li>Offers C-style function API to manipulate nsStrImpl</li>
+ <li>Offers simple memory allocator API for specialized memory policy</li>
+ <li>Shares binary format with BString</li>
+ <li>Coming soon: a new XPCOM (nsIString) interface</li>
+ <li>Non-templatized; this is a requirement for Gecko</li>
+ <li>Very efficient buffer manipulation</li>
+</ol>
+<h3 id="Architecture" name="Architecture">Architecture</h3>
+<p>The fundamental data type in the new architecture is <code>struct nsStrImpl</code>, given below:</p>
+<pre class="eval">struct nsStrImpl {
+  PRInt32 mLength;
+  void*   mBuffer;
+  PRInt32 mCapacity;
+  char    mCharSize;
+  char    mUnused;
+
+  // and now for the nsStrImpl API...
+  static void EnsureCapacity(nsStrImpl&amp; aString,PRUint32 aNewLength);
+  static void GrowCapacity(nsStrImpl&amp; aString,PRUint32 aNewLength);
+
+  static void Append(nsStrImpl&amp; aDest,const nsStrImpl&amp; aSource,PRUint32 anOffset,PRInt32 aCount);
+  static void AppendCString(nsStrImpl&amp; aDest,const char* aSource,PRUint32 anOffset,PRInt32 aCount);
+
+  static void Assign(nsStrImpl&amp; aDest,const nsStrImpl&amp; aSource,PRUint32 anOffset,PRInt32 aCount);
+  static void AssignCString(nsStrImpl&amp; aDest,const char* aSource,PRUint32 anOffset,PRInt32 aCount);
+
+  // assign a char or a substring into the existing string...
+  static void Insert(nsStrImpl&amp; aDest,PRUint32 aDestOffset,
+                     const nsStrImpl&amp; aSource,PRUint32 aSrcOffset,PRInt32 aCount);
+
+  static void InsertCString(nsStrImpl&amp; aDest,PRUint32 aDestOffset,
+                            const char* aSource,PRUint32 aSrcOffset,PRInt32 aCount);
+
+  static void InsertChar(nsStrImpl&amp; aDest,PRUint32 aDestOffset,char theChar);
+  static void InsertChar(nsStrImpl&amp; aDest,PRUint32 aDestOffset,PRUnichar theUnichar);
+  static void InsertChar(nsStrImpl&amp; aDest,PRUint32 aDestOffset,PRInt32 theQuadChar);
+
+  static void Delete(nsStrImpl&amp; aDest,PRUint32 aDestOffset,PRUint32 aCount);
+  static void Truncate(nsStrImpl&amp; aDest,PRUint32 aDestOffset);
+
+  static PRInt32 Compare(const nsStrImpl&amp; aDest,const nsStrImpl&amp; aSource,
+                         PRInt32 aCount,PRBool aIgnoreCase);
+};
+</pre>
+<h5 id="nsString" name="nsString">nsString</h5>
+<p>The nsString class is still with us as a subclass (wrapper) of nsStrImpl. By default, nsStrings use a 2-byte UCS2 character storage model. The nsString class is very lightweight since it gets its functionality from the nsStrImpl static library. In addition to the nsStrImpl API shown above, nsString, nsAutoString and nsCString all offer additional API's (that all degrade to those found in nsStrImpl) for construction, searching and comparison. Also note that the new nsString interface mimics fully the interface in the existing nsString class found in mozilla/base/src/nsString.h.</p>
+<h5 id="nsAutoString" name="nsAutoString">nsAutoString</h5>
+<p>We still offer an nsAutoString that provides its own stack based buffer. This very useful class allows programmers to take advantage of the nsString/nsStrImpl implementation, while eliminating heap based allocations. An additional improvement has been made to nsAutoString that allows it to use an arbitrarily sized stack based buffer rather than its own internal buffer. This means that you can continue to use efficient (temporary) stack buffers for string storage with the bonus of storage pools that serve your specific need. (Sounds complicated, but it's really easy). This class fully interoperates with nsString and nsStrImpl.</p>
+<h5 id="nsCString" name="nsCString">nsCString</h5>
+<p>The new nsCString class shares the same API with nsString, but uses a 1-byte ASCII character storage model. This will allow programmers to use the nsString API's like a standard char* without incurring the 2-byte per character overhead. This class fully interoperates with nsString, nsAutoString and nsStrImpl.</p>
+<h5 id="nsIString" name="nsIString">nsIString</h5>
+<p>Naturally we will need include an nsIString interface onto the nsStrImpl/nsString classes. I won't repeat it's interface here since it is basically a restatement (in XPCOM terms) of the nsString interface.</p>
+<h3 id="Usage_Patterns" name="Usage_Patterns">Usage Patterns</h3>
+<h5 id="How_To_Use_These_Classes" name="How_To_Use_These_Classes">How To Use These Classes</h5>
+<p>To increase the portability, thread and process safety of Gecko, I suggest the following rules regarding the use of each of our string class derivatives:</p>
+<table>
+ <tbody>
+  <tr>
+   <th>
+    &lt;center&gt;
+     String Class&lt;/center&gt;
+   </th>
+   <th>
+    &lt;center&gt;
+     Where To Use&lt;/center&gt;
+   </th>
+  </tr>
+  <tr>
+   <td>nsStrImpl</td>
+   <td>Use to pass strings between modules who have linked the nsStrImpl function library.</td>
+  </tr>
+  <tr>
+   <td>nsString</td>
+   <td>Use these locally in objects who span of control is known to live within your own process. These should typically not be exposed to objects in other modules.</td>
+  </tr>
+  <tr>
+   <td>nsAutoString</td>
+   <td>Use these locally in cases where you don't want to incur heap allocation unless absolutely necessary.</td>
+  </tr>
+  <tr>
+   <td>nsCString</td>
+   <td>Same as nsString, but should be used with caution because of localization concerns.</td>
+  </tr>
+  <tr>
+   <td>nsIString</td>
+   <td>Use to pass strings between modules that may not use nsStrImpl implementation. This is the most generic approach, but offers reference counted strings.</td>
+  </tr>
+ </tbody>
+</table>
+<p>There are implications regarding this implementation, notably dealing with API changes throughout Gecko. Notably, nsStrings in API's will be discouraged in
+ <i>
+  public</i>
+ API's. These API's will need to be rewritten using nsStrImpl references instead. As an alternative, programmers can pass nsIStrings between modules.</p>
+<h5 id="I18n_Issues" name="I18n_Issues">I18n Issues</h5>
+<p>Another concern (mainly of the i18n team) has to do with the use of a 1-byte (ASCII) nsCString
+ <i>
+  at all.</i>
+ The i18n team correctly points out that that anarchy will prevail if judicious control over their use is not mandated. The problem stems from assumptions that programmers make regarding ASCII strings; the typical assumption being that they will never need to interoperate with code that assumes UCS2 strings. This assumption is nearly always wrong -- and will seriously hinder our ability to localize the source base.</p>
+<p>It is recognized that (ASCII) nsCString's are useful in the following contexts:</p>
+<ol>
+ <li>Whenever calling libraries that expect a char* variant</li>
+ <li>Whenever maximum memory efficiency is essential</li>
+</ol>
+<p>I would argue that only the first case is normatively legitimate. The i18n folks will tell you it's better to use a wide string and convert to 1-byte forms for this purpose even though there is a performance penalty for doing so. Since I have to acknowledge the idiom, I have made nsCString available but note that it should be used sparingly.</p>
+<h3 id="Memory_Management" name="Memory_Management">Memory Management</h3>
+<p>A principal enhancement of the new architecture is pluggable memory allocators. All nsString subclasses provide their own default allocator implementations, but programmers are free to use their own. In the new prototype nsStrImpl and nsString classes, the allocator is an intrinsic member installed during construction of the string (by default they share a global allocator).</p>
+<p>Note: The COM rules imply that everyone needs to use the same allocators, that they acquire via a global COM service called CoGetMalloc(). Our nsStrImpl uses an allocator pattern so that programmers can install their own policy, but this may also make allocation simpler in a multiprocess environment. I'm wondering if this is sufficient, namely, that a string can return it's own (shared) allocator for this purpose.</p>
+<p>Our minimalistic nsIMemoryAgent interface is just rich enough to support the nsString idiom, and could be extended to serve as the general memory allocation idiom. Here's it's API:</p>
+<pre class="eval">class nsIMemoryAgent : nsISupports {
+  void* New(nsInt32 aSize)=0;  //used for both alloc and realloc
+  void* Delete(void* aPtr)=0;
+};
+</pre>
+<h5 id="Internationalization" name="Internationalization">Internationalization</h5>
+<p>The new nsStrImpl/nsString implementation addresses at least two of the primary concerns of our i18n team. First, nsStrImpl offers charset conversion hooks for use during construction, comparison and assignment. (These are stubbed out today awaiting their review and implementation). Second, they are concerned that programmers be prevented from abusing the string classes in a number of ways. To wit:</p>
+<ol>
+ <li>They want to ensure that the underlying buffers cannot be corrupted or altered erroneously</li>
+ <li>They want to ensure that the appropriate set of conversion functions get applied</li>
+ <li>They want some control over the usage pattern of strings, such that the 2-byte (UCS2) form is used whenever possible, and some restrictions are applied to the use of 1-byte (ASCII) nsCStrings.</li>
+</ol>
+<div class="originaldocinfo">
+ <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+ <ul>
+  <li>Author: <a class="link-mailto" href="mailto:rickg@netscape.com">Rick Gessner</a></li>
+  <li>Last Updated Date: January 20, 1999</li>
+  <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+ </ul>
+</div>
+<p> </p>

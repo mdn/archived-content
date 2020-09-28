@@ -1,0 +1,1682 @@
+---
+title: 'MCD, Mission Control Desktop, AKA AutoConfig'
+slug: 'Archive/Misc_top_level/MCD,_Mission_Control_Desktop_AKA_AutoConfig'
+tags:
+  - Administration
+  - Configuration management
+  - enterprise
+---
+<h3 id="Abstract">Abstract</h3>
+
+<p>This document is a concrete example of a centralized auto-configuration of Mozilla apps, that are; Firefox, Thunderbird, Mozilla Suite 1.x.x, Seamonkey and for the record, old Netscape 4.x. Its original inspiration comes from  <a href="http://www.alain.knaff.lu/howto/MozillaCustomization/" rel="freelink">http://www.alain.knaff.lu/howto/MozillaCustomization/</a> and <a href="http://mit.edu/~firefox/www/maintainers/autoconfig.html" rel="freelink">http://mit.edu/~firefox/www/maintain...utoconfig.html</a>. For history, I've kept Mozilla and Netscape chapters, as certain points are complementary to the web-based AutoConfig file.</p>
+
+<p>This MCD (aka autoconfig here), is not to be confused with <a href="https://wiki.mozilla.org/Thunderbird:Autoconfiguration" class="link-https" rel="freelink">https://wiki.mozilla.org/Thunderbird...oconfiguration</a> . It's Mission is to enable completely automatic configuration of mozilla's apps preferences based on users properties either retrieved from system environement variables or on an organisation ldap directory.</p>
+
+<h3 id="Situation" name="Situation">Situation</h3>
+
+<p><a href="http://www.int-evry.fr/">INT-Evry</a> manages about 3000 users (mostly students) who share computers in labs and "self service" computer rooms. Hence a single computer might connect many different users all day long. Computers are dual-boot (Windows 7 and Linux Fedora 19 by 2013). All users have a personal account on a Windows server (AD) and an LDAP account for Linux authentication.</p>
+
+<h3 id="Objective" name="Objective">Objective</h3>
+
+<p>The objective is to provide users with a mailer agent, a web browser, and a news reader which are automatically configured (preferences) at startup to the current user connected on the computer. Choosing Mozilla products allow us to use the same apps while running either Windows or Linux systems (I suspect MAC OSX would be fine too).</p>
+
+<p>Instead of configuring end user individual preferences files (<code>~/.mozilla/default/randomdir/prefs.js</code>) we now use a centralized default set of preferences. This centralized preference file can lock preferences (<code>lockPref</code>) or initialize them (<code>defaultPref</code>) based on environment variables (<code>USER</code>, <code>HOME</code>...) and/or LDAP queries (fetch email address, Common Name , language, homepage etc...) from the enterprise directory.</p>
+
+<h3 id="Central_Configuration_File" name="Central_Configuration_File">Central Configuration File</h3>
+
+<p>That feature is provided through a JavaScript file.</p>
+
+<h4 id="File_Location" name="File_Location">File Location (not tested since 2012 ...)</h4>
+
+<p>In Thunderbird , FireFox, the javascript preference file that calls the centralized preference file is located in $INSTALL_DIR_MOZ_APP/defaults/pref, for example in thunderbird this would be repectively for windows/linux:</p>
+
+<p><code>C:\Program Files\Mozilla Thunderbird\defaults\pref</code></p>
+
+<p><code>/usr/lib/thunderbird/default/pref</code></p>
+
+<div class="note">( it used to be in <code>/usr/lib/thunderbird-version#/default/pref</code> as in <code>/usr/lib/thunderbird-5/default/pref</code> )</div>
+
+<p>For the record/history purpose ... the old Netscape 4.x the file is encoded (byte-shift/rotary is 7), and the presence of the file (<code>netscape.cfg</code>) in the <code>MOZILLA_HOME</code> directory suffices for it to be read and executed. For Mozilla 1.x.x, Firefox, Thunderbird or Netscape 7 it is still a JavaScript file, the byte-shift is 13 by default, but can be removed using the <code>pref("general.config.obscure_value", 0);</code> preference in any appropriate <code>.js</code> file dedicated to autoconfig (here <code>autoconf.js</code>).</p>
+
+<p>The name of the file can be anything you want because it is named by a <code>general.config</code> preference that should be added at the end of file <code>MOZILLA_HOME/default/pref/autoconf.js</code> or <code>MOZILLA_HOME/greprefs/autoconf.js</code>: <code>pref("general.config.filename", "mozilla.cfg");</code>.</p>
+
+<h4 id="File_API" name="File_API">File API</h4>
+
+<p>That centralized preference file uses a JavaScript API that allows us to do what we need.</p>
+
+<p>That <code>prefcalls.js</code> is now archive in omni.jar file located at the root of the mozilla apps installation, example of TB5:</p>
+
+<pre class="bz_comment_text"># jar -tvf /usr/lib/thunderbird/omni.jar  | grep prefcalls.js
+  7499 Sat Nov 05 09:21:34 CET 2011 defaults/autoconfig/prefcalls.js
+</pre>
+
+<p>Traditionally (previous apps versions) is was in <code>MOZILLA_HOME/default/autoconfig/prefcalls.js</code>. The presence of <code>pref("general.config.filename", "mozilla.cfg");</code> in any appropriate <code>.js</code> file (here we use <code>autoconf.js</code> dedicated file) enables the read and execution of <code>prefcalls.js</code>. <strong>Do not use the name <code>all.js</code> because it is reserved. Ref: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=690370">Bug 690370</a></strong></p>
+
+<p>Available functions are (see <code><a href="https://dxr.mozilla.org/mozilla-central/source/extensions/pref/autoconfig/src/prefcalls.js" rel="custom">prefcalls.js</a></code> file for details):</p>
+
+<pre>function getPrefBranch()
+function pref(prefName, value)
+function defaultPref(prefName, value)
+function lockPref(prefName, value)
+function unlockPref(prefName)
+function getPref(prefName)
+function getLDAPAttributes(host, base, filter, attribs)
+function getLDAPValue(str, key)
+function displayError(funcname, message)
+function getenv(name)
+</pre>
+
+<p> </p>
+
+<h4 id="Configure_AutoConfig" name="Configure_AutoConfig">Configure AutoConfig</h4>
+
+<p>Two directives ask Thunderbird to use AutoConfig at startup:</p>
+
+<pre># cat /usr/lib/thunderbird/defaults/pref/tb-autoconf.js
+// 20100526 - Modification autoconfig Jehan.
+//
+
+pref("general.config.obscure_value", 0); // for MCD .cfg files
+pref('general.config.filename', 'thunderbird.cfg'); // for MCD .cfg files
+</pre>
+
+<div class="note">it used to be in previous releases (up until 7.0)  in  /usr/lib/thunderbird-X.0/default/pref/autoconf.js</div>
+
+<p>The first <code>pref</code> just tells us that we won't encode the file (no more rotary 13 or 7 cf below), the second <code>pref</code> is the name of the file to be read: <code>/usr/lib/thunderbird/thunderbird.cfg</code>. (or firefox.cfg if for firefox...)</p>
+
+<h4 id="File_Encoding" name="File_Encoding">File Encoding</h4>
+
+<p>If needed, the encoding can be done with the Perl script: <code>moz-byteshift.pl</code> available at <a href="http://www.alain.knaff.lu/howto/MozillaCustomization/moz-byteshift.pl" rel="freelink">http://www.alain.knaff.lu/howto/Mozi...z-byteshift.pl</a>.</p>
+
+<p>For Netscape 4.x the convert function from the Client Customization Kit (CCK) could also do that (and other things like personalize auto-installation...): <a href="http://web.archive.org/web/20040821150212/http://developer.netscape.com/docs/manuals/deploymt/config.htm">http://developer.netscape.com/docs/manuals/deploymt/config.htm</a>.</p>
+
+<h4 id="AutoConfig_Directives" name="AutoConfig_Directives">AutoConfig Directives</h4>
+
+<p>Here we want to set users central mail preferences: Create one account from their login name, get their email address from an LDAP request and set the enterprise IMAP and SMTP servers. Hence, when working on multiuser workstations, each user gets automatically Thunderbird configured for his profile.</p>
+
+<h5 id="thunderbird.cfg" name="thunderbird.cfg">thunderbird.cfg (Version 1)</h5>
+
+<p>Here's the complete file, first we get the user login name from environment variables, then configure the LDAP address book, create an email account, and configure IMAP and SMTP:</p>
+
+<pre>[root@calaz /usr/lib/thunderbird]
+$ cat thunderbird.cfg
+//put everything in a try/catch
+try {
+
+// 1) env variables
+if(getenv("USER") != "") {
+  // *NIX settings
+  var env_user = getenv("USER");
+  var env_home = getenv("HOME");
+} else {
+  // Windows settings
+  var env_user = getenv("USERNAME");
+  var env_home = getenv("HOMEPATH");
+}
+var env_mozdebug= getenv("MOZILLA_DEBUG");
+// var env_user = prompt("indiquez votre login", toto);
+
+// 2) lock general preferences
+//LDAP address book
+lockPref("ldap_2.prefs_migrated", true);
+lockPref("ldap_2.servers.LDAPINT.auth.savePassword", true);
+lockPref("ldap_2.servers.LDAPINT.description", "LDAP INT");
+lockPref("ldap_2.servers.LDAPINT.filename", "abook-1.mab");
+lockPref("ldap_2.servers.LDAPINT.uri", "ldap://ldap1.int-evry.Fr:389/ou=people,dc=int-evry,dc=fr??sub");
+lockPref("ldap_2.servers.history.filename", "history.mab");
+lockPref("ldap_2.servers.history.replication.lastChangeNumber", 0);
+lockPref("ldap_2.servers.pab.filename", "abook.mab");
+lockPref("ldap_2.servers.pab.replication.lastChangeNumber", 0);
+
+//Account
+lockPref("mail.account.account1.server", "server1");
+lockPref("mail.account.account2.identities", "id1");
+lockPref("mail.account.account2.server", "server2");
+lockPref("mail.accountmanager.accounts", "account1,account2");
+lockPref("mail.accountmanager.defaultaccount", "account2");
+lockPref("mail.accountmanager.localfoldersserver", "server1");
+lockPref("mail.identity.id1.directoryServer", "ldap_2.servers.LDAPINT");
+lockPref("mail.identity.id1.draft_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Drafts");
+lockPref("mail.identity.id1.drafts_folder_picker_mode", "0");
+lockPref("mail.identity.id1.fcc_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Sent");
+lockPref("mail.identity.id1.fcc_folder_picker_mode", "0");
+lockPref("mail.identity.id1.organization", "INT Evry France");
+lockPref("mail.identity.id1.overrideGlobal_Pref", true);
+lockPref("mail.identity.id1.reply_to", "");
+
+//IMAP
+lockPref("mail.server.server2.hostname", "imap-int.int-evry.fr");
+lockPref("mail.server.server2.isSecure", true);
+lockPref("mail.server.server2.login_at_startup", true);
+lockPref("mail.server.server2.max_cached_connections", 5);
+//lockPref("mail.server.server2.name", "jehan.procaccia@int-evry.fr");
+lockPref("mail.server.server2.type", "imap");
+lockPref("mail.server.server2.userName", env_user);
+
+//SMTP
+lockPref("mail.identity.id1.smtpServer", "smtp1");
+lockPref("mail.identity.id1.stationery_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Templates");
+lockPref("mail.identity.id1.tmpl_folder_picker_mode", "0");
+lockPref("mail.identity.id1.valid", true);
+
+//SMTP general
+lockPref("mail.smtp.defaultserver", "smtp1");
+lockPref("mail.smtpserver.smtp1.auth_method", 0);
+lockPref("mail.smtpserver.smtp1.hostname", "smtp-int.int-evry.fr");
+lockPref("mail.smtpserver.smtp1.port", 25);
+lockPref("mail.smtpserver.smtp1.try_ssl", 0);
+lockPref("mail.smtpserver.smtp1.username", "");
+lockPref("mail.smtpservers", "smtp1");
+lockPref("mail.startup.enabledMailCheckOnce", true);
+lockPref("mailnews.quotingPrefs.version", 1);
+lockPref("mailnews.ui.threadpane.version", 5);
+
+/* 3) define here (because if set after "4)" below it doesn't work!) processLDAPValues which is eventually called by getLDAPAttributes() just below,
+ check getLDAPAttributes() code from $MOZILLA_HOME/defaults/autoconfig/prefcalls.js to see the inside call to "user defined" processLDAPValues
+*/
+function processLDAPValues(values) {
+  if(values) {
+    // set the global var with the values returned from the LDAP query
+    ldap_values = values;
+    var uid = getLDAPValue(values, "uid");
+    var cn = getLDAPValue(values, "cn");
+    var mail = getLDAPValue(values, "mail");
+    var URL = getLDAPValue(values, "labeledURI");
+
+// Those LDAP variables are only available in this processLDAPValues context!
+// so we set the preferences that need them here.
+lockPref("mail.identity.id1.useremail", mail);
+lockPref("mail.server.server2.name", mail);
+lockPref("mail.identity.id1.fullName", cn);
+//Debug with popup error messages doesn't work anymore :-( !!
+var env_mozdebug= getenv("MOZILLA_DEBUG");
+if (env_mozdebug) {displayError("NO ERROR, just a debug, cn =" + cn + " and mail = " + mail); }
+    }
+  }
+// 4) Call LDAP servers to get LDAP Attributes (mail &amp; cn), this will finally call processLDAPValues, "3)" just above.
+  getLDAPAttributes("ldap2.int-evry.fr","ou=people,dc=int-evry,dc=fr","uid=" + env_user,"uid,cn,mail,labeledURI");
+
+// Close the try, and call the catch()
+} catch(e) {
+  displayError("lockedPref", e);
+}
+</pre>
+
+<h5 id="thunderbird.cfg" name="thunderbird.cfg">thunderbird.cfg (Version 2 with AD)</h5>
+
+<p>Using Thunderbird 9.0.1 and try to use a Active Directory (Windows Server 2008) as LDAP-Source did not work with Version 1. Here's my own version.</p>
+
+<pre>//Note: for accessing the Active Directory of Windows Server later than 2000
+//it is necessary to allow anonymous read access. Please see
+//(German) http://interop.blog.de/2010/02/13/kapitel-1-ldap-anfragen-linux-ad-8001564/
+//or search the net how to do it. If it is not possible to give access to anonymous,
+//you have to enable this function first, please see
+//http://technet.microsoft.com/de-de/library/cc816788(WS.10).aspx
+//
+//
+//put everything in a try/catch
+try {
+
+var userInfo = new Object();  // This will hold LDAP results
+
+userInfo.envUser = getenv("USERNAME");   // USERNAME
+userInfo.envHome = getenv("HOME");       // User home directory
+
+var ldapHost = "example.com";
+var ldapBase = "dc=company,dc=local";
+
+if( userInfo.envUser )
+{  var ldapFilter = "sAMAccountName=" + userInfo.envUser;  }
+else
+{  throw("Couldn't get UID from the environment");  }
+
+// LDAP attributes to retrieve from the server
+var ldapAttrs = new Array( "cn", "mail", "sAMAccountName" ); // add more attributes here, if needed)
+
+// Define how to process LDAP results before we make the call
+function processLDAPValues(queryResults)
+{  if( queryResults )
+   {  // Build the userInfo object for later use
+      for( var attr in ldapAttrs )
+      {  userInfo[ ldapAttrs[attr] ] = getLDAPValue( queryResults, ldapAttrs[attr] );  }
+   } else
+   {  throw( "No LDAP results" );  }
+}
+
+// Call upon LDAP for the values in ldapAttrs array,
+// Uses the previous processLDAPValues()
+getLDAPAttributes( ldapHost, ldapBase, ldapFilter, ldapAttrs.join(",") );
+
+// create account
+// see also http://blog.deanandadie.net/2010/06/easy-thunderbird-account-management-using-mcd/
+// Identity
+defaultPref("mail.identity.id1.fullName", userInfo.cn );
+defaultPref("mail.identity.id1.smtpServer", "smtp1" );
+defaultPref("mail.identity.id1.useremail", userInfo.mail );
+
+// IMAP server settings
+defaultPref("mail.server.server1.hostname", "myImap.server.com" );
+defaultPref("mail.server.server1.name", userInfo.mail );
+defaultPref("mail.server.server1.port", 993 );
+defaultPref("mail.server.server1.socketType", 3 );
+defaultPref("mail.server.server1.type", "imap" );
+defaultPref("mail.server.server1.userName", userInfo.mail );
+
+// SMTP server settings
+defaultPref("mail.smtpserver.smtp1.authMethod", 3 );
+defaultPref("mail.smtpserver.smtp1.description", "my Company Name" );
+defaultPref("mail.smtpserver.smtp1.hostname", "mySmtp.server.com" );
+defaultPref("mail.smtpserver.smtp1.port", 465 );
+defaultPref("mail.smtpserver.smtp1.try_ssl", 3 );
+defaultPref("mail.smtpserver.smtp1.username", userInfo.mail );
+
+// Glue it all together
+defaultPref("mail.account.account1.identities", "id1" );
+defaultPref("mail.account.account1.server", "server1" );
+defaultPref("mail.accountmanager.accounts", "account1" );
+defaultPref("mail.accountmanager.defaultaccount", "account1" );
+defaultPref("mail.smtp.defaultserver", "smtp1" );
+defaultPref("mail.smtpservers", "smtp1" );
+
+// Close the try, and call the catch()
+} catch(e) {
+  displayError("lockedPref", e);
+}
+
+</pre>
+
+<h5 id="Test_AutoConfig" name="Test_AutoConfig">Test AutoConfig</h5>
+
+<h6 id="Debug" name="Debug">Debug</h6>
+
+<p>To check that our AutoConfig works fine, we just set to env variable to check the read of <code>thunderbird.cfg</code> file:</p>
+
+<pre>$ export NSPR_LOG_MODULES=MCD:5
+$ export NSPR_LOG_FILE=/tmp/thunderbird-log.txt
+</pre>
+
+<p>When Thunderbird has started, you should read:</p>
+
+<pre> $ cat /tmp/thunderbird-log.txt
+-1209403040[808a788]: general.config.filename = thunderbird.cfg
+-1209403040[808a788]: evaluating .cfg file thunderbird.cfg with obscureValue 0
+</pre>
+
+<h6 id="Clean" name="Clean">Clean</h6>
+
+<p>Then, to be sure to start with a fresh Thunderbird account,</p>
+
+<div class="note">don't do this if you already have one and want to preserve your emails  and preferences!</div>
+
+<pre>$ rm -rf ~/.thunderbird
+</pre>
+
+<h6 id="Start_It" name="Start_It">Start It</h6>
+
+<pre>$ thunderbird
+</pre>
+
+<p>If Thunderbird ask you to import your profile from Netscape/Mozilla/TB depending on you mail client history, don't import anything, here we want to check the AutoConfig job alone!</p>
+
+<p>That should work, just restart the process by setting a different <code>USER</code> variable (<code>USER=procacci</code>, <code>USER=test</code> etc... anyone in your LDAP directory...) to check multiuser AutoConfig.</p>
+
+<h3 id="Thunderbird" name="Thunderbird">Thunderbird (previous release)</h3>
+
+<h4 id="Support_of_AutoConfig_and_LDAP_Calls" name="Support_of_AutoConfig_and_LDAP_Calls">Support of AutoConfig and LDAP Calls</h4>
+
+<div class="note">Below is a "try and catch" we had in previous release of Thunderbird where that feature wasn't compiled in by default, it can help if needed ...</div>
+
+<p>Unfortunately, the AutoConfig Option and LDAP Support for autoconfig (getLDAPAttributes) was not compiled in Fedora11 default thunderbird package (thunderbird-3.0-2.3.beta2.fc11.src.rpm) .</p>
+
+<p>So we needed to patch and recompile that source RPM (check <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a>) ; patch:</p>
+
+<pre>[root@b008-02 SOURCES]# cat thunderbird-autoconfigAndLdap.patch
+diff -ur thunderbird-3.0/configure thunderbird-3.0.autoldap/configure
+--- thunderbird-3.0/configure    2009-06-29 11:37:21.677372297 +0200
++++ thunderbird-3.0.autoldap/configure    2009-06-29 14:41:11.547435040 +0200
+@@ -12855,7 +12855,7 @@
+ MOZ_FEEDS=1
+ MOZ_JSDEBUGGER=1
+ MOZ_JSLOADER=1
+-MOZ_LDAP_XPCOM=
++MOZ_LDAP_XPCOM=1
+ MOZ_MAIL_NEWS=
+ MOZ_MORK=1
+ MOZ_MORKREADER=
+</pre>
+
+<h5 id="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x" name="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x">And set --enable-extensions=pref in mozconfig file, in fedora source RPM it is:</h5>
+
+<pre>[root@b008-02 SOURCES]# grep enable-extensions /root/rpmbuild/SOURCES/thunderbird-mozconfig
+ac_add_options --enable-extensions=pref
+</pre>
+
+<h5 id="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x" name="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x">It seems worse this time , as even after applying those compilation options mentioned above, I now get the following error message while stating thunderbird with autoconfig (autoconf.js having pref('general.config.filename','thunderbird.cfg'); )</h5>
+
+<p>and thunderbird.cfg calling getLDAP* functions to retrieve cn and mail address of the current user.</p>
+
+<pre>Netscape.cfg/AutoConfig failed. Please contact your system administrator.
+ Error: getLDAPAttibutes failed: [Exception... "Component returned failure
+code: 0xc1f30001 (NS_ERROR_NOT_INITIALIZED) [nsILDAPURL.spec]"  nsresult:
+"0xc1f30001 (NS_ERROR_NOT_INITIALIZED)"  location: "JS frame ::
+file:////usr/lib/thunderbird-3.0b2/defaults/autoconfig/prefcalls.js ::
+getLDAPAttributes :: line 174"  data: no]
+</pre>
+
+<h5 id="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x" name="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x"><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a> had been re-opened .</h5>
+
+<p> </p>
+
+<h5 id="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x" name="AutoConfig_Option_and_LDAP_Support_in_Thunderbird_1.5.x">AutoConfig Option and LDAP Support in Thunderbird 1.5.x</h5>
+
+<p>Fortunately, AutoConfig is now part of Thunderbird default packages. <code>MOZ_LDAP_XPCOM=1</code> and <code>MOZ_EXTENSIONS_DEFAULT="wallet spellcheck xmlextras pref webservices universalcharset auth"</code> are now present in the default <code>configure</code> script. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a> for details.</p>
+
+<h5 id="Add_the_AutoConfig_Option_for_Old_Thunderbird_1.0.x" name="Add_the_AutoConfig_Option_for_Old_Thunderbird_1.0.x">Add the AutoConfig Option for Old Thunderbird 1.0.x</h5>
+
+<p>By default, AutoConfig did not make part of the binaries distribution of Thunderbird (1.0.x). It was apparently supposed to increase the load of the binary for a feature not used by lots of individuals. However for enterprise deployment, it is vital! So we needed to recompile Thunderbird with AutoConfig support, it's just a matter of adding <code>--enable-extensions=pref</code> in <code>mozconfig</code> file.</p>
+
+<p>On my Fedora Core 3 system, I took the Thunderbird source package <code>thunderbird-1.0.2-1.3.3.src.rpm</code> installed it (<code>rpm -i</code>) then modified <code>/usr/src/redhat/SOURCES/thunderbird-mozconfig</code> by adding:</p>
+
+<pre>ac_add_options --enable-extensions=pref
+</pre>
+
+<p>Compile and install:</p>
+
+<pre>$ rpmbuild -ba /usr/src/redhat/SPECS/thunderbird.spec
+$ rpm -Uvh /usr/src/redhat/RPMS/i386/thunderbird-1.0.2-1.3.3.i386.rpm
+</pre>
+
+<p>After instillation, AutoConfig is finally back here:</p>
+
+<pre>$ rpm -ql thunderbird | grep autoconfig
+/usr/lib/thunderbird-1.0.2/chrome/en-US/locale/autoconfig
+/usr/lib/thunderbird-1.0.2/components/autoconfig.xpt
+/usr/lib/thunderbird-1.0.2/components/libautoconfig.so
+/usr/lib/thunderbird-1.0.2/defaults/autoconfig
+/usr/lib/thunderbird-1.0.2/defaults/autoconfig/platform.js
+/usr/lib/thunderbird-1.0.2/defaults/autoconfig/prefcalls.js
+</pre>
+
+<h4 id="Bugs_Reports_Related" name="Bugs_Reports_Related">Bugs Reports Related</h4>
+
+<p>For the record, for old 1.0.x releases...</p>
+
+<h5 id="Unwanted_White_Space_Reappeared" name="Unwanted_White_Space_Reappeared">Unwanted White Space Reappeared</h5>
+
+<p>Unfortunately the 'blank space bug' has reappeared in Thunderbird 1.0.2. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=229271" title='FIXED: unwanted "white space" in function getLDAPValue from autoconfig/prefcalls.js'>bug 229271</a>. Although it was corrected in Mozilla mainstream: <code>mozilla/extensions/pref/autoconfig/src/nsLDAPSyncQuery.cpp 1.7.2.1</code> by late 2004, it is still present in Thunderbird 1.0.2 at least :-(, so I applied the workaround I proposed in that bug report (<code>start_pos += 1;</code>).</p>
+
+<h4 id="Thunderbird_2.x_beta_2" name="Thunderbird_2.x_beta_2">Thunderbird 2.x beta 2</h4>
+
+<p>Recently (2007/03/21) I've tested with thunderbird 2 beta 2 (2007/01/16) to check if autoconfig + ldap is still supported . Apprently it's OK . Autonfig API is there, ldap call works fine, good !.</p>
+
+<p>My tests were on Windows Vista, and I noticed at least one difference, it is that Paths changed; now the profile is in (for my procacci user sample): C:\Users\procacci\AppData\Roaming\Thunderbird\Profiles\v6we4uku.default</p>
+
+<p><img src="/@api/deki/files/381/=TB-vista-pref-location.jpg" alt="Vista profile location" class="internal"></p>
+
+<p>Start in debug mode in Comand Line Interface:</p>
+
+<p><img src="/@api/deki/files/380/=TB-vista-MCD-test-cli.jpg" alt="Start in debug Comand Line Interface" class="internal"></p>
+
+<p> </p>
+
+<h4 id="Debug_with_displayError()">Debug with displayError()</h4>
+
+<p> </p>
+
+<p>Here's the result, I used the displayError() method ( not the best way :-( see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=206294" title="Autoconfig via a URL appears to be missing. (autoadmin.global_config_url)">bug 206294</a> ) to show environment and ldap variables in order to check that it worked fine. Just setting MOZILLA_DEBUG=1 (see js code in thunderbird.cfg) allow that message to appear , it's very useful in debuging context ...</p>
+
+<p><img src="/@api/deki/files/4816/=TB-vista-MCD-debug-msg.jpg" alt="TB-vista-MCD-debug-msg.jpg" class="default internal"></p>
+
+<p>The displayError() function does not work properly in Thunderbird 3.1: See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=502597#c34" class="link-https" rel="freelink">https://bugzilla.mozilla.org/show_bu...?id=502597#c34</a></p>
+
+<p>A usable workaround is placing the following code at the top of your autoconfig script:</p>
+
+<pre><code>// Enable logging.
+pref("MCD.logging.console", "All");
+pref("MCD.logging.dump", "All");
+Components.utils.import("resource:///modules/gloda/log4moz.js");
+var log = Log4Moz.getConfiguredLogger("MCD");
+
+// Enable alerts.
+var alerts = Components.classes["@mozilla.org/alerts-service;1"]
+             .getService(Components.interfaces.nsIAlertsService);
+
+// displayError() is broken. Let's override it.
+function displayError(title, msg) {
+    log.debug(title + ": " + msg);
+    alerts.showAlertNotification("chrome://branding/content/icon48.png", title, msg);
+}</code>
+</pre>
+
+<h3 id="Firefox" name="Firefox">Firefox</h3>
+
+<p>It's the same principles as for firefox as it was described above for thunderbir. Binary distributions should now include support for AutoConfig (pref extension!) but unfortunately not for LDAP calls :-( (cf. <code>MOZ_LDAP_XPCOM=1</code>). It is not vital in Firefox as it is for us in Thunderbird (need to get the cn and email address to set email account, which are not available by default in the environment variables). However I could be useful to get LDAP values for Firefox extra config, for example to set the default home page to the <code>labeledURI</code> LDAP attribute of the user.</p>
+
+<h4 id="AutoConfig_.28pref.29_and_LDAP_Support_in_Packages" name="AutoConfig_.28pref.29_and_LDAP_Support_in_Packages">Firefox 22</h4>
+
+<p>omni.jar archive file became omni.ja since  <a style="line-height: 1.572;" href="http://blog.ffextensionguru.com/2011/11/16/omni-jar-to-become-omni-ja/">http://blog.ffextensionguru.com/2011/11/16/omni-jar-to-become-omni-ja/</a></p>
+
+<pre>[root@localhost firefox]# unzip -l /usr/lib/firefox/browser/omni.ja | grep defaults/pr
+warning [/usr/lib/firefox/browser/omni.ja]:  3598815 extra bytes at beginning or within zipfile
+  (attempting to process anyway)
+error [/usr/lib/firefox/browser/omni.ja]:  reported length of central directory is
+  -3598815 bytes too long (Atari STZip zipfile?  J.H.Holm ZIPSPLIT 1.1
+  zipfile?).  Compensating...
+     3850  01-01-2010 00:00   defaults/profile/bookmarks.html
+      869  01-01-2010 00:00   defaults/profile/chrome/userContent-example.css
+     1165  01-01-2010 00:00   defaults/profile/chrome/userChrome-example.css
+      366  01-01-2010 00:00   defaults/profile/localstore.rdf
+      569  01-01-2010 00:00   defaults/profile/mimeTypes.rdf
+       76  01-01-2010 00:00   defaults/preferences/firefox-l10n.js
+    91656  01-01-2010 00:00   defaults/preferences/firefox.js
+     1593  01-01-2010 00:00   defaults/preferences/firefox-branding.js
+      473  01-01-2010 00:00   defaults/profile/prefs.js
+</pre>
+
+<p>Unlike old Thunderbird 8, Firefox 8  didn't include<code><em> prefcalls.js</em></code>  in<code> omni.jar</code> , but other .js files though:</p>
+
+<pre>[root@arvouin firefox]# jar tvf omni.jar | grep defaults/pref
+     0 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/
+   604 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/all-redhat.js
+  1389 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/firefox-branding.js
+    76 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/firefox-l10n.js
+ 50295 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/firefox.js
+  2470 Fri Nov 04 21:34:18 CET 2011 defaults/preferences/services-sync.js
+</pre>
+
+<p>So there is no <code>defaults/autoconfig/prefcalls.js</code> and <code>defaults/pref</code> directory is now named <code>defaults/preferences/</code> !</p>
+
+<p>Remember in Thunderbird 5 we had</p>
+
+<p><code># jar tvf ../thunderbird-5.0/omni.jar | grep pref</code></p>
+
+<pre><code>7499 Fri Jun 24 20:23:08 CEST 2011 <strong>defaults/autoconfig/prefcalls.js</strong>
+     0 Fri Jun 24 20:23:08 CEST 2011 <strong>defaults/pref/</strong>
+   277 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/all-l10n.js
+ 27221 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/all-thunderbird.js
+  5865 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/composer.js
+ 42591 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/mailnews.js
+   806 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/mdn.js
+   267 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/smime.js
+   921 Fri Jun 24 20:23:08 CEST 2011 defaults/pref/thunderbird-branding.js
+   347 Fri Jun 24 20:23:08 CEST 2011 defaults/profile/prefs.js
+ 84859 Fri Jun 24 20:23:08 CEST 2011 greprefs.js</code>
+</pre>
+
+<p>However, "autoconfig" can still work in Firefox 22, if it doesn't exist, you'll have to manually create the directory branch to set my ff-autoconfig.js in<code> defaults/preferences/</code> :</p>
+
+<pre><code>[root@calaz firefox]# mkdir -p defaults/preferences/ </code>
+
+<code>[root@calaz firefox]# cat defaults/preferences/ff-autoconf.js
+// autoconfig jehan
+pref('general.config.obscure_value', 0);
+pref('general.config.filename', 'firefox.cfg');</code>
+</pre>
+
+<p>then specify our set of preferences for Firefox in firefox.cfg as named in ff-autoconf.js just above.</p>
+
+<pre><code>[root@calaz firefox]# cat firefox.cfg
+//put everything in a try/catch
+try {
+//Privacy &amp; Security
+defaultPref("signon.rememberSignons", false);
+
+//Proxy and cache, as it is on NFS volume, we don't want cache
+lockPref("browser.cache.disk.capacity", 0);
+lockPref("network.cookie.cookieBehavior", 0);
+defaultPref("network.proxy.autoconfig_url", "http://wpad.int-evry.fr/wpad.dat");
+defaultPref("network.proxy.type", 2);
+lockPref("network.protocol-handler.app.mailto", "/usr/bin/thunderbird");
+
+//Firefox3 urlclassifier3.sqlite IOwait/CPU pb
+//http://forums.mozillazine.org/viewtopic.php?p=3381133#3381133
+defaultPref("browser.safebrowsing.enabled", false);
+defaultPref("browser.safebrowsing.malware.enabled", false);
+
+// 1) env variables
+if(getenv("USER") != "") {
+   // *NIX settings
+   var env_user    = getenv("USER");
+   var env_home    = getenv("HOME");
+ } else {
+   // Windows settings
+   var env_user    = getenv("USERNAME");
+   var env_home    = getenv("HOMEPATH");
+ }
+  var env_mozdebug= getenv("MOZILLA_DEBUG");
+
+// 2) define here (because if set after "3)" below it doesn't work !) processLDAPValues which is eventually called by getLDAPAttributes() just below,
+// check getLDAPAttributes() code from $MOZILLA_HOME/defaults/autoconfig/prefcalls.js to see the inside call to "user defined" processLDAPValues</code>
+</pre>
+
+<p><br>
+ <code><u><strong>/* Commented all this section about ldap calls, not supported in FF5 packages :-( </strong></u></code></p>
+
+<p><br>
+ <code>function processLDAPValues (values) {<br>
+  if(values) {<br>
+       // set the global var with the values returned from the LDAP query<br>
+       ldap_values = values;<br>
+     var uid = getLDAPValue ( values ,"uid" );<br>
+     var cn = getLDAPValue ( values ,"cn" );<br>
+     var mail = getLDAPValue ( values ,"mail" );<br>
+     var URL =  getLDAPValue ( values ,"labeledURI" );<br>
+ //Debug with popup error messages doesn't work anymore :-( !!<br>
+ var env_mozdebug= getenv("MOZILLA_DEBUG");<br>
+ if (env_mozdebug) {displayError("NO ERROR , just a debug, cn =" + cn + " and mail = " + mail + " ,labeledURI=" + URL ); }<br>
+ //if (env_mozdebug) {displayError("NO ERROR , just a test, cn =" + cn + " and mail = " + mail); }<br>
+ //lockPref("browser.startup.homepage", URL );<br>
+ lockPref("browser.startup.homepage", <a href="http://gaspar.it-sudparis.eu" rel="freelink">http://gaspar.it-sudparis.eu</a> );<br>
+     }<br>
+   }<br>
+ */<br>
+ if (env_mozdebug) {displayError("NO ERROR ,s2ia debug v1.1 just a test, user =" + env_user); }<br>
+ lockPref("browser.startup.homepage", "<a href="http://gaspar.it-sudparis.eu" rel="freelink">http://gaspar.it-sudparis.eu</a>" );<br>
+ // 3) Call Ldap servers to get Ldap Attributes (mail &amp; cn) , this will finally call processLDAPValues , "2)" just above.<br>
+ // getLDAPAttributes("ldap2.int-evry.fr","ou=people,dc=int-evry,dc=fr","uid=" + env_user,"uid,cn,mail,labeledURI");<br>
+ <br>
+ // Close the try, and call the catch()<br>
+ } catch(e) {displayError("lockedPref", e);}</code></p>
+
+<p>if Ldap call are uncommented in the preference file above, then I get a popup with:</p>
+
+<p>Netscape.cfg/AutoConfig failed. Please contact your system administrator.<br>
+  Error: getLDAPAttibutes failed: [Exception... "Could not convert JavaScript argument arg 0 [nsISupports.QueryInterface]"  nsresult: "0x80570009 (NS_ERROR_XPC_BAD_CONVERT_JS)"  location: "JS frame :: prefcalls.js :: getLDAPAttributes :: line 177"  data: no]</p>
+
+<h4 id="AutoConfig_.28pref.29_and_LDAP_Support_in_Packages" name="AutoConfig_.28pref.29_and_LDAP_Support_in_Packages">AutoConfig (pref) and LDAP Support in Packages</h4>
+
+<h5 id="Add_LDAP_Support_in_Firefox_1.5" name="Add_LDAP_Support_in_Firefox_1.5">Add LDAP Support in Firefox 1.5</h5>
+
+<p>A least from Firefox 1.5, AutoConfig is compiled by default (cf. browser, <code>MOZ_EXTENSIONS_DEFAULT="pref..."</code>) but not LDAP (<code>MOZ_LDAP_XPCOM=1</code>). You need to recompile the package to get it, cf. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a>.</p>
+
+<h5 id="Add_AutoConfig_and_LDAP_Support_in_Firefox_1.0.x" name="Add_AutoConfig_and_LDAP_Support_in_Firefox_1.0.x">Add AutoConfig and LDAP Support in Firefox 1.0.x</h5>
+
+<p>Add pref extension (<code>--enable-extensions=pref</code>) and remove <code>--disable-ldap</code> from <code>mozconfig</code> file. One can check how Firefox has been compiled by opening <code>about:buildconfig</code> (don't know the equivalent for Thunderbird! how as it been compiled?)</p>
+
+<pre>about:buildconfig
+
+Build platform
+target
+i686-pc-linux-gnu
+
+Build tools
+Compiler Version Compiler flags
+gcc gcc version 3.4.3 20050227 (Red Hat 3.4.3-22.fc3) -Wall -W -Wno-unused -Wpointer-arith -Wcast-align -Wno-long-long -pedantic -pthread -pipe
+c++ gcc version 3.4.3 20050227 (Red Hat 3.4.3-22.fc3) -fno-rtti -fno-exceptions -Wall -Wconversion -Wpointer-arith -Wcast-align -Woverloaded-virtual -Wsynth -Wno-ctor-dtor-privacy -Wno-non-virtual-dtor -Wno-long-long -pedantic -fshort-wchar -pthread -pipe -I/usr/X11R6/include
+
+Configure arguments
+--disable-mailnews --enable-extensions=cookie,xml-rpc,xmlextras,pref,transformiix,universalchardet,webservices,inspector,gnomevfs,negotiateauth --enable-crypto --disable-composer --enable-single-profile --disable-profilesharing --with-system-jpeg --with-system-zlib --with-system-png --with-pthreads --disable-tests --disable-jsd --disable-installer '--enable-optimize=-Os -g -pipe -m32 -march=i386 -mtune=pentium4' --enable-xft --enable-xinerama --enable-default-toolkit=gtk2 --enable-official-branding --disable-xprint --disable-strip --enable-pango
+</pre>
+
+<h4 id="all.js" name="all.js">autoconf.js</h4>
+
+<pre>[root@b008-02 /usr/lib/firefox-1.5.0.2]
+$tail -4 greprefs/autoconf.js
+// AutoConfig jehan
+pref('general.config.obscure_value', 0);
+pref('general.config.filename', 'firefox.cfg');
+</pre>
+
+<h4 id="firefox.cfg" name="firefox.cfg">firefox.cfg</h4>
+
+<p>This file will set the browser home page to the <code>labeledURI</code> page defined in the user's LDAP entry, hence it checks that both AutoConfig + LDAP work fine.</p>
+
+<pre>[root@b008-02 /usr/lib/firefox-1.5.0.2]
+$cat firefox.cfg
+//put everything in a try/catch
+try {
+
+//Privacy &amp; Security
+defaultPref("signon.rememberSignons", false);
+
+// 1) env variables
+if(getenv("USER") != "") {
+  // *NIX settings
+  var env_user = getenv("USER");
+  var env_home = getenv("HOME");
+} else {
+  // Windows settings
+  var env_user = getenv("USERNAME");
+  var env_home = getenv("HOMEPATH");
+}
+var env_mozdebug = getenv("MOZILLA_DEBUG");
+
+/* 2) define here (because if set after "3)" below it doesn't work!) processLDAPValues which is eventually called by getLDAPAttributes() just below,
+ check getLDAPAttributes() code from $MOZILLA_HOME/defaults/autoconfig/prefcalls.js to see the inside call to "user defined" processLDAPValues
+*/
+function processLDAPValues(values) {
+  if(values) {
+    // set the global var with the values returned from the LDAP query
+    ldap_values = values;
+    var uid = getLDAPValue(values, "uid");
+    var cn = getLDAPValue(values, "cn");
+    var mail = getLDAPValue(values, "mail");
+    var URL = getLDAPValue(values, "labeledURI");
+//Debug with popup error messages doesn't work anymore :-( !!
+var env_mozdebug= getenv("MOZILLA_DEBUG");
+if (env_mozdebug) {displayError("NO ERROR, just a debug, cn =" + cn + " and mail = " + mail + ", labeledURI= " + URL); }
+lockPref("browser.startup.homepage", URL);
+    }
+  }
+
+//lockPref("browser.startup.homepage", "http://www.renater.fr/");
+// 3) Call LDAP servers to get LDAP Attributes (mail &amp; cn), this will finally call processLDAPValues, "2)" just above.
+  getLDAPAttributes("ldap2.int-evry.fr","ou=people,dc=int-evry,dc=fr","uid=" + env_user,"uid,cn,mail,labeledURI");
+
+// Close the try, and call the catch()
+} catch(e) {displayError("lockedPref", e);}
+</pre>
+
+<h4 id="Debug_2" name="Debug_2">Debug</h4>
+
+<p>If you set a username and the <code>MOZILLA_DEBUG</code> variable (<code>$export MOZILLA_DEBUG=1; export USER=procacci</code>), then the <code>displayError()</code> will show you this popup:</p>
+
+<p><img src="/@api/deki/files/776/=Mozilla-autoconfig-en001.png" alt="Image:mozilla-autoconfig-en001.png" class="internal"></p>
+
+<p>That's a popup titled as "error", but it's just a debug tool for me as I didn't find any other way to popup information. cf. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=206294" title="Autoconfig via a URL appears to be missing. (autoadmin.global_config_url)">bug 206294</a>:</p>
+
+<pre> ------- Comment #14 From Daniel Wang 2003-11-06 09:06 PDT [reply] -------
+
+Jehan Procaccia, you need to change 5.8 to reflect what I said in comment 21.
+
+Preference files and config files are special JavaScript files with limited scopes. They
+can only call the get/set pref/env methods and have no access to other objects
+(need to investigate what exactly are allowed). alert() is a method of the
+Window object.
+</pre>
+
+<p>cf. also related post in Newsgroups: mozilla.dev.tech.js-engine</p>
+
+<pre>Date: Wed, 17 May 2006 19:06:28 +0200
+From: jehan procaccia &lt;jehan.procaccia@int-evry.fr&gt;
+
+Newsgroups: mozilla.dev.tech.js-engine
+Subject: scope of js file functions in Frefox/Thunderbird AutoConfig context
+</pre>
+
+<h4 id="Firefox_2.x" name="Firefox_2.x">Firefox 2.x</h4>
+
+<p>Recently (2007/03/20), I've tested autoconfig support in Firefox 2.0.0.2 on a Linux fedora. Autoconfig works fine, but ldap calls are still unavailable in Firefox (as it was the case in Firefox 1.x, but fortunatly not the case for Thunderbird !). That "bug" report is then still up to date!: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a></p>
+
+<pre>$ cat /etc/redhat-release
+Fedora Core release 6 (Zod)
+
+$ rpm -qi firefox
+Name        : firefox                      Relocations: (not relocatable)
+Version     : 2.0.0.2                           Vendor: Remi Collet
+Release     : 1.fc6.remi                    Build Date: Sat 24 Feb 2007 01:45:37 PM CET
+Install Date: Tue 20 Mar 2007 02:47:27 PM CET      Build Host: remi.famillecollet.com
+Packager    : http://remi.collet.free.fr/
+</pre>
+
+<h3 id="References" name="References">References</h3>
+
+<h4 id="Other_Documents_About_AutoConfig" name="Other_Documents_About_AutoConfig">Other Documents About AutoConfig</h4>
+
+<p><a href="http://mit.edu/~firefox/www/maintainers/autoconfig.html" rel="freelink">http://mit.edu/~firefox/www/maintain...utoconfig.html</a></p>
+
+<p><a href="http://www.alain.knaff.lu/howto/MozillaCustomization/index.html" rel="freelink">http://www.alain.knaff.lu/howto/Mozi...ion/index.html</a><br>
+ <a href="http://thegoldenear.org/toolbox/windows/docs/mozilla-pre-config.html" rel="freelink">http://thegoldenear.org/toolbox/wind...re-config.html</a><br>
+ <a href="http://ilias.ca/blog/2005/03/locking-mozilla-firefox-settings/" rel="freelink">http://ilias.ca/blog/2005/03/locking...efox-settings/</a></p>
+
+<p>Compile on Windows:<br>
+ <a href="http://forums.mozillazine.org/viewtopic.php?t=276014" rel="freelink">http://forums.mozillazine.org/viewtopic.php?t=276014</a></p>
+
+<p><a href="http://www.mozilla.org/community/developer-forums.html" rel="freelink">http://www.mozilla.org/community/dev...er-forums.html</a><br>
+ <a href="http://forums.mozillazine.org/viewtopic.php?p=2090731&amp;highlight=autoconfig#2090731" rel="freelink">http://forums.mozillazine.org/viewto...config#2090731</a><br>
+ <a href="http://forums.mozillazine.org/viewtopic.php?p=1354355&amp;highlight=autoconfig#1354355" rel="freelink">http://forums.mozillazine.org/viewto...config#1354355</a><br>
+ <a href="http://forums.mozillazine.org/viewtopic.php?p=32783&amp;highlight=autoconfig#32783" rel="freelink">http://forums.mozillazine.org/viewto...toconfig#32783</a></p>
+
+<h4 id="Related_Bugs" name="Related_Bugs">Related Bugs</h4>
+
+<p><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=222973" title="[Deploy]Need doc on AutoConfig and Config files">bug 222973</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=225288" title="FIXED: thunderbird does not recognize mission control preferences">bug 225288</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=178685" title="Complete preference ref manual (for hidden prefs)">bug 178685</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=272970" title="autoconfig defaultpref doesn't work">bug 272970</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=206294" title="Autoconfig via a URL appears to be missing. (autoadmin.global_config_url)">bug 206294</a><br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=302096" title="FIXED: Thunderbird does not have AutoConfig LDAP support enabled">bug 302096</a></p>
+
+<p><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=502597" title="FIXED: thunderbird autoconfig, prefcalls.js Ldap queries broken">bug 502597</a></p>
+
+<p><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=674261" title="autoconfig aka MCD broken">bug 674261</a></p>
+
+<p> </p>
+
+<p> </p>
+
+<h3 id="Old_Mozilla_1.x.2C_Possibly_Netscape_6.2F7" name="Old_Mozilla_1.x.2C_Possibly_Netscape_6.2F7">Thunderbird Comm-central_source_code_(Mercurial)</h3>
+
+<div class="note"> Below is a method to build from sources in case some feature were missing in public packages</div>
+
+<p>based on <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295329" title="autoconfig , prefcalls Ldap queries doesn't work">bug 295329</a> , since TB 3.0.X autoconfig doesn't work anymore.</p>
+
+<p>according to the discussion in  <a href="http://groups.google.com/group/mozilla.dev.apps.thunderbird/browse_thread/thread/9b1962efdeb92f4e#" title="http://groups.google.com/group/mozilla.dev.apps.thunderbird/browse_thread/thread/9b1962efdeb92f4e#">mozilla.dev.apps.thunderbird </a>, change from CVS to Mercurial and recent changes to the nsLDAPURL code might have borken autoconfig . below we start to debug this by rebuilding a thunderbird from <a href="/en-US/docs/Developer_Guide/Source_Code/Getting_comm-central" title="https://developer.mozilla.org/en/Comm-central_source_code_(Mercurial)">Comm-central-source-code (mercurial)</a> .</p>
+
+<h4 id="Build">Build</h4>
+
+<h5 id="install_mercurial_tools">install mercurial tools</h5>
+
+<pre>[root@b008-02 ~]# yum install mercurial
+
+Installed:
+  mercurial.i586 0:1.2.1-1.fc11
+</pre>
+
+<h5 id="check_merge_tools_in">check merge tools in</h5>
+
+<pre>[root@b008-02 ~]# vim /etc/mercurial/hgrc.d/mergetools.rc</pre>
+
+<h5 id="get_the_source_comm-central"> get the source comm-central</h5>
+
+<pre>[root@b008-02 Moz]# time hg clone http://hg.mozilla.org/comm-central/ commsrc
+requesting all changes
+adding changesets
+adding manifests
+adding file changes
+added 2975 changesets with 16793 changes to 7117 files (+3 heads)
+updating working directory
+5644 files updated, 0 files merged, 0 files removed, 0 files unresolved
+
+real    0m40.771s
+user    0m9.284s
+sys     0m1.304s
+ </pre>
+
+<pre>[root@b008-02 commsrc]# python client.py checkout
+Executing command: ['hg', 'pull', '-R', './.', '-r', 'tip']
+pulling from http://hg.mozilla.org/comm-central/
+searching for changes
+no changes found
+Executing command: ['hg', 'update', '-r', 'default', '-R', './.']
+0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+Updated to revision c10119db13cad9797b05750bfe18a57261a88922.
+Executing command: ['hg', 'clone', 'http://hg.mozilla.org/releases/mozilla-1.9.1/', './mozilla']
+requesting all changes
+adding changesets
+...
+Executing command: ['hg', 'update', '-r', 'default', '-R', './mozilla/extensions/inspector']
+0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+Updated to revision 51c6d483a4c15a657df18540219bd0201896c6f2.
+CVS checkout begin: 2009-06-30 10:28:31 UTC
+Executing command: ['cvs', '-d', ':pserver:anonymous@cvs-mirror.mozilla.org:/cvsroot', '-q', 'checkout', '-P', '-r', 'LDAPCSDK_6_0_6B_MOZILLA_RTM', '-d', 'c-sdk', 'mozilla/directory/c-sdk']
+U c-sdk/.cvsignore
+U c-sdk/Makefile.in
+...
+updating working directory
+163 files updated, 0 files merged, 0 files removed, 0 files unresolved
+Executing command: ['hg', 'update', '-r', 'default', '-R', './mozilla/extensions/venkman']
+0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+Updated to revision 06ea5135b7f3c9a639c483183ceb9802abee621b.
+</pre>
+
+<h4 id="Build_Thunderbird"> Build Thunderbird</h4>
+
+<h5 id="prepare_compile_options">prepare compile options</h5>
+
+<pre>[root@b008-02 commsrc]# cp ./mozilla/browser/config/mozconfig .mozconfig
+[root@b008-02 commsrc]# cat .mozconfig
+mk_add_options AUTOCONF=autoconf-2.13
+ac_add_options --enable-application=mail
+ac_add_options --prefix="/usr/local/thunderbirdDebug"
+ac_add_options --libdir="/usr/local/thunderbirdDebugLibs"
+ac_add_options --enable-extensions=pref
+ac_add_options --enable-static
+ac_add_options --disable-shared
+ac_add_options --disable-crashreporter
+
+</pre>
+
+<p>the option --disable-crashreporter is necessary if you get compile error at this stage of the build</p>
+
+<pre class="bz_comment_text">gmake[7]: Entering directory
+`/usr/local/Moz2/commsrc/mozilla/toolkit/crashreporter/google-breakpad/src/common/linux'
+dump_symbols.cc
+</pre>
+
+<h5 id="Build_2">Build</h5>
+
+<p>then start building</p>
+
+<pre class="eval">[root@b008-02 commsrc]# time make -f client.mk build
+rm -f ../../mozilla/dist/bin/TestCookie
+if test -f ../../mozilla/dist/bin/TestTArray;
+then cp ../../mozilla/dist/bin/TestTArray ../../mozilla/dist/bin/TestCookie; fi;
+gmake[5]: quittant le rÃ©pertoire Â« /usr/local/Moz/commsrc/mail/app Â»
+gmake[4]: quittant le rÃ©pertoire Â« /usr/local/Moz/commsrc/mail Â»
+gmake[3]: quittant le rÃ©pertoire Â« /usr/local/Moz/commsrc Â»
+gmake[2]: quittant le rÃ©pertoire Â« /usr/local/Moz/commsrc Â»
+make[1]: quittant le rÃ©pertoire Â« /usr/local/Moz/commsrc Â»
+
+real    23m33.845s
+user    20m34.356s
+sys     1m49.752s
+
+</pre>
+
+<h5 id="Install">Install</h5>
+
+<p>Then install (--enable-static and --disable-shared necessary in .mozconfig !)</p>
+
+<pre>[root@b008-02 commsrc]# make install -n
+/usr/bin/gmake -C mail/installer install
+gmake[1]: entrant dans le répertoire « /usr/local/Moz/commsrc/mail/installer »
+rm -rf ../../mozilla/dist/thunderbird ../../mozilla/dist/thunderbird-3.0b3pre.en-US.linux-i686.tar ../../mozilla/dist/thunderbird-3.0b3pre.en-US.linux-i686.dmg stage-package
+echo "Creating package directory..."
+...
+/usr/local/Moz/commsrc/mozilla/config/nsinstall -D /usr/local/thunderbirdDebug/bin
+rm -f -f /usr/local/thunderbirdDebug/bin/thunderbird
+ln -s /usr/local/thunderbirdDebugLibs/thunderbird-3.0b3pre/thunderbird /usr/local/thunderbirdDebug/bin
+gmake[1]: quittant le répertoire « /usr/local/Moz/commsrc/mail/installer »
+
+[root@b008-02 commsrc]# ls -l /usr/local/thunderbirdDebugLibs/thunderbird-3.0b3pre/ | grep ^d
+drwxr-xr-x 3 root root     4096 juil.  2 10:45 chrome
+drwxr-xr-x 2 root root    12288 juil.  2 10:45 components
+drwxr-xr-x 6 root root     4096 juil.  1 10:24 defaults
+drwxr-xr-x 2 root root     4096 juil.  2 10:45 dictionaries
+drwxr-xr-x 3 root root     4096 juil.  1 10:24 extensions
+drwxr-xr-x 2 root root     4096 juil.  2 10:27 greprefs
+drwxr-xr-x 2 root root     4096 juil.  1 10:18 icons
+drwxr-xr-x 3 root root     4096 juil.  2 10:45 isp
+drwxr-xr-x 4 root root     4096 juil.  2 10:45 modules
+drwxr-xr-x 2 root root     4096 juil.  2 10:45 OutTestData
+drwxr-xr-x 6 root root     4096 juil.  2 10:45 res
+[root@b008-02 commsrc]# ls -l /usr/local/thunderbirdDebug/bin/
+total 4
+lrwxrwxrwx 1 root root 64 juil.  2 10:45 thunderbird -&gt; /usr/local/thunderbirdDebugLibs/thunderbird-3.0b3pre/thunderbird
+
+[root@b008-02 thunderbirdDebugLibs]# find /usr/local/thunderbirdDebugLibs/ -name prefcalls.js
+/usr/local/thunderbirdDebugLibs/thunderbird-3.0b3pre/defaults/autoconfig/prefcalls.js
+
+</pre>
+
+<h3 id="Old_Mozilla_1.x.2C_Possibly_Netscape_6.2F7" name="Old_Mozilla_1.x.2C_Possibly_Netscape_6.2F7">Old Mozilla 1.x, Possibly Netscape 6/7</h3>
+
+<div class="note">The following is for the record... it also contains an interesting feature that I did not use anymore -&gt; AutoConfig from a web server!</div>
+
+<h4 id="Changes" name="Changes">Changes</h4>
+
+<p>Between 2002 and 2003, we needed to upgrade the old Netscape 4.x (4.79) version to Mozilla 1.x (1.4), and now (2004-2005) Mozilla 1.7. The AutoConfiguration subsystem is quite the same as described the section on 'old' Netscape 4.x, but also slightly different.</p>
+
+<h4 id="Mozilla_New_Features_in_Regard_to_Netscape" name="Mozilla_New_Features_in_Regard_to_Netscape">Mozilla New Features in Regard to Netscape</h4>
+
+<p>In Mozilla, we don't use the convert function from Netscape 4.5 CCK anymore, but <code>moz-byteshift.pl</code> Perl script, to encode <code>mozilla.cfg</code> file.</p>
+
+<p>The use of the <code>getLDAPAttributes()</code> function by calling inside itself the <code>processLDAPValues()</code> as a user defined function (see <code>prefcalls.js</code>) forces us to slightly change these calls in our original web CGI JavaScript (here <code>mci-mozilla-glob-prefs-tux.cgi</code>). The variables generated (<code>mail</code>, <code>cn</code>, <code>uid</code>) are defined only inside the <code>processLDAPValues()</code> function, that explains why lockPref related to these variables are located inside that function. I also couldn't use the <code>alert()</code> function anymore, so I changed to <code>displayerror()</code> function!</p>
+
+<h4 id="Locating_The_File_on_a_Web_Server" name="Locating_The_File_on_a_Web_Server">Locating The File on a Web Server</h4>
+
+<p>That was the case in the Netscape 4.x description below, however, at first it was a hard thing to do in Mozilla, cf. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=206294" title="Autoconfig via a URL appears to be missing. (autoadmin.global_config_url)">bug 206294</a>. So now you only need to create a small encoded <code>cfg</code> file making a call to a web located CGI script which will actually generate the JavaScript configuration directives to the Mozilla client. Hence you can change all of your Mozilla clients preferences by simply modifying a single file on a web server, great!</p>
+
+<h5 id="Call_File" name="Call_File">Call File</h5>
+
+<p>This file calls a CGI on a web server, the CGI generating the JavaScript code that will set preferences. Here the <code>vendor</code> name (<code>mci-mozilla-web-tux</code>) must match the name of the <code>cfg</code> file (<code>mci-mozilla-web-tux.cfg</code>).</p>
+
+<pre>$ cat mci-mozilla-web-tux.js
+lockPref("general.config.vendor", "mci-mozilla-web-tux");
+lockPref("autoadmin.global_config_url","http://corbeau.int-evry.fr/cgi-bin/mci-mozilla-glob-prefs-tux.cgi");
+</pre>
+
+<h4 id="Encoding_mozilla.js_File_to_mozilla.cfg" name="Encoding_mozilla.js_File_to_mozilla.cfg">Encoding mozilla.js File to mozilla.cfg</h4>
+
+<p>Just use the <code>moz-byteshift.pl</code> Perl script which for Mozilla 1.x and Netscape 6/7 uses a shift of 13, in Netscape 4.x it was 7.</p>
+
+<pre>$ more moz-byteshift.pl
+#!/usr/bin/perl
+
+# Byte-shifting program for Mozilla's netscape.cfg files
+
+# Old Netscape 4.x uses a byte-shift of 7
+#   To decode: moz-byteshift.pl -s -7 &lt;netscape.cfg &gt;netscape.cfg.txt
+#   To encode: moz-byteshift.pl -s  7 &lt;netscape.cfg.txt &gt;netscape.cfg
+
+# Mozilla uses a byte-shift of 13
+#   To decode: moz-byteshift.pl -s -13 &lt;netscape.cfg &gt;netscape.cfg.txt
+#   To encode: moz-byteshift.pl -s  13 &lt;netscape.cfg.txt &gt;netscape.cfg
+
+# To activate the netscape.cfg file, place the encoded netscape.cfg file
+# into your C:\Program Files\mozilla.org\Mozilla directory.
+# Then add the following line to your
+# C:\Program Files\mozilla.org\Mozilla\defaults\pref\autoconf.js file:
+# pref("general.config.filename", "mozilla.cfg");
+...
+
+$ ./moz-byteshift.pl -s 13 &lt; mci-mozilla-web-tux.js &gt; mci-mozilla-web-tux.cfg
+</pre>
+
+<h4 id="Location_of_mci-mozilla-web-tux.cfg" name="Location_of_mci-mozilla-web-tux.cfg">Location of mci-mozilla-web-tux.cfg</h4>
+
+<p>The location of the <code>netscape.cfg</code> (here renamed to <code>mci-mozilla-web-tux.cfg</code>) and the way to call it is different from the old Netscape 4.x. It's location is in <code>MOZILLA_HOME ; c:\program files\mozilla.org\mozilla</code> in Windows, or <code>/usr/lib/mozilla-1.7-3/</code> in Linux Fedora.</p>
+
+<h4 id="Call_to_mci-mozilla-web-tux.cfg" name="Call_to_mci-mozilla-web-tux.cfg">Call to mci-mozilla-web-tux.cfg</h4>
+
+<p>The way to call it is through <code>autoconf.js</code> file by adding at the end:</p>
+
+<pre>$ tail -2 /usr/lib/mozilla-1.7-3/defaults/pref/autoconf.js
+pref("general.config.filename", "mci-mozilla-web-tux.cfg");
+pref("general.config.vendor", "mci-mozilla-web-tux");
+</pre>
+
+<h4 id="Web_Base_CGI_JavaScript_Preferences_Generator_File" name="Web_Base_CGI_JavaScript_Preferences_Generator_File">Web Base CGI JavaScript Preferences Generator File</h4>
+
+<pre>[root@corbeau /var/www/cgi-bin]
+$ cat mci-mozilla-glob-prefs-tux.cgi
+#!/usr/bin/perl -w
+
+print("Content-type: application/javascript-config\n\n");
+$page = &lt;&lt;"EOP";
+
+try {
+  var env_user = getenv("USER");
+  var env_home = getenv("HOME");
+  var env_mozdebug= getenv("MOZILLA_DEBUG");
+  function processLDAPValues(values) {
+    var uid = getLDAPValue(values, "uid");
+    var cn = getLDAPValue(values, "cn");
+    var mail = getLDAPValue(values, "mail");
+    lockPref("mail.server.server1.name", mail);
+    lockPref("mail.identity.id1.fullName", cn);
+    lockPref("mail.identity.id1.useremail", mail);
+
+  if (env_mozdebug) {
+    displayError("debug mozilla.cfg v2.8", "mail:" + mail + "uid:" + uid + "cn" + cn + "user:" + env_user);
+  }
+}
+//BROWSER
+/*defaultPref("startup.homepage_override_url", "http://www.int-evry.fr/mci/user/");
+lockPref("browser.startup.homepage_override", true);
+lockPref("browser.startup.page", 1);
+defaultPref("browser.startup.homepage", "http://www.int-evry.fr/mci/user/");
+*/
+lockPref("browser.startup.homepage", "http://www.int-evry.fr/mci/user/");
+lockPref("browser.startup.homepage_override", true);
+lockPref("general.config.vendor", "mci-mozilla-web-tux");
+lockPref("startup.homepage_override_url", "http://www.int-evry.fr/mci/user/");
+lockPref("browser.cache.disk.capacity", 0);
+lockPref("network.cookie.cookieBehavior", 0);
+lockPref("network.proxy.autoconfig_url", "http://www.int-evry.fr/local/config.proxy");
+lockPref("network.proxy.type", 2);
+
+//Account
+lockPref("mail.account.account1.identities", "id1");
+lockPref("mail.account.account1.server", "server1");
+lockPref("mail.account.account2.server", "server2");
+lockPref("mail.account.account3.server", "server3");
+lockPref("mail.accountmanager.accounts", "account1,account2,account3");
+lockPref("mail.accountmanager.defaultaccount", "account1");
+
+//IMAP
+lockPref("mail.server.server1.hostname", "imap-int.int-evry.fr");
+lockPref("mail.server.server1.type", "imap");
+lockPref("mail.server.server1.login_at_startup", true);
+lockPref("mail.identity.id1.draft_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Drafts");
+lockPref("mail.identity.id1.drafts_folder_picker_mode", "0");
+lockPref("mail.identity.id1.fcc_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Sent");
+lockPref("mail.identity.id1.fcc_folder_picker_mode", "0");
+lockPref("mail.identity.id1.stationery_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Templates");
+lockPref("mail.identity.id1.tmpl_folder_picker_mode", "0");
+lockPref("mail.identity.id1.valid", true);
+lockPref("mail.identity.id1.overrideGlobal_Pref", true);
+lockPref("mail.server.server1.download_on_biff", true);
+lockPref("mail.server.server1.login_at_startup", true);
+lockPref("mail.server.server1.userName", env_user);
+lockPref("mail.server.server1.delete_model", 0);
+
+//SMTP
+lockPref("mail.identity.id1.smtpServer", "smtp1");
+defaultPref("mail.smtpserver.smtp1.auth_method", 0);
+lockPref("mail.smtpservers", "smtp1");
+lockPref("mail.smtpservers", "smtp1");
+lockPref("mail.smtp.defaultserver", "smtp1");
+lockPref("mail.smtpserver.smtp1.hostname", "smtp-int.int-evry.fr");
+lockPref("mail.identity.id1.organization", "INT Evry France");
+lockPref("mail.startup.enabledMailCheckOnce", true);
+lockPref("mail.ui.folderpane.version", 3);
+lockPref("mailnews.ui.threadpane.version", 2);
+
+//LDAP config
+lockPref("mail.identity.id1.directoryServer", "ldap_2.servers.ldapint");
+lockPref("ldap_2.prefs_migrated", true);
+lockPref("ldap_2.servers.history.filename", "history.mab");
+lockPref("ldap_2.servers.history.replication.lastChangeNumber", 0);
+lockPref("ldap_2.servers.ldapint.auth.savePassword", true);
+lockPref("ldap_2.servers.ldapint.description", "ldap-int");
+lockPref("ldap_2.servers.ldapint.filename", "abook-1.mab");
+lockPref("ldap_2.servers.ldapint.position", 3);
+lockPref("ldap_2.servers.ldapint.uri", "ldap://ldap1.int-evry.fr:389/ou=people,dc=int-evry,dc=fr??sub");
+lockPref("ldap_2.servers.pab.filename", "abook.mab");
+lockPref("ldap_2.servers.pab.replication.lastChangeNumber", 0);
+
+//News config
+lockPref("mail.server.server3.hostname", "news.int-evry.fr");
+lockPref("mail.server.server3.max_cached_connections", 2);
+lockPref("mail.server.server3.name", "news.int-evry.fr");
+lockPref("mail.server.server3.type", "nntp");
+lockPref("mail.server.server3.userName", env_user);
+
+//Call to ldap to get user's attribute.
+getLDAPAttributes("ldap2.int-evry.fr", "ou=people,dc=int-evry,dc=fr", "uid=" +env_user, "uid,cn,mail");
+
+} catch(e) {
+  displayError("lockedPref", e);
+}
+
+EOP
+print $page;
+</pre>
+
+<h4 id="Windows_Particularities" name="Windows_Particularities">Windows Peculiarities</h4>
+
+<p>Without web base CGI file, beware that in Windows, the original (before encoding) <code>mozilla.js</code> file must start with: <code>//BEGIN CE prefs </code>, if not you'll get "failed to read configuration file..." message, and Mozilla won't start :-(</p>
+
+<p>In Windows environment variables like <code>USER</code> or <code>HOME</code>, are <code>USERNAME</code> and <code>HOMEPATH</code>, that's why we must create a different pair of configuration files (<code>cfg</code> and <code>cgi</code>) for both systems (Linux/Windows). Perhaps there's a way in JavaScript to detect operating system and hence use either <code>USER</code> or <code>USERNAME</code>, but I'm not that fluent in JavaScript, let me know if you know how...//</p>
+
+<h5 id="Windows_Call_File" name="Windows_Call_File">Windows Call File</h5>
+
+<pre>$ cat mci-mozilla-web-win.js
+lockPref("general.config.vendor", "mci-mozilla-web-win");
+lockPref("autoadmin.global_config_url","http://corbeau.int-evry.fr/cgi-bin/mci-mozilla-glob-prefs-win.cgi");
+</pre>
+
+<h5 id="Windows_all.js_File" name="Windows_all.js_File">Windows autoconf.js File</h5>
+
+<p>To be encoded by <code>moz-byteshift.pl</code> as stated above...</p>
+
+<pre>c:\type c:\program files\mozilla.org\mozilla\defaults\pref\autoconf.js
+pref("general.config.filename", "mci-mozilla-web-win.cfg");
+pref("general.config.vendor", "mci-mozilla-web-win");
+</pre>
+
+<h5 id="Windows_CGI_file" name="Windows_CGI_file">Windows CGI file</h5>
+
+<pre>$ cat mci-mozilla-glob-prefs-win.cgi
+#!/usr/bin/perl -w
+
+print("Content-type: application/javascript-config\n\n");
+$page = &lt;&lt;"EOP";
+
+try {
+  var env_user = getenv("USERNAME");
+  var env_home = getenv("HOMEPATH");
+  var env_mozdebug= getenv("MOZILLA_DEBUG");
+...
+</pre>
+
+<p>The rest of the file is identical to the Linux version, only the environment variables (var env_*) are different!</p>
+
+<h4 id="Versions_Tested" name="Versions_Tested">Versions Tested</h4>
+
+<p>This configuration was validated on Linux with Mozilla 1.4, 1.6 and 1.7, and on Windows with Mozilla 1.4, 1.5, 1.7.</p>
+
+<h3 id="Debugging_-_Bugzilla" name="Debugging_-_Bugzilla">Debugging - Bugzilla</h3>
+
+<h4 id="Run_Time_Messages" name="Run_Time_Messages">Run Time Messages</h4>
+
+<p>Note: the presence of <code>var env_mozdebug=getenv("MOZILLA_DEBUG")</code>allows user to print debugging messages if <code>MOZILLA_DEBUG</code> is defined in either the shell for Unix (<code>export MOZILLA_DEBUG=1</code>) or in the <code>command.com</code> environment in Windows (<code>set MOZILLA_DEBUG=1</code>).</p>
+
+<h4 id="Blank_Space_Bug" name="Blank_Space_Bug">Blank Space Bug</h4>
+
+<p>I noticed a problem which is due to be corrected in Mozilla 1.8 I think... Here's the report and workaround: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=229271" title='FIXED: unwanted "white space" in function getLDAPValue from autoconfig/prefcalls.js'>bug 229271</a>. To fix, add the following:</p>
+
+<pre>        start_pos += search_key.length;
+//start
+        start_pos +=1;
+//end
+</pre>
+
+<p>to function <code>getLDAPValue()</code> in <code>autoconfig/preffcalls.js</code>.</p>
+
+<h4 id="Documentation" name="Documentation">Documentation</h4>
+
+<p>I also opened a report on the lack of documentation <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=178685" title="Complete preference ref manual (for hidden prefs)">bug 178685</a> which led to the wonderful doc: <a href="http://web.archive.org/web/20050415163430/http://wangrepublic.org/daniel/mozilla/prefs/">http://wangrepublic.org/daniel/mozilla/prefs/</a></p>
+
+<h4 id="defeultPref_for_Home_Page" name="defeultPref_for_Home_Page">defeultPref for Home Page</h4>
+
+<p>I cannot set the home page with the <code>defaultPref</code> function, so that it is set by default, but still allows the user to change it! A bug is opened on this, see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=272970" title="autoconfig defaultpref doesn't work">bug 272970</a></p>
+
+<h4 id="greprefs_Right_Access" name="greprefs_Right_Access">greprefs Right Access</h4>
+
+<p>Beware also on Linux that <code>MOZILLA_HOME/greprefs</code> directory is closed by default to users and then AutoConfig doesn't work properly, I've opened a bug on this: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=270623" title="greprefs subdirectory; modes too much restrictive">bug 270623</a>. The workaround is <code>chmod 755 greprefs</code>!</p>
+
+<h4 id="CGI_Base_Config_File" name="CGI_Base_Config_File">CGI Base Config File</h4>
+
+<p>There has been a issue about the use of <code>autoadmin.global_config_url</code>, see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=206294" title="Autoconfig via a URL appears to be missing. (autoadmin.global_config_url)">bug 206294</a>.</p>
+
+<h3 id="Mail_Folders" name="Mail_Folders">Mail Folders</h3>
+
+<p>Implementing that solution, we encounter difficulties with mail folder. Our first idea was to use local mail folders from home directory of the current user. In Unix that would have been <code>$HOME/nsmail/...</code>, in Windows it would have been a Samba mount of that same Unix path (ex: <code>U:\nsmail</code> ; with <code>U:</code> = Samba mount: <code>\\samba-server\%USERNAME</code>). Unfortunately file system writes and/or mail format differs between Windows and Unix, and folders soon become unreadable or even corrupted when read/written from one system to the other.</p>
+
+<p>That's why we finally decided to use IMAP, and hence IMAP folders. By migrating from University of Washington IMAP server to Cyrus IMAP we also inherited some interesting features like quotas, share folders, ACL, mail only account (no need for <code>/etc/passwd</code> entry!) much better performances, etc...</p>
+
+<h3 id="Reliability" name="Reliability">Reliability</h3>
+
+<h4 id="Fail-over_and_Uniqueness" name="Fail-over_and_Uniqueness">Fail-over and Uniqueness</h4>
+
+<p>A contribution from Roberto Aguilar gives the Mozilla AutoConfig JavaScript a way to search through different LDAP replicas in case one LDAP server is down.</p>
+
+<p>It also allows users to use a single JavaScript for both systems (Linux and Windows) with a subtle <code>if... else</code> test on environment variables.</p>
+
+<h4 id="LDAP_fail-over" name="LDAP_fail-over">LDAP fail-over</h4>
+
+<p>Creating an array of possible running LDAP servers permits an LDAP fail-over, then a shuffle function allows us to randomly pick up a running LDAP server.</p>
+
+<p>The shuffle function comes from here: <a href="http://www.mickweb.com/javascript/arrays/pureshuffle.html" rel="freelink">http://www.mickweb.com/javascript/ar...reshuffle.html</a></p>
+
+<p>Before publishing the code changes, please add this right before the shuffle function:</p>
+
+<pre> /**
+  * setup the shuffle method for an array, from Mickweb Script
+  * Factory at:
+  * http://www.mickweb.com/javascript/arrays/pureshuffle.html
+  */
+</pre>
+
+<p>Here's how the LDAP fail-over works:</p>
+
+<pre>// 2) setup multiple LDAP servers for fail-over
+  var ldap_values;
+  var ldap_servers = new Array('ldap2.int-evry.fr',
+                      'ldap1.int-evry.fr',
+                      'openldap.int-evry.fr'
+                      );
+  // shuffle function to randomize the server array
+  // setup the shuffle method for an array
+  Array.prototype.shuffle = function(times) {
+    var i,j,t,l=this.length;
+    while(times--) {
+      with(Math) {
+    i = floor(random()*l);
+    j = floor(random()*l);
+      }
+      t       = this[i];
+      this[i] = this[j];
+      this[j] = t;
+    }
+    return this;
+  }
+ // mix up the LDAP servers so we don't hit the same one each time
+  ldap_servers.shuffle(10);
+....
+// 4) Call LDAP servers to get LDAP Attributes (mail &amp; cn), this will finally call processLDAPValues, "3)" just above.
+// Go through the LDAP replicas list
+for(i = 0; i &lt; ldap_servers.length; i ++) {
+// Search for attribute mail &amp; cn through LDAP servers where uid = $USER|$USERNAME
+  getLDAPAttributes(ldap_servers[i],
+       "ou=people,dc=int-evry,dc=fr",
+       "uid=" + env_user,
+       "uid,cn,mail");
+    // If we catch a running LDAP server, exit the loop,
+    if(ldap_values) {
+      running_ldap_server = ldap_servers[i];
+        // If $MOZILLA_DEBUG=1 display in a popup the running server
+      if (env_mozdebug) {
+        displayError("getLDAPAttributes: debug 2 running_ldap_server: " + running_ldap_server);
+       }
+      break;
+    }
+  }
+</pre>
+
+<h4 id="Unique_Script_for_Windows_and_Linux" name="Unique_Script_for_Windows_and_Linux">Unique Script for Windows and Linux</h4>
+
+<p>An <code> if... else</code> test permits us to check whether we use a Linux or Windows environment variable for the <code>USER</code> / <code>USERNAME</code>.</p>
+
+<pre>// 1) env variables
+if(getenv("USER") != "") {
+   // *NIX settings
+   var env_user = getenv("USER");
+   var env_home = getenv("HOME");
+ } else {
+   // Windows settings
+   var env_user = getenv("USERNAME");
+   var env_home = getenv("HOMEPATH");
+ }
+  var env_mozdebug= getenv("MOZILLA_DEBUG");
+</pre>
+
+<h4 id="Final_Production_Script" name="Final_Production_Script">Final Production Script</h4>
+
+<p>Here's the complete final and commented production script:</p>
+
+<pre>//Mozilla AutoConfiguration, Jehan Procaccia &amp; Roberto Aguilar
+
+//put everything in a try/catch
+try {
+/*
+1) define environment variables,
+2) list &amp; randomize LDAP replicas,
+3) define processLDAPValues(),
+4) Call LDAP server to get LDAP Attributes (mail &amp; cn) getLDAPAttributes()
+5) set user preferences
+*/
+
+// 1) env variables
+if(getenv("USER") != "") {
+   // *NIX settings
+   var env_user = getenv("USER");
+   var env_home = getenv("HOME");
+ } else {
+   // Windows settings
+   var env_user = getenv("USERNAME");
+   var env_home = getenv("HOMEPATH");
+ }
+  var env_mozdebug= getenv("MOZILLA_DEBUG");
+
+// 2) setup multiple LDAP servers for fail-over
+  var ldap_values;
+  var ldap_servers = new Array('ldap2.int-evry.fr',
+                      'ldap1.int-evry.fr',
+                      'openldap.int-evry.fr'
+                      );
+  // shuffle function to randomize the server array
+/**
+  * setup the shuffle method for an array, from "mickweb script
+  * factory" at:
+  * http://www.mickweb.com/javascript/arrays/pureshuffle.html
+  */
+  // setup the shuffle method for an array
+  Array.prototype.shuffle = function(times) {
+    var i,j,t,l=this.length;
+    while(times--) {
+      with(Math) {
+    i = floor(random()*l);
+    j = floor(random()*l);
+      }
+      t       = this[i];
+      this[i] = this[j];
+      this[j] = t;
+    }
+    return this;
+  }
+ // mix up the LDAP servers so we don't hit the same one each time
+  ldap_servers.shuffle(10);
+
+/* 3) define here (because if set after "4)" below it doesn't work!) processLDAPValues which is eventually called by getLDAPAttributes() just below,
+ check getLDAPAttributes() code from $MOZILLA_HOME/defaults/autoconfig/prefcalls.js to see the inside call to "user defined" processLDAPValues
+*/
+function processLDAPValues(values) {
+ if(values) {
+      // set the global var with the values returned from the LDAP query
+      ldap_values = values;
+    var uid = getLDAPValue(values, "uid");
+    var cn = getLDAPValue(values, "cn");
+    var mail = getLDAPValue(values, "mail");
+     // lock LDAP variable (mail &amp; cn) dependent preferences while we have access to them
+    lockPref("mail.server.server1.name", mail);
+    lockPref("mail.identity.id1.fullName", cn);
+    lockPref("mail.identity.id1.useremail", mail);
+    defaultPref("network.ftp.anonymous_password", mail);
+
+    // if $MOZILLA_DEBUG=1, popup a debug message
+    if (env_mozdebug) {
+        displayError("NO ERROR -&gt; MCI (jehan.procaccia@int-evry.fr)" + "\nthis message is displayed with displayError()! \ndebug 1 mozilla.cfg v3.2, NO FAILED, S2IA again!", "\nmail:" + mail + "\nuid:" +uid + "\ncn:" +cn + "\nuser:" + env_user);
+        }
+    }
+  }
+
+// 4) Call LDAP servers to get LDAP Attributes (mail &amp; cn), this will finally call processLDAPValues, "3)" just above.
+// Go through the LDAP replicas list
+for(i = 0; i &lt; ldap_servers.length; i ++) {
+// Search for attribute mail &amp; cn through LDAP servers where uid = $USER|$USERNAME
+  getLDAPAttributes(ldap_servers[i],
+       "ou=people,dc=int-evry,dc=fr",
+       "uid=" + env_user,
+       "uid,cn,mail");
+    // If we catch a running LDAP server, exit the loop,
+    if(ldap_values) {
+      running_ldap_server = ldap_servers[i];
+        // If $MOZILLA_DEBUG=1 display in a popup the running server
+      if (env_mozdebug) {
+        displayError("getLDAPAttributes: debug 2 running_ldap_server: " + running_ldap_server);
+       }
+      break;
+    }
+  }
+
+// 5) Set user preferences
+
+//BROWSER
+lockPref("browser.startup.homepage", "http://www.int-evry.fr/s2ia/portail/");
+//unlockPref("browser.startup.homepage");
+lockPref("browser.startup.homepage_override", true);
+lockPref("startup.homepage_override_url", "http://www.int-evry.fr/s2ia/portail/");
+//unlockPref("startup.homepage_override_url");
+lockPref("browser.cache.disk.capacity", 100);
+lockPref("network.cookie.cookieBehavior", 0);
+
+//Network preferences
+lockPref("network.proxy.autoconfig_url", "http://www.int-evry.fr/local/config.proxy");
+lockPref("network.proxy.type", 2);
+
+//Privacy &amp; Security
+defaultPref("signon.rememberSignons", false);
+
+//Account
+lockPref("mail.account.account1.identities", "id1");
+lockPref("mail.account.account1.server", "server1");
+lockPref("mail.account.account2.server", "server2");
+lockPref("mail.account.account3.server", "server3");
+lockPref("mail.accountmanager.accounts", "account1,account2,account3");
+lockPref("mail.accountmanager.defaultaccount", "account1");
+
+//IMAP
+lockPref("mail.server.server1.hostname", "imap-int.int-evry.fr");
+lockPref("mail.server.server1.type", "imap");
+lockPref("mail.server.server1.login_at_startup", true);
+lockPref("mail.identity.id1.draft_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Drafts");
+lockPref("mail.identity.id1.drafts_folder_picker_mode", "0");
+lockPref("mail.identity.id1.fcc_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Sent");
+lockPref("mail.identity.id1.fcc_folder_picker_mode", "0");
+lockPref("mail.identity.id1.stationery_folder", "imap://" + env_user + "@imap-int.int-evry.fr/Templates");
+lockPref("mail.identity.id1.tmpl_folder_picker_mode", "0");
+lockPref("mail.identity.id1.valid", true);
+lockPref("mail.identity.id1.overrideGlobal_Pref", true);
+lockPref("mail.server.server1.download_on_biff", true);
+lockPref("mail.server.server1.login_at_startup", true);
+lockPref("mail.server.server1.userName", env_user);
+lockPref("mail.server.server1.delete_model", 0);
+
+//SMTP
+defaultPref("mail.identity.id1.smtpServer", "smtp1");
+defaultPref("mail.smtpserver.smtp1.auth_method", 0);
+defaultPref("mail.smtpservers", "smtp1");
+defaultPref("mail.smtpservers", "smtp1");
+defaultPref("mail.smtp.defaultserver", "smtp1");
+defaultPref("mail.smtpserver.smtp1.hostname", "smtp-int.int-evry.fr");
+lockPref("mail.identity.id1.organization", "INT Evry France");
+lockPref("mail.startup.enabledMailCheckOnce", true);
+lockPref("mail.ui.folderpane.version", 3);
+lockPref("mailnews.ui.threadpane.version", 2);
+
+//LDAP config
+lockPref("mail.identity.id1.directoryServer", "ldap_2.servers.ldapint");
+lockPref("ldap_2.prefs_migrated", true);
+lockPref("ldap_2.servers.history.filename", "history.mab");
+lockPref("ldap_2.servers.history.replication.lastChangeNumber", 0);
+lockPref("ldap_2.servers.ldapint.auth.savePassword", true);
+lockPref("ldap_2.servers.ldapint.description", "ldap-int");
+lockPref("ldap_2.servers.ldapint.filename", "abook-1.mab");
+lockPref("ldap_2.servers.ldapint.position", 3);
+lockPref("ldap_2.servers.ldapint.uri", "ldap://ldap1.int-evry.fr:389/ou=people,dc=int-evry,dc=fr??sub");
+lockPref("ldap_2.servers.pab.filename", "abook.mab");
+lockPref("ldap_2.servers.pab.replication.lastChangeNumber", 0);
+
+//News config
+lockPref("mail.server.server3.hostname", "news.int-evry.fr");
+lockPref("mail.server.server3.max_cached_connections", 2);
+lockPref("mail.server.server3.name", "news.int-evry.fr");
+lockPref("mail.server.server3.type", "nntp");
+lockPref("mail.server.server3.userName", env_user);
+
+// Close the try, and call the catch()
+} catch(e) {
+  displayError("lockedPref", e);
+}
+</pre>
+
+<h4 id="For_The_Record.2C_Old_Reliably_Scripts..." name="For_The_Record.2C_Old_Reliably_Scripts...">For The Record, Old Reliably Scripts...</h4>
+
+<p>At least tested on Netscape 4.x.</p>
+
+<p>In the original files below (in Netscape 4.x section), we hard-coded a single web server to retrieve the JavaScript preference file, and a single hard-coded LDAP server to get <code>mail</code> and <code>cn</code> attributes. It would be safer to get secondary servers in case of failure. For the web server name we can use an LDAP query to get the list of possible ones. Hence, we won't have to re-encode the <code>netscape.cfg</code> file at every change. We set the <code>netscape.cfg</code> file just once while imaging computers with the operating system, then any changes happen in LDAP or on the web server JavaScript preference file (central configuration).</p>
+
+<h5 id="Enhance_netscape.cfg" name="Enhance_netscape.cfg">Enhance netscape.cfg</h5>
+
+<p>The list of possible web servers to query is defined in <code>netscape.cfg</code>. This is also where the JavaScript preference filenames are defined so that <code>netscape.cfg</code> doesn't need to be changed after imaging the computers at every change we need to do.</p>
+
+<h5 id="LDAP_Web_Server_List_Subtree" name="LDAP_Web_Server_List_Subtree">LDAP Web Server List Subtree</h5>
+
+<pre>$ ldapsearch -x * -b "ou=browser,ou=information,dc=int-evry, dc=fr" cn -LLL
+dn: ou=browser,ou=information,dc=int-evry,dc=fr
+
+dn: sn=http_server,ou=browser,ou=information,dc=int-evry, dc=fr
+cn: web1.int-evry.fr
+cn: web2.int-evry.fr
+
+dn: sn=http_unix_file, ou=browser,ou=information,dc=int-evry, dc=fr
+cn: /browser/config_file_unix.jsc
+
+dn: sn=http_win_file, ou=browser,ou=information,dc=int-evry, dc=fr
+cn: /browser/config_file_win.jsc
+</pre>
+
+<h5 id="netscape.cfg" name="netscape.cfg">netscape.cfg</h5>
+
+<p>Here we select an operational LDAP server simply by testing a LDAP query, to make sure that our LDAP queries for setting preferences will be answered. {Again, I am not fluent in JavaScript. There should be a better way to make sure that an LDAP server is up and running. As for checking a web server, feel free to optimize this code, and let me know...)</p>
+
+<pre>if (getLDAPAttributes("ldap1.int-evry.fr", \
+ "ou=browser,ou=information,dc=int-evry,dc=fr", \
+ "sn=http_server", "cn") )
+ var running_ldap_server = "ldap1.int-evry.fr";
+ else if (getLDAPAttributes("ldap2.int-evry.fr", \
+ "ou=browser,ou=information,dc=int-evry,dc=fr", \
+ "sn=http_server", "cn") )
+  var running_ldap_server = "ldap2.int-evry.fr";
+  else if (getLDAPAttributes("ldap0.int-evry.fr", \
+  "ou=browser,ou=information,dc=int-evry,dc=fr", \
+  "sn=http_server", "cn") )
+   var running_ldap_server = "ldap0.int-evry.fr";
+  else alert("No LDAP server available!");
+</pre>
+
+<p>Here's a complete example of the Unix netscape.cfg file.</p>
+
+<pre>with (PrefConfig) { // Must be done inside the PrefConfig module
+
+// create some variables we might want to use later on...
+var env_user = getenv("USER");       // Windows username
+var env_home = getenv("HOME");       // User HomeDir
+var env_mozilla_home = getenv("MOZILLA_HOME");
+var env_mozdebug = getenv("MOZILLA_DEBUG");
+
+//check which LDAP server is running (needs a better procedure!)
+
+if (getLDAPAttributes("ldap1.int-evry.fr", \
+ "ou=browser,ou=information,dc=int-evry,dc=fr", \
+ "sn=http_server", "cn") )
+ var running_ldap_server = "ldap1.int-evry.fr";
+ else if (getLDAPAttributes("ldap2.int-evry.fr", \
+  "ou=browser,ou=information,dc=int-evry,dc=fr", \
+  "sn=http_server", "cn") )
+  var running_ldap_server = "ldap2.int-evry.fr";
+  else if (getLDAPAttributes("ldap0.int-evry.fr", \
+  "ou=browser,ou=information,dc=int-evry,dc=fr", \
+  "sn=http_server", "cn") )
+   var running_ldap_server = "ldap0.int-evry.fr";
+  else alert("No LDAP server available!");
+
+if (running_ldap_server){
+var ldap_http_server_values = getLDAPAttributes(running_ldap_server, \
+"ou=browser,ou=information,dc=int-evry,dc=fr", "sn=http_server", "cn");
+var ldap_http_server = getLDAPValue(ldap_http_server_values, "cn");
+var ldap_http_unix_uri_values = getLDAPAttributes(running_ldap_server, \
+"ou=browser,ou=information,dc=int-evry,dc=fr", "sn=http_unix_file", "cn");
+var ldap_http_unix_uri = getLDAPValue(ldap_http_unix_uri_values, "cn");
+var values = getLDAPAttributes(running_ldap_server, \
+"ou=people,dc=int-evry,dc=fr", "uid="+env_user, "cn,mail");
+var ldap_email = getLDAPValue(values, "mail");
+var ldap_gecos = getLDAPValue(values, "cn");
+env_user=env_user.toLowerCase();
+}
+else
+ alert("No LDAP server available, AutoConfig impossible!");
+
+//popup debug message if export MOZILLA_DEBUG=1
+if (env_mozdebug) {
+ alert("MOZILLA_DEBUG\nrunning LDAP server: " + running_ldap_server);
+ alert("MOZILLA_DEBUG\nExecuting " + ldap_http_server + \
+ ldap_http_unix_uri);
+ alert("MOZILLA_DEBUG\nfetching http://" + ldap_http_server \
+ + ldap_http_unix_uri + "");
+}
+
+//go fetch the preference file in a HTTP server
+//needs a way to check if http server is running!
+
+config(
+"autoadmin.global_config_url", "http://" + ldap_http_server + \
+ldap_http_unix_uri + ""
+);
+
+// Since we use a file, if it's not accessible, something is
+// terribly wrong anyway
+config(
+"autoadmin.failover_to_cached", false
+);
+
+// don't use ?useremail=email-addr to CGI URL request
+config(
+"autoadmin.append_emailaddr", false
+);
+
+} // with (PrefConfig)
+</pre>
+
+<p>For the Windows version of that <code>netscape.cfg</code> file, we replace <code>"sn=http_unix_file"</code> by <code>"sn=http_win_file"</code> in the LDAP query.</p>
+
+<h3 id="OLD_Netscape_4.x" name="OLD_Netscape_4.x">OLD Netscape 4.x</h3>
+
+<h4 id="Call_File.2C_netscape.cfg" name="Call_File.2C_netscape.cfg">Call File, netscape.cfg</h4>
+
+<p>In the following example, that file is a "call" file, because it will actually be used to only redirect a call to an even more centralized file, a file that will be located on a web server. That allows us first to encode (byte-shift) that file (<code>netscape.cfg</code>) -just once- because it will call a non-encoded JavaScript file <code>config_file_system.jsc</code> (or whatever name) on the web server.</p>
+
+<p>Second, as that latest JavaScript file is located on a web server, there's no need to recopy it on every station at every single change! That feature is available through <code>autoadmin.global_config_url</code> directive as in <code>config("autoadmin.global_config_url","<span class="nowiki">http://www/browser/config-file-system.jsc</span>"),</code> for example. Unfortunately I am unable to run that really useful directive with Netscape 6/7 or Mozilla 1.x :-(, (if anyone knows how, please let me know!)</p>
+
+<p>In Windows that encoded <code>netscape.cfg</code> file is located in <code>NETSCAPE_HOME\Communicator\Program</code> (<code>C:\Program Files\netscape\Communicator\Programs</code>), in Red Hat 7.3 it is in <code>/usr/lib/X11/app-defaults</code>. Beware that in Windows, that file is already there, so it must be saved before being replaced by ours, in order to come back to a normal state in case of problem. If neither original or personalized netscape.cfg is there, Netscape won't start!</p>
+
+<pre>// This file is not usable in its present form. it must be encoded
+// with the "convert" function of the CCK "file" menu
+// Netscape's Flow of preference configuration:
+//    configure defaults from internal JavaScript file in ns executable
+//    global prefs from netscape.cfg (this file)
+//    executes ~/.netscape/preferences.js file
+//    executes ~/.netscape/user.js
+// (somewhere in here liprefs.js is run, but i haven't yet figured out
+// what liprefs is for....)
+//=========================================================================
+
+with (PrefConfig) { // Must be done inside the PrefConfig module
+
+// create some variables we might want to use later on...
+var platform    = getPlatform();        // E.G. SunOS4.1.3_U1
+var env_user    = getenv("USER");       // Unix username
+var env_home    = getenv("HOME");       // User HomeDir
+var env_display = getenv("DISPLAY");    // X11 Display
+var env_editor  = getenv("EDITOR");     // use in mail edit?
+var env_visual  = getenv("VISUAL");     // use in mail edit?
+var env_mozilla_home    = getenv("MOZILLA_HOME")
+var env_mozdebug        = getenv("MOZILLA_DEBUG")
+// For ease of update... We use the AutoAdmin operation to redirect
+// netscape.cfg to read the plain-text "config-file-unix.jsc" file.
+// Any changes
+// from now on can be made here w/o re-encoding the netscape.jsc file to
+// netscape.cfg.
+config(
+"autoadmin.global_config_url", \
+"http://lugdunum.int-evry.fr/browser/config-file-unix.jsc"
+);
+// How often (in minutes) to update
+// Every 6 hours seems a good interval to keep hosts who don't ever
+// exit Netscape updated on current changes.
+config(
+"autoadmin.refresh_interval", 360
+);
+// Since we use a file, if it's not accessible, something is
+// terribly wrong anyway
+config(
+"autoadmin.failover_to_cached", false
+);
+// don't use ?useremail=email-addr to cgi URL request
+config(
+"autoadmin.append_emailaddr", false
+);
+</pre>
+
+<h4 id="LockPref_Configuration_File" name="LockPref_Configuration_File">LockPref Configuration File</h4>
+
+<p>This file (on the web server: <code><span class="nowiki">http://www/browser/config-file-system.jsc</span></code>) is where we set and lock Preferences. Because computers are shared, we need to personalize preferences based on the user login. The login is taken from the environment variable: <code>USER</code> in Unix, <code>USERNAME</code> in Windows. Different environment names and different paths between Windows and Unix explain why we need two different configuration files. There might be a way to manage those differences within a same file, but I am not very fluent in JavaScript :-(</p>
+
+<p>Here is an example of a <code>lockPref</code> preference configuration file for Unix (<code>config_file_unix.jsc</code>). We lock (<code>lockPref</code>) some preferences (IMAP server name, company name, cache location and size...), others can be just set as default (<code>defaultPref</code>); <code>startup.homepage</code>... We also use LDAP functions (from <code>prefcalls.js</code>) to get the current user (<code>USER</code> or <code>USERNAME</code>) email address and common name, respectively <code>mail</code> and <code>cn</code> in LDAP.</p>
+
+<pre>[root@lugdunum /var/www/html/browser]
+$ more config_file_unix.jsc
+// Functions you can use:
+// lockPref(name, value) user is disallowed from changing
+//  (aka lock_pref())
+// defaultPref(name, value) unless user overrides, this is value
+//  (aka default_pref())
+// unlockPref(name) unlock previously "lockPref"-ed name
+// config(name, value) usually for menus...
+// value = getPref(name) gets current setting
+// getLDAPAttributes(host, base, filter, attributes)
+// getLDAPValue(values, attribute)
+// .mime.type, .begin_mime_def, .end_mime_def..
+// .plat
+// alert(message);
+// var = prompt(message);
+// var = getPlatform() returns Win32,...
+//  getPlatform().contains("UNIX")...
+// var = getenv(envvar)
+// var = putenv(envvar)
+//
+// Objects/Functions you *can't* use because they aren't defined
+// navigator.* (argh, this *REALLY* bites)
+//=========================================================================
+// Preferences Configuration
+//=========================================================================
+with (PrefConfig) {
+var values = getLDAPAttributes("ldap2.int-evry.fr", \
+"ou=people,dc=int-evry,dc=fr", "uid=" + env_user, "cn,mail");
+var ldap_email = getLDAPValue(values, "mail");
+var ldap_gecos = getLDAPValue(values, "cn");
+//var toto = prompt("email");
+//alert("ldap_mail = " + ldap_email + "toto=" + toto);
+if (env_mozdebug) {
+ alert("env_user:" + env_user + "\nenv_home:" + env_home + \
+"\nldap_email:" + ldap_email + "\nldap_gecos:" + ldap_gecos + "\n");
+}
+//-----------------------------------------------------------------------
+// [ General Browser configuration ]
+//-----------------------------------------------------------------------
+config("autoadmin.refresh_interval", 1440); // auto-update every 24 hours
+defaultPref("browser.startup.page",1);
+//0=blank page, 1=homepage, 2=last visited
+defaultPref("browser.startup.homepage", "http://www/mci/mode-d-emploi.shtml");
+lockPref("browser.cache.directory", "/tmp");
+lockPref("browser.cache.memory_cache_size", 0);
+
+lockPref("mail.server_type",1); // POP=0 IMAP=1
+lockPref("network.hosts.imap_servers", "pop-int");
+lockPref("mail.imap.server.pop-int.using_subscription",true);
+lockPref("mail.imap.server.pop-int.userName", env_user);
+lockPref("mail.identity.useremail", ldap_email);
+lockPref("mail.identity.username", ldap_gecos);
+lockPref("mail.check_new_mail", false);
+lockPref("mail.directory", env_home+"/nsmail");
+lockPref("mail.identity.defaultdomain", "int-evry.fr");
+lockPref("mail.identity.organization", "INT Evry Essonne ");
+
+// LDAP
+lockPref("ldap_2.autoComplete.useDirectory", true);
+lockPref("ldap_2.servers.LDAPINT.autoComplete.enabled", true);
+lockPref("ldap_2.servers.LDAPINT.csid", "UTF-8");
+lockPref("ldap_2.servers.LDAPINT.description", "LDAP INT");
+lockPref("ldap_2.servers.LDAPINT.filename", "LDAPINT.na2");
+lockPref("ldap_2.servers.LDAPINT.position", 2);
+lockPref("ldap_2.servers.LDAPINT.searchBase", "ou=people,dc=int-evry,dc=fr");
+lockPref("ldap_2.servers.LDAPINT.serverName", "ldap1.int-evry.fr");
+
+//news
+lockPref("news.directory", "/tmp");
+//proxy
+lockPref("network.proxy.autoconfig_url", \
+"http://www.int-evry.fr/local/config.proxy");
+
+} // with (PrefConfig)
+</pre>
+
+<p>This document was initially translated from LaTeX with <a href="http://pauillac.inria.fr/~maranget/hevea/">HEVEA</a>.</p>
+
+<p>"author" : " Jehan Procaccia MCI INT-EVRY- jehan.procaccia AT int-evry.fr"</p>
+
+<p>"creation date" : " 02 September 2006" </p>

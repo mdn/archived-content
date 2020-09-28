@@ -1,0 +1,47 @@
+---
+title: Benchmarking
+slug: Mozilla/Benchmarking
+---
+<h2 id="Debug_Builds">Debug Builds</h2>
+
+<p>Debug builds (--enable-debug) and non-optimized builds (--disable-optimize) are <em>much</em> slower. Any performance metrics gathered by such builds are largely unrelated to what would be found in a release browser.</p>
+
+<h2 id="Rust_optimization_level">Rust optimization level</h2>
+
+<p>Local optimized builds are <a href="https://groups.google.com/forum/#!topic/mozilla.dev.platform/pN9O5EB_1q4">compiled with rust optimization level 1 by default</a>, unlike Nightly builds, which use rust optimization level 2. This setting reduces build times significantly but comes with a serious hit to runtime performance for any rust code (<a href="https://groups.google.com/d/msg/mozilla.dev.platform/pN9O5EB_1q4/ooXNuqMECAAJ">for example stylo and webrender</a>). Add the following to your <a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options#Using_a_.mozconfig_Configuration_File">mozconfig</a> in order to build with level 2:</p>
+
+<pre class="notranslate">ac_add_options<code> </code><code class="source-line"><span class="syn_string">RUSTC_OPT_LEVEL</span></code>=2</pre>
+
+<h2 id="GC_Poisoning">GC Poisoning</h2>
+
+<p>Many Firefox builds have a diagnostic tool that causes crashes to happen sooner and produce much more actionable information, but also slow down regular usage substantially. In particular, "GC poisoning" is used in all debug builds, and in optimized Nightly builds (but not opt Developer Edition or Beta builds). The poisoning can be disabled by setting the environment variable</p>
+
+<pre class="notranslate">    JSGC_DISABLE_POISONING=1</pre>
+
+<p>before starting the browser.</p>
+
+<h2 id="Async_Stacks">Async Stacks</h2>
+
+<div class="blockIndicator note">
+<p>Async stacks no longer impact performance since <strong>Firefox 78</strong>, as <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1601179">bug 1601179</a> limits async stack capturing to when DevTools is opened.</p>
+</div>
+
+<p>Another option that is on by default in non-release builds is the preference javascript.options.asyncstack, which provides better debugging information to developers. Set it to false to match a release build. (This may be disabled for many situations in the future. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1280819">bug 1280819</a>.</p>
+
+<h2 id="Accelerated_Graphics">Accelerated Graphics</h2>
+
+<p>Especially on Linux, accelerated graphics can sometimes lead to severe performance problems even if things look ok visually. Normally you would want to leave acceleration enabled while profiling, but on Linux you may wish to disable accelerated graphics (Preferences -&gt; Advanced -&gt; General -&gt; Use hardware acceleration when available).</p>
+
+<h2 id="Flash_Plugin">Flash Plugin</h2>
+
+<p>If you are profiling real websites, you should disable the Adobe Flash plugin so you are testing Firefox code and not Flash jank problems. In about:addons &gt; Plugins, set Shockwave Flash to "Never Activate".</p>
+
+<h2 id="Timer_Precision">Timer Precision</h2>
+
+<p>Firefox reduces the precision of the Performance APIs and other clock and timer APIs accessible to Web Content. They are currently reduce to a multiple of 2ms; which is controlled by the privacy.reduceTimerPrecision about:config flag.</p>
+
+<p>The exact value of the precision is controlled by the privacy.resistFingerprinting.reduceTimerPrecision.microseconds about:config flag.</p>
+
+<h2 id="Profiling_tools">Profiling tools</h2>
+
+<p>Currently the Gecko Profiler has limitations in the UI for inverted call stack top function analysis which is very useful for finding heavy functions that call into a whole bunch of code.  Currently such functions may be easy to miss looking at a profile, so feel free to <em>also</em> use your favorite native profiler.  It also lacks features such as instruction level profiling which can be helpful in low level profiling, or finding the hot loop inside a large function, etc.  Some example tools include Instruments on OSX (part of XCode), <a href="http://www.rotateright.com/">RotateRight Zoom</a> on Linux (uses perf underneath), and Intel VTune on Windows or Linux.</p>

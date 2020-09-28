@@ -1,0 +1,56 @@
+<p><strong><a href="/en-US/docs/FileGuide/IO" title="FileGuide/IO">File and Stream Guide</a>:</strong> <strong>[</strong> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableIO" title="">nsIScriptableIO</a></code> | <a href="/en-US/docs/FileGuide/Accessing_Files" title="FileGuide/Accessing_Files">Accessing Files</a> | <a href="/en-US/docs/FileGuide/FileInfo" title="FileGuide/FileInfo">Getting File Information</a> | <a href="/en-US/docs/FileGuide/FileReading" title="FileGuide/FileReading">Reading from Files</a> | <a href="/en-US/docs/FileGuide/FileWriting" title="FileGuide/FileWriting">Writing to Files</a> | <a href="/en-US/docs/FileGuide/MoveCopyDelete" title="FileGuide/MoveCopyDelete">Moving, Copying and Deleting Files</a> | <a href="/en-US/docs/FileGuide/FileUpDown" title="FileGuide/FileUpDown">Uploading and Downloading Files</a> | <a href="/en-US/docs/FileGuide/Directories" title="FileGuide/Directories">Working With Directories</a> <strong>]</strong></p>
+
+<div class="warning">
+  <strong>Important note:</strong> The pages from the <em>File and Stream Guide</em> use the <code>IO</code> object (<code>nsIScriptableIO</code>), which was not available in any released version of the platform (pending <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=396051" title="https://bugzilla.mozilla.org/show_bug.cgi?id=396051">some fixes</a>). There are alternative XPCOM APIs you can use, your help in updating this pages to use the supported API is very much welcome!</div>
+<p>Other documentation on files and I/O not using the unavailable nsIScriptableIO APIs: <a href="/en-US/docs/Code_snippets/File_I_O">Code snippets: File I/O</a>, <a href="/en-US/docs/XUL_Tutorial/Open_and_Save_Dialogs">Open and Save Dialogs</a>, <a href="/en-US/docs/Reading_textual_data">Reading textual data</a>, <a href="/en-US/docs/Writing_textual_data">Writing textual data</a>, <a href="/en-US/docs/Table_Of_Errors#File_Errors">List of file-related error codes</a>.</p>
+<h2 id="Accessing_Files">Accessing Files</h2>
+<p>This section describes how to create a file reference.</p>
+<h3 id="Retrieving_a_File">Retrieving a File</h3>
+<p>When working with files, usage is always done via a File object and not via string paths. This allows files to used in a portable way.</p>
+<p>Because string paths are not used, references to files in a File object are made relative to some starting directory. A number of starting directories may be used, for instance, the user's home directory, the desktop, the system's temporary folder, and so forth. Once one of these starting directories is determined, a file reference may be created relative to this. A common case is to write a file in the directory that holds the user's preferences. This is a convenient location where an extension might save a file it needs to use. This directory is referred to as the user's profile directory.</p>
+<p>To get a reference to a File object use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code>. The following example will retrieve a reference to a file named <code>sample.txt</code> located in the profile directory.</p>
+<pre>var file = IO.getFile("Profile", "sample.txt");
+</pre>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableIO" title="">nsIScriptableIO</a></code> object is a global object always available within an application or extension which provides a number of useful functions for dealing with files. One such method it provides is <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> which returns a new <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> object.</p>
+<p>The first argument to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> is the starting directory from which to locate a file. In the example above the word '<code>Profile</code>' is used, which means start from within the user's profile directory. The actual location of this directory will vary by user and system, so this is a convenient means to refer to a common directory without having to locate it yourself. For a full list of starting directories, see <a href="#Starting_Directories">Starting Directories</a> below.</p>
+<p>The second argument to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> is the filename to locate, which, here, is '<code>sample.txt</code>'. The result is that a reference is made to the 'sample.txt' file. It is important to note that this file does not have to exist for a file reference to be valid. That is, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> will still return a valid file reference even if the file 'sample.txt' does not yet exist. You can check if the file exists by using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#exists()">nsIFile.exists()</a></code>.</p>
+<pre>var file = IO.getFile("Profile", "sample.txt");
+if (file.exists())
+  alert("The file is there!");
+else
+  alert("File not found!");
+</pre>
+<p>Here, the same file is retrieved and a further check is performed to see whether the file is present or not. The <code>exists</code> method returns true if the file is present and false if it is not.</p>
+<p>If the file does not exist, you may wish to create it. The File object has a <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#create()">nsIFile.create()</a></code> method which may be used to create an empty file, or you can open a <a href="/en-US/docs/FileGuide/FileWriting" title="en/FileGuide/FileWriting">writing stream</a> and write to the file.</p>
+<p><code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> may only be used to retrieve files that are directly within one of the starting directories. To retrieve other files, you will need to use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> to access a directory and iterate through subdirectories until you come to the file that you want. For more information about this, see <a href="/en-US/docs/FileGuide/Directories" title="en/FileGuide/Directories">Working with Directories</a>.</p>
+<h4 id="Starting_Directories">Starting Directories</h4>
+<p>The examples above use the profile directory '<code>Profile</code>' as the starting directory for locating a file. There are several other values which may be used as the first argument to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code>, listed in the following table.</p>
+<table>
+  <tbody>
+    <tr>
+      <td>Application</td>
+      <td>The directory of the executing application. For Firefox, for instance, this will be the directory where Firefox is installed. For a XULRunner application, this will be the directory where the application is installed.</td>
+    </tr>
+    <tr>
+      <td>Working</td>
+      <td>The current working directory. If the application was launched from a command line, for instance, this will be the directory where the application was launched from, which may be different from the 'Application' value.</td>
+    </tr>
+    <tr>
+      <td>Profile</td>
+      <td>The profile directory where preferences are stored.</td>
+    </tr>
+    <tr>
+      <td>Desktop</td>
+      <td>The desktop directory. Usually, you would use this as the default directory for saving files.</td>
+    </tr>
+    <tr>
+      <td>Components</td>
+      <td>The components directory where XPCOM components are installed.</td>
+    </tr>
+    <tr>
+      <td>Temp</td>
+      <td>The temporary directory. You would store any temporary or cache files here.</td>
+    </tr>
+  </tbody>
+</table>
+<p>There are a number of other values that may be used, most of which are platform specific. For instance, on Windows, the value '<code>Strt</code>' returns the Start directory, where applications which run when the system starts up are placed. On other platforms, using this value will just result in an error.</p>

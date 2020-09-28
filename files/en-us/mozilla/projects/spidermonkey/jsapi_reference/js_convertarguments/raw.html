@@ -1,0 +1,192 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}} {{ obsolete_header("jsapi38") }}</div>
+
+<div class="summary">
+<p>Converts a series of JS values, passed in an argument array, to their corresponding JS types.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">bool
+JS_ConvertArguments(JSContext *cx, const JS::CallArgs &amp;args,
+                    const char *format, ...); // Added in SpiderMonkey 31
+
+bool
+JS_ConvertArguments(JSContext *cx, unsigned argc, jsval *argv,
+                    const char *format, ...); // Obsolete since JSAPI 30
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to perform any necessary conversions.
+    <p><code>cx</code> also affects the interpretation of <code>format</code>, if {{jsapixref("JS_AddArgumentFormatter")}} has been called.</p>
+    {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>args</code></td>
+   <td>{{jsapixref("JS::CallArgs", "const JS::CallArgs &amp;")}}</td>
+   <td>
+    <p>Reference to the arguments to convert. {{ Jsapi_minversion_inline("31") }}</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>argc</code></td>
+   <td><code>unsigned</code></td>
+   <td>The number of arguments to convert. {{ obsolete_inline("jsapi30") }}</td>
+  </tr>
+  <tr>
+   <td><code>argv</code></td>
+   <td>{{jsapixref("Jsval", "jsval *")}}</td>
+   <td>
+    <p>Pointer to the vector of arguments to convert. {{ obsolete_inline("jsapi30") }}</p>
+
+    <p>This must be an <code>argv</code> pointer created by the JS engine and passed to a {{jsapixref("JSNative")}} or {{jsapixref("JSFastNative")}} callback, <em>not</em> an array created by application code. In certain error cases, <code>JS_ConvertArguments</code> calls <code>JS_ARGV_CALLEE(argv)</code>, which accesses memory outside the range <code>[argv .. argv+argc)</code>.</p>
+
+    <p><code>JS_ConvertArguments</code> may modify <code>argv</code> in place by replacing an argument with the converted value. (The purpose is to ensure GC safety.)</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>format</code></td>
+   <td><code>const char *</code></td>
+   <td>Null-terminated string describing the types of the out parameters and how to convert the values in <code>argv</code>.</td>
+  </tr>
+  <tr>
+   <td><code>...</code></td>
+   <td><code>void *</code></td>
+   <td>
+    <p>Out parameters. Pointers to variables into which to store the converted values. There must be one pointer for each parameter described in <code>format</code>.</p>
+
+    <p>Variables for optional parameters must already be initialized, because if an optional parameter is not in <code>argv</code>, <code>JS_ConvertArguments</code> does not modify the corresponding variable.</p>
+    The variables do not need to be rooted. (If conversion creates a new GC thing, the corresponding <code>jsval</code> is written back to <code>argv</code>, which is rooted.)</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JS_ConvertArguments</code> provides a convenient way to translate a series of JS values into their corresponding JS types with a single function call. It saves you from having to write separate tests and elaborate if...else statements in your function code to retrieve and translate multiple JS values for use with your own functions.</p>
+
+<p><code>cx</code> is the context for the call. <code>argc</code> indicates the number of JS values you are passing in for conversion. <code>argv</code> is a pointer to the array of JS values to convert.</p>
+
+<p><code>format</code> is a null-terminated C string. Each element of the array indicates the C type into which to convert the next available JS value. <code>format</code> can contain one or more instances of the following characters, as appropriate:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Character</th>
+   <th>C Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>b</code></td>
+   <td><code>bool</code></td>
+   <td><code>Boolean</code></td>
+  </tr>
+  <tr>
+   <td><code>c</code></td>
+   <td><code>uint16_t</code></td>
+   <td>ECMA uint16_t, Unicode character</td>
+  </tr>
+  <tr>
+   <td><code>i</code></td>
+   <td><code>int32_t</code></td>
+   <td>ECMA int32_t</td>
+  </tr>
+  <tr>
+   <td><code>j</code></td>
+   <td><code>int32_t</code></td>
+   <td>ECMA int32_t (used to be different, behaves like <code>i</code> now) {{ obsolete_inline("jsapi28") }}</td>
+  </tr>
+  <tr>
+   <td><code>u</code></td>
+   <td><code>uint32_t</code></td>
+   <td>ECMA uint32_t</td>
+  </tr>
+  <tr>
+   <td><code>d</code></td>
+   <td><code>double</code></td>
+   <td>IEEE double</td>
+  </tr>
+  <tr>
+   <td><code>I</code></td>
+   <td><code>double</code></td>
+   <td>Integral IEEE double</td>
+  </tr>
+  <tr>
+   <td><code>s</code></td>
+   <td><code>char *</code> (C string)</td>
+   <td>{{ obsolete_inline() }} {{bug(607292)}}</td>
+  </tr>
+  <tr>
+   <td><code>S</code></td>
+   <td><code>JSString *</code></td>
+   <td>Unicode string, accessed by a <code>JSString</code> pointer</td>
+  </tr>
+  <tr>
+   <td><code>W</code></td>
+   <td><code>char16_t *</code></td>
+   <td>Unicode character vector, 0-terminated (<code>W</code> for wide)</td>
+  </tr>
+  <tr>
+   <td><code>o</code></td>
+   <td><code>JSObject *</code></td>
+   <td>Object reference</td>
+  </tr>
+  <tr>
+   <td><code>f</code></td>
+   <td><code>JSFunction *</code></td>
+   <td>
+    <p>The argument is converted to a function as though by a call to {{jsapixref("JS_ValueToFunction")}}.</p>
+
+<div class="warning">
+<p>This conversion is dangerous and almost entirely useless, because the resulting <code>JSFunction</code> is not a real function object and therefore cannot be safely passed to any other JSAPI function. That includes <code>JS_CallFunction()</code> and <code>JS_GetFunctionObject()</code>. A <code>JSFunction</code> represents only the compiled code and not the environment of the function. Unless the function happens to be a native function, this means it isn't attached to any global or enclosing scope, and therefore must not be treated like a real function. Instead, use <code>JSVAL_IS_OBJECT</code> and <code>JS_ObjectIsFunction()</code> to check whether a value is already a function, or use <code>JS_ConvertValue()</code> to convert a value to <code>JSTYPE_FUNCTION</code> safely.</p>
+</div>
+   </td>
+  </tr>
+  <tr>
+   <td><code>v</code></td>
+   <td><code>jsval</code></td>
+   <td>Argument value (no conversion)</td>
+  </tr>
+  <tr>
+   <td><code>*</code></td>
+   <td>N/A</td>
+   <td>None. If an asterisk (*) is present in format, it tells the conversion routine to skip converting the current argument.</td>
+  </tr>
+  <tr>
+   <td><code>/</code></td>
+   <td>N/A</td>
+   <td>None. Arguments after the slash are optional. If an optional argument is missing from <code>argv</code>, <code>JS_ConvertArguments</code> neither assigns anything to any variable nor reports an error.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>This function also takes in consideration any additional custom types defined on <code>cx</code> using {{jsapixref("JS_AddArgumentFormatter")}}.</p>
+
+<p>For example, if <code>format</code> is <code>"bIob"</code>, then <code>JS_ConvertArguments</code> converts the first JS value in <code>argv</code> into a <code>bool</code>, the second value into a <code>double</code>, the third value into a <code>JSObject *</code>, and the last value into a <code>bool</code>.</p>
+
+<p>To skip a given argument, pass an asterisk in the corresponding position in <code>format</code>.</p>
+
+<p>If <code>argc</code> is less than the number of arguments required by <code>format</code>, <code>JS_ConvertArgument</code> reports an error and returns <code>false</code>. If <code>argc</code> is greater than the number of arguments described in <code>format</code>, the extraneous arguments are ignored.</p>
+
+<p>On success, <code>JS_ConvertArgument</code> returns <code>true</code>. If any argument conversion fails or there are not enough arguments, it returns <code>false</code>.</p>
+
+<p>To perform the opposite conversion, converting values of various C types to an array of <code>jsval</code>s, use {{jsapixref("JS_PushArguments")}}.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_ConvertArguments") }}</li>
+ <li>{{jsapixref("JS_ConvertArgumentsVA")}}</li>
+ <li>{{bug(607292)}} - obsolete <code>s</code> format</li>
+ <li>{{bug(933946)}} - obsolete <code>j</code> format</li>
+ <li>{{bug(969798)}} - added <code>args</code></li>
+ <li>{{bug(1125784)}}</li>
+</ul>

@@ -1,0 +1,173 @@
+<p>In <a href="/en-US/docs/XPCOM">XPCOM</a>, a <strong>weak reference</strong> is a special object that contains a pointer to an XPCOM object, but does<em>not</em> keep that object alive. If the referent object is destroyed before the weak reference, the pointer inside the weak reference is set to <code>nsnull</code>.</p>
+
+<h3 id="Why_do_I_need_this.3F" name="Why_do_I_need_this.3F">Why do I need this?</h3>
+
+<p>When you hold an owning reference on an object (i.e., you have <code>AddRef</code>ed it), you are holding that object in existence for the duration of your reference. This isn't always appropriate, and can lead to trouble. If, for instance, this owning reference is part of a cycle of owning references (e.g., if the referenced object also holds a owning reference back to you), then none of the objects in the cycle can be reclaimed without taking special measures.</p>
+
+<p>There are less severe situations. A naive design for an observer/observable relationship would require the observable to hold a owning reference to the observer. After all, the observable must send messages to each observer, notifying it of the appropriate state changes. To do that, it will call a method on the observer, so it needs a pointer. And the call would fail if the pointer were allowed to dangle, therefore, the pointer should be a owning reference. This design, however, is flawed, as it holds the observer in existence longer than would otherwise be necessary. The observer may only need a short life compared to the thing being observed. It might go away after the first interesting event, even. But in this design, by hitching its life to the observable, it is kept on life-support long past any need or use.</p>
+
+<p>What is actually needed in this case, is either out-of-band signaling, where when the observer wants to go away, it unregisters itself from the observable, which then releases its owning reference, allowing the observer to die, or else a new kind of reference. This document describes an implementation of<em>weak references</em>. A weak reference does not hold its referent in existence, but also will not dangle. When the referent is destroyed, the weak reference automatically becomes <code>nsnull</code>. This technique can significantly simplify certain relationships, and you should consider it when an owning reference is inappropriate, but where a raw pointer might end up dangling.</p>
+
+<h3 id="How_do_I_use_it.3F" name="How_do_I_use_it.3F">How do I use it?</h3>
+
+<p>Here's an example. The new and interesting things are highlighted.</p>
+
+<pre class="brush: cpp">#include "nsWeakPtr.h"
+#include "nsIWeakReferenceUtils.h"
+// ...
+
+// it's easy to get a weak reference...
+nsWeakPtr weakPtr = do_GetWeakReference(aFooPtr);
+
+// ...
+
+{   // ...but to use my weak reference, I'll need a (short-lived) owning reference
+  nsCOMPtr&lt;nsIFoo&gt; tempFooPtr = do_QueryReferent(weakPtr);
+  if ( tempFooPtr )
+    tempFooPtr-&gt;SomeFooMethod(...);
+  // else, the `real' object has gone away
+}
+</pre>
+
+<p>In a real world example, however, you are more likely to be holding a weak reference in a member variable. In the following example, an <code>nsObservable</code> must keep some kind of a reference to each observer, in order to report events. The <code>nsObservable</code> doesn't want to keep the observers alive just to prevent a dangling pointer, however. So, instead of holding an owning reference to an <code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIObserver" title="/en-US/docs/XPCOM_Interface_Reference/nsIObserver">nsIObserver</a></code>, it holds a weak reference. The weak reference doesn't artificially extend the life of the observer, and yet, it can never dangle.</p>
+
+<p>The following assumes that any <code>nsIObserver</code> that is passed in also implements <code>nsISupportsWeakReference</code>. You can extrapolate from managing a single observer to managing a list of observers.</p>
+
+<pre class="brush: cpp">class nsObservable
+  {
+    public:
+      // ...
+      nsresult AddObserver( nsIObserver* );
+      nsresult NotifyObservers( nsIMessage* );
+      // ...
+    private:
+      nsWeakPtr mObserver;
+      // ...or imagine a list of observers here
+  };
+
+// ...
+
+nsresult
+nsObservable::AddObserver( nsIObserver* aObserver )
+  {
+    mObserver = getter_AddRefs( NS_GetWeakReference(aObserver) );
+      // ...or append this to the list of observers
+    return NS_OK;
+  }
+
+nsresult
+nsObservable::NotifyObservers( nsIMessage* aMessage )
+  {
+    nsCOMPtr&lt;nsIObserver&gt; observer = do_QueryReferent(mObserver);
+    if ( observer )
+      observer-&gt;NoticeMessage(aMessage);
+    else
+      mObserver = 0;
+      // or remove this observer from the list, he's gone away
+    return NS_OK;
+  }
+
+// ...
+
+</pre>
+
+<p>It's key to note that an <code>nsWeakPtr</code> has exactly the same interface as an <code>nsCOMPtr</code>. In fact, <code>nsWeakPtr</code> is defined like this</p>
+
+<pre class="brush: cpp">typedef nsCOMPtr&lt;nsIWeakReference&gt; nsWeakPtr;
+</pre>
+
+<h3 id="Well_this_sucks.21" name="Well_this_sucks.21">Well this sucks!</h3>
+
+<p>By now you've probably noticed that this particular weak reference implementation doesn't give you exactly the interface you were hoping for.</p>
+
+<h4 id="Why_can.27t_I_just_directly_call_my_interfaces_methods_on_the_weak_reference.3F" name="Why_can.27t_I_just_directly_call_my_interfaces_methods_on_the_weak_reference.3F">Why can't I just directly call my interfaces methods on the weak reference?</h4>
+
+<p>You really want this weak reference scheme to give you a pointer that implements the interface you actually care about, e.g.,</p>
+
+<pre class="brush: cpp">// Note: _not_ the implementation we have...
+nsWeakPtr&lt;nsIFoo&gt; weakFooPtr = fooPtr;
+// ...
+if ( weakFooPtr )
+  status = weakFooPtr-&gt;SomeFooMethod(...);
+</pre>
+
+<p>This is a reasonable thing to want. It's expensive to implement automatically, however. Neither inheritance, nor templates, nor macros can help automatically forward all the method calls to the real object. XPIDL could write an implementation for you (if we modified it), or you could write one by hand as I discuss below. There are other, mostly negligible, costs: it's an extra indirection per call, and the easy implementation requires adding an extra pointer per interface to the target implementation.</p>
+
+<h4 id="Why_can.27t_I_just_QueryInterface_between_the_pair.3F" name="Why_can.27t_I_just_QueryInterface_between_the_pair.3F">Why can't I just <code>QueryInterface</code> between the pair?</h4>
+
+<p>It really feels like the <code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIWeakReference">nsIWeakReference</a></code> that you are holding is just another interface on the target object. It seems reasonable to want to simply <code>QueryInterface</code> between the two. Why these extra calls: <code>GetWeakReference</code> and <code>QueryReferent</code>? This would be possible if the weak reference was actually aggregated to the target object.</p>
+
+<p>The problem here is <code>QueryInterface</code>. <code>QueryInterface</code> must satisfy many requirements to allow COM to work. Among these requirements is that every call to QueryInterface against the same (aggragate) object for the same interface must yield the same result, no matter what interface pointer you call it through, and no matter when you call it. This is impossible in our situation, since we explicitly rely on the the fact that part of the `aggregate' can be destroyed. Subsequent attempts to reach that part must return <code>nsnull</code>. Sometimes our <code>QueryInterface</code> through the weak pointer would return a pointer to the `real' interface, and sometimes it would return <code>nsnull</code>. We just broke COM.</p>
+
+<p>It's clear, therefore, that the weak reference can't be aggregated to the target object. Hence, we can't use <code>QueryInterface</code> to move between them. I know this sounds more convenient, but the global routine <code>NS_GetWeakReference</code> makes it easy to go from the target object to the weak reference; and <code>nsIWeakReference::QueryReferent</code> gives you the same functionality as <code>QueryInterface</code> for getting back. Additionally, <code>nsCOMPtr</code> now supports the new key <code>do_QueryReferent</code> to simplify life even further.</p>
+
+<h3 id="How_do_I_make_a_class_support_weak_references.3F" name="How_do_I_make_a_class_support_weak_references.3F">How do I make a class support weak references?</h3>
+
+<p>In JavaScript, just make sure that your <code>QueryInterface </code>method returns your object for the <a class="internal" href="/en-US/docs/XPCOM_Interface_Reference/nsISupportsWeakReference" title="/en-US/docs/XPCOM_Interface_Reference/nsISupportsWeakReference"><code>nsISupportsWeakReference</code></a> interface, and you're set; XPConnect does all the work for you.</p>
+
+<p>Just roll in <code><a href="/en-US/docs/nsSupportsWeakReference" title="/en-US/docs/nsSupportsWeakReference">nsSupportsWeakReference</a></code>, a mix-in class that does all the work, and adjust your <code>QueryInterface</code> accordingly, e.g.,</p>
+
+<pre class="brush: cpp">//...
+#include "nsWeakReference.h"
+
+class nsFoo : public nsIFoo, ..., public nsSupportsWeakReference { ... };
+
+
+// ...if you used the table macros to implement |QueryInterface|, add an entry
+
+NS_INTERFACE_MAP_BEGIN(nsFoo)
+  // ...
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+  // ...
+NS_INTERFACE_MAP_END
+
+
+// ...if you used a |NS_IMPLE_QUERYINTERFACEn| macro, move up to the next higher one and add a term
+
+NS_IMPL_QUERYINTERFACEn+1( ...,nsISupportsWeakReference)
+
+
+// ...if you implemented |QueryInterface| by hand, add a clause
+
+NS_IMETHODIMP
+nsFoo::QueryInterface( REFNSIID aIID, void** aInstancePtr )
+  {
+    // ...
+    else if ( aIID.Equals(nsCOMTypeInfo&lt;nsISupportsWeakReference&gt;::GetIID()) )
+      *aInstancePr = NS_STATIC_CAST(nsISupportsWeakReference*, this);
+    // ...
+  }
+</pre>
+
+<h3 id="Alternatives" name="Alternatives">Alternatives</h3>
+
+<p>This technique is useful, but in situations where you need this, there are two alternatives which you may want to consider:</p>
+
+<ul>
+ <li>You might hold an owning reference, but arrange to <code>Release</code> it out-of-band; this must be before the destructor, which would otherwise never be called.</li>
+ <li>You might hold a raw pointer (without <code>AddRef</code>ing and <code>Release</code>ing it), and avoid using it in cases where it might dangle.</li>
+</ul>
+
+<h3 id="See_also" name="See_also">See also</h3>
+
+<ul>
+ <li>The source
+  <ul>
+   <li><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/base/nsIWeakReference.idl" rel="custom">xpcom/base/nsIWeakReference.idl</a></code></li>
+   <li><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/glue/nsWeakReference.h" rel="custom">xpcom/glue/nsWeakReference.h</a></code></li>
+   <li><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/glue/nsWeakReference.cpp" rel="custom">xpcom/glue/nsWeakReference.cpp</a></code></li>
+  </ul>
+ </li>
+ <li><a href="/en-US/docs/XPCOM_ownership_guidelines">XPCOM ownership guidelines</a></li>
+ <li><a href="/en-US/docs/Using_nsCOMPtr">Using nsCOMPtr</a></li>
+</ul>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: <a class="external" href="http://ScottCollins.net/">Scott Collins</a></li>
+ <li>Last Updated Date: September 23, 2000</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

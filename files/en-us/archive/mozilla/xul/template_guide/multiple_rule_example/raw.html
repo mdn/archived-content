@@ -1,0 +1,81 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Multiple_Rules" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Using_Recursive_Templates">Next  »</a></p>
+</div>
+The most common use of multiple rules is to apply different action bodies to different results. Often this will be because a particular result has a property that others do not. For instance, in an earlier example, one of the photos had a description and the other photos did not. In this case, you might wish to display the photo with a description in a different manner. This is useful if you wish to hide any content that would be needed to display the description.
+<p>The next example shows how we can do this.
+</p>
+<pre>&lt;vbox id="photosList" align="start" datasources="template-guide-photos5.rdf"
+      ref="http://www.xulplanet.com/rdf/myphotos"&gt;
+  &lt;template&gt;
+    &lt;rule&gt;
+      &lt;conditions&gt;
+        &lt;content uri="?start"/&gt;
+        &lt;member container="?start" child="?photo"/&gt;
+        &lt;triple subject="?photo"
+                predicate="http://purl.org/dc/elements/1.1/title"
+                object="?title"/&gt;
+        &lt;triple subject="?photo"
+                predicate="http://purl.org/dc/elements/1.1/description"
+                object="?description"/&gt;
+        &lt;triple subject="?photo"
+                predicate="http://purl.org/dc/elements/1.1/date"
+                object="?date"/&gt;
+      &lt;/conditions&gt;
+      &lt;action&gt;
+        &lt;hbox uri="?photo" class="box-padded"&gt;
+          &lt;vbox&gt;
+            &lt;label value="?title"/&gt;
+            &lt;image src="?photo"/&gt;
+          &lt;/vbox&gt;
+          &lt;groupbox&gt;
+            &lt;caption label="Photo Details"/&gt;
+            &lt;label value="?description"/&gt;
+            &lt;label value="Date: ?date"/&gt;
+          &lt;/groupbox&gt;
+        &lt;/hbox&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;conditions&gt;
+        &lt;content uri="?start"/&gt;
+        &lt;member container="?start" child="?photo"/&gt;
+        &lt;triple subject="?photo"
+                predicate="http://purl.org/dc/elements/1.1/title"
+                object="?phototitle"/&gt;
+      &lt;/conditions&gt;
+      &lt;action&gt;
+        &lt;vbox uri="?photo" class="box-padded"&gt;
+          &lt;label value="?phototitle"/&gt;
+          &lt;image src="?photo"/&gt;
+        &lt;/vbox&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p>In <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex24.xul">this example</a>, the first rule matches only those photos with title, description, and date properties. The second rule matches those photos with a title. If a photo did not have a title, it would not match any rule. In the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-photos5.rdf">example data</a>, only the first photo has been given all the properties to match the first rule. The second photo has a title and date but no description, while the third photo has only a title. The first photo will match both rules whereas the other two photos will match only the second rule. The resulting data will be:
+</p>
+<pre>(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/palace.jpg,
+ ?title = Palace from Above
+ ?description = View from the top of the tower looking east of the Doges Palace,
+ ?date = 2005-04-30T14:55:00+01.00)
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/palace.jpg,
+ ?phototitle = Palace from Above)
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/canal.jpg,
+ ?phototitle = Canal)
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg,
+ ?phototitle = Obelisk)
+</pre>
+<p>The first result matches the first rule and contains variables for the two additional predicates that were examined in the conditions. Since the second rule doesn't refer to these variables, they will not be filled in. Although the canal photo has a date, the second rule doesn't use it, so you cannot refer to the ?date variable in this rule. But, you could use a &lt;binding&gt; to get the date without requiring it to match the conditions. Of course, the variable doesn't have to be ?date in the second rule.
+</p><p>You might notice that the ?title variable is used in the first rule whereas the ?phototitle variable is used for the second rule, despite that they both store the value of the title predicate. There is no reason for this -- it is only used in this example to show that there is no connection between the variables used in the two rules. You can use different variables if it makes sense in the context of the template or the data, although in this example it would seem more reasonable to use the same variable name.
+</p><p>The only exception to this is that the container and member variables (those that are referred to in the uri attributes), must be the same in all rules. In this example, the container variable is ?start and the member variable is ?photo. If different variables were used for these, the rules would not work properly. The reason for this is due to the manner in which the builder processes the data.
+</p><p>Looking back at the results listed above, the palace photo appears twice so the second one will be removed, leaving only three matches. Although the builder actually generates mutliple matches for one resource, in many cases it isn't necessary to be aware of this detail when creating templates. It is usually sufficient to assume that earlier rules are used to filter results much like an if-else construct in a programming language. If the last rule has no specific conditions (for example a simple rule with no attributes on the &lt;rule&gt; element), it could be considered to be the final else block that matches all data.
+</p><p>Since results generated by earlier rules override those of later results, you will want to ensure that the rules are placed in the right order. The rules should be ordered from most specific to least specific. If you reversed the order of the two rules in the example above, three photos would still be displayed, but the larger rule that displays the image details would be dropped as the other rule has a higher priority. The <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex24b.xul">result</a> would be that the palace photo would not show this information.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Multiple_Rules" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Using_Recursive_Templates">Next  »</a></p>
+</div>

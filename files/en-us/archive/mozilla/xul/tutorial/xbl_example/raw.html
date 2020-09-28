@@ -1,0 +1,204 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:XBL_Inheritance" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Features_of_a_Window">Next  »</a></p>
+</div>
+
+<p>This section will describe an example XBL element.</p>
+
+<h3 id="A_Slideshow_Element" name="A_Slideshow_Element">A Slideshow Element</h3>
+
+<p>Let's construct a full example of an XBL element. This will be a widget that stores a deck of objects, each displayed one at a time. Navigation buttons along the bottom will allow the user to cycle through the objects while a text widget between the buttons will display the current page. You could put anything within the pages, however, this widget might be useful for a set of images. We'll call this a slideshow element.</p>
+
+<h4 id="Content_of_the_Slideshow" name="Content_of_the_Slideshow">Content of the Slideshow</h4>
+
+<p>First, let's determine what elements need to go in the XBL content. Because we want page flipping, a <code><a href="/en-US/docs/Mozilla/Tech/XUL/deck" title="deck">deck</a></code> element would be the most suitable to hold the page content. The content of the pages will be specified in the XUL file, not in XBL, but we'll need to add it inside the deck. The <code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#children">children</a></code> tag will need to be used. Along the bottom, we'll need a button to go the previous page, a label to display the current page number, and a button to go to the next page.</p>
+
+<p><span id="Example_1"><a id="Example_1"></a><strong>Example 1</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_xblex_1.xml.txt">Source</a></p>
+
+<pre>&lt;binding id="slideshow"&gt;
+  &lt;content&gt;
+    &lt;xul:vbox flex="1"&gt;
+      &lt;xul:deck xbl:inherits="selectedIndex" selectedIndex="0" flex="1"&gt;
+        &lt;children/&gt;
+      &lt;/xul:deck&gt;
+      &lt;xul:hbox&gt;
+        &lt;xul:button xbl:inherits="label=previoustext"/&gt;
+        &lt;xul:label flex="1"/&gt;
+        &lt;xul:button xbl:inherits="label=nexttext"/&gt;
+      &lt;/xul:hbox&gt;
+    &lt;/xul:vbox&gt;
+  &lt;/content&gt;
+&lt;/binding&gt;
+</pre>
+
+<p>This binding creates the slideshow structure that we want. The <code id="a-flex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/flex">flex</a></code> attribute has been added to a number of elements so that it stretches in the right way. The <code id="a-label"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/label">label</a></code> attributes on the two buttons inherit their values from the bound element. Here, they inherit from two custom attributes, <code>previoustext</code> and <code>nexttext</code>. This makes it easy to change the labels on the buttons. The children of the element that the XBL is bound to will be placed inside the <code><a href="/en-US/docs/Mozilla/Tech/XUL/deck" title="deck">deck</a></code>. The <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> is inherited by the deck, so we may set the initial page in the XUL.</p>
+
+<p>The following XUL file produces the result in the image.</p>
+
+<pre>&lt;box class="slideshow" previoustext="Previous" nexttext="Next" flex="1"&gt;
+  &lt;button label="Button 1"/&gt;
+  &lt;checkbox label="Checkbox 2"/&gt;
+  &lt;textbox/&gt;
+&lt;/box&gt;
+</pre>
+
+<p>The style sheet used here is:</p>
+
+<pre>.slideshow {
+  -moz-binding: url("slideshow.xml#slideshow");
+}
+</pre>
+
+<div class="float-right"><img alt="Image:xblex1.jpg"></div>
+
+<p>The first button, <strong style="white-space: nowrap;">Button 1</strong> has been used as the first page of the deck. The <code><a href="/en-US/docs/Mozilla/Tech/XUL/label" title="label">label</a></code> widget has not appeared as no <code>value</code> has been specified for it. We could set a value, but instead it will calculated later.</p>
+
+<h4 id="page_Property" name="page_Property"><code>page</code> Property</h4>
+
+<p>Next, a property that holds the current page will be added. When getting this custom property, it will need to retrieve the value of the <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> attribute of the deck, which holds the number of the currently displayed page. Similarly, when setting this property, it will need to change the <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> attribute of the deck. In addition, the text widget will need to be updated to display which page is the current one.</p>
+
+<pre>&lt;property name="page"
+    onget="return parseInt(document.getAnonymousNodes(this)[0].childNodes[0].getAttribute('selectedIndex'));"
+    onset="return this.setPage(val);"/&gt;
+</pre>
+
+<p>The <code>page</code> property gets its value by looking at the first element of the anonymous array. This returns the vertical box, so to get the deck, we need to get the first child node of the box. The anonymous array isn't used as the deck is not anonymous from the box. Finally, the value of the <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> attribute is retrieved. To set the page, a method 'setPage' is called which will be defined later.</p>
+
+<p>An <code id="a-oncommand"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/oncommand">oncommand</a></code> handler will need to be added to the Previous and Next buttons so that the page is changed when the buttons are pressed. Conveniently, we can change the page using the custom 'page' property that was just added:</p>
+
+<pre>&lt;xul:button xbl:inherits="label=previoustext"
+               oncommand="parentNode.parentNode.parentNode.page--;"/&gt;
+&lt;xul:description flex="1"/&gt;
+&lt;xul:button xbl:inherits="label=nexttext"
+               oncommand="parentNode.parentNode.parentNode.page++;"/&gt;
+</pre>
+
+<p>Because the 'page' property is only on the outer XUL element, we need to to use the parentNode property to get to it. The first parentNode returns the parent of the button which is the horizontal box, the second its parent, the vertical box, and finally, its parent which is the outer box. The 'page' property is incremented or decremented. This will call the <code>onget</code> script to get the value, increment or decrement the value by one, and then call the <code>onset</code> handler to set the value.</p>
+
+<h4 id="setPage_method" name="setPage_method"><code>setPage</code> method</h4>
+
+<p>Now let's define the 'setPage' method. It will take one parameter, the page number to set the page to. It will need to make sure the page is not out of range and then modify the deck's <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> attribute and the text widget's <code id="a-label"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/label">label</a></code> attribute.</p>
+
+<pre>&lt;method name="setPage"&gt;
+  &lt;parameter name="newidx"/&gt;
+  &lt;body&gt;
+    &lt;![CDATA[
+      var thedeck=document.getAnonymousNodes(this)[0].childNodes[0];
+      var totalpages=this.childNodes.length;
+
+      if (newidx&lt;0) return 0;
+      if (newidx&gt;=totalpages) return totalpages;
+      thedeck.setAttribute("selectedIndex",newidx);
+      document.getAnonymousNodes(this)[0].childNodes[1].childNodes[1]
+              .setAttribute("value",(newidx+1)+" of "+totalpages);
+      return newidx;
+    ]]&gt;
+  &lt;/body&gt;
+&lt;/method&gt;
+</pre>
+
+<p>This function is called <code>setPage</code> and takes one parameter <code>newidx</code>. The body of the method has been enclosed inside <code>&lt;![CDATA[</code> and <code>]]&gt;</code>. This is the general mechanism in all XML files that can be used to escape all of the text inside it. That way, you don't have to escape every less-than and greater-than sign inside it.</p>
+
+<p>Let's break down the code piece by piece.</p>
+
+<ul>
+ <li>
+  <pre>var thedeck=document.getAnonymousNodes(this)[0].childNodes[0];
+</pre>
+  Get the first element of the anonymous content array, which will be the vertical box, then get its first child, which will be the deck element.</li>
+ <li>
+  <pre>var totalpages=this.childNodes.length;
+</pre>
+  Get the number of children that the bound box has. This will give the total number of pages that there are.</li>
+ <li>
+  <pre>if (newidx&lt;0) return 0;
+</pre>
+  If the new index is before the first page, don't change the page and return 0. The page should not change to a value earlier than the first page.</li>
+ <li>
+  <pre>if (newidx&gt;=totalpages) return totalpages;
+</pre>
+  If the new index is after the last page, don't change the page and return the last page's index. The page should not change to one after the last page.</li>
+ <li>
+  <pre>thedeck.setAttribute("selectedIndex",newidx);
+</pre>
+  Change the <code>selectedIndex</code> attribute on the deck. This causes the requested page to be displayed.</li>
+ <li>
+  <pre>document.getAnonymousNodes(this)[0].childNodes[1].childNodes[1].setAttribute("value",(newidx+1)+" of "+totalpages);
+</pre>
+  This line modifies the label element so that it displays the current page index. The label element can be retrieved by getting the first element of anonymous content (the vertical box), the second child of that label element (the horizontal box), and then the second element of that box. The <code>value</code> attribute is changed to read '1 of 3' or something similar. Note that one is added to the index because indicies start at 0.</li>
+</ul>
+
+<h4 id="Constructor" name="Constructor">Constructor</h4>
+
+<p>We will also need a constructor to initialize the label element so that it displays correctly when the slideshow is first displayed. We use similar code as to the method above to set the page number. The reference to 'this.page' will call the onget script of the page property, which in turn will retrieve the initial page from the <code id="a-selectedIndex"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selectedIndex">selectedIndex</a></code> attribute.</p>
+
+<pre>&lt;constructor&gt;
+  var totalpages=this.childNodes.length;
+  document.getAnonymousNodes(this)[0].childNodes[1].childNodes[1]
+          .setAttribute("value",(this.page+1)+" of "+totalpages);
+&lt;/constructor&gt;
+</pre>
+
+<h4 id="Additional_Features" name="Additional_Features">Additional Features</h4>
+
+<p>We can add some additional features as well. Some keyboard shortcuts could be used for the Previous and Next buttons, (say backspace and the Enter key). First and Last buttons could be added to go to the first and last pages. The label element could be changed to a field where the user could enter the page to go to, or a popup could be added to allow selection of the page from a menu. We could also add a border around the deck with CSS to make it look a bit nicer.</p>
+
+<h4 id="The_Final_Code" name="The_Final_Code">The Final Code</h4>
+
+<p>The final code is as follows:</p>
+
+<p><span id="Example_2"><a id="Example_2"></a><strong>Example 2</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_xblex_2.xml.txt">Source</a></p>
+
+<pre>&lt;binding id="slideshow"&gt;
+  &lt;content&gt;
+    &lt;xul:vbox flex="1"&gt;
+      &lt;xul:deck xbl:inherits="selectedIndex" selectedIndex="0" flex="1"&gt;
+        &lt;children/&gt;
+      &lt;/xul:deck&gt;
+      &lt;xul:hbox&gt;
+        &lt;xul:button xbl:inherits="label=previoustext"
+                    oncommand="parentNode.parentNode.parentNode.page--;"/&gt;
+        &lt;xul:description flex="1"/&gt;
+        &lt;xul:button xbl:inherits="label=nexttext"
+                    oncommand="parentNode.parentNode.parentNode.page++;"/&gt;
+      &lt;/xul:hbox&gt;
+    &lt;/xul:vbox&gt;
+  &lt;/content&gt;
+
+  &lt;implementation&gt;
+
+    &lt;constructor&gt;
+      var totalpages=this.childNodes.length;
+      document.getAnonymousNodes(this)[0].childNodes[1].childNodes[1]
+              .setAttribute("value",(this.page+1)+" of "+totalpages);
+    &lt;/constructor&gt;
+
+    &lt;property name="page"
+          onget="return parseInt(document.getAnonymousNodes(this)[0].childNodes[0].getAttribute('selectedIndex'));"
+          onset="return this.setPage(val);"/&gt;
+
+    &lt;method name="setPage"&gt;
+      &lt;parameter name="newidx"/&gt;
+      &lt;body&gt;
+        &lt;![CDATA[
+          var thedeck=document.getAnonymousNodes(this)[0].childNodes[0];
+          var totalpages=this.childNodes.length;
+
+          if (newidx&lt;0) return 0;
+          if (newidx&gt;=totalpages) return totalpages;
+          thedeck.setAttribute("selectedIndex",newidx);
+          document.getAnonymousNodes(this)[0].childNodes[1].childNodes[1]
+                  .setAttribute("value",(newidx+1)+" of "+totalpages);
+          return newidx;
+        ]]&gt;
+      &lt;/body&gt;
+    &lt;/method&gt;
+  &lt;/implementation&gt;
+
+&lt;/binding&gt;
+</pre>
+
+<p>Next, we'll see some additional features of a window.</p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:XBL_Inheritance" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Features_of_a_Window">Next  »</a></p>
+</div>

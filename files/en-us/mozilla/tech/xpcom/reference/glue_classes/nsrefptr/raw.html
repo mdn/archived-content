@@ -1,0 +1,47 @@
+<p>RefPtr (formerly known as nsRefPtr, see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1207245">bug 1207245</a>) is a general class to implement reference counting pointers for objects. It is similar to nsCOMPtr, but does not require that the type be an XPCOM interface.  Like with nsCOMPtr, it is the responsibility of the object itself to implement reference counting. This is done using the functions AddRef() and Release(), which respectively modify a variable of type <a href="en/NsAutoRefCnt">nsAutoRefCnt</a>, which basically is a wrapper around a count of the number of references refering to the class.</p>
+
+<h4 id="When_should_I_use_nsCOMPtr_versus_RefPtr">When should I use nsCOMPtr versus RefPtr?</h4>
+
+<p>The rules are simple: use nsCOMPtr to hold pointers to XPCOM interfaces, and use RefPtr to hold pointers to concrete class, even if the concrete class implements one or more XPCOM interfaces.</p>
+
+<p>So for XPCOM interfaces:</p>
+
+<pre>nsCOMPtr&lt;nsISupports&gt; a;
+
+nsCOMPtr&lt;nsIFoo&gt; foo;</pre>
+
+<p>And for concrete classes:</p>
+
+<pre>RefPtr&lt;nsFoo&gt; foo;  // class that implements nsIFoo;
+
+RefPtr&lt;Bar&gt; bar;    // some random class that I want ref-counted but has nothing to do with XPCOM:
+                    // Just implement AddRef() and Release() and it will work with RefPtr
+</pre>
+
+<p>It is important that nsCOMPtr is not used to hold a pointer to a concrete class since this can cause compile time errors or runtime errors. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=756640">Bug 756640</a> is on file to enforce this rule but hasn't yet been fixed.</p>
+
+<p>While RefPtr should not generally be used to hold a pointer to an XPCOM interface, this is flexible. There are no technical problems with doing so, and in some cases it may be necessary (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=756640">bug 756640 comment 1</a>). For example, we have template classes such as OwningNullPtr that can contain a RefPtr to an XPCOM interface.</p>
+
+<p>XXX It's not clear that the details in the following paragraph are correct. It was derived from an old <a href="https://mozilla.logbot.info/developers/20120928">#developers discussion</a>. It's unclear to me when the compiler will reject an attempt to use nsCOMPtr to hold a concrete class pointer and when it will not (will it only rejecte it if a QI is involved in the construction or or assignment to the nsCOMPtr (common in implementation details of nsCOMPtr) but not when an instance of the concrete class is assigned directly?). And it's not clear what happens when the compiler does accept this pattern. What goes wrong at runtime - UAF? memory leak? QI failure and null-deref crashes?.</p>
+
+<p>Note: in the above example, "nsCOMPtr&lt;nsFoo&gt;" might compile and work OK (it won't if your XPCOM class multiply-inherits nsISupports).   But this is considered Bad Form, and may soon be made a compile-time error.  Don't do it!</p>
+
+<h4 id="Can_I_QueryInterface_a_RefPtr_to_get_a_nsCOMPtr_from_the_object_it_points_to">Can I QueryInterface a RefPtr to get a nsCOMPtr from the object it points to?</h4>
+
+<p>Sure.  Instead of using "do_QueryInterface()" (which is used for nsCOMPtrs), use "do_QueryObject()", which works with RefPtrs:</p>
+
+<pre>// Let's say nsFoo implements nsIFoo and nsIBar XPCOM interfaces:
+RefPtr&lt;nsFoo&gt; foo = new nsFoo();
+nsCOMPtr&lt;nsIBar&gt; bar(do_QueryObject(foo));
+MOZ_ASSERT(bar, "Yikes someone changed the base classes of nsFoo");
+</pre>
+
+<h4 id="Can_I_QueryInterface_an_nsCOMPtr_back_to_a_RefPtr">Can I QueryInterface an nsCOMPtr back to a RefPtr?</h4>
+
+<p>Yes. If the concrete class has its own XPCOM IID (not true by default, but one can be added), you can also QI from an XPCOM pointer to a concrete type:</p>
+
+<pre>bar = do_QueryObject(foo);
+if (bar) { ... }
+</pre>
+
+<p>See <a href="https://groups.google.com/forum/#!msg/mozilla.dev.platform/ROm_51_xivI/5S2FzeJ1kqUJ">this post</a> for more details.</p>

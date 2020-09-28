@@ -1,0 +1,77 @@
+<h2 id="Content_formerly_at" name="Content_formerly_at">Content formerly at <a class="external" href="http://www.mozilla.org/projects/xpcom/nsDirectoryService.html" rel="freelink">http://www.mozilla.org/projects/xpcom/nsDirectoryService.html</a></h2>
+<h4 id="General_nsDirectoryService_Information:" name="General_nsDirectoryService_Information:">General nsDirectoryService Information:</h4>
+<p>nsDirectoryService implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProperties" title="">nsIProperties</a></code> interface. This implementation will allow you to <code>Get()</code>, <code>Set()</code>, <code>Define()</code>, and <code>Undefine()</code> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>.</p>
+<h4 id="Getting_a_location:" name="Getting_a_location:">Getting a location:</h4>
+<p>Most developers need to find where a file or directory is located. With nsDirectoryService, there are two steps involved.</p>
+<p>First, you must know what the string key (or property) is that refers to this locations. Header files containing known keys are listed in the <a href="#Known_Locations">Known Locations</a> section of this document. Bear in mind that this list is not static. Components can add and remove locations at their will.</p>
+<p>Second, you must acquire the implementation and call <code>Get()</code> passing the known string key. In the example below, <code>prop</code> is a string that references your requested file locations.</p>
+<p>C++</p>
+<pre class="brush:c++;">    nsCOMPtr&lt;nsIFile&gt; dir;
+    NS_GetSpecialDirectory(prop, getter_AddRefs(dir));
+
+    if (!dir)
+        return NS_ERROR_FAILURE;
+</pre>
+<p>Javascript:</p>
+<pre class="brush:js;"> var file = Components.classes["@mozilla.org/file/directory_service;1"]
+                    .getService(Components.interfaces.nsIProperties)
+                    .get("ProfD", Components.interfaces.nsIFile);
+</pre>
+<p>(The example is taken from the <a href="/en/Code_snippets/File_I//O#Getting_special_files" title="en/Code_snippets/File_I//O#Getting_special_files">Code snippets</a> section of this site.)</p>
+<h4 id="Adding_a_location:" name="Adding_a_location:">Adding a location:</h4>
+<p>There are currently two ways to add a file location to the directory service: directly and delayed.</p>
+<p>You can directly add a new <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> with any property string using the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProperties" title="">nsIProperties</a></code> interface:</p>
+<pre class="brush:js;"> Components.classes["@mozilla.org/file/directory_service;1"]
+                    .getService(Components.interfaces.nsIProperties)
+                    .set("MyFileName", file);
+</pre>
+<p>Now, if your cost is too high to set all of these properties at once, you can register to be a callback that can provide an nsIFile. To do this, you must get the implementation again like above. When you have it, <a href="/en/nsISupports/QueryInterface" title="en/nsISupports/QueryInterface">QueryInterface</a> for the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryService" title="">nsIDirectoryService</a></code> interface. Apart from this interface there is a function, <code>registerProvider</code> which will allow you to register a <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code>, which implements the <code>getFile</code> callback function:</p>
+<pre class="brush:js;">var provider = {
+  getFile : function(prop, persistant) { // return an nsIFile },
+}
+
+Components.classes["@mozilla.org/file/directory_service;1"]
+    .getService(Components.interfaces.nsIDirectoryService).registerProvider(provider);</pre>
+<p>When the callback is called, it will be passed the string key, and should return an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>. The <code>persistant</code> flag allows you to specify if you want the <code>nsDirectoryService</code> to cache this value. In most cases you would set this to be true.</p>
+<p>The interfaces for this can be found <a href="http://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsIDirectoryService.idl">here</a>.</p>
+<h4 id="Known_Locations" name="Known_Locations">Known Locations</h4>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProperties" title="">nsIProperties</a></code> strings for currently defined locations can be found in:</p>
+<ul>
+ <li><a class="external" href="http://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsDirectoryServiceDefs.h" title="http://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsDirectoryServiceDefs.h">nsDirectoryServiceDefs.h</a></li>
+ <li><a class="external" href="http://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsAppDirectoryServiceDefs.h" title="http://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsAppDirectoryServiceDefs.h">nsAppDirectoryServiceDefs.h</a></li>
+ <li><a class="external" href="http://mxr.mozilla.org/mozilla-central/source/xpcom/build/nsXULAppAPI.h" title="http://mxr.mozilla.org/mozilla-central/source/xpcom/build/nsXULAppAPI.h">nsXULAppAPI.h</a></li>
+</ul>
+<h2 id="Content_formerly_at_2" name="Content_formerly_at_2">Content formerly at <a class="external" href="http://www.mozilla.org/projects/xpcom/file_locations.html" rel="freelink">http://www.mozilla.org/projects/xpco...locations.html</a></h2>
+<h4 id="Background" name="Background">Background</h4>
+<p>The way in which Mozilla components locate special files and directories has changed. In the past, this was done using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFileLocator" title="">nsIFileLocator</a></code>. This component was a problem for embedding applications. Since it was a component and was loaded implicitly by many other components, it was difficult to customize. Customizing the locations is important if, for example, your application already has a profile directory or other resource directories. You may wish that you could have Mozilla use these locations rather than requiring the same disk layout as SeaMonkey. In order to change these locations using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFileLocator" title="">nsIFileLocator</a></code> and still be able to use the same components directory as an existing Mozilla installation, you had to make a component with the same ID as <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFileLocator" title="">nsIFileLocator</a></code> and then, after auto-registering components, manually register your own and replace the existing one -- all in all, a big pain.</p>
+<h4 id="The_New_Method" name="The_New_Method">The New Method</h4>
+<p>The new method uses <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryService" title="">nsIDirectoryService</a></code> to locate files and directories. Be sure to see the <a href="/en/nsDirectoryService" title="en/nsDirectoryService">documentation</a> on the service itself. This document will focus on how the service is used and how to customize it. Briefly, <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryService" title="">nsIDirectoryService</a></code> uses "providers" of type <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> to provide file locations. When the service is asked for a file location, it goes through its list of providers asking each if it knows the requested location until it finds one that does. Once the service finds a location, if the provider says that the location is persistent, the service will cache that location so it is very quick on subsequent calls. Different providers can provide certain locations that are relevant to them. For example, in SeaMonkey, the profile service is a provider for locations that are relative to the current profile.</p>
+<p>The caller asking for the file location, of course, doesn't need to know who the providers are. As a caller of the service, you never deal with the providers, only the service.</p>
+<h4 id="Defined_Locations" name="Defined_Locations">Defined Locations</h4>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProperties" title="">nsIProperties</a></code> keywords that you will use to get locations are defined in two places.</p>
+<h5 id="OS_and_XPCOM_Level" name="OS_and_XPCOM_Level">OS and XPCOM Level</h5>
+<p><a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/io/nsDirectoryServiceDefs.h">nsDirectoryServiceDefs.h</a></p>
+<p>These locations are provided by XPCOM, are constant with the system, and and should not need customization. Although you will not customize these locations, you may need to tell XPCOM where its /bin directory is. This is done by passing a directory to <a class="external" href="http://lxr.mozilla.org/seamonkey/ident?i=NS_InitXPCOM">NS_InitXPCOM</a> or, for embedding, as the first parameter to <a class="external" href="http://lxr.mozilla.org/seamonkey/ident?i=NS_InitEmbedding">NS_InitEmbedding</a>. The location of the Components folder and the Components registry, among other things, are relative to the /bin directory.</p>
+<p>If Mozilla's Components directory is not in the same directory as your process, you will need to set the /bin directory as described above. In this case you will also need to tell the system of the location of DLLs that are linked against. This aspect of file location is not related to <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryService" title="">nsIDirectoryService</a></code>, but needs mention here.</p>
+<p>On the Macintosh, these DLLs are the shared libs in the "Essential Files" directory. You need to include an alias in your application that points to this directory and the resource ID of this alias goes into your 'cfrg' resource.</p>
+<p>On platforms which use PATH environment variables, you will need to set one of these paths to the /bin directory.</p>
+<h5 id="Application_Level" name="Application_Level">Application Level</h5>
+<p><a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/io/nsAppDirectoryServiceDefs.h">nsAppDirectoryServiceDefs.h</a></p>
+<p>The first group listed is for locations that are relative to the application: for instance, the name and location of the chrome folder, or the default location of user profiles. The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> which normally provides these locations is at <a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/io/">mozilla/xpcom/io/</a>. This provider is installed by SeaMonkey after initializing XPCOM. It is also installed by default by NS_InitEmbedding.</p>
+<p>The second group listed is for locations which are relative to the current user profile. In SeaMonkey, the profile service is an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> and it provides these locations. There are some cases in embedding in which distinct user profiles are not needed; however, prefs and history and such are needed. In this case, the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> implementation at <a class="external" href="http://lxr.mozilla.org/seamonkey/source/profile/dirserviceprovider/">mozilla/profile/dirserviceprovider/</a> can be used. If it is used, it is used <em>instead</em> of the profile service, thus saving some footprint.</p>
+<h4 id="Customizing_Locations" name="Customizing_Locations">Customizing Locations</h4>
+<p>Although you can change locations one at a time by using the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIProperties" title="">nsIProperties</a></code> interface of nsDirectoryService, you can also install your own <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> to control them en masse. To do this for application-level locations, create a provider based on appfilelocprovider. This object has to implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDirectoryServiceProvider" title="">nsIDirectoryServiceProvider</a></code> interfaces. It does not need to be a component - it can be a static lib, a source file in your project - whatever. Just construct it, pass it to NS_InitEmbedding, and it will be installed. If you are not using NS_InitEmbedding, you will have to construct it and register it yourself using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIDirectoryService#registerProvider()">nsIDirectoryService.registerProvider()</a></code>. If you are registering it yourself it is very important to register it <strong>immediately</strong> after calling NS_InitXPCOM. There are things in the startup process that need these locations at a very early point - even before registering components.</p>
+<p>If you want to use mpfilelocprovider, or something like it, to provide one fixed profile, just construct it and call its Initialize method - it will register itself. Again, if you do this, do not initialize the profile service - it's either one or the other.</p>
+<h3 id="Related_Pages" name="Related_Pages">Related Pages</h3>
+<ul>
+ <li><a href="/en/Code_snippets/File_I//O" title="en/Code_snippets/File_I//O">Code_snippets:File_I/O</a></li>
+</ul>
+<div class="originaldocinfo">
+ <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+ <ul>
+  <li>Authors: <a class="link-mailto" href="mailto:ccarlen@netscape.com">Conrad Carlen</a>, <a class="link-mailto" href="mailto:dougt@netscape.com">Doug Turner</a></li>
+  <li>Last Updated Date: September 26, 2000</li>
+  <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+ </ul>
+</div>
+<p> </p>

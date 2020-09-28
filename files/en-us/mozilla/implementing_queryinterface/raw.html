@@ -1,0 +1,188 @@
+<p>This document describes the right way to write <code>QueryInterface()</code>.</p>
+
+<p> </p>
+
+<h3 id="A_reference_implementation_of_QueryInterface" name="A_reference_implementation_of_QueryInterface">A reference implementation of QueryInterface</h3>
+
+<pre class="eval">NS_IMETHODIMP
+nsMyImplementation::QueryInterface( REFNSIID aIID, void** aInstancePtr )
+  {
+    NS_ASSERTION(aInstancePtr, "QueryInterface requires a non-NULL destination!");
+      <span class="comment">// It's a logic error, not a runtime error, to call me without any place to put my answer!</span>
+
+      <span class="comment">// ...but that won't matter when someone calls me wrongly in a non-debug build.</span>
+    if ( !aInstancePtr )
+      return NS_ERROR_NULL_POINTER;
+
+    nsISupports* foundInterface;
+
+    if ( aIID.Equals(nsCOMTypeInfo&lt;nsIX&gt;::GetIID()) )
+      foundInterface = NS_STATIC_CAST(nsIX*, this);
+    else if ( aIID.Equals(nsCOMTypeInfo&lt;nsIY&gt;::GetIID()) )
+      foundInterface = NS_STATIC_CAST(nsIY*, this);
+
+    <span class="comment">// ...as many cases as needed...</span>
+
+    else if ( aIID.Equals(nsCOMTypeInfo&lt;nsISupports&gt;::GetIID()) )
+      foundInterface = NS_STATIC_CAST(nsISupports*, NS_STATIC_CAST(nsIX*, this));
+        <span class="comment">// I (may) have multiple |nsISupports| in me,
+        //  so first I cast to a specific base to avoid ambiguity</span>
+    else
+      foundInterface = 0;
+
+
+    nsresult status;
+    if ( !foundInterface )
+      status = NS_NOINTERFACE;
+    else
+      {
+        NS_ADDREF(foundInterface);
+        status = NS_OK;
+      }
+
+    *aInstancePtr = foundInterface;
+    return status;
+  }
+
+</pre>
+
+<h3 id="What.27s_So_Good_About_It.3F" name="What.27s_So_Good_About_It.3F">What's So Good About It?</h3>
+
+<ul>
+ <li>It's clear and simple.</li>
+ <li>OK. It has more than one <code>return</code>, but the primary <code>return</code> is at the end of the function as expected; and the additional <code>return</code> is clear and alone at the top of the function.</li>
+ <li>It only has one <code>AddRef</code>.</li>
+ <li>It <code>AddRef</code>s the resulting interface, not <code>this</code>, thus following the COM-correct way (particularly important in aggregation)</li>
+ <li>It uses <code>nsCOMTypeInfo&lt;T&gt;::GetIID()</code> instead of <code>kTIID</code> thus saving a global declaration and global space</li>
+ <li>It uses C 's <code>static_cast</code>, via <code>NS_STATIC_CAST</code>, which detects errors when you can't really get to the desired interface.</li>
+ <li>It avoids repeated uses of and assignments to <code><span class="nowiki">*aInstancePtr</span></code>, which compilers have trouble optimizing.</li>
+ <li>It clears the result, <code><span class="nowiki">*aInstancePtr</span></code>, when returning an error.</li>
+ <li>It generates less code than the typical implementation of <code>QueryInterface</code>.</li>
+ <li>It tests for bad input with an <code>NS_ASSERTION</code>, to find logic errors immediately in debug builds.</li>
+</ul>
+
+<h3 id="Some_Alternatives" name="Some_Alternatives">Some Alternatives</h3>
+
+<h4 id="The_NS_IMPL_QUERY_INTERFACE.5B012.5D_macros" name="The_NS_IMPL_QUERY_INTERFACE.5B012.5D_macros">The <code>NS_IMPL_QUERY_INTERFACE</code>[<code>012</code>] macros</h4>
+
+<p>The sample above implements two XPCOM interfaces in addition to <code>nsISupports</code>. The <code>NS_IMPL_QUERY_INTERFACE2</code> macro can write this function for you (though it pains me to recommend macros), e.g.,</p>
+
+<p> </p>
+
+<pre class="eval">NS_IMPL_QUERY_INTERFACE2(nsMyImplementation, nsIX, nsIY)
+                                          <span class="comment">// implements |nsMyImplementation::QueryInterface| as above</span>
+
+NS_IMPL_QUERY_INTERFACE1(nsFoo, nsIFoo)   <span class="comment">// |nsFoo::QueryInterface| provides |nsIFoo| and |nsISupports|</span>
+NS_IMPL_QUERY_INTERFACE0(nsBar)           <span class="comment">// |nsBar::QueryInterface| can only provide an |nsISupports|</span>
+</pre>
+
+<p>Similarly, you can use the macro <code>NS_IMPL_QUERY_INTERFACE1</code> when you implement only one additional interface; and <code>NS_IMPL_QUERY_INTERFACE0</code> when you only implement <code>nsISupports</code>. These macros will be invoked for you if you use the <code>NS_IMPL_ISUPPORTS*</code> macros, which give the corresponding <code>QueryInterface</code> implementation, plus an <code>AddRef</code> and a <code>Release</code>.</p>
+
+<h4 id="Calling_an_inherited_QueryInterface" name="Calling_an_inherited_QueryInterface">Calling an inherited <code>QueryInterface</code></h4>
+
+<p>Sometimes you are just adding one or two new interfaces to an implementation that already supports many other interfaces. In such cases, you'll probably want to call through to the underlying implementation, after you've tested for the particular <code>IID</code>s that you care about. This saves code-space and reduces complexity. The differences are highlighted in the following code.</p>
+
+<p> </p>
+
+<pre class="eval">class nsMyImplmentation : public nsBaseImplementation, public nsIX, public nsIY { ... };
+
+NS_IMETHODIMP
+nsMyImplementation::QueryInterface( REFNSIID aIID, void** aInstancePtr )
+    <span class="comment">/*
+      I just add the interfaces |nsIX| and |nsIY|.
+      My base class |nsBaseImplementation| provides all the rest.
+    */</span>
+  {
+    NS_ASSERTION(aInstancePtr, "QueryInterface requires a non-NULL destination!");
+
+    if ( !aInstancePtr )
+      return NS_ERROR_NULL_POINTER;
+
+    nsISupports* foundInterface;
+
+    if ( aIID.Equals(nsCOMTypeInfo&lt;nsIX&gt;::GetIID()) )
+      foundInterface = NS_STATIC_CAST(nsIX*, this);
+    else if ( aIID.Equals(nsCOMTypeInfo&lt;nsIY&gt;::GetIID()) )
+      foundInterface = NS_STATIC_CAST(nsIY*, this);
+    <span class="warning">// Note: Don't check for |nsISupports|; |nsBaseImplementation| will do that for me.</span>
+    else
+      foundInterface = 0;
+
+
+    nsresult status;
+    if ( !foundInterface )
+        <span class="comment">// OK, _I_ didn't find an interface.  Maybe my base class can.</span>
+      <span class="warning">status = nsBaseImplementation::QueryInterface(aIID, &amp;foundInterface);</span>
+    else
+      {
+        NS_ADDREF(foundInterface);
+        status = NS_OK;
+      }
+
+    *aInstancePtr = foundInterface;
+    return status;
+  }
+</pre>
+
+<p>Note that if the base implementation's <code>QueryInterface</code> finds an appropriate interface, your <code>QueryInterface</code> must not <code>AddRef</code> it. This is reflected in the code above.</p>
+
+<p>This technique works because <code>nsBaseImplementation</code> is already a complete class that could have been used on its own. This technique is less appropriate when you derive from several complete classes; but it can still be used if you are sensitive to the order, e.g.,</p>
+
+<p> </p>
+
+<pre class="eval">    <span class="comment">// ...</span>
+    nsresult status;
+    if ( !foundInterface )
+      {
+        <span class="comment">// OK, ask |nsBase1Imp| first, because I want _it_ to be the one true |nsISupports|.</span>
+        status = nsBase1Imp::QueryInterface(aIID, &amp;foundInterface);
+
+        if ( !foundInterface )
+          status = nsBase2Imp::QueryInterface(aIID, &amp;foundInterface);
+
+        if ( !foundInterface )
+          status = nsBase3Imp::QueryInterface(aIID, &amp;foundInterface);
+      }
+    else
+      {
+        NS_ADDREF(foundInterface);
+        status = NS_OK;
+      }
+    <span class="comment">// ...</span>
+</pre>
+
+<p>It will be difficult, if not impossible, to get the right thing to happen if any of your base classes participate in true aggregation. You won't be able to catch calls to <code>QueryInterface</code> on the aggregated objects, which may then return wrong interfaces. One more reason to avoid aggregation specifically, and complicated hierarchies in general.</p>
+
+<h4 id="The_NS_GET_IID_macro" name="The_NS_GET_IID_macro">The <code>NS_GET_IID</code> macro</h4>
+
+<p>You can use the <code>NS_GET_IID</code> macro instead of typing out the full <code>GetIID</code> expression. In general, I disapprove of macros except in cases where the macro must expand to different text in different situations, e.g., different platforms, debugging vs. non-debugging, et al. In such cases macros are indispensible. In other cases macros may help some people but often cloud the issues for others. They always make the program source more fragile. In this case the macro is for convenience only, so I don't recommend it, but I do offer it up as an alternative.</p>
+
+<p> </p>
+
+<pre class="eval">    <span class="comment">// ...</span>
+    if ( aIID.Equals(<span class="warning">NS_GET_IID(</span>nsIX<span class="warning">)</span>) )
+      foundInterface = NS_STATIC_CAST(nsIX*, this);
+    else if ( aIID.Equals(<span class="warning">NS_GET_IID(</span>nsIY<span class="warning">)</span>) )
+      foundInterface = NS_STATIC_CAST(nsIY*, this);
+
+    <span class="comment">// ...as many cases as needed...</span>
+
+    else if ( aIID.Equals(<span class="warning">NS_GET_IID(</span>nsISupports<span class="warning">)</span>) )
+    <span class="comment">// ...</span>
+</pre>
+
+<h3 id="Thanks" name="Thanks">Thanks</h3>
+
+<p>Special thanks to <a class="link-mailto" href="mailto:heikki@citec.fi">Heikki Toivonen</a>, <a class="link-mailto" href="mailto:waterson@netscape.com">Chris Waterson</a>, and <a class="link-mailto" href="mailto:jband@netscape.com">John Bandhauer</a> for valuable feedback that significantly improved the implementations presented here.</p>
+
+<p> </p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="external" href="http://www.meer.net/ScottCollins/">Scott Collins</a></li>
+ <li>Last Updated Date: May 8, 2003</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

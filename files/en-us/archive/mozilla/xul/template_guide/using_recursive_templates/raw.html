@@ -1,0 +1,82 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Multiple_Rules" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Building_Menus_With_Templates">Next  »</a></p>
+</div>
+<p>You may recall that templates generate content recursively. After the data is generated, each result is used as the new reference point for a nested iteration of the template. This is usually used to generate content in a tree or menu. Both the RDF and XML datasource types support recursion. For example, using this XML datasource:</p>
+<pre class="brush:xml;">&lt;people&gt;
+  &lt;group name="Male"&gt;
+    &lt;person name="Napoleon Bonaparte"/&gt;
+    &lt;person name="Julius Caesar"/&gt;
+    &lt;person name="Ferdinand Magellan"/&gt;
+  &lt;/group&gt;
+  &lt;group name="Female"&gt;
+    &lt;person name="Cleopatra"/&gt;
+    &lt;person name="Laura Secord"/&gt;
+  &lt;/group&gt;
+&lt;/people&gt;
+</pre>
+<p>We could display this data in a flat list by using the right query:</p>
+<pre class="brush:xml;">&lt;query expr="group/person/"&gt;
+</pre>
+<p>Or, we could display one level for the two groups, and use another level for each person.</p>
+<pre class="brush:xml;">&lt;groupbox type="menu" datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="*"/&gt;
+    &lt;action&gt;
+      &lt;vbox uri="?" class="indent"&gt;
+        &lt;label value="?name"/&gt;
+      &lt;/vbox&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/groupbox&gt;
+</pre>
+<p>In this simplified example, the XPath expression just gets the list of child elements of the reference node. For the outermost iteration, a <code><a href="/en-US/docs/Mozilla/Tech/XUL/vbox" title="vbox">vbox</a></code> is created with a child label. Since the initial reference node is the root of the XML source document, the results are two elements, one for each <code>group</code> element. However, a further step is done to retrieve an additional level of nodes. As each group has children itself, each result (in this case, each group) becomes the reference point for a futher iteration. The same query is executed again but using the groups generated from the previous execution of the query.</p>
+<p>This time, the query generates a result for each person in the XML source. The content of the action body is again generated for each result, but instead of being inserted inside the outermost <code>groupbox</code>, this new content is inserted inside the content generated from the previous iteration. The content is always inserted directly inside the element with the <code>uri</code> attribute.</p>
+<p>The result is output like the following:</p>
+<pre class="brush:xml;">&lt;groupbox&gt;
+  ...
+  &lt;vbox id="row2" container="true" empty="false" class="indent"&gt;
+    &lt;label value="Male"/&gt;
+    &lt;vbox id="row4" class="indent"&gt;&lt;label value="Napoleon Bonaparte"/&gt;&lt;/vbox&gt;
+    &lt;vbox id="row5" class="indent"&gt;&lt;label value="Julius Caesar"/&gt;&lt;/vbox&gt;
+    &lt;vbox id="row6" class="indent"&gt;&lt;label value="Ferdinand Magellan"/&gt;&lt;/vbox&gt;
+  &lt;/vbox&gt;
+  &lt;vbox id="row3" container="true" empty="false" class="indent"&gt;
+    &lt;label value="Female"/&gt;
+    &lt;vbox id="row7" class="indent"&gt;&lt;label value="Cleopatra"/&gt;&lt;/vbox&gt;
+    &lt;vbox id="row8" class="indent"&gt;&lt;label value="Laura Secord"/&gt;&lt;/vbox&gt;
+  &lt;/vbox&gt;
+&lt;/groupbox&gt;
+</pre>
+<p>Note how similar content corresponding to the action body is created for both the groups as well as the people. The template builder has also added <code id="a-container"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/container">container</a></code> and <code id="a-empty"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/empty">empty</a></code> attributes to the groups. This is done with all nodes that have children to indicate that the node contains generated children as well as whether the node is empty. These hints are used for trees, but they can also be used in a stylesheet to provide a different appearance for containers with children, empty containers, as well as non-containers.</p>
+<p>In this example, both the parent groups and child people are displayed the same. You could use multiple rules as well, in order to generate different output for each level. In this next example, an <code><a href="/en-US/docs/Mozilla/Tech/XUL/assign" title="assign">assign</a></code> element is used to assign the local name of the node is to the variable <code>?type</code>. In an XPath expression, the period refers to the context node. For an <code>assign</code> element, the context is the the result node. The <code>local-name</code> function retrieves the tag of the element without the namespace prefix. In this case, there isn't a namespace prefix, so the <code>name</code> function could be used instead.</p>
+<pre class="brush:xml;">&lt;vbox datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="*"&gt;
+      &lt;assign var="?type" expr="local-name(.)"/&gt;
+    &lt;/query&gt;
+    &lt;rule&gt;
+      &lt;where subject="?type" rel="equals" value="group"/&gt;
+      &lt;action&gt;
+        &lt;groupbox uri="?"&gt;
+          &lt;caption label="?name"/&gt;
+        &lt;/groupbox&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;action&gt;
+        &lt;label uri="?" value="?name"/&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p>The first rule contains a where clause which matches only those results that have a type of <code>group</code>. As the type is bound to the local name of the result node, this will match only the first level of results from the XML data, that is, those with the <code>group</code> tag. The second rule has no <code>where</code> conditions, so this matches all remaining results. The output for groups is a groupbox with a caption containing the name. The output for non-groups is a label.</p>
+<p>You could further expand this process for other levels.</p>
+<h3 id="Disabling_Recursion" name="Disabling_Recursion">Disabling Recursion</h3>
+<p>The recursion on a template occurs automatically. In fact, it has occured with all of the examples so far. However, in most cases, there either aren't any children or the next iteration of the query doesn't return any results, so no output is generated. Sometimes, you will not want a template generate recursive content. You can do this by adding a flag.</p>
+<pre class="brush:xml;">&lt;vbox datasources="people.xml" ref="*" querytype="xml" flags="dont-recurse"&gt;
+</pre>
+<p>Here, the <code id="a-flags"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/flags">flags</a></code> attribute is set to <code>dont-recurse</code>. This disables the recursion and only generates one level of results.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Multiple_Rules" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Building_Menus_With_Templates">Next  »</a></p>
+</div>

@@ -1,0 +1,76 @@
+<div class="note">
+ <p>TraceMalloc has been superseded by <a href="/en-US/docs/Mozilla/Performance/DMD">DMD</a> and <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1014341">removed</a> from the codebase. This documentation is only relevant to older versions of the codebase that still contain it.</p>
+</div>
+<p>TraceMalloc captures stack traces of all <code>malloc</code>, <code>calloc</code> , <code>realloc</code>, and <code>free</code> calls (this currently covers all <code>operator new</code> and <code>delete</code> calls in Mozilla, too). To enable TraceMalloc in your build, configure with <code>--enable-trace-malloc</code>. The built Mozilla application will support the following additional command-line options:</p>
+<ul>
+ <li><code>--trace-malloc</code> <em>filename</em>  The application will log allocation and deallocation events with stack traces in a binary format to the given file. If <em>filename</em> is -, nothing is written to a file, but TraceMalloc will be active and will track live allocations and their stack traces.</li>
+ <li><code>--shutdown-leaks</code>=<em>filename</em>  On shutdown, the application will save live allocations (with stack traces) to the given file.</li>
+</ul>
+<h2 id="Analyzing_the_trace-malloc_log">Analyzing the trace-malloc log</h2>
+<p>Tools such as bloatblame (<code>tools/trace-malloc/bloatblame.cpp</code>) can be used to process <em>filename</em>. Try running with the unified output format option, <code>-u</code>. The output is a large HTML file that hyperlinks ancestor and descendent libraries, classes, and functions that call into one another, attributing <code>malloc</code> blame up and down each graph. Bloatblame accumulates allocation counts and ignores <code>free</code> calls.</p>
+<p>If you run with <code>--trace-malloc -</code>, your code can call NS_TraceMallocDumpAllocations(<em>pathname</em>) at opportune times, and a human-readable listing of the current heap, including stack traces for every allocation, will be written to <em>pathname</em>. This file can be post-processed by tools in <a class="external external-icon" href="http://lxr.mozilla.org/mozilla/source/tools/trace-malloc">mozilla/tools/trace-malloc</a> as follows:</p>
+<ul>
+ <li><a class="external external-icon" href="http://lxr.mozilla.org/mozilla/source/tools/trace-malloc/histogram.pl">histogram.pl</a>, which produces a type histogram that can be diffed with <a class="external external-icon" href="http://lxr.mozilla.org/mozilla/source/tools/trace-malloc/histogram-diff.sh">histogram-diff.sh</a> to produce output that looks like this:</li>
+</ul>
+<pre class="eval  language-html"><code class="language-html">---- Base ----   ---- Incr ----   ----- Difference ----
+Type                    Count    Bytes   Count    Bytes   Count    Bytes %Total
+TOTAL                   48942  4754774   76136  6566453   27194  1811679 100.00
+nsTokenAllocator           17   110007      60   388260      43   278253  15.36
+nsImageGTK                476  2197708     341  2366564    -135   168856   9.32
+nsMemCacheRecord          843    45767    2328   124767    1485    79000   4.36
+nsTextNode                209    11704    1614    90384    1405    78680   4.34
+HTMLAttributesImpl        482    14288    2824    88400    2342    74112   4.09
+nsScanner                  58    76824      94   146300      36    69476   3.83
+nsScriptError             253    25070     842    91548     589    66478   3.67
+nsHTMLDocument.mReferrer    177    21550     691    85460     514    63910   3.53
+nsHTMLValue               139     7846    1215    68734    1076    60888   3.36
+HTMLContentSink             6     4816      12    57782       6    52966   2.92</code></pre>
+<ul>
+ <li><a class="external external-icon" href="http://lxr.mozilla.org/mozilla/source/tools/trace-malloc/uncategorized.pl">uncategorized.pl</a>, which lists all the void* allocations (the ones that couldn't be categorized by type), sorted by size.</li>
+</ul>
+<p>Also, your JavaScript can call the following DOM window methods:</p>
+<ul>
+ <li><code>TraceMallocDisable()</code> - turn off tracing, first flushing any buffered log events for all log files.</li>
+ <li><code>TraceMallocEnable()</code> - turn on tracing.</li>
+ <li><code>TraceMallocOpenLogFile(<em>filename</em>)</code> - open a new log file and return its log file descriptor (or -1 on error).</li>
+ <li><code>TraceMallocChangeLogFD(<em>logfd</em>)</code> - change the current log file to the one identified by <em>logfd</em>, returning the previous fd (so you can maintain a number of open files; keep their fds in a JS Array!).</li>
+ <li><code>TraceMallocCloseLogFD(<em>logfd</em>)</code> - close the log file identified by <em>logfd</em>, flushing its buffer of any events first. If <em>logfd</em> identifies the current log file, change the current log file to the default log file given by the --trace-malloc command line argument.</li>
+ <li><code>TraceMallocLogTimestamp(<em>caption</em>)</code> - log a timestamp event to the current log file, annotating the log even with the <em>caption</em> string.</li>
+ <li><code>TraceMallocDumpAllocations(<em>pathname</em>)</code> - dump a human-readable listing of all traced, live allocations.</li>
+</ul>
+<p>See <a class="external external-icon" href="http://lxr.mozilla.org/mozilla/source/xpcom/base/nsTraceMalloc.h">nsTraceMalloc.h</a> for detailed comments on the log file format.</p>
+<h2 id="Analyzing_the_shutdown_log">Analyzing the shutdown log</h2>
+<p>The shutdown log is a basic tool for finding memory leaks. The shutdown log contains the stack trace of every allocation that has not been deallocated by shutdown. Some of these are false positives, allocations that are truly needed until shutdown. Ideally, these would be freed explicitly, to make it easier to find real leaks using the shutdown log. Here is a how-to for analyzing the shutdown log, taken from the Tinderbox leak builds. This example is for MacOS; small modifications are needed for other platforms.</p>
+<pre class="language-html"><code class="language-html"># Run application with shutdown logging
+# Note: Tinderbox leak tests use: python leaktest.py -- --trace-malloc malloc.log --shutdown-leaks=sdleak.log
+# Note 2: It appears that the shutdown log is not recorded if --trace-malloc is given the - argument.
+build/dist/Minefield.App/Contents/MacOS/firefox --trace-malloc /dev/null --shutdown-leaks=sdleak.log
+# Convert raw log to text representation of call trees
+perl source/tools/trace-malloc/diffbloatdump.pl --depth=15 --use-address /dev/null sdleak.log &gt; sdleak.tree.raw
+# Frobulate trees to remove extraneous junk
+perl source/tools/rb/fix-macosx-stack.pl sdleak.tree.raw &gt; sdleak.tree</code></pre>
+<p>You can also use the <code>leakstats</code> program to analyze a log for shutdown leaks. It will produce a report like the following.</p>
+<pre>Leaks: 382739 bytes, 3465 allocations
+Maximum Heap Size: 7751799 bytes
+62095212 bytes were allocated in 391091 allocations.</pre>
+<h2 id="Detecting_memory_usage_growth_in_a_running_process">Detecting memory usage growth in a running process</h2>
+<p>To do this, dump the existing allocations to a file by calling the function TraceMallocDumpAllocations from JavaScript. You can use the following web page to do so.</p>
+<pre>&lt;script type="text/javascript"&gt;
+    var filename = window.prompt("Filename to log: ");
+    if (filename)
+      TraceMallocDumpAllocations(filename);
+&lt;/script&gt;
+</pre>
+<p>One can then use the script <code>tools/trace-malloc/diffbloatdump.pl</code> to compare trace-malloc dumps before and after doing an action that might leak. If there are significant differences, it might be worth examining the call stacks for the destructors of the objects in question to see what is extending their lifetime. (This can be done by examining the unprocessed output of an XPCOM_MEM_REFCNT_LOG, one of the nsTraceRefcnt logs.) You should use the <code>--use-address</code> argument to <code>diffbloatdump.pl</code>, and then the diff tree can be run through <code>fix_linux_stack.py</code> or <code>fix_macosx_stack.py</code> as needed.</p>
+<h2 id="Leaksoup">Leaksoup</h2>
+<p>Leaksoup is a trace-malloc tool that analyzes the shutdown log. Because this log includes the contents of heap blocks, leaksoup can analyze the graph of live objects and determine which allocations are roots (within that graph, of course -- stack allocations and global variables don't count). Leaksoup also finds sets of objects that are rooted by a cycle (i.e., a set of reference counted objects that own references to each other in a cycle). However, it cannot distinguish between owning and non-owning pointers, which means that non-owning pointers that are nulled out by destructors may show up in leaksoup as cycles. However, despite that, it is probably the easiest way to determine what leak roots are present.</p>
+<p>Run using
+ <i>
+  both</i>
+ the <code>--trace-malloc</code> and <code>--shutdown-leaks</code> options. Ignore the allocations log, and run leaksoup over the memory dump (which is a dump of all allocations still live at shutdown) with a command such as <code>./run-mozilla.sh ./leaksoup sdleak.log &gt; sdleak.html</code>. This generates a
+ <i>
+  large</i>
+ HTML file as output.</p>
+<p>The output of leaksoup begins with all the leak roots, and then lists all the non-root allocations. The roots are either listed as single objects or as strongly connected components (minimal sets of nodes in the graph in which any node is reachable from all other nodes). (A strongly connected component with only one node is listed as a single object.) Any single object listed as a root is really a leak root, and any component listed as a root either (a) contains an object that is a root or (b) contains objects that form an ownership cycle that is a root.</p>
+<h2 id="Other_documentation">Other documentation</h2>
+<p>Some older documentation about TraceMalloc is <a href="http://www-archive.mozilla.org/projects/footprint/live-bloat.html">here</a>.</p>

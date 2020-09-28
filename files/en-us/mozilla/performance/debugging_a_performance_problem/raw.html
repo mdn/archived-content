@@ -1,0 +1,118 @@
+<p>The first steps to understanding a performance problem is finding the area responsible and collecting information. If you haven't yet <strong>filed a bug</strong> at this point you should do so now. At this point you may not know the component responsible for the performance problem so take your best guess and update it as your investigation progresses.</p>
+
+<p>Try testing against <a href="https://ftp.mozilla.org/pub/firefox/nightly/">older releases of Firefox</a> and against an up to date <a href="https://nightly.mozilla.org/">Nightly build</a>.</p>
+
+<p>This article will outline the tools and techniques you can use for debugging performance. Some section headers indicates who you might contact if you have questions about a given tool. You can also try asking in the IRC channels #perf, #gfx, #flow or #developers.</p>
+
+<h2 id="The_Gecko_Profiler_(mstange)">The Gecko Profiler (mstange)</h2>
+
+<p>General purpose profiler and a good tool to start your investigation with. Useful if you experience: Periodic hangs, slow JS scripts, want to know where the CPU time is being spent, what events are blocking the main thread, target profiling of certain areas. See the <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Performance/Profiling_with_the_Built-in_Profiler">Profiling with the Gecko Profiler</a> document for more information.</p>
+
+<h2 id="System_Profilers">System Profilers</h2>
+
+<p>Prefer a system specific profiler if you're interested in C++ and cache behavior. Particularly VTune (Windows, license required), Instrument (XCode, free), perf (Linux). See: https://developer.mozilla.org/en-US/docs/Performance</p>
+
+<h2 id="API_Trace_(gw280)">API Trace (gw280)</h2>
+
+<p>A shim OpenGL library that interposes OpenGL calls in order to record the calls to a file before sending them to the OpenGL driver. Recordings on a phone can be pulled from the phone and replayed on your desktop machine. This tool will let you replay the trace to view/analyze the rendering and OpenGL frame at a given point in time. This tool is very useful at finding OpenGL state bugs.</p>
+
+<h2 id="Paint_Flashing">Paint Flashing</h2>
+
+<p>Paint flashing will show which areas of the screen are being redrawn. For example when scrolling you expect to only see the side of the page being brought into view being repainted (note on mobile we use a displayport that is larger than the screen to predraw outside the screen, so paint flashing behavior is quite different there). In general, parts of a page that are not changing should not be redrawn, but there are tons of exceptions. Execessive paint flashing can be caused by overpainting, which indicates a layout bug, particularly if every scroll or update causes the entire screen to flash, or if css transformed elements are being repainted as the transform is animated.</p>
+
+<p>On desktop paint flashing can be turned on by opening the devtools windows and clicking on the paint brush icon in the bottom left. On mobile, manually flip the preference '<code>nglayout.debug.paint_flashing</code>' to <code>true</code>.</p>
+
+<p>Also see '<code>layers.force-active</code>'.</p>
+
+<h2 id="layers.force-active">layers.force-active</h2>
+
+<p>If paint flashing shows that the page performance is suffering from execussive flashing perhaps it's because the layer tree is poorly choosen. If that's the case then you can test this by forcing all the elements on the page to become an active layer. Flip the preference 'layers.force-active'. This will use additional main and video memory but will improve the performance if the excessive painting is caused by poor layers building heuristics.</p>
+
+<h2 id="LayerScope_(Vlad)">LayerScope (Vlad)</h2>
+
+<p>This tool can dump the layer tree and the corrsponding layer information (e.g. layer size, layer image) on the browser, so you can debug by the layer information.</p>
+
+<p>For more information see <a href="https://wiki.mozilla.org/Platform/GFX/LayerScope">https://wiki.mozilla.org/Platform/GFX/LayerScope</a></p>
+
+<h2 id="Layer_Borders_(Nical)">Layer Borders (Nical)</h2>
+
+<h2 id="Player2D_(Bas)">Player2D (Bas)</h2>
+
+<p>Allows to capture the drawing commands issues from layout either during a browsing session or to load a single page. Once capture the recording file can be used with player2d to replay and analyze the command stream. This is useful if there's a performance problem in moz2d, to debug rendering glitches caused by a bad commands stream or moz2d backend implement.</p>
+
+<p>See https://wiki.mozilla.org/Platform/GFX#Testing.2C_replaying.2C_building_Moz2D</p>
+
+<h2 id="MOZ_GL_DEBUG_(bjacob)">MOZ_GL_DEBUG (bjacob)</h2>
+
+<p>Useful if: You have some rendering glitches when using OpenGL.</p>
+
+<p>Use this tool to:</p>
+
+<ul>
+ <li>Find if the code uses an OpenGL context which isn't current.</li>
+ <li>Have syncronization problems</li>
+ <li>Want to find the exact call</li>
+ <li>Want to dump a log of the OpenGL functions called.</li>
+</ul>
+
+<h2 id="Layout_Debugging">Layout Debugging</h2>
+
+<h3 id="Dump_the_Display_List">Dump the Display List</h3>
+
+<p>Perference '<code>layout.display-list.dump</code>' (dumps display lists for all paints in all processes) and '<code>layout.display-list.dump-content</code>' (dumps display lists for all paints in content processes only).</p>
+
+<h3 id="Dump_the_Frame_Tree_via_GDB">Dump the Frame Tree via GDB</h3>
+
+<ul>
+ <li>Define DEBUG_FRAME_DUMP in layout/generic/nsFrameList.h</li>
+ <li>Use GDB to break at nsLayoutUtils::PaintFrame</li>
+ <li>(gdb) p aFrame-&gt;DumpFrameTree()</li>
+ <li>Find frame tree in logcat</li>
+</ul>
+
+<h2 id="Build_tricks">Build tricks</h2>
+
+<h3 id="Rebuilding_subdirectory_with_debugging_(bjacob)">Rebuilding subdirectory with debugging (bjacob)</h3>
+
+<h3 id="Disable_code_folding_(bjacob)">Disable code folding (bjacob)</h3>
+
+<h2 id="GDB">GDB</h2>
+
+<h3 id="Set_commands_breakpoint_when_debugging_(bjacob)">Set commands breakpoint when debugging (bjacob)</h3>
+
+<h3 id="MOZ_DEBUG_APP_PROCESS_(kanru)">MOZ_DEBUG_APP_PROCESS (kanru)</h3>
+
+<p>Set MOZ_DEBUG_APP_PROCESS to a process name to get process(es) with that name to sleep for 30 seconds just after they start to give you time to attach gdb (on Windows the debugger will be invoked and attached automatically).</p>
+
+<h3 id="GDB_Debugging_with_Mochitest_on_Fennec_Build(VincentLiu)">GDB Debugging with Mochitest on Fennec Build(VincentLiu)</h3>
+
+<dl>
+ <dd>First of all, following the setup steps to make sure you have Fennec build environment.</dd>
+ <dd>See https://wiki-dev.allizom.org/Mobile/Fennec/Android</dd>
+</dl>
+
+<ul>
+ <li>Open one console and run your mochitest by mach command
+  <ul>
+   <li>$./mach mochitest &lt;path&gt;/&lt;to&gt;/&lt;mochitest&gt;/*.html</li>
+  </ul>
+ </li>
+ <li>When mochitest start running, open another Console and run gdb to attach.
+  <ul>
+   <li>$/Users/mozilla/.mozbuild/android-device/jimdb-arm/bin/gdb</li>
+   <li>Once run gdb, note that you should choose "1. Debug Fennec (default)" in Fennec GDB utilities</li>
+  </ul>
+ </li>
+ <li>Some issues you might encounter after gdb start running.
+  <ul>
+   <li>If you encounter SIGILL and stop by ElfLoader::DebuggerHelper, try to delete the following folder as work around.
+    <ul>
+     <li>rm -r /Users/mozilla/.mozbuild/android-device/jimdb-arm/lib/emulator-*</li>
+    </ul>
+   </li>
+   <li>If you encounter SIGABRT but not about to your issue in debug build, try to remove --enable-debug in your .mozconfig.</li>
+  </ul>
+ </li>
+</ul>
+
+<p><span style="display: none;"> </span> </p>

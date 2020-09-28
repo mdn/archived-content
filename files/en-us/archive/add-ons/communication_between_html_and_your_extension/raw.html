@@ -1,0 +1,28 @@
+<p>See also <a href="/en-US/docs/Code_snippets/Interaction_between_privileged_and_non-privileged_pages" title="/en-US/docs/Code snippets/Interaction between privileged and non-privileged pages">Interaction between privileged and non-privileged pages</a>.</p>
+<p><strong>Communication between an HTML page and and extension</strong></p>
+<p>After building a sample extension by reading carefully and following the complete instructions for <a href="/en-US/docs/Building_an_Extension" title="/en-US/docs/Building_an_Extension">Building an Extension</a> I was able to get an extension that could display something on the status bar. What I wanted to do was have an extension "look" for something on an HTML page and if it found that something perform some operation on the found thing and then update the status bar with the results of the operation. With a lot of help from <a class="link-irc" href="irc://irc.mozilla.org#js" rel="freelink">irc://irc.mozilla.org#js</a> and <a class="link-irc" href="irc://irc.mozilla.org#extdev" rel="freelink">irc://irc.mozilla.org#extdev</a> I was able to get it running pretty well, but I still would rather have the client less responsible for pinging the extension to "look" for what is on the page.</p>
+<h5 id="What_I_tried" name="What_I_tried">What I tried</h5>
+<ul>
+  <li>My first attempt was trying to create an XBL component. From what I gather, XBL components are more designed for creating custom components and their specific component behavior rather than trying to impose some kind of messaging on existing components.</li>
+</ul>
+<ul>
+  <li>Next I started investigating events, there are only a handful of events and the <a class="external" href="http://www.w3.org/TR/DOM-Level-3-Events/events.html">W3C documentation</a> is pretty complete.</li>
+</ul>
+<p>The basic problem with the event model is probably due to what I was trying to do. In my HTML I have an input element in a form. I set the onBlur action to a little javascript function that performed a standard AJAX request to get a result. The onreadystatechange was set to another little javascript function that would update a specific element on the HTML page with the result. The result of the AJAX request was the something that I wanted the extension to find. There were only a handful of events that seemed relevant (Load, Change, DOMInsertNode, DOMInsertNodeIntoDocument, DOMActivate) and I tried them all in many different ways. Some of the events only apply to certain types of elements so I included trying to modify the result of the AJAX request to be of the appropriate element type (img, which supports "onLoad," rather than span, which doesn't, for example).</p>
+<p>The problem with the events is the timing. I wasn't sure about the difference between the capture or bubbling flag that you pass to addEventListener but every time I would catch the event in the extension, the element from the AJAX request wasn't fully updated into the HTML page. What that meant is that everytime the extension went looking for the element, it wasn't there yet.</p>
+<p>As a last ditch effort I tried setting a timeout using <code>setTimeout</code> when I got the event in the extension to wait a few milliseconds before looking for the desired element. This was non-optimal and the timeout wasn't very reliable for some reason. Sometimes I would get the timeout, sometimes I would'nt.</p>
+<h5 id="What_I_ended_up_with" name="What_I_ended_up_with">What I ended up with</h5>
+<p>Some helpful information on the irc channel led me to believe that a custom event might help. I started to research custom events on Google but everything that I found was far too complicated for what I wanted to achieve. Eventually I put the creation of the custom event into the stateChanged function that was handling the receipt of the AJAX request. After the HTML component was update with the result of the AJAX request, I created and dispatched the event like this: <code> </code></p>
+<pre class="eval">   var event = document.createEvent("Events");
+   event.initEvent("my-custom-event", true, true);
+   document.body.dispatchEvent(event);
+</pre>
+<p>In the code of the extension that catches the loading of a new page I added this code:</p>
+<pre class="eval">   var doc = aEvent.originalTarget; // doc is document that triggered "onload" event
+   // do something with the loaded page.
+   // doc.location is a Location object (see below for a link).
+   // You can use it to make your code executed on certain pages only.
+   if (doc &amp;&amp; doc.addEventListener)
+     doc.addEventListener("my-custom-event", myExtension.customReceived, false);
+</pre>
+<p>Since the event is dispatched after the element in the HTML is updated by the statusChanged function, the element that extension is looking for is there to find.</p>

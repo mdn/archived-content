@@ -1,0 +1,530 @@
+---
+title: Add to iPhoto
+slug: Mozilla/js-ctypes/Examples/Add_to_iPhoto
+tags:
+  - Add-ons
+  - Extensions
+  - Mac OS X
+  - NeedsUpdate
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+ <ol>
+  <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+  <li class="toggle">
+      <details>
+        <summary>Introduction</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>References</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details open>
+        <summary>Examples</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li></ol>
+      </details>
+  </li>
+ </ol>
+</section>
+
+
+
+<p>This extension for Mac OS X serves as a demonstration of how to use js-ctypes to call Mac OS X Carbon, Core Foundation, and other system frameworks from an extension written entirely in JavaScript.</p>
+
+<div class="warning">
+<p class="note"><strong>Note:</strong> This extension uses Carbon routines, which can no longer be used in Firefox add-ons now that Firefox is a 64-bit application.</p>
+</div>
+
+<p>You can <a class="link-https" href="https://addons.mozilla.org/en-US/firefox/addon/146328/" title="https://addons.mozilla.org/en-US/firefox/addon/146328/">download an installable version</a> of this extension on AMO.</p>
+
+<p>Once installed, when you right-click on an image, you&apos;ll see among the options in the contextual menu an option to &quot;Add Image to iPhoto&quot;. Choose it, and iPhoto will start up (if it&apos;s not already running) and import the image.</p>
+
+<h2 id="Declaring_the_APIs">Declaring the APIs</h2>
+
+<p>The first thing we have to do is declare the Mac OS X APIs we&apos;ll be using. This extension uses a number of methods and data types, as well as constants, from three system frameworks.</p>
+
+<p>Since a lot of this stuff is repetitive, we&apos;ll only look at selected parts of the code to get an idea how things work. You can download the extension and poke through the code inside it if you&apos;d like to see all of it.</p>
+
+<p>For the sake of organization, I chose to implement each system framework (and, mind you, I only declare the APIs I actually use, not all of them) as a JavaScript object containing all the types and methods that framework&apos;s API.</p>
+
+<div class="note"><strong>Note:</strong> In a few cases, this code takes the easy way out by using <code>ctypes.voidptr_t</code> instead of a typed pointer. That&apos;s not really the ideal way to do things but saved some time for this simple example. Some of this may change as I refine the example in the future; I&apos;ll update the article if and when that happens.</div>
+
+<h3 id="Some_global_types">Some global types</h3>
+
+<p>There are a few global data types used by all of our frameworks. These are declared near the top of the code:</p>
+
+<pre class="brush: js">const OSStatus = ctypes.int32_t;
+const CFIndex = ctypes.long;
+const OptionBits = ctypes.uint32_t;
+</pre>
+
+<dl>
+ <dt><code>OSStatus</code></dt>
+ <dd>Used to represent the status code resulting from an operation.</dd>
+ <dt><code>CFIndex</code></dt>
+ <dd>A Core Foundation long integer type used to represent indexes into lists. I debated including this in the <code>CoreFoundation</code> object, and probably would have if I were being more formal, but opted against it for clarity&apos;s sake.</dd>
+ <dt><code>OptionBits</code></dt>
+ <dd>A 32-bit bit field data type.</dd>
+</dl>
+
+<h3 id="Core_Foundation">Core Foundation</h3>
+
+<p>The majority of the system routines we&apos;ll be using come from Core Foundation. Among these are routines for managing <a class="external" href="http://developer.apple.com/Mac/library/documentation/CoreFoundation/Reference/CFStringRef/Reference/reference.html" title="http://developer.apple.com/Mac/library/documentation/CoreFoundation/Reference/CFStringRef/Reference/reference.html"><code>CFString</code></a>, <a class="external" href="http://developer.apple.com/mac/library/documentation/CoreFoundation/Reference/CFURLRef/Reference/reference.html" title="http://developer.apple.com/mac/library/documentation/CoreFoundation/Reference/CFURLRef/Reference/reference.html"><code>CFURL</code></a>, and <a class="external" href="http://developer.apple.com/mac/library/DOCUMENTATION/CoreFoundation/Reference/CFArrayRef/Reference/reference.html" title="http://developer.apple.com/mac/library/DOCUMENTATION/CoreFoundation/Reference/CFArrayRef/Reference/reference.html"><code>CFArray</code></a> objects, among others. These are core system data formats that are used by other frameworks, and we&apos;ll be making use of them.</p>
+
+<p>The Core Foundation API is implemented by the <code>CoreFoundation</code> object, which consists of two methods to initialize and shut down the library, a reference to the library, and all the types and methods declared to support Core Foundation.</p>
+
+<h4 id="Initializing_Core_Foundation">Initializing Core Foundation</h4>
+
+<p>The <code>init()</code> method, which sets everything up, looks like this:</p>
+
+<pre class="brush: js">init: function() {
+  this.lib = ctypes.open(&quot;/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation&quot;);
+
+  // declaring all the APIs goes here
+}
+</pre>
+
+<h4 id="Shutting_down_Core_Foundation">Shutting down Core Foundation</h4>
+
+<p>While the Core Foundation system framework itself doesn&apos;t need to be shut down, we do need to close the library we opened using the js-ctypes API; that&apos;s where the <code>shutdown()</code> method comes in:</p>
+
+<pre class="brush: js">shutdown: function() {
+  this.lib.close();
+}
+</pre>
+
+<h4 id="Select_API_declarations">Select API declarations</h4>
+
+<p>Let&apos;s take a look at a few of the key APIs we declare for Core Foundation, to see how it&apos;s done.</p>
+
+<h5 id="CFRange">CFRange</h5>
+
+<p><code>CFRange</code> is a structure that identifies a <em>range</em>; that is, it identifies an offset to an item in a list and a number of items. In C, the declaration looks like this:</p>
+
+<pre class="brush: cpp">typedef struct {
+    CFIndex location;
+    CFIndex length;
+} CFRange;
+</pre>
+
+<p>To declare this for use with js-ctypes, we use the following code:</p>
+
+<pre class="brush: js">this.CFRange = new ctypes.StructType(&quot;CFRange&quot;,
+                    [ {&apos;location&apos;: ctypes.int32_t},
+                      {&apos;length&apos;: ctypes.int32_t}]);
+</pre>
+
+<p>This defines <code>CoreFoundation.CFRange</code> to represent this data type, comprised of two 32-bit integer fields called <code>location</code> and <code>length</code>.</p>
+
+<h5 id="Generic_CFType_routines">Generic CFType routines</h5>
+
+<p>All Core Foundation data types are based upon a core <code>CFType</code> data type. Basic <code>CFType</code> routines handle memory management, dumping <code>CFType</code> objects to the console, comparing <code>CFType</code> values, and so forth. We&apos;ll be using a number of these methods, but for brevity&apos;s sake, since these are generally simple declarations, let&apos;s look at only the <code>CFRelease()</code> and <code>CFRetain()</code> declarations.</p>
+
+<p>In C, these are declared thusly:</p>
+
+<pre class="brush: cpp">void CFRelease(CFTypeRef cf);
+void CFRetain(CFTypeRef cf);
+</pre>
+
+<p>In JavaScript, this translates to:</p>
+
+<pre class="brush: js">    this.CFRelease = this.lib.declare(&quot;CFRelease&quot;,
+                                ctypes.default_abi,
+                                ctypes.void_t,
+                                ctypes.voidptr_t);        // input: object to release
+
+    this.CFRetain = this.lib.declare(&quot;CFRetain&quot;,
+                                ctypes.default_abi,
+                                ctypes.void_t,
+                                ctypes.voidptr_t);        // input: object to retain
+</pre>
+
+<p>These methods are used to manage the reference counting for Core Foundation objects.</p>
+
+<h5 id="CFString">CFString</h5>
+
+<p>A <code>CFString</code> is an opaque data type that contains a string. The string can be stored in any of a number of encodings, so you use assorted functions that know how to cope with different encodings to set and get values of <code>CFString</code>s, as well as to perform typical string operations.</p>
+
+<p>The first declaration to be done here is to actually declare the <code>CFStringRef</code> data type; this is an opaque pointer to a <code>CFString</code> object.</p>
+
+<pre class="brush: js">this.CFStringRef = new ctypes.PointerType(&quot;CFStringRef&quot;);
+</pre>
+
+<p>Now that we&apos;ve declared the core type, we can declare the methods we use that work with <code>CFString</code> objects. Let&apos;s take a look at one of these.</p>
+
+<pre class="brush: js">    this.CFStringCreateWithCharacters = this.lib.declare(&quot;CFStringCreateWithCharacters&quot;,
+                                ctypes.default_abi,
+                                this.CFStringRef,         // returns a new CFStringRef
+                                ctypes.voidptr_t,         // allocator
+                                ctypes.jschar.ptr,        // pointer to the Unicode string
+                                ctypes.int32_t);          // length of the string
+</pre>
+
+<p><code>CFStringCreateWithCharacters()</code> is used to create a new <code>CFString</code> object using a Unicode string as the source string, which is copied into the new <code>CFString</code> object. It returns a <code>CFStringRef</code>, which is a pointer to the new string, and accepts, as input, three parameters: an allocator, which is a pointer to a routine that will allocate the memory to contain the new object (we use the <code>ctypes.voidptr_t</code> type for this), a pointer to the Unicode string to copy into the new string object (<code>ctypes.jschar.ptr</code>), and the length of the Unicode string in characters.</p>
+
+<h5 id="CFURL">CFURL</h5>
+
+<p>The <code>CFURL</code> type is used to describe a URL. It differs from a string in that it offers URL-specific methods for managing the content, and includes methods for converting between URLs and file system routine data formats such as <code>FSRef</code> and Unix pathnames. We use a few of these routines because the Launch Services routine we&apos;ll be using to launch iPhoto and pass it the image to import uses <code>CFURL</code> for the file references.</p>
+
+<p>Let&apos;s take a look at two of the routines declared here:</p>
+
+<pre class="brush: js">    this.CFURLCreateFromFileSystemRepresentation = this.lib.declare(&quot;CFURLCreateFromFileSystemRepresentation&quot;,
+                                ctypes.default_abi,
+                                this.CFURLRef,            // returns
+                                ctypes.voidptr_t,         // input: allocator
+                                ctypes.unsigned_char.ptr, // input: pointer to string
+                                CFIndex,                  // input: string length
+                                ctypes.bool)              // input: isDirectory
+</pre>
+
+<p>This method is used to convert a Unix pathname into an URL. The interesting things to note about the declaration of <code>CoreFoundation.CFURLCreateFromFileSystemRepresentation()</code> are:</p>
+
+<ul>
+ <li>It returns a <code>CFURLRef</code>, which is an opaque pointer similar to the <code>CFStringRef</code> we noted above.</li>
+ <li>The pathname is specified as a value of type <code>ctypes.unsigned_char.ptr</code>, which is a pointer to an unsigned character. &quot;File system representation&quot; strings on Mac OS X are in UTF-8 format.</li>
+ <li>We use our <code>CFIndex</code> type here to specify the length of the string.</li>
+</ul>
+
+<pre class="brush: js">    this.CFURLGetFSRef = this.lib.declare(&quot;CFURLGetFSRef&quot;,
+                                ctypes.default_abi,
+                                ctypes.bool,              // Returns a bool
+                                this.CFURLRef,            // input: URL to convert
+                                ctypes.voidptr_t);        // input: Pointer to FSRef to fill
+</pre>
+
+<p>The <code>CoreFoundation.CFURLGetFSRef()</code> method is used to fill out a Carbon <code>FSRef</code> structure to describe the location of a file represented by a <code>CFURL</code> object. The main reason I include this here is because of the last parameter, which should be a pointer to an <code>FSRef</code>, but that&apos;s not declared until we get around to declaring the Carbon API, and I think that&apos;s worth noting.</p>
+
+<h5 id="CFArray">CFArray</h5>
+
+<p>The <code>CFArray</code> type is used to create arrays of objects; the objects in the array can be of any type, thanks to a set of callbacks you can provide to handle managing their memory and performing operations such as comparisons. The most interesting thing we&apos;ll look at here is how to reference the system-provided default callback record, which is exported by Core Foundation under the name <code>kCFTypeArrayCallBacks</code>.</p>
+
+<p>In C, the callback structure, and the predefined callback record, look like this:</p>
+
+<pre class="brush: cpp">typedef const void *	(*CFArrayRetainCallBack)(CFAllocatorRef allocator, const void *value);
+typedef void		(*CFArrayReleaseCallBack)(CFAllocatorRef allocator, const void *value);
+typedef CFStringRef	(*CFArrayCopyDescriptionCallBack)(const void *value);
+typedef Boolean		(*CFArrayEqualCallBack)(const void *value1, const void *value2);
+typedef struct {
+    CFIndex				version;
+    CFArrayRetainCallBack		retain;
+    CFArrayReleaseCallBack		release;
+    CFArrayCopyDescriptionCallBack	copyDescription;
+    CFArrayEqualCallBack		equal;
+} CFArrayCallBacks;
+
+CF_EXPORT const CFArrayCallBacks kCFTypeArrayCallBacks;
+</pre>
+
+<p>The <code>kCFTypeArrayCallBacks</code> constant refers to a predefined callback structure referencing callback routines for managing arrays whose values are all <code>CFType</code>-based objects, such as <code>CFURL</code>, which is what we&apos;ll be using.</p>
+
+<p>We need to be able to reference that predefined structure from our code. To do that, we first need to declare the <code>CFArrayCallBacks</code> structure:</p>
+
+<pre class="brush: js">    this.CFArrayCallBacks = new ctypes.StructType(&quot;CFArrayCallBacks&quot;,
+      [ {&apos;version&apos;: CFIndex},
+        {&apos;retain&apos;: ctypes.voidptr_t},
+        {&apos;release&apos;: ctypes.voidptr_t},
+        {&apos;copyDescription&apos;: ctypes.voidptr_t},
+        {&apos;equal&apos;: ctypes.voidptr_t} ]);
+</pre>
+
+<p>Having done this, we can then import the <code>kCFTypeArrayCallBacks</code> structure. This is done using the js-ctypes library object&apos;s <code>declare()</code> method, just like importing a function:</p>
+
+<pre class="brush: js">    this.kCFTypeArrayCallBacks = this.lib.declare(&quot;kCFTypeArrayCallBacks&quot;,
+                              this.CFArrayCallBacks);
+</pre>
+
+<div class="note"><strong>Note:</strong> For the record, this is the part that requires a nightly build of Firefox 3.7a5pre dated April 16, 2010 or later; this capability was introduced in that build.</div>
+
+<h5 id="CFMutableArray">CFMutableArray</h5>
+
+<p>One thing about Core Foundation types that is interesting is the use of regular and mutable versions of the same data types. For example, the <code>CFArray</code> type describes an array, but <code>CFArray</code> objects can&apos;t be changed once they&apos;ve been created.</p>
+
+<p>However, obviously there are cases in which you&apos;ll want to be able to manipulate the contents of an array by adding and removing items, sorting them, and so forth. That&apos;s where the <code>CFMutableArray</code> type comes into play. All <code>CFArray</code> functions accept <code>CFMutableArray</code> objects, so you can use <code>CFMutableArray</code> with any routine that accepts a <code>CFArray</code> as input, but <code>CFMutableArray</code> supports additional functions that let you change the contents of the array.</p>
+
+<p>There&apos;s nothing particularly interesting about how we declare this API, but it will be noteworthy when we look at how we use <code>CFMutableArray</code> objects with methods that accept a <code>CFArray</code> as input, so I introduce this concept here.</p>
+
+<h3 id="Carbon">Carbon</h3>
+
+<p>The Carbon API is the core operating system API derived from the classic Mac operating system. We actually aren&apos;t using any Carbon methods, but we are using one Carbon data type, the previously mentioned <code>FSRef</code> structure. <code>FSRef</code> is an opaque object describing a file.</p>
+
+<p>In C, the <code>FSRef</code> is declared thusly:</p>
+
+<pre class="brush: cpp">struct FSRef {
+  UInt8               hidden[80];             /* private to File Manager; •• need symbolic constant */
+};
+typedef struct FSRef                    FSRef;
+</pre>
+
+<p>We declare it using js-ctypes like this:</p>
+
+<pre class="brush: js">    this.struct_FSRef = new ctypes.StructType(&quot;FSRef&quot;,
+                [ {&quot;hidden&quot;: ctypes.char.array(80)}]);
+</pre>
+
+<p>The Carbon library <code>init()</code> and <code>shutdown()</code> routines are otherwise similar to how we do things for Core Foundation.</p>
+
+<h3 id="Application_Services">Application Services</h3>
+
+<p>The Application Services framework consists of a number of different APIs that provide special services to applications. The Application Services API we&apos;ll be using is the Launch Services API, which is used to launch applications and open files in default (or specific, in our case) applications.</p>
+
+<p>The function we&apos;ll be using is <a class="external" href="http://developer.apple.com/mac/library/documentation/Carbon/Reference/LaunchServicesReference/Reference/reference.html#//apple_ref/c/func/LSOpenURLsWithRole" title="http://developer.apple.com/mac/library/documentation/Carbon/Reference/LaunchServicesReference/Reference/reference.html#//apple_ref/c/func/LSOpenURLsWithRole"><code>LSOpenURLsWithRole()</code></a>, whose declaration looks like this:</p>
+
+<pre class="brush: js">this.LSOpenURLsWithRole = this.lib.declare(&quot;LSOpenURLsWithRole&quot;,
+                                ctypes.default_abi,                 // ABI type
+                                OSStatus,                           // Returns OSStatus
+                                CoreFoundation.CFArrayRef,          // Array of files to open in the app
+                                OptionBits,                         // Roles mask
+                                ctypes.voidptr_t,                   // inAEParam
+                                this.struct_LSApplicationParameters.ptr, // description of the app to launch
+                                ctypes.voidptr_t,                   // PSN array pointer
+                                CFIndex);                           // max PSN count
+</pre>
+
+<p>This function returns an <code>OSStatus</code> indicating the result of the launch attempt, and accepts these parameters:</p>
+
+<ul>
+ <li>A <code>CFArrayRef</code> providing a list of CFURL objects for the files to open in the application.</li>
+ <li>An <code>OptionBits</code> value providing a bit field of special options.</li>
+ <li>A pointer to an Apple Event parameter; we aren&apos;t using this, so I&apos;m just using a <code>voidptr_t</code> here.</li>
+ <li>A pointer to an <code>LSApplicationParameters</code> structure that describes what application to launch</li>
+ <li>A pointer to the first element of an array to receive the serial numbers of the launched applications; we&apos;re not using this field, but if you do, you&apos;ll probably have to declare this differently.</li>
+ <li>A <code>CFIndex</code> indicating the size of the array specified by the previous parameter.</li>
+</ul>
+
+<p>The <code>LSApplicationParameters</code> structure is declared like this:</p>
+
+<pre class="brush: js">    this.struct_LSApplicationParameters = new ctypes.StructType(&apos;LSApplicationParameters&apos;,
+                                              [ {&apos;version&apos;: CFIndex},
+                                                {&apos;flags&apos;: OptionBits},
+                                                {&apos;application&apos;: ctypes.voidptr_t},  // FSRef of application to launch
+                                                {&apos;asyncLaunchRefCon&apos;: ctypes.voidptr_t},
+                                                {&apos;environment&apos;: ctypes.voidptr_t},  // CFDictionaryRef
+                                                {&apos;argv&apos;: ctypes.voidptr_t},         // CFArrayRef of args
+                                                {&apos;initialEvent&apos;: ctypes.voidptr_t}]); // AppleEvent *
+</pre>
+
+<p>Most of these fields, we won&apos;t be using. We&apos;ll get a look at how we use this shortly.</p>
+
+<p>There are also a few constants used for the <code>flags</code> field in the <code>LSApplicationParameters</code> structure:</p>
+
+<pre class="brush: js">this.kLSRolesNone = 1;
+this.kLSRolesViewer = 2;
+this.kLSRolesEditor = 4;
+this.kLSRolesAll = 0xffffffff;
+</pre>
+
+<h2 id="Implementing_the_extension">Implementing the extension</h2>
+
+<p>Now that the Mac OS X APIs we&apos;ll be using have been declared, we can write the core of the extension itself. This is done in the <code>iPhoto</code> object in the extension&apos;s code.</p>
+
+<h3 id="Hooking_up_to_the_context_menu">Hooking up to the context menu</h3>
+
+<p>On startup, we find the content area&apos;s context menu and add an event listener to it that will be called when the context menu is displayed. We&apos;ll use our handler for this event to add the &quot;Add Image to iPhoto&quot; option if the user has right-clicked on an image.</p>
+
+<pre class="brush: js">if (document.getElementById(&quot;contentAreaContextMenu&quot;)) {
+  document.getElementById(&quot;contentAreaContextMenu&quot;).addEventListener(&quot;popupshowing&quot;, iPhoto.onPopup, false);
+}
+</pre>
+
+<h3 id="Responding_when_the_context_menu_is_clicked">Responding when the context menu is clicked</h3>
+
+<p>When the user right-clicks an image, our handler gets called:</p>
+
+<pre class="brush: js">onPopup: function() {
+  var node = iPhoto.getCurrentNode();
+
+  var item = document.getElementById(&quot;add-to-iphoto_menuitem&quot;);
+
+  if (item) {
+    item.hidden = (node == null); // Hide it if we&apos;re not on an image
+  }
+}
+</pre>
+
+<p>This code finds the image node the user right-clicked in by calling our <code>getCurrentNode()</code> method, then sets the <code id="a-hidden"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/hidden">hidden</a></code> state of the &quot;Add Image to iPhoto&quot; menu item based on whether or not an image node was found.</p>
+
+<p>The code to identify the node looks like this:</p>
+
+<pre class="brush: js">getCurrentNode: function() {
+  var node = document.popupNode;
+
+  // If no node, just return null now
+
+  if (node == undefined || !node) {
+    return null;
+  }
+
+  // Is it an image node?
+
+  var elemName = node.localName.toUpperCase();
+
+  if (elemName == &quot;IMG&quot;) {
+    return node;
+  }
+
+  // Nope, return null
+
+  return null;
+}
+</pre>
+
+<p>This starts by getting the node the popup was opened from. If this is null or undefined, we immediately return null, indicating there is no node associated with the context menu.</p>
+
+<p>Otherwise, we fetch the name of the element and look to see if it&apos;s an <a href="/en-US/docs/Web/HTML/Element/img" title="The HTML &lt;img&gt; element embeds an image into the document. It is a replaced element."><code>&lt;img&gt;</code></a> element. If so, we return that node; otherwise, we return null.</p>
+
+<p>The important thing to take away from this is that this method returns either null or the image node the user right-clicked on. If they right-clicked anything other than an image, it returns null.</p>
+
+<h3 id="Responding_when_the_Add_Image_to_iPhoto_option_is_chosen">Responding when the &quot;Add Image to iPhoto&quot; option is chosen</h3>
+
+<p>When the user chooses to add the image to iPhoto, the <code>add()</code> method is executed.</p>
+
+<pre class="brush: js">add: function() {
+  var node = iPhoto.getCurrentNode();
+
+  if (node) {
+    var src = node.getAttribute(&quot;src&quot;); // Get the URL of the image
+    if (src &amp;&amp; src != &quot;&quot;) {
+      iPhoto.addImageByURL(src);
+    }
+  }
+}
+</pre>
+
+<p>This fetches the node representing the image the user wants to add, and, if it&apos;s an image, fetches the image&apos;s URL from its <code>src</code> attribute, then passes it into our <code>addImageByURL()</code> method, which will do all the heavy lifting.</p>
+
+<h3 id="Adding_the_image_to_iPhoto">Adding the image to iPhoto</h3>
+
+<p>The <code>addImageByURL()</code> method handles actually retrieving the image and adding it to iPhoto. Let&apos;s take a look at its code, then explore how it works. This is where all our js-ctypes usage occurs.</p>
+
+<pre class="brush: js">addImageByURL: function(src) {
+  CoreFoundation.init();
+  Carbon.init();
+  AppServices.init();
+
+  // Download the image
+
+  var filePath = this.downloadImage(src);
+
+  var mutableArray = CoreFoundation.CFArrayCreateMutable(null, 1, CoreFoundation.kCFTypeArrayCallBacks.address());
+  if (mutableArray) {
+    var url = CoreFoundation.CFURLCreateFromFileSystemRepresentation(null, filePath, filePath.length, false);
+    CoreFoundation.CFArrayAppendValue(mutableArray, url);
+    CoreFoundation.CFRelease(url);
+
+    // Call Launch Services to open iPhoto and deliver the image
+
+    var ref = new Carbon.struct_FSRef;
+    var appParams = AppServices.struct_LSApplicationParameters(0, 1, ref.address(), null, null, null, null);
+
+    var appstr = &quot;file:///Applications/iPhoto.app&quot;;
+    var appstrCF = CoreFoundation.CFStringCreateWithCharacters(null, appstr, appstr.length);
+    var appurl = CoreFoundation.CFURLCreateWithString(null, appstrCF, null);
+    CoreFoundation.CFRelease(appstrCF);
+    var b = CoreFoundation.CFURLGetFSRef(appurl, ref.address());
+
+    if (!b) {
+      var stringsBundle = document.getElementByID(&quot;string-bundle&quot;);
+
+      alert(stringsBundle.getString(&apos;alert_download_error_string&apos;));
+    } else {
+      var array = ctypes.cast(mutableArray, CoreFoundation.CFArrayRef);
+      AppServices.LSOpenURLsWithRole(array, 0, null, appParams.address(), null, 0);
+    }
+    CoreFoundation.CFRelease(appurl);
+
+    // Clean up
+
+    CoreFoundation.CFRelease(array);
+  }
+
+  AppServices.shutdown();
+  Carbon.shutdown();
+  CoreFoundation.shutdown();
+}
+</pre>
+
+<p>This code begins by initializing all the system frameworks we&apos;re using, by calling the <code>init()</code> methods on the <code>CoreFoundation</code>, <code>Carbon</code>, and <code>AppServices</code> objects.</p>
+
+<p>Then the <a href="/en/js-ctypes/Examples/Add_to_iPhoto#Downloading_the_image" title="en/js-ctypes/Examples/Add to iPhoto#Downloading the image"><code>downloadImage()</code></a> method is used to actually download the image to a temporary file. Once we have the file, we start making use of our native APIs.</p>
+
+<h4 id="Creating_the_array_of_files_to_import">Creating the array of files to import</h4>
+
+<p>The first step is to construct an array of URLs for all the files we want to open in iPhoto. In our case, we have only one file, but we still need an array. So we start by calling <code>CoreFoundation.CFArrayCreateMutable()</code> to create a mutable array with room for one item, specifying the address of the standard callback routines exported by Core Foundation using the syntax <code>CoreFoundation.kCFTypeArrayCallBacks.address()</code>.</p>
+
+<p>If creating the array succeeded, we continue by creating a new <code>CFURL</code> object from the pathname of the image file returned by the <code>downloadImage()</code> method. This is done by calling the Core Foundation routine <code>CFURLCreateFromFileSystemRepresentation()</code>. Conveniently, we can simply pass in the JavaScript string, <code>filePath</code>, as the string and <code>filePath.length</code> as its length.</p>
+
+<p>The array is then built by using <code>CFArrayAppendValue()</code> to add the new <code>CFURL</code> to the array. Doing this causes the array to retain the URL object, so we can use <code>CFRelease()</code> to release it now.</p>
+
+<h4 id="Calling_Launch_Services_to_launch_iPhoto">Calling Launch Services to launch iPhoto</h4>
+
+<p>Next, we need to build the parameters for the <code>LSOpenURLsWithRole()</code> function, then call it to start up iPhoto.</p>
+
+<p>The first step here is to create a new <code>FSRef</code> object to contain the reference to the iPhoto application itself, since <code>LSOpenURLsWithRole()</code> uses an <code>FSRef</code> to specify the application to launch.</p>
+
+<p>Then we build the <code>LSApplicationParameters</code> structure describing the application to launch. Let&apos;s take a closer look at this syntax:</p>
+
+<pre class="brush: js">    var appParams = AppServices.struct_LSApplicationParameters(0, 1, ref.address(), null, null, null, null);</pre>
+
+<p>Here you&apos;re calling a constructor, created for you by js-ctypes, that creates and fills out the structure, specifying the values of all of the parameters. To specify a pointer to the <code>FSRef</code> indicating the application to launch, we pass <code>ref.address()</code>, which obtains the actual memory address of the C data structure.</p>
+
+<p>Note that so far, we haven&apos;t actually obtained a value for the <code>FSRef</code> in question. We do that next by following these steps:</p>
+
+<ol>
+ <li>Create a <code>CFString</code> referring to <code><a class="external" rel="freelink">file:///Applications/iPhoto.app</a></code>, which is iPhoto&apos;s default path, using <code>CFStringCreateWithCharacters()</code>.</li>
+ <li>Create the corresponding <code>CFURL</code> object by calling <code>CFURLCreateWithString()</code>.</li>
+ <li>Release the string using <code>CFRelease()</code>, since we&apos;re done with it.</li>
+ <li>Call <code>CFURLGetFSRef()</code> to fill out the <code>FSRef</code> structure to reference the same file as the <code>CFURL</code>.</li>
+</ol>
+
+<p>If that fails, we display an error; otherwise, we cast the <code>CFMutableArrayRef</code> into a <code>CFArrayRef</code> by calling <code>ctypes.cast()</code>, then call <code>LSOpenURLsWithRole()</code> to actually send the image to iPhoto.</p>
+
+<p>After doing that, we clean up after ourselves by releasing the <code>CFURL</code> object and the array, then shutting down the three libraries we used.</p>
+
+<h3 id="Downloading_the_image">Downloading the image</h3>
+
+<p>The <code>downloadImage()</code> method handles actually downloading the image to a temporary file; it then returns the local pathname of the downloaded file to the caller.</p>
+
+<pre class="brush: js">downloadImage: function(src) {
+  // Get the file name to download from the URL
+
+  var fileName = src.slice(src.lastIndexOf(&quot;/&quot;)+1);
+
+  // Build the path to download to
+
+  var dest = Components.classes[&quot;@mozilla.org/file/directory_service;1&quot;]
+                          .getService(Components.interfaces.nsIProperties)
+                          .get(&quot;TmpD&quot;, Components.interfaces.nsIFile);
+  dest.append(fileName);
+
+  dest.createUnique(dest.NORMAL_FILE_TYPE, 0600);
+  var wbp = Components.classes[&apos;@mozilla.org/embedding/browser/nsWebBrowserPersist;1&apos;]
+            .createInstance(Components.interfaces.nsIWebBrowserPersist);
+  var ios = Components.classes[&apos;@mozilla.org/network/io-service;1&apos;]
+            .getService(Components.interfaces.nsIIOService);
+
+  var uri = ios.newURI(src, document.characterSet, gBrowser.selectedBrowser.contentDocument.documentURIObject);
+  wbp.persistFlags &amp;= ~Components.interfaces.nsIWebBrowserPersist.PERSIST_FLAGS_NO_CONVERSION; // don&apos;t save gzipped
+  wbp.saveURI(uri, null, null, null, null, dest);
+
+  return dest.path;
+}
+</pre>
+
+<p>This is pretty straightforward, typical Mozilla code. It gets the filename of the file being download by slicing it off the end of the specified image URL, then obtains the path to the temporary items folder and appends the image file&apos;s name to that path. Then we call <code>createUnique()</code> to create a unique file by that name (or a derivative thereof if the name is already in use), and download the contents of the image file to that local file.</p>
+
+<h2 id="Closing_remarks">Closing remarks</h2>
+
+<p>This is a fairly simple example of how to use js-ctypes, but it actually does something useful, and should be a helpful demonstration not just for how to use js-ctypes, but also more specifically for developers that want to interface with Mac OS X system frameworks.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en/JavaScript/Code_modules/ctypes.jsm" title="en/JavaScript code modules/ctypes.jsm">ctypes.jsm</a></li>
+ <li><a href="/en/js-ctypes/js-ctypes_reference" title="en/js-ctypes/js-ctypes reference">js-ctypes reference</a></li>
+ <li><a href="/en/js-ctypes/Using_js-ctypes" title="en/js-ctypes/Using js-ctypes">Using js-ctypes</a></li>
+</ul>

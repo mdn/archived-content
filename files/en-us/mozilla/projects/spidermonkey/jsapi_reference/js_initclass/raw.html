@@ -1,0 +1,96 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+<div class="summary">
+<p>Make a {{jsapixref("JSClass")}} accessible to JavaScript code by creating its prototype, constructor, properties, and functions.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">JSObject *
+JS_InitClass(JSContext *cx, JS::HandleObject obj, JS::HandleObject parent_proto,
+             const JSClass *clasp, JSNative constructor, unsigned nargs,
+             const JSPropertySpec *ps, const JSFunctionSpec *fs,
+             const JSPropertySpec *static_ps, const JSFunctionSpec *static_fs);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to a JS context from which to derive runtime information. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>Pointer to the "globals" object to use for initializing the class. This must not be <code>NULL</code>. Once <code>JS_InitClass</code> creates the new class's constructor, it stores the constructor as a property in this object. So, for example, if this object is <code>{{jsapixref("JS_GetGlobalObject")}}(cx)</code>, then JavaScript code will be able to see the new class as a global name.</td>
+  </tr>
+  <tr>
+   <td><code>parent_proto</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>Pointer to an object to be used as a prototype. <code>JS_InitClass</code> always creates a new prototype object that serves as the <code>__proto__</code> for class instances; <code>parent_proto</code> becomes the <code>__proto__</code> of that prototype object.</td>
+  </tr>
+  <tr>
+   <td><code>clasp</code></td>
+   <td>{{jsapixref("JSClass", "JSClass *")}}</td>
+   <td>Pointer to the class structure to initialize. This structure defines the class for use by other API functions.</td>
+  </tr>
+  <tr>
+   <td><code>constructor</code></td>
+   <td>{{jsapixref("JSNative")}}</td>
+   <td>
+    <p>The constructor for the class. Its scope matches that of the <code>obj</code> argument. If <code>constructor</code> is <code>NULL</code>, then <code>static_ps</code> and <code>static_fs</code> must also be <code>NULL</code>.</p>
+    <p>Unlike other <code>JSNative</code>s, this function must not call <code>JS_THIS</code> or <code>JS_THIS_OBJECT</code>. Instead it must create a new object and return it.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>nargs</code></td>
+   <td><code>unsigned</code></td>
+   <td>Number of arguments for the constructor.</td>
+  </tr>
+  <tr>
+   <td><code>ps</code></td>
+   <td>{{jsapixref("JSPropertySpec", "JSPropertySpec *")}}</td>
+   <td>Either <code>NULL</code> or a pointer to the first element of an array of <code>JSPropertySpec</code>s, terminated by the null <code>JSPropertySpec</code>, which can be written <code>{0, 0, 0, 0, 0}</code>. These properties, if any, are added to the class's new prototype object. All instances of the new class will inherit these properties via the prototype chain.</td>
+  </tr>
+  <tr>
+   <td><code>fs</code></td>
+   <td>{{jsapixref("JSFunctionSpec", "JSFunctionSpec *")}}</td>
+   <td>Either <code>NULL</code> or a pointer to the first element of an array of <code>JSFunctionSpec</code>s, terminated by {{jsapixref("JS_FS", "JS_FS_END")}}. These functions, if any, are added to the class's new prototype object. All instances of the new class will inherit these methods via the prototype chain. (This is the JavaScript equivalent of public, non-static methods in C++ or Java.)</td>
+  </tr>
+  <tr>
+   <td><code>static_ps</code></td>
+   <td>{{jsapixref("JSPropertySpec", "JSPropertySpec *")}}</td>
+   <td>Either <code>NULL</code> or a pointer to the first element of an array of <code>JSPropertySpec</code>s, terminated by the null <code>JSPropertySpec</code>. These properties, if any, are added to the new class's constructor. (This is the nearest JavaScript equivalent of public static member variables in C++ or public static fields in Java.)</td>
+  </tr>
+  <tr>
+   <td><code>static_fs</code></td>
+   <td>{{jsapixref("JSFunctionSpec", "JSFunctionSpec *")}}</td>
+   <td>Either <code>NULL</code> or a pointer to the first element of an array of <code>JSFunctionSpec</code>s, terminated by {{jsapixref("JS_FS", "JS_FS_END")}}. These functions, if any, are added to the new class's constructor. (This is the JavaScript equivalent of public static methods in C++ or Java.)</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><strong><code>JS_InitClass</code></strong> initializes a <code>JSClass</code> and (optionally) makes it visible to JavaScript code.</p>
+<p>This is one way to create <code>JSObject</code>s whose properties and methods are implemented in native C/C++. If you need a native function but you don't need to support instances or inheritance, <code>JS_InitClass</code> might be overkill. {{jsapixref("JS_DefineFunction")}} is simpler.</p>
+<p>A JSAPI class consists of a {{jsapixref("JSClass")}} structure, a constructor, a prototype object, and properties and functions. The <code>JSClass</code> is an internal data structure that is not exposed outside the JavaScript engine. It specifies the name of the class, its flags, and its property access functions. These include native C functions for instance finalization, adding and deleting properties, getting and setting property values, and enumerating, converting, and resolving properties. The JSAPI provides reasonable default behavior for all of these; ordinarily you don't want to overload any of them.</p>
+<p>After a successful call to <code>JS_InitClass</code>, JavaScript code can see and manipulate the class's constructor and prototype just as if it were an ordinary JavaScript function with a <code>prototype</code> property. JavaScript code can create new instances using the <code>new</code> keyword. Classes can have methods and properties that are present on all instances. They can also have methods and properties that are only present on the constructor; these are called "static methods" and "static properties" because they serve the same purpose and use the same syntax as static methods and fields in Java.</p>
+<p>On success, <code>JS_InitClass</code> returns a pointer to a JS object that is the prototype for the newly initialized class. If <code>JS_InitClass</code> fails, it returns <code>NULL</code>.</p>
+<p>The constructor for the class is built in the same context as <code>cx</code>, and in the same scope as <code>obj</code>. If you pass <code>NULL</code> as the <code>constructor</code> parameter, then a constructor is not built, and you cannot specify static properties and functions for the class.</p>
+<div class="note">
+ <strong>Note:</strong> Starting with SpiderMonkey 1.8, the prototype and constructor are set up with stub getter and setter operations instead of class operations.</div>
+<p>If you provide a constructor for the class, then you should also pass an object to <code>parent_proto</code>. <code>JS_InitClass</code> uses <code>parent_proto</code> to build a prototype object for the class. The prototype object inherits properties and methods from the <code>parent_proto</code> object you provide.</p>
+<p>Once the constructor or prototype is created, <code>JS_InitClass</code> defines a property on <code>obj</code>. The name of the property is <code>clasp-&gt;name</code>. Its value is the constructor function if <code>constructor</code> is non-null, and the prototype object otherwise. The property has the stub getter and setter and no {{jsapixref("JS_GetPropertyAttributes", "property attributes", "", 1)}}. (If your constructor function requires property attributes, such as <code>JSPROP_ENUMERATE</code>, use {{jsapixref("JS_SetPropertyAttributes")}} to modify the attributes of the property created by <code>JS_InitClass</code>.)</p>
+<p>After building the constructor and prototype, <code>JS_InitClass</code> adds properties and methods. Ordinary properties and methods are added to the prototype. Static properties and methods are added to the constructor.  The properties are defined as though by calling {{jsapixref("JS_DefineProperties")}}, and the methods as though by calling {{jsapixref("JS_DefineFunctions")}}.</p>
+<div class="note">
+ <strong>Note:</strong> By default <code>JS_InitClass</code> creates a prototype object but does not invoke the constructor ({{jsapixref("JSClass.construct")}}) on it. However, the prototype object will eventually be finalized ({{jsapixref("JSClass.finalize")}}). This inconsistency can cause problems; for example, if the finalizer calls <code>{{jsapixref("JS_GetPrivate")}}()</code>, expecting that the constructor called <code>{{jsapixref("JS_SetPrivate")}}()</code>, it may find that the private data is <code>NULL</code>. The {{jsapixref("JSClass.flags", "JSCLASS_CONSTRUCT_PROTOTYPE")}} flag is one way to avoid this inconsistency.</div>
+<div class="warning">
+ <p><strong>Warning:</strong> If the class is a {{jsapixref("JSExtendedClass")}}, make sure that the additional reserved fields at the end of the <code>JSExtendedClass</code> are <code>NULL</code>. <code>JSExtendedClass</code> structs should usually be global, and in this case the compiler automatically initializes these fields to <code>NULL</code>. (This is a feature of the C and C++ languages.) Otherwise, use <code>memset</code>.</p>
+</div>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+<li>{{ LXRSearch("ident", "i", "JS_InitClass") }}</li>
+<li>{{jsapixref("JS_GetClass")}}</li>
+<li>{{jsapixref("JS_InstanceOf")}}</li>
+</ul>

@@ -1,0 +1,136 @@
+<p>Please see <a href="/en/Places/History_Service/Design">History Service Design</a> for information on the design of the history service, and <a href="/en/The_Places_database">The Places database</a> for a higher-level design overview of <a href="/en/Places">Places</a>. This page provides a map to the external API.</p>
+
+<h3 id="History_services_interface_overview" name="History_services_interface_overview">History services interface overview</h3>
+
+<p>The Mozilla history service has undergone many revisions. To maintain backwards compatibility, each version has implemented the older interfaces, resulting in functionality spread across many interfaces. The places history service ("NavHistory") implements these history interfaces:</p>
+
+<ul>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIGlobalHistory2" title="">nsIGlobalHistory2</a></code>: Basic add page, is visited functionality used by the docshell when visiting and rendering pages.</li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIGlobalHistory3" title="">nsIGlobalHistory3</a></code>: Adds extra functions for dealing with redirects and hints for rendering (gecko flags).</li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIBrowserHistory" title="">nsIBrowserHistory</a></code>: Adds functions used by the basic browser like marking pages as typed in the URL bar, and removing pages as from the history interface.</li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsINavHistoryService" title="">nsINavHistoryService</a></code>: Complex query functions, more fine-grained getters and setters.</li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAutoCompleteSearch" title="">nsIAutoCompleteSearch</a></code>: URL-bar autocomplete from history</li>
+</ul>
+
+<div class="warning">From 1.9.1 (Firefox3.1) on, don't use any Places service on (or after) quit-application has been notified, since the database connection will be closed to allow the last sync, and changes will most likely be lost. Use quit-application-granted instead.</div>
+
+<h3 id="Differences_from_previous_implementations" name="Differences_from_previous_implementations">Differences from previous implementations</h3>
+
+<p>The previous <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/components/history/src/nsGlobalHistory.cpp" rel="custom">nsGlobalHistory</a> service stored one entry for each page in history. This entry contained the URL, title, visit count, last visit date, first visit date, host name, last referrer, flags for typed, hidden, and gecko flags (gecko flags is trunk only).</p>
+
+<p>The NavHistory service has broken this into two tables (see <a href="en/Places/History_Service/Design">History Service Design</a>). The main URL table stores the information about the page: URL, host name, title, visit count, hidden, and typed. Stored separately is the information specific to each visit. This information is called a "visit" in this document and in the code. A visit contains a reference to the URL table for the page, the visit date, the transition type (typed, click, redirect, bookmark, etc.), a reference to the referring visit, and the session ID.</p>
+
+<p>This separation of the global page information and the visit allows us to store information about each time the page was visited instead of just the last time. Using the referrer information in each visit, the browsing path can be reconstructed at any time.</p>
+
+<p>The "session ID" allows these paths to be reconstructed more easily. When the user starts browsing (for example, by typing in a link or following a bookmark), a new session ID is created. New visits get the same session ID as their referrer. This means that one "session" is comprised of going to a new page, and following a bunch of links or redirects. A session is ended when a new URL is typed in or selected from bookmarks. These session IDs allow the dotted lines separating related pages in the history view to be easily computed.</p>
+
+<h3 id="Creating_the_history_service" name="Creating_the_history_service">Creating the history service</h3>
+
+<p>The Places history service's contract ID is <code>"@mozilla.org/browser/nav-history-service;1"</code>:</p>
+
+<pre class="brush: js">var historyService = Components.classes["@mozilla.org/browser/nav-history-service;1"]
+                               .getService(Components.interfaces.nsINavHistoryService);
+</pre>
+
+<p>It also responds to the old contract ID for URl bar autocomplete <code>"@mozilla.org/autocomplete/search;1?name=history"</code> and the contract ID for the old history system (since it is backwards-compatible) <code>"@mozilla.org/browser/global-history;2"</code>.</p>
+
+<p>If database initialization completes correctly a "places-init-complete" topic is notified, at this point is possible to look for database status:</p>
+
+<pre class="brush: js">var databaseStatus = historyService.databaseStatus;
+switch (databaseStatus) {
+  case historyService.DATABASE_STATUS_OK:
+    // Database did already exist and has been correctly initialized.
+    break;
+  case historyService.DATABASE_STATUS_CREATE:
+    // Database did not exist, a new one has just been created and initialized.
+    break;
+  case historyService.DATABASE_STATUS_CORRUPT:
+    // Database was corrupt, has been moved to a .corrupt file and a new one has been created and initialized.
+    break;
+  case historyService.DATABASE_STATUS_UPGRADED:
+    // Database had an old schema version and has been upgraded to a new one.
+    break;
+}
+</pre>
+
+<p>In case the database is locked by a third party process and cannot be opened, a "places-database-locked" notification is fired, in such a case the service won't be able to initialize.</p>
+
+<h3 id="Adding_pages_to_history" name="Adding_pages_to_history">Adding pages to history</h3>
+
+<p><strong>nsIGlobalHistory2.addURI</strong>: This is the basic function for adding pages to history that is called by the docshell as you browse. The <code>redirect</code> flag is deprecated. See <code>addDocumentRedirect</code> below.</p>
+
+<p><strong>nsIGlobalHistory3.addDocumentRedirect</strong>: This is called by the docshell when a redirect occurs. It replaces the old <code>redirect</code> flag on <code>addURI</code>. It gives the old and new channels to the history service so that the source page of the redirect can be determined.</p>
+
+<p><strong>nsIBrowserHistory.addPageWithDetails</strong>: Called by history importing code. New code should use <code>nsINavHistoryService.setPageDetails</code>.</p>
+
+<p><strong>nsINavHistoryService.addVisit</strong>: This is an advanced function that allows the caller to set the exact referring visit, the time, the session, etc. It is designed for people writing synchronizing or backup services that need access to all the flags. Under normal browsing, <code>addURI</code> and <code>addDocumentRedirect</code> will infer this information for you.</p>
+
+<h3 id="Modifying_pages_in_history" name="Modifying_pages_in_history">Modifying pages in history</h3>
+
+<p><strong>nsIGlobalHistory2.setPageTitle</strong>: Called by Gecko when the &lt;title&gt; element is encountered.</p>
+
+<p><strong>nsIGlobalHistory3.setGeckoFlags</strong>: Called by Gecko to store rendering information about a page. Currently, this is used to store whether there was a scrollbar, which allows more efficient layout if the page is revisited. However, this is not yet supported by the NavHistory implementation.</p>
+
+<p><strong>nsIBrowserHistory.removePage</strong>: Removes a given URI and all of its visits from the history database. This is called by the UI when the user deletes a history entry.</p>
+
+<p><strong>nsIBrowserHistory.removePagesFromHost</strong>: Called from the UI when the user deletes a group associated with a host or domain. This function allows you to delete pages from a specific host, or pages from all hosts in a given domain.</p>
+
+<p><strong>nsIBrowserHistory.hidePage</strong>: Hides a page so that it does not appear in the UI. Many pages are not visible in normal history lists, such as redirects and sub-frame contents.<em>This is not implemented in NavHistory.</em></p>
+
+<p><strong>nsIBrowserHistory.markPageAsTyped</strong>: Called by the URL bar when the user types in a URL. This can be and is called<em>before</em> the page is actually added to history, since the page isn't added until it actually starts loading. The typed flag affects the URL bar autocomplete. This will cause the transition type of the next visit of the URL to be marked as "typed."</p>
+
+<p><strong>nsINavHistoryService.markPageAsFollowedBookmark</strong>: Called by the UI (implemented, but not yet called, see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=409301" title="FIXED: Visiting bookmark is recorded as link transition instead of bookmark transition.">bug 409301</a>) when the user selects a bookmark. This will cause the transition type of the next visit of the URL to be marked as "bookmark."</p>
+
+<p><strong>nsINavHistoryService.setPageUserTitle</strong>: Sets the user-defined title for the page, which will override the actual page title when displayed in the UI. This is used for bookmark titles.<em>This function may be removed if the bookmark service is changed.</em></p>
+
+<p><strong>nsINavHistoryService.setPageDetails</strong>: Used to set all of the global bits associated with a URL. It is designed for synchronizing or backup services.</p>
+
+<h3 id="Basic_querying_of_the_history_system" name="Basic_querying_of_the_history_system">Basic querying of the history system</h3>
+
+<p><strong>nsIGlobalHistory2.isVisited</strong>: Called by Gecko when rendering links. When <code>isVisited</code> returns <code>true</code>, the link gets the "visited" style. Otherwise, the link is colored as unvisited.</p>
+
+<p><strong>nsIGlobalHistory3.getGeckoFlags</strong>: Retrieves information previously set using <code>setGeckoFlags</code>. It is not yet implemented in the Places history system.</p>
+
+<p><strong>nsIBrowserHistory.lastPageVisited</strong>: Contains the URI of the last page visited. This is used when the preference is set that causes the last page in new windows.</p>
+
+<p><strong>nsIBrowserHistory.count</strong>: The number of pages in history. This is used by the "clear history" button to determine if there are any pages in history. Because actually counting all the pages in history is expensive,<em>NavHistory will always return the value 0 or 1.</em> 0 is returned when there is no history, 1 is returned when there are one or more pages in history.<em>Deprecated, use <code>hasHistoryEntries</code> instead.</em></p>
+
+<p><strong>nsINavHistoryService.hasHistoryEntries</strong>: Exactly the same as <code>nsIBrowserHistory.count</code>, except with a better name and actually returning a boolean. Preferred over "count".</p>
+
+<p><strong>nsINavHistory.canAddURI</strong>: Determines whether the given URI will be stored by the history system. Many types of URIs, such as "chrome:" URIs, are not stored when <code>addURI</code> is called. This function allows you to determine whether it will be or not.</p>
+
+<h3 id="Advanced_querying" name="Advanced_querying">Advanced querying</h3>
+
+<dl>
+ <dd>
+ <div class="note">See <a href="/en-US/docs/Querying_Places">Querying Places</a> for more detailed examples on how to used the advanced querying functionality of NavHistory.</div>
+ </dd>
+</dl>
+
+<p><strong>nsINavHistoryService.getNewQuery</strong>: Returns a new query object initialized to the default values. You can pass this to <code>executeQueries()</code>.</p>
+
+<p><strong>nsINavHistoryService.getNewQueryOptions</strong>: Returns a new query options object initialized to the default values. You can pass this to <code>executeQueries()</code>.</p>
+
+<p><strong>nsINavHistoryService.executeQuery</strong>: Runs a query with a single query object and options. All the parameters set on the query object will be ANDed together.</p>
+
+<p><strong>nsINavHistoryService.executeQueries</strong>: Runs multiple query objects as a query. The parameters within on query as ANDed together as in <code>executeQuery()</code>, then the results of the different queries in the array are ORed together.</p>
+
+<p><strong>nsINavHistoryService.queriesToQueryString</strong>: Returns a serialized version of the queries as a "place:" URI. You should not count on this format, always use this function instead of hard-coding your own query strings.</p>
+
+<p><strong>nsINavHistoryService.queryStringToQueries</strong>: Converts a serialized query ("place:" URI) back to the actual query objects and options.</p>
+
+<h3 id="Miscellaneous" name="Miscellaneous">Miscellaneous</h3>
+
+<p><strong>nsINavHistoryService.addObserver</strong>: Adds a history observer, which will be notified of changes to the history system.</p>
+
+<p><strong>nsINavHistoryService.removeObserver</strong>: Removes a previously added observer.</p>
+
+<p><strong>nsINavHistoryService.beginUpdateBatch</strong>: Call when you will be making many small changes to the history system. Observers generally stop updating UI when they are inside a batch, potentially making the operations faster. If you are just doing a few changes, it is probably better to not use a batch since incremental updates are not done. Be sure to call <code>endUpdateBatch</code> when you are done or the UI will be permanently broken.</p>
+
+<p><strong>nsINavHistoryService.endUpdateBatch</strong>: Ends a batch operation previously started with <code>beginUpdateBatch</code>.</p>
+
+<h3 id="See_also" name="See_also">See also</h3>
+
+<ul>
+ <li><a href="Manipulating_bookmarks_using_Places">Manipulating bookmarks using Places</a></li>
+</ul>

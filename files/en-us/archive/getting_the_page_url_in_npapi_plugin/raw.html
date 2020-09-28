@@ -1,0 +1,47 @@
+<p>Sometimes, you want to restrict an <a href="en/Plugins">NPAPI plugin</a> to be loadable only from a certain URL or domain or scheme. Or whenever you make network requests yourself, you almost always need to enforce same-origin policy.</p>
+<p>There's unfortunately no trivial way to do that, but you can still do it, by asking the browser for the page URL during plugin initialization. Then you can just refuse to do anything, if you don't like the URL, or you can compare it with the other URL you want to contact.</p>
+<p>So, how do we get at that page URL, i.e. the URL of the HTML which embeds the plugin, i.e. which caused the plugin to load?</p>
+<p>There are at least 3 solutions (quoting newsgroup posts):</p>
+<h2 id="Via_window_location" name="Via_window_location">Via window location</h2>
+<p>From <a class="external" href="http://groups.google.com/group/netscape.public.mozilla.plugins/msg/93166efa554a191b">Robert Platt</a>:</p>
+<pre class="eval">// Get the Dom window object.
+NPN_GetValue( m_pNPInstance, NPNVWindowNPObject, &amp;sWindowObj );
+// Create a "location" identifier.
+NPIdentifier identifier = NPN_GetStringIdentifier( "location" );
+// Declare a local variant value.
+NPVariant variantValue;
+// Get the location property from the window object (which is another object).
+bool b1 = NPN_GetProperty( m_pNPInstance, sWindowObj, identifier, &amp;variantValue );
+// Get a pointer to the "location" object.
+NPObject *locationObj = variantValue.value.objectValue;
+// Create a "href" identifier.
+identifier = NPN_GetStringIdentifier( "href" );
+// Get the location property from the location object.
+bool b2 = NPN_GetProperty( m_pNPInstance, locationObj, identifier, &amp;variantValue );
+</pre>
+<p>This code is just a rough example. Remember to release any references after using them.</p>
+<p>Tradeoffs:</p>
+<ul>
+ <li>Uses NPAPI only</li>
+ <li>Works in most browsers</li>
+ <li>Does not work in Mozillas older than Firefox 1.0</li>
+</ul>
+<h2 id="Via_NPP_NewStream" name="Via_NPP_NewStream">Via NPP_NewStream</h2>
+<p>From <a class="external" href="http://groups.google.com/group/mozilla.dev.tech.plugins/msg/28bd6b3df9b0e7cf">Braden McDaniel</a>:</p>
+<p>If you want the URI of the resource for which the plug-in is invoked, the most NPAPI-friendly way to do that is to get it from the <code><a href="/en-US/Add-ons/Plugins/Reference/NPStream">NPStream</a></code> that is passed to <code><a href="/en-US/Add-ons/Plugins/Reference/NPP_NewStream">NPP_NewStream</a></code>.</p>
+<p>Tradeoffs:</p>
+<ul>
+ <li>NPAPI only</li>
+ <li>Probably works in all browsers, all versions</li>
+ <li>Is sort of backwards (?)</li>
+ <li>Advantages / disadvantages ?</li>
+</ul>
+<h2 id="Via_DOM" name="Via_DOM">Via DOM</h2>
+<p>From <a class="external" href="http://groups.google.com/group/mozilla.dev.tech.plugins/msg/32db2fbf48a8d1bb">Benjamin Smedberg</a>:</p>
+<p>The NPAPI gives you the ability to get access to the <a href="en/NsIDOMWindow">nsIDOMWindow</a> object which contains the current plugin via the <a class="external" href="http://lxr.mozilla.org/mozilla/source/modules/plugin/base/public/npapi.h#420">NPNVDOMElement enum</a> passed to <code><a href="/en-US/Add-ons/Plugins/Reference/NPN_GetValue">NPN_GetValue</a></code>. This returns an addrefed <a class="external" href="http://lxr.mozilla.org/mozilla/source/dom/public/idl/core/nsIDOMElement.idl">nsIDOMElement</a> interface pointer from which you can call <code>.ownerDocument</code> (on <a class="external" href="http://lxr.mozilla.org/mozilla/source/dom/public/idl/core/nsIDOMNode.idl#82">nsIDOMNode</a>), QueryInterface that object to <a class="external" href="http://lxr.mozilla.org/mozilla/source/dom/public/idl/core/nsIDOM3Document.idl#63">nsIDOM3Document</a>, and call <code>.documentURI</code>.</p>
+<p>Tradeoffs:</p>
+<ul>
+ <li>is inherently incompatible with other non-Mozilla browsers (i.e. does not work in Opera, Safari etc.)</li>
+ <li>compatible with older versions of the Mozilla (probably back to Mozilla 1.0)</li>
+ <li>requires C++</li>
+</ul>

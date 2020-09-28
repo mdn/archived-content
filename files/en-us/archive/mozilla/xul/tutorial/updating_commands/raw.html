@@ -1,0 +1,61 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Commands" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Broadcasters_and_Observers">Next  »</a></p>
+</div>
+<p>In this section, we will look at how to update commands.</p>
+<h3 id="Invoking_Commands" name="Invoking_Commands">Invoking Commands</h3>
+<p>If a <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/command" title="command">command</a></code></code> has an <code><code id="a-oncommand"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/oncommand">oncommand</a></code></code> attribute, you can invoke it just by using the <code><span id="m-doCommand"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/doCommand">doCommand</a></code></span></code> method of the command or an element which links to it. For other commands, you will need to use a couple of additional lines of code. You will need to use these extra steps when invoking commands implemented by a controller. In addition, you will need to do this when creating your own menu commands, for instance to implement the edit menu commands in your own application.</p>
+<p>Fortunately, the extra code is fairly simple. All we need to do is get the needed controller and call the command. A simple way of doing this is the following:</p>
+<pre>var controller = document.commandDispatcher.getControllerForCommand("cmd_paste");
+if (controller &amp;&amp; controller.isCommandEnabled("cmd_paste")){
+  controller.doCommand(command);
+}
+</pre>
+<p>The code above first retrieves the controller for the '<code>cmd_paste</code>' command from the command dispatcher. Then, it checks to see whether the command is enabled, and then executes the command using the <code>doCommand</code> method of the controller. Note that we don't need to figure out which element to use or which controller to use. The command dispatcher handles that part. Also, we could just call <code>doCommand</code> without checking if the command was enabled or not, although we probably shouldn't do that.</p>
+<p>The code above is generic enough that it can be a function that takes a command as an argument and executes that command. This function could then be reused for all commands. In fact, this is common enough that Mozilla includes a library which does just that. If you include the script '<code><a class="external" rel="freelink">chrome://global/content/globalOverlay.js</a></code>' in a XUL file, you can call the <code>goDoCommand</code> method which executes the command passed as the argument. The code for this function is only a few lines long so you could include it directly in your code if for some reason you didn't want to include the library.</p>
+<pre>&lt;script src="chrome://global/content/globalOverlay.js"/&gt;
+
+&lt;command id="cmd_paste" oncommand="goDoCommand('cmd_paste');"/&gt;
+&lt;button label="Paste" command="cmd_paste"/&gt;
+</pre>
+<p>The example above will implement a Paste button. It is attached to the command which will invoke the command on the necessary controller when called. The code above is all you need to implement the functionality of the paste command in your application. The only other thing you need to do is ensure that the enabled status of the paste command, and therefore the button, is updated at the right time, which is described below.</p>
+<h3 id="Command_Updaters" name="Command_Updaters">Command Updaters</h3>
+<p>A command updater is a feature of the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/commandset" title="commandset">commandset</a></code></code> element which allows it to update commands when certain events happen. You will need to think about when a command is valid and when it is not. In addition, you will need to consider when the state could change and when the commands should be updated.</p>
+<p>For example, the paste command is valid when a textbox has the focus and there is something on the clipboard to paste. The command will become enabled whenever a textbox is focused and when the clipboard contents change. A command updater will listen for these situations and code can be executed which enables and disables commands as necessary.</p>
+<p>A simple command updater looks like this:</p>
+<pre>&lt;commandset id="updatePasteItem"
+            commandupdater="true"
+            events="focus"
+            oncommandupdate="goUpdateCommand('cmd_paste');"/&gt;
+</pre>
+<p>A command updater is indicated by using the <code><code id="a-commandupdater"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/commandupdater">commandupdater</a></code></code> attribute, which should be set to <code>true</code>. The <code><code id="a-events"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/events">events</a></code></code> attribute is used to list the events that the command updater listens for. You can specify multiple events by separating them with commas. In the example above, the command updater listens for the focus event. This causes commands to be updated when an element receives the focus.</p>
+<p>When a focus event occurs, the code in the <code><code id="a-oncommandupdate"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/oncommandupdate">oncommandupdate</a></code></code> attribute is called. In the example, the <code>goUpdateCommand</code> method is called which is a function provided by the globalOverlay.js script described earlier. It will update the command and enable or disable necessary buttons and menu items. The code behind it is fairly simple. It just gets the necessary controller, calls its <code>isCommandEnabled</code> method, and then enables or disables the command. If you have several commands to update, call the <code>goUpdateCommand</code> method once for each command.</p>
+<p>Note that the command updater will receive notifications about all focus events on all elements, even if other event handlers respond to the event. Essentially, a command updater is like a global event handler.</p>
+<p>Command updaters have a number of events which they can respond to which are listed below. It is also possible to create your own.</p>
+<ul>
+  <li><strong>focus</strong>: occurs when the focused element changes.</li>
+  <li><strong>select</strong>: occurs when the selected text changes.</li>
+  <li><strong>undo</strong>: occurs when the undo buffer changes.</li>
+  <li><strong>clipboard</strong>: occurs when the contents of the clipboard changes.</li>
+</ul>
+<p>The following example shows the command updaters used in the Mozilla browser to update the edit menu commands. The functions used can be found in the '<code><a class="external" rel="freelink">chrome://communicator/content/utilityOverlay.js</a></code>' script.</p>
+<pre>&lt;commandset id="globalEditMenuItems"
+            commandupdater="true"
+            events="focus"
+            oncommandupdate="goUpdateGlobalEditMenuItems()"/&gt;
+&lt;commandset id="selectEditMenuItems"
+            commandupdater="true"
+            events="select"
+            oncommandupdate="goUpdateSelectEditMenuItems()"/&gt;
+&lt;commandset id="undoEditMenuItems"
+            commandupdater="true"
+            events="undo"
+            oncommandupdate="goUpdateUndoEditMenuItems()"/&gt;
+&lt;commandset id="clipboardEditMenuItems"
+            commandupdater="true"
+            events="clipboard"
+            oncommandupdate="goUpdatePasteMenuItems()"/&gt;
+</pre>
+<p>Next, we'll find out <a href="/en/XUL_Tutorial/Broadcasters_and_Observers" title="en/XUL_Tutorial/Broadcasters_and_Observers">how to use observers</a>.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Commands" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Broadcasters_and_Observers">Next  »</a></p>
+</div>

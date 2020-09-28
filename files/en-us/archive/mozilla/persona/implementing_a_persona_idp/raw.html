@@ -1,0 +1,265 @@
+<p></p><div class="warning">  <p>On November 30th, 2016, Mozilla shut down the persona.org services. Persona.org and related domains will soon be taken offline.</p>  <p>For more information, see this guide to migrating your site away from Persona:</p>  <p><a href="https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers">https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers</a></p></div><p></p>
+
+<p>After you've read the <strong><a href="/en/BrowserID/Primary" title="https://developer.mozilla.org/en/BrowserID/IdP">Identity Provider overview</a></strong>, this document will guide you through implementing a Persona Identity Provider (IdP). This page provides a guide to implementating an IdP. For details of the current data formats used by Persona, you should refer to the <a href="https://github.com/mozilla/id-specs/blob/prod/browserid/index.md" title="https://github.com/mozilla/id-specs/blob/prod/browserid/index.md">BrowserID specification</a>.</p>
+
+<h2 id="General_advice">General advice</h2>
+
+<h3 id="Make_your_IdP_public">Make your IdP public</h3>
+
+<p>For ease of development, it helps to have your IdP available on the public internet so that you can test it using Persona-enabled sites like <a href="http://123done.org" title="http://123done.org">123done.org</a>. During development, you can deploy your IdP on a subdomain like <code>dev.example.com</code> and attempt to log in with Persona as <code>user@dev.example.com</code>.</p>
+
+<h3 id="Use_browser_developer_tools">Use browser developer tools</h3>
+
+<p>Due to the way that Persona uses cookies, iframes, localStorage, and postMessage, it can be difficult to get a complete understanding of the interactions between your IdP and Persona by using a single browser's developer tools. Firefox, Chrome, and Opera all have built-in tools that excel at different aspects of debugging IdPs.</p>
+
+<p>And while you're there, don't forget to read the bodies of network responses!</p>
+
+<h3 id="3rd_Party_Cookies">3rd Party Cookies</h3>
+
+<p>You should target your production deployment to a domain that your users are already using. Otherwise, <a href="/en-US/docs/Cookies_Preferences_in_Mozilla#network.cookie.cookieBehavior" title="/en-US/docs/Cookies_Preferences_in_Mozilla#network.cookie.cookieBehavior">3rd party cookie settings</a> may block your users. During development, you can visit your IdP urls directly to get a cookie, or update your browser to accept all cookies.</p>
+
+<h3 id="Check_your_SSL">Check your SSL</h3>
+
+<p>The support document, provisioning page and authentication page must all be available over HTTPS, and the server's SSL certificate must be certified by a trusted CA whose certificate is in the standard <a href="https://mxr.mozilla.org/mozilla/source/security/nss/lib/ckfw/builtins/certdata.txt" title="https://mxr.mozilla.org/mozilla/source/security/nss/lib/ckfw/builtins/certdata.txt">Mozilla certificate bundle</a>. The easiest way to test this is to get a free server certificate from <a href="https://www.startssl.com/" title="https://www.startssl.com/">StartSSL</a>. You need to include any intermediate certificates required to validate your certificate.</p>
+
+<p>Development and testing environments support the use of self-signed certificates.</p>
+
+<h3 id="Use_the_Persona_debugging_tools">Use the Persona debugging tools</h3>
+
+<p>The <span class="external link-https"><a href="https://github.com/mozilla/browserid/blob/dev/scripts/check_primary_support" title="https://github.com/mozilla/browserid/blob/dev/scripts/check_primary_support"><code>check_primary_support</code></a> script</span><span class="external link-https"> tests varies aspects of your IdP configuration, including:</span></p>
+
+<ul>
+ <li>that your <code>/.well-known/browserid</code> file:
+
+  <ul>
+   <li>is valid JSON</li>
+   <li>contains the three mandatory elements: <code class="js string">public-key</code> , <code>authentication</code>, and <code>provisioning</code></li>
+   <li>contains a syntactically correct public key as its <code class="js string">public-key </code>element</li>
+   <li>contains valid URLs for its <code>authentication</code> and <code>provisioning</code> elements</li>
+  </ul>
+ </li>
+ <li>that the files pointed to in <code>authentication</code> and <code>provisioning</code>:
+  <ul>
+   <li>can be successfully retrieved</li>
+   <li>include the correct JavaScript libraries from Persona</li>
+   <li>are not served with the <a href="/en-US/docs/The_X-FRAME-OPTIONS_response_header" title="/en-US/docs/The_X-FRAME-OPTIONS_response_header"><code>X-Frame-Options: DENY</code></a> header</li>
+  </ul>
+ </li>
+</ul>
+
+<p>You can also verify if Persona thinks your domain is an IdP by using the <code>address_info</code> Persona API, passing an email address in your domain. For example, see the difference between these two examples:</p>
+
+<p><a href="https://login.persona.org/wsapi/address_info?email=user%40example.com" title="https://login.persona.org/wsapi/address_info?email=user%40example.com"><code>https://login.persona.org/wsapi/address_info?email=user@example.com</code></a></p>
+
+<p><a href="https://login.persona.org/wsapi/address_info?email=user%40mockmyid.com" title="https://login.persona.org/wsapi/address_info?email=user%40example.com"><code>https://login.persona.org/wsapi/address_info?email=user@mockmyid.com</code></a></p>
+
+<h3 id="Testing_against_pre-release_versions_of_Persona">Testing against pre-release versions of Persona</h3>
+
+<p>If you want to test your IdP against a pre-release version of Persona, then there's an extra consideration.</p>
+
+<p>For login to work, both the Relying Parties (RPs) and the IdP must load the Persona JavaScript libraries from the same domain. In production:</p>
+
+<ul>
+ <li>your IdP uses <a href="https://login.persona.org/provisioning_api.js" title="https://login.persona.org/provisioning_api.js">https://login.persona.org/provisioning_api.js</a> and <a href="https://login.persona.org/authentication_api.js" title="https://login.persona.org/provisioning_api.js">https://login.persona.org/authentication_api.js</a></li>
+ <li>RPs use  <a href="https://login.persona.org/include.js" title="https://login.persona.org/include.js">https://login.persona.org/include.js</a>.</li>
+</ul>
+
+<p>But if you want your IdP to use the development version of Persona, which is hosted at <a href="https://login.dev.anosrep.org" title="https://login.dev.anosrep.org">login.dev.anosrep.org</a>, then production RPs like <a href="http://123done.org" title="http://123done.org">123done.org</a> won't be able to use it. You could use your own RP to test with, or an alternative version of <a href="http://123done.org" title="http://123done.org">123done.org</a> , as detailed in the table below:</p>
+
+<table>
+ <thead>
+  <tr>
+   <th scope="row"> </th>
+   <th scope="col"><strong>Website</strong></th>
+   <th scope="col"><strong>Persona Domain</strong></th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <th scope="row"><strong>Production</strong></th>
+   <td><a href="http://123done.org" title="http://123done.org">123done.org</a></td>
+   <td><a href="https://login.persona.org" title="https://login.persona.org">login.persona.org</a></td>
+  </tr>
+  <tr>
+   <th scope="row"><strong>Staging</strong></th>
+   <td><a href="http://beta.123done.org" title="http://beta.123done.org">beta.123done.org</a></td>
+   <td><a href="https://login.anosrep.org" title="https://login.anosrep.org">login.anosrep.org</a></td>
+  </tr>
+  <tr>
+   <th scope="row"><strong>Development</strong></th>
+   <td><a href="http://dev.123done.org" title="http://dev.123done.org">dev.123done.org</a></td>
+   <td><a href="https://login.dev.anosrep.org" title="https://login.dev.anosrep.org">login.dev.anosrep.org</a></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>If you want to be able to test completely locally, without retrieving the JavaScript libraries from <code>login.persona.org</code>, you can run a local instance of the <a href="https://github.com/mozilla/browserid" title="https://github.com/mozilla/browserid">Persona implementation</a> and point your script tags to that. The implementation also provides a local Persona-enabled site to log into. However, <strong>this option is not recommended</strong> unless you are comfortable with Node.js and grepping around the source. If you go this route, you'll want to look into the <code>SHIMMED_PRIMARIES</code> environment variable to ease pointing your local Persona instance to your local IdP.</p>
+
+<h2 id="The_IdP_support_document">The IdP support document</h2>
+
+<p>IdPs advertise their support for the BrowserID protocol with a document called <code>browserid</code>. For more details of the document's format, see <a href="/en-US/Persona/.well-known-browserid"><code>/.well-known/browserid</code></a>.</p>
+
+<h3 id="Creating_the_browserid_document">Creating the browserid document</h3>
+
+<p>First, generate a public/private keypair to use with your domain. For example, you can use the command-line openssl tools:</p>
+
+<pre>openssl genrsa -out private-key.pem 2048
+openssl rsa -in private-key.pem -pubout &gt; public-key.pem
+</pre>
+
+<p>You can also use the <a class="external" href="https://github.com/mozilla/jwcrypto/blob/master/bin/generate-keypair" title="https://github.com/mozilla/jwcrypto/blob/master/bin/generate-keypair"><code>generate-keypair</code></a> script bundled with <a class="external" href="https://github.com/mozilla/jwcrypto" title="https://github.com/mozilla/jwcrypto">jwcrypto.</a></p>
+
+<p>Next, decide what URLs you want to use for certificate provisioning and user login.</p>
+
+<p>Finally, all of this information must be published in a JSON file at <code>/.well-known/browserid</code>. An example might look like:</p>
+
+<pre class="brush: json">{
+    "public-key": {
+        "algorithm": "RS",
+        "n": "82818905405105134410187227495885391609221288015566078542117409373192106382993306537273677557482085204736975067567111831005921322991127165013340443563713385983456311886801211241492470711576322130577278575529202840052753612576061450560588102139907846854501252327551303482213505265853706269864950437458242988327",
+        "e": "65537"
+    },
+    "authentication": "/persona/sign_in.html",
+    "provisioning": "/persona/provision.html"
+}</pre>
+
+<p>Double check that the document is formatted as valid JSON.</p>
+
+<p>You can use this file to delegate to another Identity Provider: see <a href="https://developer.mozilla.org/en-US/Persona/.well-known-browserid#Delegated_Support">Delegated Support</a> for details.</p>
+
+<h3 id="Serving_the_browserid_document">Serving the browserid document</h3>
+
+<p>This document must be served:</p>
+
+<ul>
+ <li>over SSL</li>
+ <li>with a content type of "<code>application/json</code>"</li>
+ <li>from the exact host part of the email address, not a subdomain (<code>example.com</code>, not <code>www.example.com</code>)</li>
+</ul>
+
+<h2 id="The_provisioning_page">The provisioning page</h2>
+
+<p>The provisioning page must respond to GET requests. Persona uses a hidden iframe to access your provisioning page, so its contents will never be visible to the user. The iframe technique also means that the headers sent with your provisioning page must not include <a href="/en-US/docs/The_X-FRAME-OPTIONS_response_header" title="/en-US/docs/The_X-FRAME-OPTIONS_response_header"><code>X-Frame-Options: DENY</code></a>.</p>
+
+<p>On the page, you should:</p>
+
+<ol>
+ <li>
+  <p>Include the Provisioning API library from the correct server (always <code>login.persona.org</code>, unless you're testing with a pre-release version of Persona):</p>
+
+  <pre class="brush:html">&lt;script src="https://login.persona.org/provisioning_api.js"&gt;&lt;/script&gt;</pre>
+ </li>
+ <li>
+  <p>Invoke <a href="/en-US/docs/Web/API/Navigator/id/beginProvisioning" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.beginProvisioning()</code></a>. It takes a callback with two arguments, the user's email address (a String) and a desired certificate duration (a Number, in seconds):</p>
+
+  <pre class="brush:js">navigator.id.beginProvisioning(function(email, certDuration) {
+  //...
+});
+</pre>
+ </li>
+ <li>
+  <p>Inside the <code>beginProvisioning</code> callback, determine if the user actually owns the given email address by checking for an active session with your domain. Note that cookies set for your domain won't be sent to the provisioning page if the user has set their user agent to disable third-party cookies.</p>
+
+  <ol style="list-style-type: lower-alpha;">
+   <li>
+    <p>If the user <strong>does not</strong> have an active session associated with the given email address, call <a href="/en-US/docs/Web/API/Navigator/id/raiseProvisioningFailure" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.raiseProvisioningFailure()</code></a> with an optional, but recommended, error message at its first parameter. This causes the browser to stop the provisioning process and instead show the user your <code>authentication</code> page.</p>
+   </li>
+   <li>
+    <p>If the user <strong>does</strong> have an active session associated with the given email address, continue.</p>
+   </li>
+  </ol>
+ </li>
+ <li>
+  <p>Inside the <code>beginProvisioning</code> callback, invoke <a href="/en-US/docs/Web/API/Navigator/id/genKeyPair" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.genKeyPair()</code></a>. It takes a callback with one argument, the user's public key (a String containing a JSON object representing the public key):</p>
+
+  <pre class="brush:js">navigator.id.genKeyPair(function(publicKey) {
+  //...
+});
+</pre>
+ </li>
+ <li>
+  <p>Send the user's <code>publicKey</code> and the desired <code>certDuration</code> to your backend to create a signed certificate, noting that the <code>certDuration</code> must never exceed 24 hours. A common pattern is to use an AJAX POST, returning the certificate in the response. The certificate must be signed by the private key corresponding to the public key advertised in your domain's support document.</p>
+
+  <p>Mozilla provides an open source <a href="https://github.com/mozilla/browserid-certifier" title="https://github.com/mozilla/browserid-certifier">Node.js server</a> to handle certificate work. You can run this behind your firewall and use its REST API to generate signed certificates.</p>
+ </li>
+ <li>
+  <p>Once you have the signed certificate, pass it to <a href="/en-US/docs/Web/API/Navigator/id/registerCertificate" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.registerCertificate()</code></a> to save it in the user's browser. This certificate will allow the user to log into sites using Persona for as long as the <code>certDuration</code>.</p>
+ </li>
+</ol>
+
+<p>The JavaScript on an example provisioning page might be structured like this:</p>
+
+<pre class="brush:js">navigator.id.beginProvisioning(function(email, certDuration) {
+  if (activeSessionFor(email)) {
+    navigator.id.genKeyPair(function(publicKey) {
+      generateServerSide(email, publicKey, certDuration, function (certificate) {
+        // generateServerSide something you would write.
+        // In this example, imagine it does an AJAX request to create a certificate,
+        // and then invokes a callback with that certificate.
+        navigator.id.registerCertificate(certificate);
+      });
+    });
+  } else {
+    navigator.id.raiseProvisioningFailure('user is not authenticated as target user');
+  }
+});
+</pre>
+
+<h2 id="The_authentication_page">The authentication page</h2>
+
+<p>The authentication page must respond to GET requests. It will be shown to the user in a top-level window (so you can use images and CSS to create a familar experience), which may be freely resized; this means your authentication page should use <a href="/en-US/docs/Web_Development/Responsive_Web_design" title="/en-US/docs/Web_Development/Responsive_Web_design">responsive web design</a> techniques, as it will appear in everything from small pop-ups to full-screen windows on tablets or in some desktop browsers. Being responsive will ensure that your authentication page looks good in any content frame.</p>
+
+<p>On this page, you should:</p>
+
+<ol>
+ <li>
+  <p>Include the Authentication API library from the correct server (always <code>login.persona.org</code>, unless you're testing with a pre-release version of Persona):</p>
+
+  <pre class="brush:html">&lt;script src="https://login.persona.org/authentication_api.js"&gt;&lt;/script&gt;</pre>
+ </li>
+ <li>
+  <p>Invoke <a href="/en-US/docs/Web/API/Navigator/id/beginAuthentication" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.beginAuthentication()</code></a>. It takes a callback with one argument (a String), the email address that the user wants to authenticate with:</p>
+
+  <pre class="brush:js">navigator.id.beginAuthentication(function(email) {
+  //...
+});
+</pre>
+ </li>
+ <li>
+  <p>Inside the <code>beginAuthentication</code> callback, determine if the user actually owns the given email address by checking for an active session with your domain.</p>
+
+  <ol style="list-style-type: lower-alpha;">
+   <li>
+    <p>If the user <strong>does</strong> have an active session associated with the given email address, call <a href="/en-US/docs/Web/API/Navigator/id/completeAuthentication" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.completeAuthentication()</code></a>. This causes the browser to leave the authentication flow and return to the provisioning process.</p>
+   </li>
+   <li>
+    <p>If the user <strong>does not</strong> have an active session associated with the given email address, continue.</p>
+   </li>
+  </ol>
+ </li>
+ <li>
+  <p>Ask the user to log in through your normal means of authentication.</p>
+ </li>
+ <li>
+  <p>If there is an error or you wish to cancel the authentication process, invoke <a href="/en-US/docs/Web/API/Navigator/id/raiseAuthenticationFailure" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.raiseAuthenticationFailure()</code></a>. For example:</p>
+
+  <pre class="brush:js">var cancelButton = document.getElementById('cancelButton');
+cancelButton.click = function() { navigator.id.raiseAuthenticationFailure('user clicked cancel') };
+</pre>
+ </li>
+</ol>
+
+<p>The JavaScript on an example authentication page might be structured like this:</p>
+
+<pre class="brush:js;">navigator.id.beginAuthentication(function(email) {
+  if (activeSessionFor(email)) {
+    navigator.id.completeAuthentication();
+  } else {
+    displayLoginForm();
+  }
+});
+</pre>
+
+<h2 id="Wrap_up">Wrap up</h2>
+
+<p>With the support document, the provisioning page, and the authentication page in place, you're now a Persona Identity Provider!</p>

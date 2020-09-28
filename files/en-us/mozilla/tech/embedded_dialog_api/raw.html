@@ -1,0 +1,65 @@
+<p>
+</p>
+<h2 id="Posing_Gecko_dialogs_in_embedding_applications">Posing Gecko dialogs in embedding applications</h2>
+<h3 id="Problem_Statement">Problem Statement</h3>
+<p>An application embedding <a href="en/Gecko">Gecko</a> cannot tightly control its own windows and still allow Gecko to be a fully functional web browser. In any single window, Gecko can be expected to play nicely within its given boundaries. But it must be allowed to create additional windows at times perhaps unexpected by the containing appliction. These new windows can be entire new browser windows opened in response to
+web page script, or dialogs or alerts which may arise from script or merely during normal operation of the browser.
+</p><p>Part of Gecko's embedding API is callbacks into the embedding application for creating new windows. The complete windowing portion of the API is large and complex, but it need not be entirely implemented. Its simplest requirements are that the app must allow Gecko to create new browser
+windows and new simple, empty windows. Gecko can use the latter to pose dialogs built from <a href="en/XUL">XUL</a>.
+</p><p>XUL dialogs are part of the Gecko package; they are the default dialog posing mechanism. Many embedding applications will find them entirely sufficient. However while XUL dialogs are very configurable, they will not behave and probably not look precisely like dialogs which the application builds for itself, independently of Gecko. Applications which implement merely the simplest, base Gecko windowing API will then have a mixture of XUL and native windows. Applications concerned with presenting a consistent
+dialog appearance have the option of implementing the complete dialog posing API.
+</p>
+<h2 id="Responsibilities_of_the_embedding_application">Responsibilities of the embedding application</h2>
+<h3 id="Basic_Windowing_API">Basic Windowing API</h3>
+<p>To be able to respond to script requests to open new windows, an embedded Gecko browser must have a way of opening new windows. This is accomplished using a callback into the embedding application.
+</p><p>This basic API will by itself provide the minimal functionality Gecko needs to create new windows, and an embedding application must implement at least this much. Applications concerned with a consistent overall dialog appearance will probably choose to implement the <a href="en/Embedded_Dialog_API#Advanced_Windowing_API">complete API</a> as well.
+</p>
+An embedding application must implement the <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/base/nsIWindowCreator.idl">nsIWindowCreator</a> <small><a href="en/NsIWindowCreator">nsIWindowCreator</a></small> interface and hand off a reference to the implementation to the WindowCreator service during application initialization. An example of this can be found in the MFC embedding testbed application, in the method <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/tests/mfcembed/MfcEmbed.cpp#567">CMfcEmbedApp::InitializeWindowCreator</a> <small>(lxr link accurate at revision 1.20 of that file; search for the method name in later revisions).</small> <p>Gecko uses nsIWindowCreator to create all new windows for which no explicit override (the <a href="en/Embedded_Dialog_API#Advanced_Windowing_API">advanced API</a>) has been given, and for browser windows in general. The precise appearance and contents of the new window are defined by the application, though the app should conform to the chromeFlags parameter of <code>nsIWindowCreator::createChromeWindow</code>. This flag requests the presence or absence of particular features in the window surrounding the browser; features such as a toolbar or menubar. The <code><a href="en/NsIWebBrowserChrome">nsIWebBrowserChrome</a>::CHROME_OPENAS_CHROME</code> flag deserves special mention. A content window (the chrome flag is 0) is a browser window. The application should respond with whatever kind of window it normally uses to contain an embedded instance of Gecko. A chrome window (the chrome flag is 1) should contain only an embedded instance of Gecko. This is the kind of window used by Gecko to display XUL dialogs. </p><h3 id="Advanced_Windowing_API">Advanced Windowing API</h3>
+<p>Embedding applications concerned with ensuring that dialogs posed by Gecko are consistent in appearance and behaviour with dialogs posed directly by the application itself face a choice. It is probably easier to write CSS rules (a <a href="en/Skinning_XUL_Files_by_Hand">skin</a>)
+to give Gecko's XUL dialogs the same appearance as the application's own. Skins are very rich and capable; this scheme can probably be made to work for nearly all applications. Many embeddors however choose to implement their own dialogs, and this is of course the only way to gain complete control and consistency.
+</p><p>An embedding application may implement its own version of all dialogs in Gecko. (Note that at time of writing this may not be strictly true; work continues on this topic.) All overrideable dialogs are implemented by Gecko as a component. A default (XUL) implementation of each is provided as part of the Gecko package. To replace these default dialogs with its own versions, an application must replace the component which implements them. And note that if an application chooses to replace one of Gecko's
+default dialog components, that application must override every dialog in the component. However note that the complete set of all dialogs is implemented in several different components, so an application need not override every single dialog in Gecko to override some.
+</p><p>Apologies, but at this time there is no complete list of all dialogs and the components in which they reside. Stay tuned for updates. However, it's nearly accurate to claim that the majority of all dialogs and alerts posed by Gecko do reside in a single generic component, <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/components/windowwatcher/public/nsIPromptService.idl">nsIPromptService</a> <small>(<a href="en/NsIPromptService">nsIPromptService</a>)</small>.
+</p><p>An MFC example is implemented in
+<a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/tests/mfcembed/components/PromptService.cpp">PromptService.cpp</a>. A PowerPlant example is implemented in <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/browser/powerplant/source/PromptService.cpp">PromptService.cpp</a>. (TestGtkEmbed doesn't override PromptService; it uses the default dialogs.) Both are source for a library set up as a Mozilla component and factory. (Note to self: is there decent documentation on writing factories or components? I can't find any.) Both contain implementations of <a href="en/NsIPromptService">nsIPromptService</a> as native dialogs.
+</p><p>The replacement library should be installed during application initialization. The default dialog-posing library is a component (PromptService for instance is part of the embedding component), registered as a component during Gecko initialization (by <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/base/nsEmbedAPI.cpp#71">NS_InitEmbedding</a>). (line number accurate in version 1.30). After initializing embedding, an application can override a default factory by registering its replacement.
+</p><p>A PowerPlant example can be found at <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/browser/powerplant/source/CBrowserApp.cp#286">CBrowserApp::OverrideComponents</a> (line number accurate in version 1.24)
+and an MFC example at <a class="external" href="http://lxr.mozilla.org/seamonkey/source/embedding/tests/mfcembed/MfcEmbed.cpp#169">CMfcEmbedApp::OverrideComponents</a> (line number accurate in version 1.20).
+</p><p>The PowerPlant example is more is more straightforward.Its PromptService is implemented directly in the application executable, not as a separate library. This is perfectly workable, as the example
+illustrates. The MFC example implements its PromptService in a separate DLL, and overrides the default PromptService only if it is able to load the override DLL at application startup. Its PromptService dialogs can be switched between default and overridden by moving the override DLL into or out of the library search path.
+</p><p>Other sets of dialogs and alerts, implemented in other components,can be overridden in exactly the same fashion.
+</p>
+<h2 id="Responsibilities_of_MozillaGecko_component_authors">Responsibilities of Mozilla/Gecko component authors</h2>
+<h3 id="Writing_Replaceable_Dialogs">Writing Replaceable Dialogs</h3>
+<h4 id="Dialogs_Posed_by_the_Browser_(up_calls)">Dialogs Posed by the Browser ("up calls")</h4>
+<p>Any component which may be included in an embedded browser distribution and wishes to pose a dialog must group its UI (code which runs its dialogs) into a unique interface built just for that purpose. Any such code which isn't already a component needs to be. All code which actually poses dialogs, if it does this directly using <code>window.open</code>, wants to be changed to go through the new interface.
+</p><p>Restated, in order for a piece of code's dialogs to be overrideable, they can't be implemented directly in the code. All UI-related code must be implemented in a registered component so that it can be
+swapped out by the embedding application. <a href="en/NsIPromptService">nsIPromptService</a> is the canonical example. Of course this is a relatively simple example. More complex dialogs may themselves require their own interface. (Examples to be added as they come online. The print dialogs should be available soon.)
+</p>
+<h4 id="Dialogs_posed_by_the_embedding_app_(down_calls)">Dialogs posed by the embedding app ("down calls")</h4>
+<p>Some components will not pose dialogs directly, but maintain a database
+of information an embedding app may wish to display as a dialog. Preferences
+are the canonical example. In this case, we must be sure to have an API
+which an embedding app can use to populate its own dialog, should it decide
+to eschew Mozilla's XUL version. These components need build no dialog
+posing interface.
+</p>
+<h2 id="Guidelines">Guidelines</h2>
+<p>A few restrictions on each component's UI interface...
+</p><p>Most if not all of these dialogs will need to be child/dependent/transient
+windows, so each method responsible for actually opening a window must take
+an <code><a href="en/NsIDOMWindow">nsIDOMWindow</a> *aParent</code> parameter, and use that window as the
+dialog's parent, if non-null.
+</p><p>To make our embedding API as consistent as possible, we'd like to impose
+a few coding conventions on these dialog-posing interfaces.
+</p><p>Embedded dialog posing interface coding conventions
+</p>
+<ul><li> The <code>nsIDOMWindow *aParent</code> parameter mentioned above should be the first parameter to each method in which it appears.
+</li><li> The dialog component's contract ID should have the form <code>"@mozilla.org/embedui/<strong>unique-component-name</strong>;1"</code>
+</li></ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author: <a class="link-mailto" href="mailto:danm@netscape.com">danm@netscape.com</a>
+</li><li> Last Updated Date: 15 Dec 2001
+</li></ul>
+</div>

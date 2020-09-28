@@ -1,0 +1,86 @@
+
+<h3 id="The_debugger_uses_a_lot_of_memory._How_do_I_fix_it.3F" name="The_debugger_uses_a_lot_of_memory._How_do_I_fix_it.3F">The debugger uses a lot of memory. How do I fix it?</h3>
+<p>If your computer has less than 256 MB of memory, your computer will become unhappy as GDB loads Mozilla's shared libraries. The solution to this is to delay loading shared libraries until they are actually needed. However, you need to make sure that the base libraries like libc and pthreads are loaded before you tell GDB to stop loading shared libraries. If you don't allow those libraries to be loaded then GDB will not be able to properly debug threads on Linux. Mozilla uses pthreads for its networking library so you need to be able to work in a threaded environment. The best way to do this is to set a breakpoint in main, let the program run until main and then turn off automatic library loading. From there you can allow the program to continue running. Here's an example:</p>
+<pre class="eval">[blizzard@gunhead mozilla]$ cd dist/bin/
+[blizzard@gunhead bin]$ ./mozilla -g
+.//run-mozilla.sh -g ./mozilla-bin
+MOZILLA_FIVE_HOME=/home/blizzard/src/mozilla/mozilla/dist/bin
+  LD_LIBRARY_PATH=/home/blizzard/src/mozilla/mozilla/dist/bin
+       SHLIB_PATH=/home/blizzard/src/mozilla/mozilla/dist/bin
+          LIBPATH=/home/blizzard/src/mozilla/mozilla/dist/bin
+      MOZ_PROGRAM=./mozilla-bin
+      MOZ_TOOLKIT=
+        moz_debug=1
+     moz_debugger=
+/usr/bin/gdb ./mozilla-bin -x /tmp/mozargs22288
+GNU gdb 19991004
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB. Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(gdb) <strong>b main</strong>
+Breakpoint 1 at 0x804ec45: file nsAppRunner.cpp, line 811.
+(gdb) <strong>r</strong>
+Starting program: /home/blizzard/src/mozilla/mozilla/dist/bin/./mozilla-bin
+
+Breakpoint 1, main (argc=1, argv=0xbffff894) at nsAppRunner.cpp:811
+811       InstallUnixSignalHandlers(argv[0]);
+(gdb) <strong>set auto-solib-add 0</strong>
+(gdb) <strong>c</strong>
+Continuing.
+nsNativeComponentLoader: autoregistering begins.
+[...]
+</pre>
+<p>It's easy to define a function for gdb to do this for you automatically. You can add this function to the .gdbinit file in your home directory:</p>
+<pre class="eval">def prun
+        tbreak main
+        run
+        set auto-solib-add 0
+end
+</pre>
+<h3 id="How_do_I_load_shared_libraries.3F" name="How_do_I_load_shared_libraries.3F">How do I load shared libraries?</h3>
+<p>If you have turned off automatic shared library loading, you will have to load them when you need them. GDB has a command to load libraries while the program is running. This is the <code>sharedlibrary</code> command. It can be shortened to <code>shar</code> when used in GDB. The argument to the command is a regular expression for the libraries to be loaded. Here's what it looks like in the 4.18 version of the debugger:</p>
+<pre class="eval">^C
+Program received signal SIGINT, Interrupt.
+0x404ccdeb in __sigsuspend (set=0xbf5ffbc0)
+    at ../sysdeps/unix/sysv/linux/sigsuspend.c:48
+48      ../sysdeps/unix/sysv/linux/sigsuspend.c: No such file or directory.
+Current language:  auto; currently c
+(gdb) <strong>shar glib</strong>
+Reading symbols from /usr/lib/libglib-1.2.so.0...done.
+(gdb)
+</pre>
+<p>Here's what it looks like in a version 5.x of the debugger ( yet unreleased ):</p>
+<pre class="eval">^C
+Program received signal SIGINT, Interrupt.
+[Switching to Thread 2051 (runnable)]
+0x404ccdeb in __sigsuspend (set=0xbf5ffbac)
+    at ../sysdeps/unix/sysv/linux/sigsuspend.c:48
+48      ../sysdeps/unix/sysv/linux/sigsuspend.c: No such file or directory.
+Current language:  auto; currently c
+(gdb) <strong>shar gtk</strong>
+Reading symbols from /usr/lib/libgtk-1.2.so.0...done.
+Loaded symbols for /usr/lib/libgtk-1.2.so.0
+Reading symbols from /usr/lib/gtk/themes/engines/libthinice.so...done.
+Loaded symbols for /usr/lib/gtk/themes/engines/libthinice.so
+(gdb)
+</pre>
+<p>As you see above, it's possible to load more than one library with the same load command in GDB.</p>
+<h3 id="How_do_I_see_what_libraries_I_already_have_loaded.3F" name="How_do_I_see_what_libraries_I_already_have_loaded.3F">How do I see what libraries I already have loaded?</h3>
+<p>You can see what libraries you already have loaded with the <code>info sharedlibrary</code> command:</p>
+<pre class="eval">(gdb) <strong>info shar</strong>
+From        To          Syms Read   Shared Object Library
+0x4044a000  0x4044d08c  Yes         /lib/libdl.so.2
+0x4044e000  0x4048ff90  Yes         /usr/lib/libstdc++-libc6.1-1.so.2
+0x40491000  0x404ad9d8  Yes         /lib/libm.so.6
+0x404ae000  0x405a285c  Yes         /lib/libc.so.6
+0x40000000  0x40013ed0  Yes         /lib/ld-linux.so.2
+0x40607000  0x4061554c  No          /usr/lib/libz.so.1
+0x40763000  0x4088af74  No          /usr/lib/libgtk-1.2.so.0
+0x4088b000  0x408c04d4  No          /usr/lib/libgdk-1.2.so.0
+[...]
+</pre>
+<h3 id="GDB_is_taking_forever_to_load_a_shared_library._What_the_hell_is_it_doing.3F" name="GDB_is_taking_forever_to_load_a_shared_library._What_the_hell_is_it_doing.3F">GDB is taking forever to load a shared library. What the hell is it doing?</h3>
+<p>Versions of GDB earlier than 5 use a very slow algorithm for walking the list of already loaded symbols as it adds symbols to its symbol table. This has been fixed in version 5 of GDB. There isn't a fix for older versions.</p>

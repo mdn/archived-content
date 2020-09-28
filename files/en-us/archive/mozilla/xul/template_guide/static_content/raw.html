@@ -1,0 +1,67 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Filtering" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Simple_Query_Syntax">Next  »</a></p>
+</div>
+<p>Creating a menuitem in the filter list to show all items is fairly easy. This item doesn't need to be generated from the datasource. Instead it will be what is called static content in a template. The static content is any content that is a sibling of the <code><a href="/en-US/docs/Mozilla/Tech/XUL/template" title="template">template</a></code> element. This content is displayed as is without affecting the generated content from the template.
+</p>
+<pre>&lt;menulist datasources="template-guide-photos4.rdf"
+          ref="http://www.daml.org/2001/09/countries/country-ont#Country"
+          oncommand="applyFilter(event.target.value);"&gt;
+  &lt;menupopup&gt;
+    &lt;menuitem label="All"/&gt;
+  &lt;/menupopup&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;triple subject="?country"
+              predicate="http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+              object="?start"/&gt;
+      &lt;triple subject="?country"
+              predicate="http://purl.org/dc/elements/1.1/title"
+              object="?countrytitle"/&gt;
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="?country" label="?countrytitle" value="?country"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/menulist&gt;
+</pre>
+<p>The only difference between the previous example and this one is that the <code><a href="/en-US/docs/Mozilla/Tech/XUL/menulist" title="menulist">menulist</a></code> element has some additional content added before the template. The content will be displayed just like it would be as if the template wasn't present. That is, before the template is examined, the menulist would have one item in it, with the label 'All'. The template generates two results as before, one for each country, and appends a <code>menuitem</code> for each one.
+</p><p>One interesting thing about this example is that only one <code><a href="/en-US/docs/Mozilla/Tech/XUL/menupopup" title="menupopup">menupopup</a></code> will be created, even though there are two in the code, one outside the template and another one inside the action body. This demonstrates how the template builder generates content, and the specifics of how this is done become important when dealing with recursive content and multiple rules.
+</p><p>What's going on here is that the XUL parser first creates the outer <code>menulist</code> element. The static content outside the template will also be created. The result will be a XUL display that looks just like the code above, except that the template and its content is hidden. At this point, the menulist will have a menupopup as a child, and the menupopup will in turn have one menuitem child. Next, the template is examined and two results are generated. Remember that only the content at the uri attribute or below inside the action are copied for each result.
+</p><p>When processing the action body, the builder looks at the first element inside the <code><a href="/en-US/docs/Mozilla/Tech/XUL/action" title="action">action</a></code>, in this case, the <code>menupopup</code>. This element doesn't have a uri attribute, so the builder knows that this element should only be created once. You might think that the builder would then just create a <code>menupopup</code>, but it doesn't. Instead, it looks to see if a <code>menupopup</code> already exists in the location where it would be generated. In this case, there is one, the static menupopup defined outside the template. Instead of creating another menupopup, the builder uses the existing one. This is convenient since it makes it easy to combine static results and template generated results into one list.
+</p><p>The builder then switches where generated content would be generated to inside to existing menupopup and moves onto the next part of the action, the <code><a href="/en-US/docs/Mozilla/Tech/XUL/menuitem" title="menuitem">menuitem</a></code>. This element has the uri attribute so this content will be duplicated for each result.
+</p><p>The technique of looking for an existing element applies to any type of content. The builder will treat the element as already present as long as some element with the same tag name exists. If you were to change the static content to be some other element besides a <code>menupopup</code>, it won't match, so the builder will create a new one when handling the action.
+This becomes useful when using multiple rules and we'll see some examples of this later.
+</p><p>Here is the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex18.xul">example</a> to try. Note that the workaround of loading the datasource beforehand as mentioned for the last example isn't necessary, as the existence of the static content is another effective workaround. So, if you're using menulists with templates and the data isn't displaying properly when the data hasn't loaded, try using a static <code>menupopup</code>. It doesn't even need to have any items in it.
+</p><p>The static content may be placed before or after the template, although usually you would place it first. Note that the static content is always placed before the generated content, so the 'All' item will always be the first item in the menu.
+</p>
+<h3 id="Static_Content_Example" name="Static_Content_Example"> Static Content Example </h3>
+<p>Let's look at another example, involving radio buttons. Actually, this example is similar, it just uses a radiogroup instead of a menulist to display the list of countries.
+</p>
+<pre>&lt;radiogroup datasources="template-guide-photos4.rdf"
+            ref="http://www.daml.org/2001/09/countries/country-ont#Country"
+            onselect="applyFilter(event.target.value);"&gt;
+  &lt;radio label="All" selected="true"/&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;triple subject="?country"
+              predicate="http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+              object="?start"/&gt;
+      &lt;triple subject="?country"
+              predicate="http://purl.org/dc/elements/1.1/title"
+              object="?countrytitle"/&gt;
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;radio uri="?country" label="?countrytitle" value="?country"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/radiogroup&gt;
+</pre>
+<p>This <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex18b.xul">example</a> doesn't have any other content to generate outside the radio element with the uri attribute, so it will just be copied as is. The static 'All' radio button will be left as the first radio item.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Filtering" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Simple_Query_Syntax">Next  »</a></p>
+</div>

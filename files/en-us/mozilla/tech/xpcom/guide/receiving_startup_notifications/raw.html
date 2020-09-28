@@ -1,0 +1,36 @@
+<p>Sometimes it's necessary for XPCOM components to receive notifications as to the progress of the application's startup process, so they can start new services at appropriate times, for example.</p>
+<h2 id="Receiving_startup_notifications_in_Gecko_2.0_(Firefox_4)_and_later">Receiving startup notifications in Gecko 2.0 (Firefox 4) and later</h2>
+<p>In order to improve startup times, changes were made to the XPCOM startup process. See <a href="/en/XPCOM/Receiving_startup_notifications#The_startup_process" title="en/XPCOM/Receiving startup notifications#The startup process">The startup process</a> for details on how this now works, if you're interested in specifics.</p>
+<p>The important thing to note is that now instead of registering with the Category Manager programmatically as was done in the past, you add lines to your <a href="/en/Chrome_registration" title="en/Chrome registration"><code>chrome.manifest</code></a> to let the application handle it for you. For example:</p>
+<pre>category profile-after-change MyComponent @foobar/mycomponent;1</pre>
+<div class="warning"><strong>Important:</strong> In the past, the contract ID of the category entry started with "service," if the component was implemented as a service. This is no longer the case, so be sure to remove that when migrating existing code.</div>
+<p>Additionally, the earliest startup time notification you can receive is now <code>profile-after-change</code>. Your add-on will not receive <code><code>xpcom-startup</code></code> or <code>app-startup</code> notifications.</p>
+<h3 id="The_startup_process">The startup process</h3>
+<p>During application startup, the application's manifest is used to get a list of the components it needs to register, and those components are loaded. This gets enough of XPCOM and the application loaded and running that the Extension Manager can then be loaded and handle installing, uninstalling, and updating any installed extensions.</p>
+<p>Once that process is completed, extensions can then be loaded by simply reading their manifests, loading their components, and continuing with application startup, all without having to restart the browser.</p>
+<h2 id="Receiving_startup_notifications_prior_to_Gecko_2.0_(Firefox_4)">Receiving startup notifications prior to Gecko 2.0 (Firefox 4)</h2>
+<p>To receive startup notifications, one needs to register with the "app-startup" category using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsICategoryManager" title="">nsICategoryManager</a></code>; having done so, the component will receive these startup notifications, including:</p>
+<dl> <dt><code>xpcom-startup</code></dt> <dd>Sent when XPCOM finishes starting up. Most application features are not yet available at this point, but XPCOM itself is.</dd> <dt><code>app-startup</code></dt> <dd>Sent when the application has finished starting up.</dd> <dt><code>final-ui-startup</code></dt> <dd>Sent just before the first application window is displayed.</dd>
+</dl>
+<h3 id="Registering_with_the_Category_Manager">Registering with the Category Manager</h3>
+<p>To register with the Category Manager, simply call its <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsICategoryManager#AddCategoryEntry()">nsICategoryManager.AddCategoryEntry()</a></code> method:</p>
+<pre>categoryManager-&gt;AddCategoryEntry(APPSTARTUP_CATEGORY,
+                                  "mycomponentname",
+                                  "contract-id",
+                                  PR_TRUE, PR_TRUE,
+                                  getter_Copies(previous));
+</pre>
+<p>This causes your component to be instantiated using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIComponentManager#createInstance()">nsIComponentManager.createInstance()</a></code>.</p>
+<p>If you want your component to be started as a service, prepend "service," to the contract ID:</p>
+<pre>categoryManager-&gt;AddCategoryEntry(APPSTARTUP_CATEGORY,
+                                  "mycomponentname",
+                                  "service,contract-id",
+                                  PR_TRUE, PR_TRUE,
+                                  getter_Copies(previous));</pre>
+<p>With "service," specified, the component is instantiated using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIComponentManager#getService()">nsIComponentManager.getService()</a></code>.</p>
+<p>In either case, there's no need to additionally register for the startup notifications. Simply registering with the Category Manager is enough.</p>
+<h3 id="What_happens_next">What happens next</h3>
+<p>Once you've registered with the Category Manager, at Mozilla startup time (or when the embedding application's <code>NS_InitEmbedding()</code> function is called), the AppStartupNotifier component is instantiated, and its <code>Observe()</code> method is called; this in turn enumerates all components in the <code>app-startup</code> category and sends them the appropriate notifications.</p>
+<h2 id="See_also">See also</h2>
+<ul> <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsICategoryManager" title="">nsICategoryManager</a></code></li> <li><a href="/en/Observer_Notifications" title="en/Observer Notifications">Observer Notifications</a></li>
+</ul>

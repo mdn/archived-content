@@ -1,0 +1,283 @@
+<div id="wrapper">
+  <h2 class="title-actions-bar" id="Browser_Social_API_Reference">Browser Social API Reference</h2>
+  <div class="site hfeed">
+    <div class="hentry">
+      <div class="container" id="js-repo-pjax-container">
+        <div id="slider">
+          <div class="frames">
+            <div class="frame frame-center">
+              <div class="bubble" id="files">
+                <div class="file">
+                  <div class="blob instapaper_body" id="readme">
+                    <article class="markdown-body entry-content">
+                      <p><a href="https://github.com/mixedpuppy/socialapi-demo" title="https://github.com/mixedpuppy/socialapi-demo">https://github.com/mixedpuppy/socialapi-demo</a> contains a test provider implementation that demonstrates the use of many of these APIs. Reading through it will help illustrate the documentation provided here.</p>
+                      <h3 id="Service_Worker_Reference">Service Worker Reference</h3>
+                      <p>A Service Worker inherits all the limitations and behaviors available to HTML5 Shared Workers. It can create XMLHttpRequests, use WebSockets, receive messages from windows and the browser, use IndexedDB, and post messages to other windows.</p>
+                      <p>The Worker can use the <code>ononline</code>, <code>onoffline</code>, and <code>navigator.online</code> methods and properties that are available to all Workers to obtain notification of the browser's online/offline status.</p>
+                      <p>In addition to the standard methods, Service Workers have access to additional functionality, all of which are implemented using messages sent and received by worker "message ports". As message ports are inherently asynchronous, any message that requires a response will involve two messages - one for the request and one for the response. Not all message require a response - this is part of the message specification. Messages which don't require a response are analogous to an unsolicitied 'event'. If a message does require a response, then the response must always be sent on the same port as the request and in general, the 'topic' of the response will be the topic of the request with "-response" appended.</p>
+                      <p>Service workers are expected to provide a function at global scope, named <code>onconnect</code>. The browser will invoke <code>onconnect</code> at startup time, passing in an event. The worker should access the <code>ports</code> property of this event to extract a stable communication port back to the browser, and persist it for the life of the worker, like this:</p>
+                      <pre><code>var apiPort;
+var ports = [];
+onconnect = function(e) {
+    var port = e.ports[0];
+    ports.push(port);
+    port.onmessage = function (msgEvent)
+    {
+        var msg = msgEvent.data;
+        if (msg.topic == "social.port-closing") {
+            if (port == apiPort) {
+                apiPort.close();
+                apiPort = null;
+            }
+            return;
+        }
+        if (msg.topic == "social.initialize") {
+            apiPort = port;
+            initializeAmbientNotifications();
+        }
+    }
+}
+
+// send a message to all provider content
+function broadcast(topic, data) {
+  for (var i = 0; i &lt; ports.length; i++) {
+    ports[i].postMessage({topic: topic, data: data});
+  }
+}
+</code></pre>
+                      <p>Every message has a data element with 2 fields; 'topic' and 'data'. The topic identifies which method or event is being used, and the data specifies additional data unique to the topic. All standardized methods and events have topics that begin with "social." - this means services are free to use topics without this prefix as a private implementation detail (for example, to communicate between some content from the service and the service's worker)</p>
+                      <h3 id="Control_Messages_sent_to_Service_Workers">Control Messages sent to Service Workers</h3>
+                      <h4 id="social.initialize"><code>social.initialize</code></h4>
+                      <p>Sent by the browser during startup. When a worker's JavaScript has been successfully loaded and evaluated, the browser will send a message with this topic.</p>
+                      <h4 id="social.port-closing"><code>social.port-closing</code></h4>
+                      <p>Sent by the browser during worker shutdown, when a MessagePort to the worker is about to be closed. This will be the last message the worker receives on the port.</p>
+                      <h3 id="Ambient_Notification_Control">Ambient Notification Control</h3>
+                      <h4 id="social.user-profile"><code>social.user-profile</code></h4>
+                      <p>Sent by the worker, to set the properties for the provider icon and user profile data used for the toolbar button. If the users portrait and userName are absent, the button UI will indicate a logged out state. When indicating logged out state, status icons set via <code>social.ambient-notification</code> will be removed.  A service that does not handle user login should send this message with values appropriate to the website, such as the site icon, home url and brand name.</p>
+                      <p><em>Arguments:</em></p>
+                      <strong>iconURL</strong>
+                      <blockquote>
+                        <p>String, required. If supplied, specifies the URL to a 16x16 pixel image used for the status icon. The iconURL can be a data url with encoded image to avoid additional http requests. (e.g. "data:image/png;base64,...data...")</p>
+                      </blockquote>
+                      <p><strong>portrait</strong></p>
+                      <blockquote>
+                        <p>String, optional. If supplied, specifies the URL to a 48x48 pixel image of the user. The portrait can be a data url with encoded image to avoid additional http requests.</p>
+                      </blockquote>
+                      <p><strong>userName</strong></p>
+                      <blockquote>
+                        <p>String, optional. Account name displayed with the portrait in the provider menu.</p>
+                      </blockquote>
+                      <p><strong>dispayName</strong></p>
+                      <blockquote>
+                        <p>String, required. Real name of the user used for display purposes in various UI elements.</p>
+                      </blockquote>
+                      <p><strong>profileURL</strong></p>
+                      <blockquote>
+                        <p>String, required. URL to the logged in users profile page. This will be opened in a normal browser tab when the username is clicked on.</p>
+                      </blockquote>
+                      <h4 id="social.ambient-notification"><code>social.ambient-notification</code></h4>
+                      <p>Sent by the worker, to update or create an ambient notification icon. One is sent for each icon. A user must be logged in to show status icons, and you must call <code>social.user-profile</code> prior to calling <code>social.ambient-notification</code> to set status icons.</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>name</strong></p>
+                      <blockquote>
+                        <p>String. An identifier for the icon. The first time a given name is seen, it effectively creates a new icon. If the same name is used in subsequent calls, the existing icon is updated.</p>
+                      </blockquote>
+                      <strong>iconURL</strong>
+                      <blockquote>
+                        <p>String, optional. If supplied, specifies the URL to a 16x16 pixel image used for the status icon. The iconURL can be a data url with encoded image to avoid additional http requests. (e.g. "data:image/png;base64,...data...")</p>
+                      </blockquote>
+                      <p><strong>counter</strong></p>
+                      <blockquote>
+                        <p>Number, optional. Specifies a number that will be overlaid over the icon, typically used to convey an <code>unread</code> concept.</p>
+                      </blockquote>
+                      <p><strong>contentPanel</strong></p>
+                      <blockquote>
+                        <p>String, optional. Specifies the URL of content that will be displayed in the popup panel for the icon.</p>
+                      </blockquote>
+                      <h3 id="Active_Notification_Control">Active Notification Control</h3>
+                      <h4 id="social.notification-create"><code>social.notification-create</code></h4>
+                      <p>Sent by the worker, to create and display a notification object. This requests that the browser notify the user of an immediately-relevant change in state. See <a href="https://developer.mozilla.org/en/DOM/navigator.mozNotification">https://developer.mozilla.org/en/DOM/navigator.mozNotification</a> for more detail. When the user clicks on the notification, the <code>social.notification-action</code> message is sent to the worker. The title of the notification will always be the name of the provider.</p>
+                      <p>NOTE: We want to augment the mozNotification object defined in the docs with an additional "type" field. Details TBD. NOTE: No way of allowing duration and no way exposed to "cancel" a notification (assumption is they are very short-lived). Is this OK?</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>id</strong></p>
+                      <blockquote>
+                        <p>String: An ID for the notification. This ID will not be displayed but will be passed back via a <code>social.notification-action</code> event if the user clicks on the notification.</p>
+                      </blockquote>
+                      <p><strong>type</strong></p>
+                      <blockquote>
+                        <p>String: The Type string should be consistent for each <strong>type</strong> of notification. This may be used by some notification systems to provide user level filtering of notifications. A provider may choose any string for the type, but should keep the type strings consistent and descriptive for each type of action. For example, chat notifications should always have the same type string. Suggested/example notifications include:</p>
+                      </blockquote>
+                      <ul>
+                        <li>social.providername.chat-request</li>
+                        <li>social.providername.friend-request</li>
+                        <li>social.providername.activity (e.g. someone posted to your activity stream)</li>
+                      </ul>
+                      <p><strong>icon</strong></p>
+                      <blockquote>
+                        <p>String/null. The URL of an image to be placed in the notification. While this can be any valid URL, implementers are strongly encouraged to use a data URL to minimize latency.</p>
+                      </blockquote>
+                      <p><strong>body</strong></p>
+                      <blockquote>
+                        <p>String: The body of the notification message. This body will be rendered as a hyperlink and may be clicked. HTML markup is not supported.</p>
+                      </blockquote>
+                      <p><strong>action</strong></p>
+                      <blockquote>
+                        <p>String: An action to perform when the user clicks on the notification. If no action is provided, the notification is not clickable. Currently the only actions supported are <strong><em>link</em></strong>, <strong><em>callback</em></strong> and <strong><em>openServiceWindow</em></strong>. If the action is defined, actionArgs should also be defined.</p>
+                      </blockquote>
+                      <p><strong>actionArgs</strong></p>
+                      <blockquote>
+                        <p>Object: An object with arguments for actions (above). Supported actions and their actionArgs are:</p>
+                      </blockquote>
+                      <ul>
+                        <li>link
+                          <ul>
+                            <li>toURL: String: url to open in a new browser tab</li>
+                          </ul>
+                        </li>
+                      </ul>
+                      <h4 id="social.notification-action"><code>social.notification-action</code></h4>
+                      <p>Sent to the worker as a response to a "callback" notification, after the user has clicked on the notification.</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>id</strong></p>
+                      <blockquote>
+                        <p>String: the ID of the notification that was clicked.</p>
+                      </blockquote>
+                      <p><strong>action</strong></p>
+                      <blockquote>
+                        <p>String: The <strong>action</strong> sent in <code>social.notification-create</code>.</p>
+                      </blockquote>
+                      <p><strong>actionArgs</strong></p>
+                      <blockquote>
+                        <p>Object: The <strong>actionArgs</strong> sent in <code>social.notification-create</code>.</p>
+                      </blockquote>
+                      <h3 id="Page_Marks">Page Marks</h3>
+                      <p><strong>STATUS: TARGETING Fx23 (replacing Link Recommendation below)</strong></p>
+                      <p>Page Marks are a simple mechanism to share a url with a social provider.  Page Marks differs from Share in that the url is only sent to the provider.  This functionality can handle use cases such as Facebook Like, Google +1, Pocket, or other save-for-later features.  When enabled, and additional Mark button will appear at the end of the Social toolbarbutton in Firefox.  There is no UI associated with the button other than a change of the button image to reflect the current marked or unmarked state.</p>
+                      <h4 id="social.page-mark-config"><code>social.page-mark-config</code></h4>
+                      <p>Sent by the worker to notify Firefox of support for Page Marks.  This message can be sent at any time, we recommend sending it when handling the social.initialize message.</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>images</strong></p>
+                      <blockquote>
+                        <p>Object. Must have 2 string keys, 'marked' and 'unmarked', which will be used as the Page Mark button icon.   The user agent will track if the current page has been marked - if so, it will show the 'marked' image, otherwise will show the 'unmarked' image. It can contain a web-addressible image or a data URL containing dynamically-generated image data.  Implementors are strongly encouraged to use a data URL to minimize latency. Each image is expected to be 16px wide and 16px high.</p>
+                      </blockquote>
+                      <p><strong>messages</strong></p>
+                      <blockquote>
+                        <p>Object. Must have the following string keys:</p>
+                      </blockquote>
+                      <ul>
+                        <li>'markedTooltip', 'unmarkedTooltip': The strings used as the tooltip on the click target when the 'marked' and 'unmarked' images, respectively, are shown.</li>
+                        <li>'markedLabel', 'unmarkedLabel': Strings that will be used to update a label widget after the 'marked' or 'unmarked' action is taken to reflect the transition from marked-to-unmarked or vice-versa.</li>
+                      </ul>
+                      <h4 id="social.page-mark"><code>social.page-mark</code></h4>
+                      <p>Sent by Firefox to the worker when the user marks or unmarks a page.  No response is expected.  Firefox will track the marked state of the page seperately from the provider.  If the user clears history, all tracked page marks will be removed.</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>url</strong></p>
+                      <blockquote>
+                        <p>String. The url of the page being marked.</p>
+                      </blockquote>
+                      <p><strong>marked</strong></p>
+                      <blockquote>
+                        <p>Boolean.</p>
+                      </blockquote>
+                      <br>
+                      <h3 id="Link_Recommendation_Control">Link Recommendation Control</h3>
+                      <p>NOTE: The following user-recommend messages are DEPRECATED and removed as of Fx23.  The have been replaced by Page Marks.</p>
+                      <h4 id="social.user-recommend-prompt"><code>social.user-recommend-prompt</code></h4>
+                      <p><strong>STATUS: DEPRECATED, REMOVED Fx23</strong><strong>, REPLACED WITH social.page-mark-config</strong></p>
+                      <p>Sent by the browser to request the visual prompt for the "user recommendation" interface element. The Worker should respond with a user-recommend-prompt-response</p>
+                      <p>Note that typically this message will only be sent when a provider is activated and the response will be used for all URLs. In other words, the provider should not expect this message to be sent each time the user agent navigates or displays a new URL.</p>
+                      <p><em>Arguments:</em></p>
+                      <p>None</p>
+                      <h4 id="social.user-recommend-prompt-response"><code>social.user-recommend-prompt-response</code></h4>
+                      <p><strong>STATUS: </strong><strong>DEPRECATED, REMOVED Fx23</strong></p>
+                      <p>The Worker constructs and posts a user-recommend-prompt-response in response to a <code>social.user-recommend-prompt</code> message received from the browser. See <code>social.user-recommend-prompt</code> for more details.</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>images</strong></p>
+                      <blockquote>
+                        <p>Object. Must have 2 string keys, 'share' and 'unshare', which each value being the URL to an image which will be set as the "src" property of an image contained in the user-facing click target for the "recommend" action. The user agent will track if the current page has been shared - if so, it will show the 'unshare' image, otherwise will show the 'share' image. It can contain a web-addressible image or a data URL containing dynamically-generated image data. Implementors are strongly encouraged to use a data URL to minimize latency. Each image is expected to be 16px wide and 16px high.</p>
+                      </blockquote>
+                      <p><strong>messages</strong></p>
+                      <blockquote>
+                        <p>Object. Must have the following string keys:</p>
+                      </blockquote>
+                      <ul>
+                        <li>'shareTooltip', 'unshareTooltip': The strings used as the tooltip on the click target when the 'share' and 'unshare' images, respectively, are shown.</li>
+                        <li>'sharedLabel', 'unsharedLabel': Strings that will be used to update a label widget after the 'share' or 'unshare' action is taken to reflect the transition from shared-to-unshared or vice-versa. Note that in Fx17, the labels are not visible but are used as an accessibility aid so a screen-reader or similar can note the transition.</li>
+                        <li>'unshareLabel': A string to be displayed on the 'unshare popup' to reflect the item has been shared. Eg: "You previously shared this item".</li>
+                        <li>'portraitLabel': A string used as the aria-label for the user's profile image shown in the 'unshare popup'. Eg: "Your profile image"</li>
+                        <li>'unshareConfirmLabel': A string used as the label on the button on the 'unshare popup' used to perform the 'unshare'. Eg: "Unshare it"</li>
+                        <li>'unshareConfirmAccessKey': A string used as the access key for the unshare button. Typically this should be a letter included in the 'unshareConfirmLabel' string.</li>
+                        <li>'unshareCancelLabel': A string used as the label on the button on the 'unshare popup' when the user desires to continue sharing the item. Eg: "Close".</li>
+                        <li>'unshareCancelAccessKey': A string used as the access key for the unshare cancel button.</li>
+                      </ul>
+                      <h4 id="social.user-recommend"><code>social.user-recommend</code></h4>
+                      <p><strong>STATUS: DEPRECATED, REMOVED Fx23, REPLACED WITH social.page-mark</strong></p>
+                      <p>Indicates that the user has clicked the "user recommendation" interface element. The message includes:</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>url</strong></p>
+                      <blockquote>
+                        <p>String, required. The URL that the user is viewing, including query string, but minus any hash text, of the root of the current browser viewing context.</p>
+                      </blockquote>
+                      <p>No response is necessary; however, the service may respond on the same port with a user-recommend-prompt-response if the click target should change its appearance.</p>
+                      <h4 id="social.user-unrecommend"><code>social.user-unrecommend</code></h4>
+                      <p><strong>STATUS: DEPRECATED, REMOVED Fx23</strong></p>
+                      <p>Indicates that the user would like to retract their previous recommendation. The message includes:</p>
+                      <p><em>Arguments:</em></p>
+                      <p><strong>url</strong></p>
+                      <blockquote>
+                        <p>String, required. The URL that the user is viewing, including query string, but minus any hash text, of the root of the current browser viewing context.</p>
+                      </blockquote>
+                      <br>
+                      <h3 id="Widgets">Widgets</h3>
+                      <h4 id="SidebarWidget">SidebarWidget</h4>
+                      <p>If a service defines a SidebarWidget, the browser will instantiate a content region with the SidebarWidget URL as the location on some browser windows. These regions will not be instantiated until the Worker has been fully loaded. The content in these regions has the additional API defined in the Service Content API reference, above.</p>
+                      <p>Sidebars can be in a <em>visible</em> or <em>hidden</em> state.</p>
+                      <ul>
+                        <li>When visible, they will receive a vertical rectangle of screen space in which to render; this rectangle is stable across changes in tab focus and has an independent scrollbar from the scrollbar of tabbed browsing content.</li>
+                        <li>When hidden, a sidebar is completely removed from the visual hierarchy. The user agent will continue to deliver messages to it, and the sidebar may pre-render its DOM for later display.</li>
+                      </ul>
+                      <p>Sidebar windows will only be instantiated on browser windows that have a full tabbed-browsing interface; windows created with window.open that do not have these interface elements will not have a sidebar.</p>
+                      <p>When a tab that is rendered directly by the browser without a location bar is selected, the sidebar will automatically be placed into the <em>hidden</em> state. When the user navigates away from that tab, the sidebar will be made <em>visible</em> again. These tabs include the Add-ons management page, about:permissions, etc.</p>
+                      <p>The minimized/maximized/hidden state of the sidebar widget is will be consistent across all browser windows. The most-recently-set state is remembered and used for new windows, and is persisted across browser restarts.</p>
+                      <h3 id="Messages_Sent_to_Widgets">Messages Sent to Widgets</h3>
+                      <p><strong>STATUS: DONE Fx17</strong></p>
+                      <h4 id="socialFrameHide"><code>socialFrameHide</code></h4>
+                      <p>DOM Event sent by the browser when the user hides the sidebar content.</p>
+                      <h4 id="socialFrameShow"><code>socialFrameShow</code></h4>
+                      <p>DOM Event sent by the browser when the user shows the sidebar content.</p>
+                      <h3 id="Browser_Panel_Integration">Browser "Panel" Integration</h3>
+                      <p><strong>STATUS: DONE Fx17</strong></p>
+                      <p>To allow content to place an ephemeral window in front of normal browser content and chrome, the following API is used:</p>
+                      <pre><code>`navigator.mozSocial.openChatWindow( url, callback)`
+</code></pre>
+                      <p>The callback will receive the window object from the chat frame.</p>
+                      <h1 id="Message_Serialization">Message Serialization</h1>
+                      <p>For a message with topic <code>topic</code> and arguments (arg1:val1, arg2:val2), construct an object like:</p>
+                      <pre><code>{ topic: topic, data: { arg1: val1, arg2: val2 } }
+</code></pre>
+                      <h3 id="Discovery_and_Service_Manifest">Discovery and Service Manifest</h3>
+                      <h4 id="Discovery">Discovery</h4>
+                      <p><strong>STATUS: NOT TARGETED</strong></p>
+                      <p>As a user browses web sites Firefox can discover new social providers and offer installation of those providers. A social providers website would include a LINK tag in the header pointing to a manifest file to enable this form of discovery. If the user either has stored authentication credentials in the Firefox password manager, or if the user frequents the website, Firefox will show a notification bar allowing the user to install the service.</p>
+                      <h4 id="Activation">Activation</h4>
+                      <p><strong>STATUS: DONE Fx17</strong></p>
+                      <p>A provider can become activated by dispatching a custom event of "ActivateSocialFeature" on the document. The document's location is then checked against a built-in whitelist and if the location is found then the feature is activated for that provider.</p>
+                      <p>We recommend that providers require their users to click a link or button to activate the feature so the user is aware of the new functionality.</p>
+                      <pre><code>function activate() {
+  var event = new CustomEvent("ActivateSocialFeature");
+  document.dispatchEvent(event);
+}
+</code></pre>
+                    </article>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="global-clippy-flash-bug" style="position: absolute; left: -9999px; top: -9999px; width: 14px; height: 14px;">
+   </div>

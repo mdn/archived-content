@@ -1,0 +1,121 @@
+---
+title: Declaring and Using Callbacks
+slug: Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks
+tags:
+  - Guide
+  - JavaScript
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+ <ol>
+  <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+  <li class="toggle">
+      <details open>
+        <summary>Introduction</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>References</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>Examples</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li></ol>
+      </details>
+  </li>
+ </ol>
+</section>
+
+<p>C functions occasionally take function pointers as arguments, which are generally used as callbacks. In these cases, js-ctypes allows you to pass a regular JavaScript function as the callback. This is very powerful, since it allows native code to transparently call into JavaScript.</p>
+
+<div class="warning"><strong>Warning: </strong>Callbacks must be invoked on the same thread with which they were registered. There is no concurrency logic in js-ctypes, so invoking callbacks on other threads will cause things to crash.</div>
+
+<h2 id="Prerequiste_Understanding">Prerequiste Understanding</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI">ABI</a></li>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType">FunctionType</a></li>
+</ul>
+
+<h2 id="Declaring_Callbacks">Declaring Callbacks</h2>
+
+<p>A callback is declared by using <code><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType">ctypes.FunctionType</a></code>. The first argument is the calling convention, the second argument is the return type, and the third is an array of arguments the callback expects.</p>
+
+<p>The return type of the javascript callback must match the return type declared, otherwise js-ctypes will throw an error saying &quot;unexpected return type&quot;.</p>
+
+<h3 id="Examples">Examples</h3>
+
+<h4 id="Example_1">Example 1</h4>
+
+<p>This callback that returns <code>bool </code>and has two arguments.</p>
+
+<pre class="brush: js">var myFuncTypeDeclaration = ctypes.FunctionType(ctypes.default_abi, ctypes.bool, [ctypes.int, ctypes.voidptr_t]);
+
+function myJSCallback(cInt, cPtr) {
+    return true; // as the return of the FunctionType was ctypes.bool we must make our javascript callback return bool otherwise js-ctypes will throw error saying unexpected type return
+}
+
+var myCCallback = myFuncTypeDeclaration.ptr(myJSCallback);
+</pre>
+
+<h4 id="Example_2">Example 2</h4>
+
+<p>This callback that returns <code>void</code> and no arguments. When void is the return type, the javascript callback must not return, or it should return <code>undefined</code>.</p>
+
+<pre class="brush: js">var myFuncTypeDeclaration = ctypes.FunctionType(ctypes.default_abi, ctypes.void_t, []);
+
+function myJSCallback() {
+    return undefined; // as the return of the FunctionType was ctypes.void_t we must return undefined OR dont return at all otherwise js-ctypes will throw an error saying unexpected type
+}
+
+var myCCallback = myFuncTypeDeclaration.ptr(myJSCallback);
+</pre>
+
+<h2 id="Using_Callbacks">Using Callbacks</h2>
+
+<p>Since callbacks are function pointers in C, js-ctypes has special handling for function pointer types. Consider the following code:</p>
+
+<pre class="brush: js">function myJSCallback(foo, bar) { .... };
+var funcType = ctypes.FunctionType(...);
+var funcPtrType = funcType.ptr;
+var regularFuncPtr = funcPtrType();
+var callback = funcPtrType(myJSCallback);
+</pre>
+
+<p>js-ctypes detects that <code>funcPtrType</code> is a type of function pointer, and adds a special case to its constructor. In the ordinary case, invoking the type object creates a regular <a href="/en/Mozilla/js-ctypes/js-ctypes_reference/CData" title="en/js-ctypes/js-ctypes reference/CData"><code>CData</code></a> object containing a pointer to the data. However, if the first argument is a function, js-ctypes creates a special object (known internally as a CClosure) that wraps the JavaScript function within an ordinary C function. This can all be done in a single line of code, like so:</p>
+
+<pre class="brush: js">var callback = ctypes.FunctionType(...).ptr(function(...) {...});
+</pre>
+
+<div class="note"><strong>Note:</strong> The use of <code>.ptr()</code> here isn&apos;t a method call; we&apos;re accessing a property that dynamically creates a callable object, and then invoking the result.</div>
+
+<p>If two arguments are passed to the callback constructor, the second is used as the <code>this</code> parameter:</p>
+
+<pre class="brush: js">function myJSCallback() {
+  alert(this.message);
+};
+
+var receiver = { message: &apos;hi there!&apos; };
+var callback = funcPtrType(myJSCallback, receiver); // alerts with &apos;hi there&apos; when the callback is invoked
+</pre>
+
+<p>If three arguments are passed to the callback constructor, the third argument is used as a sentinel value which the callback returns if an exception is thrown. The sentinel value must be convertible to the return type of the callback:</p>
+
+<pre class="brush: js">function myJSCallback() {
+  throw &quot;uh oh&quot;;
+};
+
+var callback1 = funcPtrType(myJSCallback, null, -1); // Returns -1 to the native caller when the exception is thrown.
+</pre>
+
+<div class="warning"><strong>Warning: </strong>You <em>must</em> store a reference to the callback object as long as the native code might call it. If you don&apos;t, the GC might collect the relevant data structures, and the browser will crash when native code attempts to invoke your callback.</div>
+
+<h2 id="Arguments_and_return_values">Arguments and return values</h2>
+
+<p>js-ctypes automatically handles the conversion between JavaScript and C value representations. Before the JavaScript callback function is invoked, js-ctypes converts the arguments passed by the caller to JavaScript values. Where possible, js-ctypes will convert arguments to primitive types. For arguments of complex types, temporary <a href="/en/Mozilla/js-ctypes/js-ctypes_reference/CData" title="https://developer.mozilla.org/en/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a> objects will be created.</p>
+
+<p>The return value is converted in a similar manner.</p>

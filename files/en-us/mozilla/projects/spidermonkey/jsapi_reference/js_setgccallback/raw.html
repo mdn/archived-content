@@ -1,0 +1,113 @@
+<div>
+ {{SpiderMonkeySidebar("JSAPI")}}</div>
+<div class="summary">
+ <p>Specify a new callback function for the garbage collector.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">void
+JS_SetGCCallback(JSRuntime *rt, JSGCCallback cb, void *data);
+
+JSGCCallback
+JS_SetGCCallback(JSContext *cx, JSGCCallback cb); // Obsolete since JSAPI 13
+
+JSGCCallback
+JS_SetGCCallbackRT(JSRuntime *rt, JSGCCallback cb); // Obsolete since JSAPI 13
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td><em>(for the old <code>JS_SetGCCallback</code>)</em> Any <code>JSContext</code>. The GC callback of the associated <code>JSRuntime</code> is set.</td>
+  </tr>
+  <tr>
+   <td><code>rt</code></td>
+   <td>{{jsapixref("JSRuntime", "JSRuntime *")}}</td>
+   <td>The <code>JSRuntime</code> for which to set the GC callback.</td>
+  </tr>
+  <tr>
+   <td><code>cb</code></td>
+   <td><code>JSGCCallback</code></td>
+   <td>Pointer to the new callback function to use.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Callback_syntax" name="Callback_syntax">Callback syntax</h2>
+<pre class="brush: cpp">typedef enum JSGCStatus {
+    JSGC_BEGIN,
+    JSGC_END,
+    JSGC_MARK_END,    // Obsolete since JSAPI 13
+    JSGC_FINALIZE_END // Obsolete since JSAPI 13
+} JSGCStatus;
+
+typedef void
+(* JSGCCallback)(JSRuntime *rt, JSGCStatus status, void *data);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which garbage collection is happening.</td>
+  </tr>
+  <tr>
+   <td><code>status</code></td>
+   <td><code>JSGCStatus</code></td>
+   <td>One of the <code>JSGCStatus</code> constants, described below, indicating the stage of GC.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><code>JS_SetGCCallback</code> sets a callback function which the garbage collector calls at several points during garbage collection. <code>rt</code> is the runtime in which you specify the callback. <code>cb</code> is a pointer to the new callback function to use.</p>
+<p>Callback related to finalization is separated to {{jsapixref("JS_AddFinalizeCallback", "JS_SetFinalizeCallback")}} in JSAPI 13.</p>
+<div class="note">
+ <p>Obsolete since JSAPI 13</p>
+ <p><code>JS_SetGCCallback</code> returns a pointer to the previously used callback function upon completion. The application may store this return value in order to restore the original callback when the new callback is no longer needed. To restore the original callback, call <code>JS_SetGCCallback</code> a second time, and pass the old callback in as the <code>cb</code> argument.</p>
+</div>
+<p>During each complete garbage collection cycle, the current GC callback is called four times:</p>
+<dl>
+ <dt>
+  <code>JSGC_BEGIN</code></dt>
+ <dd>
+  Start of GC. The callback may prevent GC from starting by returning <code>false</code>. But even if the callback returns <code>true</code>, the garbage collector may determine that GC is not necessary, in which case the other three callbacks are skipped.</dd>
+ <dt>
+  <code>JSGC_MARK_END</code> {{ obsolete_inline("jsapi13") }}</dt>
+ <dd>
+  End of marking. The callback may use {{jsapixref("JS_IsAboutToBeFinalized")}} to clean up weak references to JS objects (that is, pointers that are not traced by the GC).</dd>
+ <dt>
+  <code>JSGC_FINALIZE_END </code>{{ obsolete_inline("jsapi13") }}</dt>
+ <dd>
+  End of finalization.</dd>
+ <dt>
+  <code>JSGC_END</code></dt>
+ <dd>
+  End of GC.</dd>
+</dl>
+<p>Sometimes these four callbacks happen once each, in the order listed. Sometimes <code>JSGC_BEGIN</code> happens and the rest of garbage collection does not happen, so the other three callbacks are not called. Sometimes several GC cycles happen in a row, so <code>JSGC_BEGIN</code> is followed by alternating <code>JSGC_MARK_END</code> and <code>JSGC_FINALIZE_END</code> callbacks, followed at last by <code>JSGC_END</code>.</p>
+<p>The <code>JSGC_BEGIN</code> callback can occur very early when something triggers garbage collection—before the JavaScript engine has even determined whether GC should actually be done at the moment. Some quirky behavior follows from this:</p>
+<ul>
+ <li>The JavaScript engine can call the GC callback reentrantly on a single thread. For example, if the <code>JSGC_MARK_END</code> callback does something that triggers GC, a <code>JSGC_BEGIN</code> callback might happen. But the JavaScript engine will then detect that GC is already happening and will not actually do a nested GC cycle in this case.</li>
+</ul>
+<ul>
+ <li>In a {{jsapixref("JS_THREADSAFE")}} build, a <code>JSGC_BEGIN</code> callback may happen on any thread, any time that thread triggers garbage collection (from almost any JSAPI call). The GC callback may be called on multiple threads at the same time (e.g. if a thread that is not in an active request calls {{jsapixref("JS_GC")}} while GC is already happening on another thread).</li>
+</ul>
+<ul>
+ <li>In a <code>JS_THREADSAFE</code> build, a <code>JSGC_BEGIN</code> callback can happen on one thread before or while a <code>JSGC_END</code> callback for the previous GC cycle runs on another thread.</li>
+</ul>
+<p>In a <code>JS_THREADSAFE</code> build, the <code>JSGC_END</code> callback is called after each stop-the-world rendezvous during which one or more garbage collection cycles finished. The callback executes on the same thread that performed GC, after the GC lock has been released. Other threads may be running in active requests.</p>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_SetGCCallback") }}</li>
+ <li>{{jsapixref("JS_AddFinalizeCallback", "JS_SetFinalizeCallback")}}</li>
+ <li>{{bug(723286)}}</li>
+</ul>

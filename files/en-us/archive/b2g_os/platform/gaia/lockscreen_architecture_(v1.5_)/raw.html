@@ -1,0 +1,99 @@
+<p></p><section class="Quick_links" id="Quick_Links">
+
+<ol>
+ <li data-default-state="closed"><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS">Build and install</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS">Build and install overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_OS_build_process_summary">B2G OS build process summary</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/B2G_OS_build_prerequisites">Build prerequisites</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Preparing_for_your_first_B2G_build">Preparing for your first build</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building">Building B2G OS</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_installer_add-on">B2G installer add-on</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/Building_for_Flame_on_OS_X">Building B2G OS for Flame on Mac OS X</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Choosing_how_to_run_Gaia_or_B2G">Choosing how to run Gaia or B2G OS</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/Compatible_Devices">Compatible Devices</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Installing_on_a_mobile_device">Installing B2G OS on a mobile device</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_OS_update_packages">Creating and applying B2G OS update packages</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building/FOTA_community_builds">Building and installing FOTA community builds</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_Build_Variables_Reference_Sheet">B2G build variables reference sheet</a></li>
+  </ol>
+ </li>
+ <li data-default-state="closed"><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS">Porting B2G OS</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS">Porting overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS/basics">Porting basics</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS/Porting_on_CyanogenMod">Porting on CyanogenMod</a></li>
+  </ol>
+ </li>
+ <li data-default-state="closed"><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia">Developing Gaia</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia">Developing Gaia overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Running_the_Gaia_codebase">Running the Gaia codebase</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Mulet">Run Gaia on desktop using Mulet</a></li>
+
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Understanding_the_Gaia_codebase">Understanding the Gaia codebase</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Making_Gaia_code_changes">Making Gaia code changes</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Testing_Gaia_code_changes">Testing Gaia code changes</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Submitting_a_Gaia_patch">Submitting a Gaia patch</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Build_System_Primer">Gaia build system primer</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Different_ways_to_run_Gaia">Different ways to run Gaia</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/make_options_reference">Make options reference</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Gaia_tools_reference">Gaia tools reference</a></li>
+  </ol>
+ </li>
+ <li><a href="/en-US/docs/Mozilla/B2G_OS/API">B2G OS APIs</a></li>
+</ol>
+</section><p></p>
+
+<p>The current LockScreen in Gaia is a monolithic component, which is even the second large file in the System app according to its LOC. This make it hard to reasonably add/modify/remove functions and even change styles.</p>
+
+<p>Although the sliding function had been pulled out as a standalone shared library since v1.3, we still need to break the whole LockScreen down to make it more flexible and isolate its inner heterougeneous components, like the clock and the music player. These components should be individual units that only manage themseleves and communicate with LockScreen with some public interfaces, rather than directly grab their needs and change the global states like the current way they use. In other words, they should be widgets, and managed by the LockScreen widget system. <span style="line-height: 1.5;">The whole refactoring plan now is on going and scheduled as a part of Gaia v1.5, and this article would focus on explain what architecture we would use, and how to implement a new widget.</span></p>
+
+<h2 id="Mediator_Factory_and_Router">Mediator, Factory and Router</h2>
+
+<p>In the new LockScreen, we would have three different components to manage widgets and communications:</p>
+
+<p>Mediator: the coordinator of whole LockScreen, and it's also the only one component should be instantiated explicitly</p>
+
+<p><span style="line-height: 1.5;">Factory: create new widgets in a centralized and clearly way</span></p>
+
+<p><span style="line-height: 1.5;">Router: send and receive messages to communicate with the outside world</span></p>
+
+<h3 id="The_Mediator">The Mediator</h3>
+
+<p>The mediator would handle all requests from widgets. These limited requests include:</p>
+
+<ul>
+ <li>Unlock: widget require to unlock; if there is no objection (see Unlocking Auditor), the LockScreen would be unlocked</li>
+ <li>Lock: widget require to lock; however, since widgets may not live before we lock the screen, this request may be useless</li>
+ <li>Canvas: widget require a DOM element to draw itself; some widgets may not need to fire this request</li>
+ <li>Invoke: widget require to invoke another widget, or secure app, or web activity</li>
+</ul>
+
+<p>When mediator received these requests, it may change the LockScreen's states (locking/unlocking requests), and notify all widgets the change. Notifications like this is different from the request/response way, and they're designed as another channel to communicate with widgets according to the Observer pattern.</p>
+
+<p>From the IO side, the mediator would also forward messages from router to widgets as notifications, and wigets can post messages via mediator, which would forward it to the router. The principle behind this is that widgets should only communicate with the mediator, and know nothing in the LockScreen beyond it.</p>
+
+<p>In the launch path, mediator is also the first component initialized. It would creare router and factory during its initialization, and would bootstrap default widgets which now are hard-coded inside the mediator itself. In the future we may provide a customizable way to set the widget list before we bootstrap the whole LockScreen.</p>
+
+<h2 id="Widgets">Widgets</h2>
+
+<p>Widgets should be instantiated by the factory, which would pass the mediator as a parameter to the widget constructor. After initialization, widget should register itself to the mediator.</p>
+
+<p>Customed widgets should handle nothing about this, because the basic widget would handle these common things automatically. So it's strongly recommended that developers should only create their widgets based on the basic widget. </p>
+
+<p>Widgets may fire requests and receive messages from the mediator and the router (forwarded by the mediator), and it may also post some message out. The following diagram shows these communications:</p>
+
+<p><a href="https://mdn.mozillademos.org/files/7431/LockScreen%20widget%20interactions.png"><img alt="" src="https://mdn.mozillademos.org/files/7431/LockScreen%20widget%20interactions.png" style="height: 400px; line-height: 1.5; width: 890px;"></a></p>
+
+<p>This diagram can be explained as follow:</p>
+
+<ol>
+ <li>Widget may post message to outside world. This message would be forwarded by the mediator to the router, so the widget can still know nothing about router.</li>
+ <li>Router may receive and forward some messages to the mediator, which would forward it again to widgets. In some rare cases, the message is for the mediator, so the mediator would not forward these message to widgets.</li>
+ <li>When the states of LockScreen get changed, mediator would notify the changes to all widgets, too. These changes may come from some widget requests (like Lock/Unlock).</li>
+ <li>Widget may require to unlock the LockScreen. When received this request, the mediator would ask all unlocking auditors to see if there is any objection. If there is no objections, like the wrong passcode detected, the LockScreen would unlock itself.</li>
+ <li>Some widgets may invoke secure app, like the secure camera in the passcode panel.</li>
+ <li>Widgets can also send requrest to execute some web activity. In this case, the mediator would unlock first. If success, the activity would be fired.</li>
+ <li>Some widgets may require a canvas to draw itself. When received the request, the mediator would prepare the element for the widget. A future feature is to isolate each widgets in its own iframe, so that the widget can be isolated better than the current mechanism.</li>
+</ol>

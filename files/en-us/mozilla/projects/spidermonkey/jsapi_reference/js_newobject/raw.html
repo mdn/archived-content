@@ -1,0 +1,110 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Creates a new JavaScript object.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">// Added in SpiderMonkey 45
+JSObject *
+JS_NewObject(JSContext *cx, const JSClass *clasp);
+
+bool
+JS_NewObjectWithGivenProto(JSContext *cx, const JSClass *clasp, JS::Handle&lt;JSObject*&gt; proto);
+
+// Obsolete since SpiderMonkey 38
+JSObject *
+JS_NewObject(JSContext *cx, const JSClass *clasp, JS::Handle&lt;JSObject*&gt; proto,
+             JS::Handle&lt;JSObject*&gt; parent);
+
+JSObject *
+JS_NewObjectWithGivenProto(JSContext *cx, const JSClass *clasp, JS::Handle&lt;JSObject*&gt; proto,
+                           JS::Handle&lt;JSObject*&gt; parent); // Added in SpiderMonkey 1.8
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to create the new object. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>clasp</code></td>
+   <td>{{jsapixref("JSClass", "const JSClass *")}}</td>
+   <td>Pointer to the class to use for the new object. If this is <code>NULL</code>, an ordinary JavaScript <code>Object</code> is created.<br>
+
+    <p>The {{jsapixref("JSClass")}} may be used to override low-level object behavior, including such details as the physical memory layout of the object and how property lookups are done.</p>
+
+    <p>{{ Jsapi_minversion_inline("1.8.1") }} <code>clasp-&gt;flags</code> must not have the {{jsapixref("JSClass.flags", "JSCLASS_GLOBAL_FLAGS")}} bits set (use {{jsapixref("JS_NewGlobalObject")}} instead).</p>
+    If <code>clasp</code> is non-null, the caller must ensure that the <code>JSClass</code> remains alive throughout the lifetime of the new object, including the garbage collection cycle that finally frees it. The usual way to do this is to make <code>JSClass</code>es global or <code>static</code>.</td>
+  </tr>
+  <tr>
+   <td><code>proto</code></td>
+   <td>{{jsapixref("JSObject", "JS::Handle&lt;JSObject*&gt;")}}</td>
+   <td>
+    <p>Pointer to the prototype object to use for the new object. The new object will inherit all of the prototype object's properties and methods, and the new object's <code>__proto__</code> property will be a reference to the prototype object.</p>
+
+    <p><code>JS_NewObject</code>: If this is <code>NULL</code>, a default prototype object is used. {{ obsolete_inline("jsapi38") }}</p>
+
+    <p><code>JS_NewObject</code> now always uses a default prototype object.</p>
+
+    <p><code>JS_NewObjectWithGivenProto</code>: If this is <code>NULL</code>, the new object has no prototype; its <code>__proto__</code> property is <code>undefined</code>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>parent</code></td>
+   <td>{{jsapixref("JSObject", "JS::Handle&lt;JSObject*&gt;")}}</td>
+   <td>Pointer to the parent of the new object. The new object's <code>__parent__</code> property will be a reference to this object. If <code>parent</code> is <code>NULL</code>, a default parent object is used. {{ obsolete_inline("jsapi39") }}</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS_NewObject</code></strong> creates a new object based on a specified class. <code>cx</code> is a pointer to a context associated with the runtime in which to establish the new object. <code>clasp</code> is a pointer to an existing class to use for internal methods, such as <code>finalize</code>. <code>T</code>he JavaScript engine selects a prototype object for you.</p>
+
+<p>On success, <code>JS_NewObject</code> returns a pointer to the new object. Otherwise it returns <code>NULL</code>.</p>
+
+<p>{{ Jsapi_minversion_inline(1.8) }} <strong><code>JS_NewObjectWithGivenProto</code></strong> creates a new object with the specified prototype. If <code>NULL</code> is passed as <code>proto</code>, the new object will have a prototype with the JS value of <code>null</code>.</p>
+
+<p>To create a new object as a property of an existing object, use {{jsapixref("JS_DefineObject")}}, a convenience function that combines <code>JS_NewObject</code> and {{jsapixref("JS_DefineProperty")}}.</p>
+
+<div class="note">
+<p>Obsolete ?</p>
+
+<p>Starting with Gecko 8.0 {{ geckoRelease("8.0") }}, you can create a new object in a specific compartment using the <code>Components.utils.createObjectIn()</code> method.</p>
+</div>
+
+<h2 id="See_Also" name="See_Also">Choosing a default prototype</h2>
+
+<p>Like many JSAPI functions, <code>JS_NewObject</code> selects an appropriate prototype for the newly created object if you don't supply one yourself.  If the new object's class (here, <code>clasp</code>) is a built-in class, then its associated prototype is used as the new object's prototype. Otherwise, {{jsxref("Object.prototype")}} is used as the new object's prototype.</p>
+
+<div class="warning">
+<p>Previous behaviour {{ obsolete_inline("jsapi45") }}</p>
+
+<p>Here's how the process works in detail: First, we must identify a global object.  If the parent is non-NULL, we assume it is part of a scope chain, walk to the end of that chain, and use the global object we find there.  If the parent is NULL, we use the global object at the end of the scope chain in which the context is currently executing. In other words, the context's current scope acts as a default parent.  If the context is not currently executing any code, we use {{jsapixref("JS_GetGlobalObject")}} to find a global object associated with the context.</p>
+
+<p>Next, we must find the given class's constructor in that global object. Normally we simply use the class's name as the name of the property of the global object to fetch. However, although JavaScript code can freely redefine constructors, the ECMAScript standard requires us in certain cases to use the original constructors' prototypes.  If the global object's class's flags include {{jsapixref("JSClass.flags", "JSCLASS_GLOBAL_FLAGS")}}, then the global object always retains the original constructors for each standard class; we use these original constructors when they are available.</p>
+
+<p>Finally, we must find a prototype.  If the constructor has a <code>prototype</code> property, we use its value.  Otherwise, we use {{jsxref("Object.prototype")}}, looking up the constructor for <code>Object</code> as described above.</p>
+</div>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_NewObject") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_NewObjectWithGivenProto") }}</li>
+ <li>{{jsapixref("JS_NewGlobalObject")}}</li>
+ <li>{{jsapixref("JS_NewArrayObject")}}</li>
+ <li>{{jsapixref("JS_ValueToObject")}}</li>
+ <li>{{bug(408871)}}</li>
+ <li>{{bug(1136906)}}, {{bug(1136345)}} -- remove <code>parent</code> parameter</li>
+ <li>{{bug(1125567)}} -- change prototype lookup behaviour</li>
+</ul>

@@ -1,0 +1,178 @@
+<p><a class="external" href="http://www.rsa.com/rsalabs/node.asp?id=2133" title="http://www.rsa.com/rsalabs/node.asp?id=2133">PKCS #11</a> is a standard that defines ways to store certificates, keys and perform crypto operations. It does not specify a way to store trust objects.</p>
+<p>Trust objects are used to assign an explicit level of trust to a certificate. Examples of trust assertions are certificate authority root certificates. This document outlines the way in which NSS stores trust objects via PKCS#11. This is not a new design, but documentation of the method already in use.</p>
+<h2 id="Trust_Objects">Trust Objects</h2>
+<p>A trust object describes a level of trust in a certificate for a given usage or purpose. Conceptually a trust object contains the following:</p>
+<ul>
+ <li>Certificate Reference</li>
+ <li>Purpose + Level of trust (multiple)</li>
+</ul>
+<h3 id="Purpose_Level_of_Trust">Purpose + Level of Trust</h3>
+<p>A trust object ultimately denotes a level of trust in a certificate. The trust is expressed for a specific purpose (or usage). A trust object contains multiple purposes and the level of trust for each one. Examples of purposes are: email, code signing, authenticating a server.</p>
+<p>The levels of trust are:</p>
+<ul>
+ <li>Untrusted: The certificate is explicitly untrusted.</li>
+ <li>Unknown: The trust is not known and should be determined elsewhere.</li>
+ <li>Trusted: The certificate itself is explicitly trusted.</li>
+ <li>Trusted Delegator: The certificate is trusted as a certificate authority trust root, and confers its trust to other certificates.</li>
+</ul>
+<h3 id="Certificate_Reference">Certificate Reference</h3>
+<p>Each trust object contains a reference to a certificate.<br>
+ <br>
+ There are two ways to refer to a certificate depending on whether that certificate is self-signed (like a certificate authority) or signed by another trusted certificate.</p>
+<p>Certificates used as a root of trust are referred to by the complete hash of the DER value of the certificate. Certificates in a trust chain whose issuer is trusted are referred to by the DER value of the issuer field, and the serial number.</p>
+<h2 id="PKCS11_Representation">PKCS#11 Representation</h2>
+<p>Trust objects are stored as objects on a PKCS#11 token.  Although these are specific to a certificate, they do not need to be stored on the same token as the certificate.  Trust objects are of the class CKO_NETSCAPE_TRUST and have the following attributes.</p>
+<table style="width: 100%;">
+ <caption>
+  Trust object attributes.</caption>
+ <thead>
+  <tr>
+   <th scope="col"><strong>Attribute</strong></th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_CLASS</th>
+   <th scope="col">CK_OBJECT_CLASS</th>
+   <th scope="col">CKO_NETSCAPE_TRUST</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <th scope="col">CKA_ISSUER</th>
+   <th scope="col">Byte array</th>
+   <th scope="col">
+    <p>DER-encoding of the certificate issuer name. Required for non-trust anchor objects.</p>
+   </th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_SUBJECT</th>
+   <th scope="col">Byte array</th>
+   <th scope="col">DER-encoding of the certificate subject name. Optional.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_SERIAL_NUMBER</th>
+   <th scope="col">Byte array</th>
+   <th scope="col">DER-encoding of the certificate serial number. Required for non-trust anchor objects.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_CERT_SHA1_HASH</th>
+   <th scope="col">Byte array</th>
+   <th scope="col">SHA1 hash of the DER-encoding of the certificate. Required for trust anchor objects.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_CERT_MD5_HASH</th>
+   <th scope="col">Byte array</th>
+   <th scope="col">MD5 hash of the DER-encoding of the certificate. Required for trust anchor objects.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_SERVER_AUTH</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for server authentication purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_CLIENT_AUTH</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for client authentication purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_CODE_SIGNING</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for code signing purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_EMAIL_PROTECTION</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">
+    <p>Level of trust for email protection purpose.</p>
+   </th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_IPSEC_END_SYSTEM</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for IPSec end system purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_IPSEC_TUNNEL</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for IPSec tunnel purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_IPSEC_USER</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for IPSec user purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_TIME_STAMPING</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for time stamping purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_DIGITAL_SIGNATURE</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for digital signature key usage purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_NON_REPUDIATION</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for non-repudiation key usage purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_KEY_ENCIPHERMENT</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for key-encipherment key usage purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_KEY_AGREEMENT</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">
+    <p>Level of trust for key-agreement key usage purpose.</p>
+   </th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_KEY_CERT_SIGN</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for certificate signing key usage purpose.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKA_TRUST_KEY_CRL_SIGN</th>
+   <th scope="col">CK_TRUST</th>
+   <th scope="col">Level of trust for CRL signing key usage purpose.</th>
+  </tr>
+ </tbody>
+</table>
+<p><br>
+ <br>
+  </p>
+<p> </p>
+<p><strong>CK_TRUST</strong> is a CK_ULONG which can contain one several values. It represents the level of trust.</p>
+<table style="width: 60%;">
+ <caption>
+  Level of trust values.</caption>
+ <thead>
+  <tr>
+   <th scope="col">Value</th>
+   <th scope="col">Description</th>
+  </tr>
+  <tr>
+   <th scope="col">CK_UNTRUSTED</th>
+   <th scope="col">Explicitly untrusted.</th>
+  </tr>
+  <tr>
+   <th scope="col">CK_UNKNOWN</th>
+   <th scope="col">Trust is unknown and should be determined elsewhere.</th>
+  </tr>
+  <tr>
+   <th scope="col">CK_TRUSTED</th>
+   <th scope="col">Explicitly trusts the certificate referred to in the trust object.</th>
+  </tr>
+  <tr>
+   <th scope="col">CKT_TRUSTED_DELEGATOR</th>
+   <th scope="col">Trusts the certificate as a certificate authority, and delegates trust (for the purpose) to other signed certificates.</th>
+  </tr>
+ </thead>
+ <tbody>
+ </tbody>
+</table>
+<h2 id="Definitions">Definitions</h2>
+<p>Definitions for all of the above values are defined in <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/security/nss/lib/util/pkcs11n.h" title="http://mxr.mozilla.org/mozilla-central/source/security/nss/lib/util/pkcs11n.h">pkcs11n.h</a> in the NSS source.</p>

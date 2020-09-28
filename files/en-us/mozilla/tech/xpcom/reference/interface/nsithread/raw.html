@@ -1,0 +1,146 @@
+<p></p>
+
+<p>This interface provides a high-level abstraction for an operating system thread.</p>
+
+<p>Threads have a built-in event queue, and a thread is an event target that can receive <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIRunnable" title="">nsIRunnable</a></code> objects (events) to be processed on the thread.</p>
+
+<p>To create a thread, use the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadManager" title="">nsIThreadManager</a></code> interface.</p>
+
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/threads/nsIThread.idl" rel="custom">xpcom/threads/nsIThread.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+<i>Please add a summary to this article.</i>
+</span>
+
+<div style="background: #eee; padding: 2px;">
+<span> </span>
+<span style="text-align: right; float: right;">Last changed in Gecko 1.9 (Firefox 3)</span></div>
+</div><p></p>
+
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIEventTarget" title="">nsIEventTarget</a></code></p>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void shutdown()</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean hasPendingEvents()</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean processNextEvent(in boolean mayWait)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Attributes" name="Attributes">Attributes</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>PRThread</code></td>
+   <td><code><a href="/en/PRThread" title="en/PRThread">PRThread</a></code></td>
+   <td>The NSPR thread object corresponding to the <code>nsIThread</code>. <em>Read only.</em></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="shutdown()" name="shutdown()">shutdown()</h3>
+
+<p>Shuts down the thread. This causes events to stop being dispatched to the thread, and causes any pending events to run to completion before the thread joins with the current thread (see <code><a href="/en/PR_JoinThread" title="en/PR_JoinThread">PR_JoinThread()</a></code> for details). During the execution of this method call, events for the current thread may continue to be processed.</p>
+
+<p></p><div class="blockIndicator warning">
+    <p><strong>Warning:</strong> This method <strong>may not</strong> be called from the thread itself. Instead, you must only call it from another thread (usually the thread that created it, or the main application thread). When this function returns, the thread will be shut down and will no longer be available to receive events.</p>
+</div><p></p>
+
+<pre class="eval">void shutdown()
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<p>None.</p>
+
+<h6 id="Exceptions_thrown" name="Exceptions_thrown">Exceptions thrown</h6>
+
+<dl>
+ <dt><code>NS_ERROR_UNEXPECTED</code></dt>
+ <dd><code>shutdown()</code> was erroneously called from within the thread itself, the thread was not created with the Thread Manager's <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIThreadManager#newThread()">nsIThreadManager.newThread()</a></code> method, or the thread is already in the process of being shut down.</dd>
+</dl>
+
+<h3 id="hasPendingEvents()" name="hasPendingEvents()">hasPendingEvents()</h3>
+
+<p>Determines whether or not the thread has events that are ready to be processed.</p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> This method must be called from within the thread itself, and not from another thread.</div><p></p>
+
+<pre class="eval">boolean hasPendingEvents()
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<p>None.</p>
+
+<h6 id="Return_value" name="Return_value">Return value</h6>
+
+<p><code>true</code> if there are pending events at the time the function was called. Since other threads may add events to the current thread, it's possible that by the time this method returns, the event queue may no longer be empty, even if a <code>false</code> result is reported.</p>
+
+<h6 id="Exceptions_thrown" name="Exceptions_thrown">Exceptions thrown</h6>
+
+<dl>
+ <dt><code>NS_ERROR_UNEXPECTED</code></dt>
+ <dd>The method was called when this thread wasn't the current thread.</dd>
+</dl>
+
+<h3 id="processNextEvent()" name="processNextEvent()">processNextEvent()</h3>
+
+<p>Processes the next pending event. If there aren't any pending events, this method may wait -- depending on the value of the <code>mayWait</code> parameter -- until an event is dispatched to the thread.</p>
+
+<p>This method is re-entrant but may only be called if this thread is the current thread.</p>
+
+<p></p><div class="blockIndicator warning">
+    <p><strong>Warning:</strong> Calling nsIThread.processNextEvent allows network and UI events to run which can modify data structures that your code isn't expecting to be modified during a synchronous method call. This can cause random crashes and other bugs that may be hard to find and fix. Consider use asynchronous callbacks instead.</p>
+</div><p></p>
+
+<pre class="eval">boolean processNextEvent(
+  in boolean mayWait
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>mayWait</code></dt>
+ <dd>If <code>true</code>, this method blocks until an event is available to process if the event queue is empty. If <code>false</code>, this method returns immediately if the queue is empty.</dd>
+</dl>
+
+<h6 id="Return_value" name="Return_value">Return value</h6>
+
+<p>Returns <code>true</code> if an event was processed, or <code>false</code> if there were no pending events.</p>
+
+<h6 id="Exceptions_thrown" name="Exceptions_thrown">Exceptions thrown</h6>
+
+<dl>
+ <dt><code>NS_ERROR_UNEXPECTED</code></dt>
+ <dd>This method was called when this thread wasn't the current thread.</dd>
+</dl>
+
+<h2 id="See_also" name="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en/The_Thread_Manager" title="en/The_Thread_Manager">The Thread Manager</a></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadManager" title="">nsIThreadManager</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadPool" title="">nsIThreadPool</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadInternal" title="">nsIThreadInternal</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadObserver" title="">nsIThreadObserver</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIThreadEventFilter" title="">nsIThreadEventFilter</a></code></li>
+</ul>

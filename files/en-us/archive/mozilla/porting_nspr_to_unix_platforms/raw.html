@@ -1,0 +1,69 @@
+<p>Last modified 16 July 1998
+</p><p>&lt;&lt;&lt; Under construction &gt;&gt;&gt;
+</p><p>Unix platforms are probably the easiest platforms to port NetScape Portable Runtime (NSPR) to. However, if you are not familiar with the structure of the NSPR source tree and its build system, it may take you extra time. Therefore I write this article to document the more mechanical part of the Unix porting task. For certain more "standard" Unix platforms, this may be all you have to do. On other platforms, you may need to do extra work to deal with their idiosyncrasies.
+</p>
+<h2 id="Porting_Instructions"> Porting Instructions </h2>
+<p>You can use different threading packages to implement NSPR threads. NSPR has a user-level threading library where thread context switches are done by &lt;tt&gt;setjmp/longjmp&lt;/tt&gt; or &lt;tt&gt;sigsetjmp/siglongjmp&lt;/tt&gt;. This is called the <i>local threads only</i> version of <i>classic NSPR</i>. You should attempt to do a local threads only port first. The classic NSPR source files are in &lt;tt&gt;mozilla/nsprpub/pr/src/threads&lt;/tt&gt; and &lt;tt&gt;mozilla/nsprpub/pr/src/io&lt;/tt&gt;.
+</p><p>If the platform has pthreads, you can also use pthreads as an implementation strategy. This is referred to as <i>pthreads NSPR</i>. Pthreads NSPR has relatively orthogonal source code in the thread management, thread synchronization, and I/O area. The pthreads source files are in &lt;tt&gt;mozilla/nsprpub/pr/src/pthreads&lt;/tt&gt;.
+</p><p>I use the NetBSD port I recently received as an example to illustrate the mechanical part of the porting process.
+</p><p>There are a few new files you need to add:
+</p>
+<dl><dt> &lt;tt&gt;mozilla/nsprpub/config/NetBSD.mk&lt;/tt&gt; </dt><dd> The name of this file is the return value of &lt;tt&gt;uname -s&lt;/tt&gt; on the platform, plus the file suffix &lt;tt&gt;.mk&lt;/tt&gt;. If the return value of &lt;tt&gt;uname -s&lt;/tt&gt; is too long or ambiguous, you can modify it in &lt;tt&gt;mozilla/nsprpub/config/arch.mk&lt;/tt&gt; (the makefile variable &lt;tt&gt;OS_ARCH&lt;/tt&gt;).
+</dd><dt> &lt;tt&gt;mozilla/nsprpub/pr/include/md/_netbsd.cfg&lt;/tt&gt; </dt><dd> We have a program &lt;tt&gt;mozilla/nsprpub/pr/include/gencfg.c&lt;/tt&gt; to help you generate <i>part</i>of this file. You can build the &lt;tt&gt;gencfg&lt;/tt&gt; tool as follows:
+</dd></dl>
+<pre class="eval">cd mozilla/nsprpub/pr/include
+gmake gencfg
+gencfg &gt; foo.bar
+</pre>
+<p>Then you use the macro values in &lt;tt&gt;foo.bar&lt;/tt&gt; as a basis for the &lt;tt&gt;_xxxos.cfg&lt;/tt&gt; file.
+</p>
+<ul><li> &lt;tt&gt;mozilla/nsprpub/pr/include/md/_netbsd.h&lt;/tt&gt;: For local threads only version, the main challenge is to figure out how to define the three thread context switch macros. In particular, you need to figure out which element in the &lt;tt&gt;jmp_buf&lt;/tt&gt; is the stack pointer. Usually &lt;tt&gt;jmp_buf&lt;/tt&gt; is an array of integers, and some platforms have a &lt;tt&gt;JB_SP&lt;/tt&gt; macro that tells you which array element is the stack pointer. If you can't find a &lt;tt&gt;JB_SP&lt;/tt&gt; macro, you must resort to brute-force experiments. I usually print out every element in the &lt;tt&gt;jmp_buf&lt;/tt&gt; and see which one is the closest to the address of a local variable (local variables are allocated on the stack). On some platforms, &lt;tt&gt;jmp_buf&lt;/tt&gt; is a struct, then you should look for a struct member named &lt;tt&gt;sp&lt;/tt&gt; or something similar.
+</li></ul>
+<ul><li> &lt;tt&gt;mozilla/nsprpub/pr/src/md/unix/netbsd.c&lt;/tt&gt;
+</li></ul>
+<p>You need to modify the following existing files:
+</p>
+<ul><li> &lt;tt&gt;mozilla/nsprpub/pr/include/md/Makefile&lt;/tt&gt;
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/include/md/_unixos.h&lt;/tt&gt;: Just fix the compiling errors, usually pointed out by the &lt;tt&gt;#error&lt;/tt&gt; preprocessor directives we inserted.
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/include/md/prosdep.h&lt;/tt&gt;
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/src/md/prosdep.c&lt;/tt&gt;
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/src/md/unix/Makefile&lt;/tt&gt;
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/src/md/unix/objs.mk&lt;/tt&gt;
+</li><li> &lt;tt&gt;mozilla/nsprpub/pr/src/md/unix/unix.c&lt;/tt&gt;: Just fix the compiling errors, usually pointed out by the &lt;tt&gt;#error&lt;/tt&gt; preprocessor directives we inserted
+</li></ul>
+<p>For a pthreads port, you need to modify the following files:
+</p>
+<ul><li> &lt;tt&gt;mozilla/nsprpub/pr/include/md/_pth.h&lt;/tt&gt;
+</li><li> Files in mozilla/nsprpub/pr/src/pthreads, most likely &lt;tt&gt;ptthread.c&lt;/tt&gt; and &lt;tt&gt;ptio.c&lt;/tt&gt;
+</li></ul>
+<h2 id="Testing_Your_Port"> Testing Your Port </h2>
+<p>We have some unit tests in &lt;tt&gt;mozilla/nsprpub/pr/tests&lt;/tt&gt;. First a warning: some of the tests are broken. Further, we don't have documentation of our unit tests, so you often need to resort to read the source code to understand what they do. Some of them respond to the &lt;tt&gt;-h&lt;/tt&gt; command line option and print a usage message. &lt;strike&gt;Henry Sobotka of the OS/2 Mozilla porting project has a web page at <a class=" external" href="http://www.axess.com/users/sobotka/nsprtest/warpztjs.html">http://www.axess.com/users/sobotka/n.../warpztjs.html</a> with good documentation of the NSPR unit tests&lt;/strike&gt;.
+</p><p>Here are my favorite tests.
+</p><p>For thread management and synchronization:
+</p>
+<ul><li> &lt;tt&gt;cvar -d&lt;/tt&gt;
+</li><li> &lt;tt&gt;cvar2&lt;/tt&gt;
+</li><li> &lt;tt&gt;./join -d&lt;/tt&gt;
+</li><li> &lt;tt&gt;perf&lt;/tt&gt;
+</li><li> &lt;tt&gt;./switch -d&lt;/tt&gt;
+</li><li> &lt;tt&gt;intrupt -d&lt;/tt&gt;
+</li></ul>
+<p>For I/O:
+</p>
+<ul><li> &lt;tt&gt;cltsrv -d&lt;/tt&gt;, &lt;tt&gt;cltsrv -Gd&lt;/tt&gt;
+</li><li> &lt;tt&gt;socket&lt;/tt&gt;
+</li><li> &lt;tt&gt;testfile -d&lt;/tt&gt;
+</li><li> &lt;tt&gt;tmocon -d&lt;/tt&gt;
+</li><li> '&lt;tt&gt;tmoacc -d&lt;/tt&gt;' in conjunction with '&lt;tt&gt;writev -d&lt;/tt&gt;'
+</li></ul>
+<p>Miscellaneous:
+</p>
+<ul><li> &lt;tt&gt;dlltest -d&lt;/tt&gt;
+</li><li> &lt;tt&gt;forktest&lt;/tt&gt;
+</li></ul>
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<div class="originaldocinfo">
+<ul><li> Author: <a class="link-mailto" href="mailto:larryh@netscape.com">larryh@netscape.com</a>
+</li><li> Last Updated Date: 16 July 1998
+</li></ul>
+</div>

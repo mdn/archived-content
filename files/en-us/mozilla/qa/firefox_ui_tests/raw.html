@@ -1,0 +1,115 @@
+<p>The Firefox UI test suite is an automated testing framework built on top of <a href="/en-US/docs/Mozilla/QA/Marionette">Marionette</a> for executing ui-level and end-to-end tests for <a href="/en-US/docs/Mozilla/Firefox">Firefox Desktop</a>. It can be used for tests which cannot be covered in other test suites like <a href="/en-US/docs/Mozilla/Browser_chrome_tests">browser chrome tests</a> due to restrictions or feature limitations (e.g. requirements for a restart of the browser). Compared to other test suites the Firefox UI tests can also be executed for localized builds of Firefox given that all interactions are done via UI elements retrieved via locale independent DOM properties. To ease the creation and maintainance of tests the <a href="http://firefox-puppeteer.readthedocs.io/en/latest/">Firefox puppeteer</a> POM (page object model) has been created, which contains numerous wrapper classes for the most often used UI elements and API calls. And last but not least the tests are written sequentially, which will drop the complexity of all the asynchronicity in Firefox and allow even newcomers to get started.</p>
+
+<h3 id="Running_the_tests" name="Running_the_tests">Running the Firefox UI tests</h3>
+
+<p>To run the tests, first <a href="/En/Developer_Guide/Build_Instructions" title="en/Build_Documentation">build Mozilla</a> with your changes; then run</p>
+
+<pre>./mach firefox-ui-functional</pre>
+
+<p>This will launch your build, execute all existing tests, and report the results to stdout.</p>
+
+<div class="note">
+<p>If you don't want to build Firefox yourself or if you want to run the tests against a different build of Firefox, use the <code>--binary</code> option to specify the executable to be used. Keep in mind that you would still have to run at least <code>mach configure</code> to setup the mach environment.</p>
+</div>
+
+<p>It is possible to run specific groups of tests. As with <a class="internal" href="/en-US/docs/Mozilla/QA/Marionette" title="En/Mochitest">Marionette</a>, the path given as an argument is the path to a test or directory within the Mozilla source tree. If the path points to a directory, then the tests in that directory and all of its subdirectories will be run.</p>
+
+<p>For example, to run the tests in <code>testing/firefox-ui/tests/functional/security </code>the command would be:</p>
+
+<pre>./mach firefox-ui-functional <code>testing/firefox-ui/tests/functional/</code>security/</pre>
+
+<p>Run <code>./mach help firefox-ui-test</code> for more options.</p>
+
+<h3 id="Writing_browser_chrome_tests" name="Writing_browser_chrome_tests">Type of Firefox UI tests</h3>
+
+<p>Currently the Firefox UI tests are divided into two separate types. This distinction has been made to clearly separate different kinds of tests, which have e.g. completely different requirements or purposes.</p>
+
+<h4 id="Functional_tests">Functional tests</h4>
+
+<p>The <em>functional tests</em>, which are the general type of tests and are used for testing the behavior of Firefox as described above. Tests are using local or remote testcase data and are tagged appropriately in the corresponding <code>manifest.ini</code> file. This type of test covers nearly all existing tests and should be used for new tests.</p>
+
+<h4 id="Update_tests">Update tests</h4>
+
+<p>The <em>update tests</em> are a specific subset of the <em>functional tests</em> and are used to properly test the update procedure of Firefox. The tests check what the users are usually doing by upgrading e.g. Firefox 44.0 to Firefox 45.0. So these tests are very important for the release process and the QA signoff for new releases. That also means when comparing the tests with the functional tests two different Firefox builds are involved here. Those builds can also be some versions apart, and would require full backward compatibility.</p>
+
+<h3 id="Writing_browser_chrome_tests" name="Writing_browser_chrome_tests">Writing Firefox UI tests</h3>
+
+<p>Firefox UI tests support test cases written in Python, using Python's <a class="external" href="http://docs.python.org/library/unittest.html" title="http://docs.python.org/library/unittest.html">unittest framework</a>. Tests are written as a subclass of one of the following testcase classes:</p>
+
+<ul>
+ <li><a href="/en/Marionette/MarionetteTestCase" title="en/Marionette/MarionetteTestCase"><code>MarionetteTestCase</code></a> (The very basic testcase class which comes via Marionette itself)</li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Mozilla/QA/firefox-ui-tests/FirefoxTestCase">FirefoxTestCase</a> (Extended testcase class for the use of <a href="http://firefox-puppeteer.readthedocs.org">firefox-puppeteer</a>)</li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Mozilla/QA/firefox-ui-tests/UpdateTestCase">UpdateTestCase</a> (Extended testcase class on top of FirefoxTestCase for update tests)</li>
+</ul>
+
+<p>Whereby individual tests belonging to instance methods that have a name starting with <code>`test</code>`. Additionally, you can provide <code><a class="external" href="http://docs.python.org/library/unittest.html#unittest.TestCase.setUp" title="http://docs.python.org/library/unittest.html#unittest.TestCase.setUp">setUp</a> </code>and<code> <a class="external" href="http://docs.python.org/library/unittest.html#unittest.TestCase.tearDown" title="http://docs.python.org/library/unittest.html#unittest.TestCase.tearDown">tearDown </a></code>instance methods to execute code before and/or after tests in a particular test class have run, but remember to call setUp/tearDown methods of the base testcase class in your provided function, since the base classes handle setup/teardown between test cases.</p>
+
+<div class="note">
+<p>Because the tests are mainly interacting with the browser and not web pages, all the tests will be executed in <code>chrome</code> scope by default.</p>
+</div>
+
+<p>This test structure is illustrated here:</p>
+
+<pre class="brush: python">from firefox_puppeteer.testcases import FirefoxTestCase
+
+class TestFoobar(FirefoxTestCase):
+
+    def setUp(self):
+        FirefoxTestCase.setUp(self)
+
+        # code to execute before any tests are run
+
+    def tearDown(self):
+        # code to execute before any tests are run
+
+        FirefoxTestCase.tearDown(self)
+
+    def test_foo(self):
+        # run test for 'foo'
+
+    def test_bar(self):
+        # run test for 'bar'
+</pre>
+
+<p>Further documentation in how to get started and which rules to obey when contributing to the Firefox UI test suite can be found in the <a href="http://ateam-bootcamp.readthedocs.org">A-Team bootcamp</a>.</p>
+
+<h3 id="Adding_a_new_browser_chrome_test_to_the_tree" name="Adding_a_new_browser_chrome_test_to_the_tree">Adding a new Firefox UI test to the tree</h3>
+
+<p>To add a new Firefox UI test to the tree, add it to the <code>manifest.ini</code> file in the same folder as the test. Also remember that the test file's name must begin with "test_" for the test to be recognized as a Firefox UI test. If you are adding the first tests in a directory, make sure to also create a new <code>manifest.ini</code> file and include it in the <code>manifest.ini</code> of the parent folder.</p>
+
+<h4 id="Resource_files">Resource files</h4>
+
+<p>Some of the tests make use of local test data as served via a local webserver (we use <a href="http://wptserve.readthedocs.org">wptserve</a>). If the new test requires such a file please store it in <code>testing/firefox-ui/resources</code>/. It's URL can then be retrieved in the test via `<code>self.marionette.absolute_url(%filename%)</code>`.</p>
+
+<h3 id="How_to_disable_failing_tests">How to disable failing tests</h3>
+
+<p>If test failures are getting reported to <a href="/en-US/docs/Archive/Firefox_OS/Automated_testing/Treeherder">Treeherder</a> the responsible persons of the specific test has to fix the failure. If a patch cannot be done in a short time and the test constantly fails, it has to be disabled aka marked as skipped. This can be done in two ways:</p>
+
+<ol>
+ <li>
+  <div class="syntaxbox">If all test methods within a single test file are failing the complete file has to be marked as disabled via the manifest file of the same folder. This can be done by using the `disabled` key followed by a description which explains why the test has been disabled. It should also contain a bug number for reference:<br>
+  <br>
+      [test_access_locationbar.py]</div>
+
+  <div class="syntaxbox">    skip-if = true  # Bug 1168727<br>
+   </div>
+ </li>
+ <li>In case of only one failing test method the above way would not be useful. Instead the one failing test method can be marked as skipped via the `unittest` module, or if available via a Marionette decorator (e.g. `@skip_if_e10s`):<br>
+  <br>
+      import unittest<br>
+      [..]<br>
+      @unittest.skip('Bug 123456')<br>
+      def testCheckAboutPrivateBrowsing(self):<br>
+  <br>
+      from marionette.marionette_test import skip_if_e10s
+  <p>    [..]<br>
+       @skip_if_e10s('Bug 123456')<br>
+       def testCheckAboutPrivateBrowsing(self):</p>
+ </li>
+</ol>
+
+<h3 id="Other_information">Other information</h3>
+
+<ul>
+ <li>Project documentation with current projects, contacts, and tips in how to contribute can be found on <a href="https://wiki.mozilla.org/Auto-tools/Projects/Firefox_UI_Tests">wiki.mozilla.org.</a></li>
+</ul>

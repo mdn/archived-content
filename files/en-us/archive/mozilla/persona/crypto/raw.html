@@ -1,0 +1,29 @@
+<p></p><div class="warning">  <p>On November 30th, 2016, Mozilla shut down the persona.org services. Persona.org and related domains will soon be taken offline.</p>  <p>For more information, see this guide to migrating your site away from Persona:</p>  <p><a href="https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers">https://wiki.mozilla.org/Identity/Persona_Shutdown_Guidelines_for_Reliers</a></p></div><p></p>
+
+<p>The Persona identity system uses public key cryptography to ensure trust and security in authentication.</p>
+
+<p>Why does the system described in the <a href="https://developer.mozilla.org/en-US/docs/Persona/Identity_Provider_Overview" title="https://developer.mozilla.org/en/BrowserID/IdP">Persona IdP overview</a> work?</p>
+
+<h2 id="Chain_of_Trust">Chain of Trust</h2>
+
+<p>The user's browser locally stores a few pieces of information for each of the user's identities: an email address, a keypair, and a certificate from the associated Identity Provider.</p>
+
+<p>The user's keypair is a standard DSA or RSA cryptographic keypair, and it's generated and stored locally in the user's browser. The certificate is signed by the IdP associated with the user's chosen identity. These certificates are designed to last no more than 24 hours, and may be silently re-provisioned whenever they expire, so long as the user has an active session with the IdP. User keypairs are neither shared across computers nor across browsers.</p>
+
+<p><img alt="" class="internal" src="/@api/deki/files/6299/=Persona_chain_of_trust.png" style="height: 282px; width: 901px;"></p>
+
+<p>As described in the <a href="/en-US/docs/Persona/Protocol_Overview" title="/en-US/docs/Persona/Protocol_Overview">Protocol Overview</a>, the user's browser is able to generate and sign ephemeral site-specific identity assertions. When taken together with the information in a user certificate, a site is able to verify the identity of a user. The authenticity of certificates must be verified by retrieving the IdP's( identity provider's) public key, which is published in a document available over SSL.</p>
+
+<p>Thus, Persona's security relies on the user's private key remaining secret, the domain's private key remaining secret, and the SSL connection to the IdP being secure. A break at any one of these points could undermine the security of a user's identity.</p>
+
+<h2 id="Generating_IdP_Keypairs">Generating IdP Keypairs</h2>
+
+<p>For IdPs (Identity Providers ), the <a class="link-https" href="https://github.com/mozilla/jwcrypto" title="https://github.com/mozilla/jwcrypto">jwcrypto package</a> provides a command line utility, <code>generate-keypair</code>, which generates keys suitable for use with Persona. Because the generated keys are already JSON-serialized, the public key is suitable for direct inclusion into the public-key field of an IdP's <a href="/en-US/docs/BrowserID/.well-known-browserid">/.well-known/browserid</a>.</p>
+
+<h2 id="Certificate_and_Assertion_Format">Certificate and Assertion Format</h2>
+
+<p>Please refer to the <a href="https://github.com/mozilla/id-specs/blob/prod/browserid/index.md" title="https://github.com/mozilla/id-specs/blob/master/browserid/index.md">BrowserID spec</a> for detailed information, but at a high level, both certificates and assertions are strings with three parts: a header, a body, and a cryptographic signature. Each part is separately <a href="https://tools.ietf.org/html/rfc4648#section-5" title="https://tools.ietf.org/html/rfc4648#section-5">base64url</a> encoded and concatenated, with "<code>.</code>" characters delimiting each part. The body is not encrypted, so its plaintext is available if you base64url decode it.</p>
+
+<p><img alt="" class="internal" src="/@api/deki/files/6300/=JWT.png" style="height: 111px; width: 595px;"></p>
+
+<p>Certificates and assertions are bundled together into a "backed assertion" when a user attempts to authenticate with a site. The bundle is created by concatenating a certificate and an assertion with a "<code>~</code>" separating them.</p>

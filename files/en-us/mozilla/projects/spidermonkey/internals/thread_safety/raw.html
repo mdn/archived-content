@@ -1,0 +1,29 @@
+<div>
+ {{SpiderMonkeySidebar("Internals")}} {{deprecated_header}}</div>
+<div class="note">
+ <p><strong>Note:</strong> Starting in {{Gecko("12.0")}}, JSRuntime is single-threaded. You must only use it from one thread.</p>
+</div>
+<p>This page describes implementation details of the <a href="/en/SpiderMonkey" title="en/SpiderMonkey">SpiderMonkey</a> JavaScript engine. It is mainly of interest to people working on SpiderMonkey itself. See <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE">JS_THREADSAFE</a></code> for a gentler introduction to using SpiderMonkey in a multi-threaded application.</p>
+<h2 id="General_background" name="General_background">General background</h2>
+<p>SpiderMonkey has a top-level struct, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/SpiderMonkey/JSAPI_Reference/JSRuntime">JSRuntime</a></code>, that acts as a container for everything else. A program typically has only one <code>JSRuntime</code>, even if it has many threads.</p>
+<p>Each runtime has one or more <code>JSCompartment</code>s. The <code>JSCompartment</code> is the universe in which JS objects live. They can't travel to other <code>JSCompartment</code>s. Crucially, any given compartment may only be accessed by one thread at a time. This means that objects cannot be shared across compartments.</p>
+<p>All JS code and most JSAPI calls run within a <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/SpiderMonkey/JSAPI_Reference/JSRuntime">JSContext</a></code>. The <code>JSContext</code> can be thought of as a machine that knows how to run JavaScript code, or as an abstraction of the notion of a thread. Exception handling, for example, is per-<code>JSContext</code>. Each <code>JSContext</code> must be used by only one thread at a time.</p>
+<p>A single <code>JSContext</code> can run work with code and objects in multiple compartments as long as no other thread is accessing those compartments. Objects may be shared among <code>JSContext</code>s within a <code>JSCompartment</code>. There's no fixed association between an object and a context.</p>
+<p>Thread-safety in SpiderMonkey is turned on by compiling with <code>-DJS_THREADSAFE</code>. In a <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE">JS_THREADSAFE</a></code> build, these operations are handled specially:</p>
+<ul>
+ <li>access to <code>JSRuntime</code> data structures</li>
+ <li>garbage collection</li>
+</ul>
+<p>Accesses to <code>JSRuntime</code> data structures are serialized with a few mutexes. The treatment of GC requires more explanation.</p>
+<h2 id="Making_GC_thread-safe" name="Making_GC_thread-safe">Making GC thread-safe</h2>
+<p>With <code>JS_THREADSAFE</code>, the API changes slightly. The program must group JSAPI calls into "requests":</p>
+<pre class="eval">   <a href="/en/JS_SetContextThread" title="en/JS_SetContextThread">JS_SetContextThread</a>(cx);
+   <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest">JS_BeginRequest</a>(cx);
+   /* ... do stuff ... */
+   <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/JS_EndRequest">JS_EndRequest</a>(cx);
+   <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearContextThread" title="en/SpiderMonkey/JSAPI_Reference/JS_ClearContextThread">JS_ClearContextThread</a>(cx);
+</pre>
+<p>It isn't a bottleneck; multiple threads are allowed to be in requests on the same <code>JSRuntime</code> at once. See <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest">JS_BeginRequest</a>.</p>
+<p>The most obvious effect of a request is: at any given moment there can either be multiple threads in active requests, or one thread doing GC and all requests suspended. A call to JS_GC() will block until the latter becomes possible. In other words, GC waits until each other thread is either outside JSAPI (in which case we don't care what it's doing) or else in JSAPI, but blocked, waiting for GC to finish.</p>
+<p>Threads must not do anything that would affect GC while outside a request. And obviously you shouldn't block or otherwise dilly-dally while in a request; it prohibits GC.</p>
+<p>As an optimization, each thread has its own size-classified freelists containing chunks of GC-managed memory ready to be allocated. This allows allocation to avoid locking most of the time (a significant speed win). A thread needs to lock on allocation only when the relevant per-thread freelist is empty. When this happens, the thread also refills that freelist from the <code>JSRuntime</code>-wide GC allocator while it's in the lock.</p>

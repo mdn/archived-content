@@ -1,0 +1,38 @@
+<p>After installing the build pre-requisites and downloading the SpiderMonkey source tarball issue the following commands at the terminal:</p>
+<pre class="eval">cd js/src
+autoconf-2.13
+</pre>
+<p>For the remainder of this document wherever you see the text $BRAND you will substitute that text with the name of your brand. For example the default brand for SpiderMonkey 1.8.5 is 'mozjs185'.</p>
+<pre class="eval">mkdir build-$BRAND-release
+cd build-$BRAND-release</pre>
+<p>Configure this build of SpiderMonkey with the desired options. For example:</p>
+<pre>../configure --enable-ctypes --with-system-nspr
+</pre>
+<div class="note"><strong>Note:</strong> Your desired configuration may be different. The only required part in this step is the <code>../configure</code> command.</div>
+<p>So far, so good. Now for the tricky parts. We need to perform a recursive find and replace text operation on all files in the current directory. In the UNIX world we would issue the following command:</p>
+<pre>find ./ -type f -exec sed -i "s/mozjs185/$BRAND/" {} \;
+</pre>
+<div class="note"><strong>Windows Users:</strong> Notepad++ can be used to perform the recursive find and replace text operation.</div>
+<div class="warning">If you have failed to insert your brand name in any of the previous steps where it is called for, you must delete this build directory and restart this process from the beginning. This time paying careful attention to the commands you issue to your command shell.</div>
+<p>The above command has actually changed some information we need changed back so we will re-issue the recursive find and replace text in files command with some modifications.</p>
+<pre>find ./ -type f -exec sed -i "s/$BRAND.pc/mozjs185.pc/" {} \;
+</pre>
+<p>The last recursive search and replace, changes the file name of the static library:</p>
+<pre>find ./ -type f -exec sed -i "s/js_static/$BRAND_static/" {} \;
+</pre>
+<p>Allright, almost there. Now comes the manual editing. Using your favorite editor open up the file named <code>Makefile</code> for editing. Search for this text:<code> mozjs185.pc</code></p>
+<p>"Scroll down" a few lines until you see this line:<br> <br> <code>    &gt; $@ &amp;&amp; chmod 644 $@</code><br> <br> That line should be modified to read back:<br> <br> <code>    &gt; $BRAND.pc &amp;&amp;</code></p>
+<p><code>chmod 644 $BRAND.pc</code><br> <br> "Scroll down" a few lines until you see these lines:</p>
+<p><code>install:: $(pkg_config_files)<br>     @echo pkg_config_file: $(pkg_config_files)</code></p>
+<p>Those two lines should be modified to read back:<br> <br> <code>install:: $BRAND.pc<br>     @echo pkg_config_file: $BRAND.pc</code></p>
+<div class="note"><strong>Note:</strong> While it is possible to automate the manual editing process, this has been discouraged due to the fact that these files are automatically generated and very little constant data can be depended upon. It also allows these instructions to apply to a wide range platforms without introducing more software dependencies.</div>
+<p>Save the file and exit the editor. You may now perform the build and installation of your custom branded SpiderMonkey library:</p>
+<pre>make
+</pre>
+<div class="note"><strong>Note:</strong> Depending on your system you may need administrative rights to perform the installation:</div>
+<pre class="note">make install
+</pre>
+<p>The following information isn't technically needed for using your library but it will help other applications use your library. Your rebranded library has been succesfully built and installed to <code>libdir</code> as specified in <code>./config/autoconf.mk</code>. A pkgconfig file has also been installed for your library at <code>libdir/pkgconfig/$BRAND.pc</code>. You may wish to manually edit this file. It describes your library package.<br> <br> The script file <code>js-config</code> has not been modified either and still points to mozjs185. If this is not desirable, you can issue the following command on UNIX systems:</p>
+<pre>sed -i "s/mozjs185/$BRAND/" /usr/bin/js-config
+</pre>
+<p>Which performs a simple text replacement of mozjs185 with your branding on the <code>js-config</code> script. You may need administrative rights to run the above command.</p>

@@ -1,0 +1,187 @@
+<div>{{SpiderMonkeySidebar("Internals")}}</div>
+
+<p>SpiderMonkey's <strong>property cache</strong> is an internal data structure used to speed up property accesses in the interpreter and to communicate between the interpreter and JIT.</p>
+
+<div class="warning">
+<p><strong>Warning:</strong> The details below are obsolete. Shape integers do not exist anymore. The property cache still exists, but it is simpler now. SpiderMonkey mainly uses type inference to determine which properties are being accessed; in cases where type inference does not find the exact shape of the object being accessed, SpiderMonkey uses a PIC (polymorphic inline caches) to store the result of the lookup. The property cache is only used in the interpreter.</p>
+</div>
+
+<p>The property cache was introduced in {{ bug(365851) }}.</p>
+
+<h2 id="Basics">Basics</h2>
+
+<p>In general, accessing a property of a native object entails:</p>
+
+<ol>
+ <li>a property lookup;</li>
+ <li>examining the <code>Shape</code> to see how the property can be accessed;</li>
+ <li>actually carrying out the property access.</li>
+</ol>
+
+<p>The property cache is a per-thread cache of the results of steps 1 and 2. When executing certain property-accessing bytecode instructions, the interpreter populates the cache to speed future execution of the same instruction.</p>
+
+<p>The JIT reads the property cache too, as it needs the same information when recording such an instruction. If there is a cache miss, the JIT performs parts 1 and 2 of the property access and fills the cache to avoid redoing that work in the interpreter. (In some cases this is necessary for correctness. When recording a GETPROP, the JIT needs to know the result type before the interpreter executes the instruction. It is crucial that JIT and interpreter get the same answer; possible pitfalls include native getters and resolve hooks. So the lookup must happen only once. The JIT ensures this by using the property cache to forward its work to the interpreter.)</p>
+
+<p>For speed, the cache is a fixed-size hash table with no chaining. Collisions simply cause old entries to be overwritten.</p>
+
+<p>The hash table entries are key-value pairs. The keys describe the context in which a property lookup occurs. The values consist of two word-sized members. <code>entry-&gt;vcap</code> caches the results of part 1 above, telling which object contains the desired property. <code>entry-&gt;vword</code> is described in the section <em>Entry value words</em> below. It caches the results of part 2, if the property is simple enough for optimized access, or a pointer to the <code>js::Shape</code> if not.</p>
+
+<p>The opcodes that take advantage of the property cache, as of June 2009, are: GETPROP, GET{X,THIS,ARG,LOCAL}PROP, and LENGTH; NAME; SETPROP, BINDNAME, and SETNAME; CALLPROP and CALLNAME; and {INC,DEC}NAME and NAME{INC,DEC}.</p>
+
+<p>ELEM opcodes do not use it. Nor do {INC,DEC}PROP or PROP{INC,DEC}. Nor do operations such as ADD that only need to look up a property (<code>.toString</code>) in unusual cases.</p>
+
+<p>Throughout this article, phrases such as "own property" should be taken to refer to the low-level representation of properties in scopes and <code>Shape</code> chains. In the case of <code>SHARED</code> <code>PERMANENT</code> properties, this differs from the notion of "own property" seen by scripts via <code>Object.prototype.hasOwnProperty</code>.</p>
+
+<h2 id="Shape">Shape</h2>
+
+<p>Native objects have a <dfn>shape</dfn>, a 24-bit unsigned integer such that:</p>
+
+<ul>
+ <li>
+  <p><strong>Basic layout guarantee —</strong> If at time t<sub>0</sub> the object x has shape s and at time t<sub>1</sub> the object y has shape s, and no shape-regenerating GC occurred, then y at t<sub>1</sub> has the same <code>JSClass</code>, <code>JSObjectOps</code>, prototype, and property specs as x had at t<sub>0</sub>. To be more precise regarding property specs, y's properties have the same names, getters, setters, property attributes, and slot offsets, and they are in the same order, as x's properties at t<sub>0</sub>. Furthermore, y at t<sub>1</sub> has the same number of fixed slots that x had at t<sub>0</sub>, and either both have a slot array or neither does. (Informally: objects with the same shape have the same prototype, class, and layout.)</p>
+ </li>
+ <li>
+  <p><strong>Prototype chain shadowing guarantee —</strong> If at t<sub>0</sub> the object x has shape s and a property x.p of x is found along the prototype chain on object x' of shape s', where x !== x', and the lookup called no resolve hooks or non-native lookup ops, and at t<sub>1</sub> the object x has shape s, the object x' has shape s', and no shape-regenerating GC occurred, then at t<sub>1</sub> the lookup for x.p still finds the same property on x'. (Informally: if another property shadows x'.p, the shape of x' will change.)</p>
+
+  <pre>  o----&gt;o----&gt;o----&gt;o
+  ^x          ^x'   ^Object.prototype, perhaps
+
+(----&gt; indicates the proto relation)
+</pre>
+ </li>
+ <li>
+  <p><strong>Scope chain shadowing guarantee —</strong> If at time t<sub>0</sub> the object x has shape s and a name lookup for p starting at scope chain head x finds p on an object x' of shape s', where x !== x'; and the lookup called no resolve hooks or non-native lookup ops; and each object examined along the parent chain, except possibly the one along whose prototype chain x' was found, had no prototype or was a Block object; and at time t<sub>1</sub> x has shape s and x' has shape s'; and no shape-regenerating GC occurred; then at t<sub>1</sub> the lookup for p in x still finds the same property on x'. (Informally: if another variable or property shadows x'.p, the shape of x' will change.)</p>
+
+  <pre>  o This object is x, perhaps a Call object.
+  ↓
+  o ----&gt; o   A Block object and its proto.
+  ↓
+  o Another Call object.
+  ↓
+  o ----&gt; o ----&gt; o ----&gt; o
+  ^global         ^x'
+
+(----&gt; indicates proto as before; downward arrows ↓ indicate the parent relation)</pre>
+ </li>
+ <li>
+  <p><strong>Method guarantee —</strong> If at time t<sub>0</sub> the object x has shape s; and x has an own property p that is a method property (transparently joined function); and at time t<sub>1</sub> an object y has shape s; and no shape-regenerating GC occurred; then at time t<sub>1</sub> y's own property p is the same method property. (The existence of this property is guaranteed by the basic layout guarantee above.) (Informally: two objects with the same shape have the same <code>METHOD</code> properties.)</p>
+ </li>
+ <li>
+  <p><strong>Branded object guarantee </strong><strong>—</strong> If at time t<sub>0</sub> the object x has shape s; and x is branded (<code>x-&gt;branded()</code>); and x has an own property p, which is a writable, <code>Function</code>-valued data property with the stub getter and setter and a slot; and at time t<sub>1</sub> an object y has shape s; and no shape-regenerating GC occurred; then y is x, and at time t<sub>1</sub> x's own property p has the same <code>Function</code> value it had at time t<sub>0</sub>. (The existence of this property is guaranteed by the basic layout guarantee above.) (Informally: branded objects have unique shapes, and if x is branded, changing any of x's own methods will change its shape.)</p>
+ </li>
+ <li>
+  <p><strong>Extensibility guarantee —</strong> If at time t<sub>0</sub> an object x of shape s is <a href="/en/JavaScript/Reference/Global_Objects/Object/isExtensible" title="en/JavaScript/Reference/Global Objects/Object/isExtensible">extensible</a>, and at time t<sub>1</sub> an object y has shape s, and no shape-regenerating GC occurred, then at t<sub>1</sub> y is extensible. (Informally: marking an object as not extensible changes its shape. Without this guarantee, every property assignment would have to check that the target object is extensible, even though changing an object's extensibility is rare.)</p>
+ </li>
+ <li>
+  <p><strong>Prototype change guarantee —</strong> If at time t<sub>0</sub> the object x has shape s, and the object y has prototype z, and either x is y or x is on y's prototype chain, and at time t<sub>1</sub> the object x has shape s, and no shape-regenerating GC occurred, then at t<sub>1</sub> y has prototype z. (Informally: changing an object's prototype changes its shape and the shape of every object that was on its prototype chain before the change. Without this guarantee, every access to a property via a prototype chain would have to recheck each link in the prototype chain, even though assigning to <code>__proto__</code> is very rare.)</p>
+ </li>
+ <li>
+  <p><strong>Adding guarantee —</strong> If at time t<sub>0</sub> the object x has shape s, and <code>rt-&gt;</code><a class="external" href="http://mxr.mozilla.org/mozilla-central/ident?i=protoHazardShape" rel="external nofollow" title="http://mxr.mozilla.org/mozilla-central/ident?i=protoHazardShape"><code>protoHazardShape</code></a> is z, and x does not inherit a <code>JSPROP_SHARED</code> or <code>JSPROP_READONLY</code> property with name n from any prototype, and at time t<sub>1</sub> an object y has shape s and <code>rt-&gt;protoHazardShape</code> is z, and no shape-regenerating GC occurred, then y does not inherit a <code>JSPROP_SHARED</code> or <code>JSPROP_READONLY</code> property named n from any prototype. (Informally: adding a shared or readonly property to a prototype changes <code>rt-&gt;protoHazardShape</code>.)</p>
+ </li>
+</ul>
+
+<p>(At the moment, XML objects and resolve hooks can trigger bugs in the implementation that break some of these guarantees. See {{ bug(458271) }} and {{ bug(507231) }} for example. There are probably similar bugs to do with, for example, XML objects' custom getProperty op.)</p>
+
+<p>Dense arrays are shapeless.</p>
+
+<p>The shape of an object <strong>does not</strong> cover:</p>
+
+<ul>
+ <li>anything about the object's prototype other than its identity;</li>
+ <li>anything about the object's parent;</li>
+ <li><code>obj-&gt;freeslot</code>, which can be different for same-shaped objects if they have a <a href="/en/SpiderMonkey/JSAPI_Reference/JSClass.reserveSlots" title="en/SpiderMonkey/JSAPI Reference/JSClass.reserveSlots"><code>JSClass.reserveSlots</code></a> hook ({{ bug(535416) }});</li>
+ <li>anything about the values of the object's own properties, beyond what the method guarantee and the branded object guarantee say about functions. In particular shape does not cover the <em>types</em> of property values; typically <code>{a: "x"}</code> and <code>{a: 12}</code> have the same shape.</li>
+</ul>
+
+<p>Both <code>JSObject::objShape</code> and <code>JSShape::shape</code> are shape-ids. <code>JSObject::objShape</code> tells an object's shape. The <code>JSShape::shape</code> field is there so that when a property is added to or removed from an object, the JS engine can change that object's shape to match other objects with the same properties.</p>
+
+<p><strong>Shapes and GC.</strong> Occasionally, during garbage collection, all shape ids are regenerated (in order to recycle unused shape ids so that we don't run out; see calls to <a href="https://dxr.mozilla.org/mozilla-central/search?q=id:js_RegenerateShapeForGC">js_RegenerateShapeForGC</a>. This could end up changing the shape of every object, so the property cache and JIT cache are emptied when this happens.</p>
+
+<p><strong>Unique shapes.</strong> An object may be given a unique shape using <a href="https://dxr.mozilla.org/mozilla-central/search?q=id:JSObject::generateOwnShape">JSObject::generateOwnShape</a>. This is usually done in order to bump the shape of one object without affecting other objects that happen to have the same properties. For example, when <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SealObject" title="en/SpiderMonkey/JSAPI Reference/JS SealObject">sealing an object</a>, we must somehow preserve the extensibility guarantee. We do this by giving the sealed object a unique shape.</p>
+
+<p><strong>Branded objects.</strong> An object may be <dfn>branded</dfn>. The interpreter and JIT brand an object whenever they find that enabling the branded object guarantee (above) would make an optimization possible. A branded object always has a unique shape.</p>
+
+<p><strong>Overflow.</strong> If there come to be more than 2<sup>24</sup> objects that need distinct shapes, the shape rules can no longer be satisfied. The property cache cannot operate without them, so it is disabled permanently. See {{ bug(440834) }}.</p>
+
+<h2 id="Property_cache_entries">Property cache entries</h2>
+
+<p>Each entry in the property cache hash table is either populated or not; unpopulated entries have <code>.kpc == NULL</code>.</p>
+
+<p>If an entry is populated, the <code>.kpc</code> field points to the bytecode instruction at which it was populated. The entry is valid only for subsequent lookups that occur at the same instruction, for several reasons:</p>
+
+<ul>
+ <li>The script, not the property cache entry, contains the id of the property being accessed.</li>
+ <li>A property cache entry could be valid for a GETPROP but not a SETPROP, e.g. because the property has a setter and not a getter; or vice versa.</li>
+ <li>Lookups for <code>JOF_NAME</code> instructions are quite different from ordinary property lookups: name lookups follow the scope chain and the prototype chain, whereas the others only follow the prototype chain.</li>
+</ul>
+
+<p>There are two different types of property cache entry.</p>
+
+<h3 id="Non-adding_cache_entries">Non-adding cache entries</h3>
+
+<pre>    {.kpc=<strong><var>pc</var></strong>,
+     .kshape=<strong><var>kshape</var></strong>,
+     .vshape()=<strong><var>vshape</var></strong>,
+     .scopeIndex()=<strong><var>scopeIndex</var></strong>,
+     .protoIndex()=<strong><var>protoIndex</var></strong>,
+     .vword=<strong><var>vword</var></strong>}
+</pre>
+
+<p>This type of entry is created for all instructions that use the property cache. When the operand to the instruction at <var>pc</var> is an object <var>obj</var> with shape <var>kshape</var>, let <em>pobj</em> = the object found by walking <var>scopeIndex</var> steps up the parent chain and then <var>protoIndex</var> steps up the prototype chain. If <em>pobj</em> exists (that is, both the parent chain and the prototype chain are long enough) and it has the shape <var>vshape</var>, then it contains the desired property. Furthermore, the <code>.vword</code> field describes the property in detail, as described in the next section.</p>
+
+<p>If a property with the same name is ever added to an object anywhere along the search path, then this cache entry becomes invalid: the property described by this property cache entry has been shadowed. The two shadowing guarantees ensure that if this happens, the shape of <em>pobj</em> changes, invalidating the entry.</p>
+
+<p><strong>Setting.</strong> For <code>JOF_SET</code> instructions, this makes two additional guarantees: first, <code>vword.isSprop()</code>; second, the correct behavior is to set the property described by <code>vword.toSprop()</code>, rather than to shadow it with a new own property.</p>
+
+<p><strong>Teleportation.</strong> The JIT handles situations where <var>scopeIndex</var> ≠ 0 or <var>protoIndex</var> &gt; 1 specially. It walks the scope chain and prototype chain as described above only once, at compile time, and emits code containing the pointer to the object that contains the property. The emitted code guards on the identity of the object to search. Then it guards on the shape of the object containing the property. If both guards pass, there is no need to walk the chain. The JIT code "teleports" directly to the appropriate object.</p>
+
+<h3 id="Adding_cache_entries">Adding cache entries</h3>
+
+<pre>    {.kpc=<strong><var>pc</var></strong>,
+     .kshape=<strong><var>kshape</var></strong>,
+     .vshape()=<strong><var>vshape</var></strong>,
+     .scopeIndex()=<strong>0</strong>,
+     .protoIndex()=<strong>0</strong>,
+     .vword=<strong><var>vword</var></strong>}
+
+    where <var>kshape</var> != <var>vshape</var>
+</pre>
+
+<p>This type of entry is only created for <code>JSOP_SETPROP</code> and <code>JSOP_SETNAME</code> instructions that create a new property. When the operand to the instruction at <var>pc</var> is an object <var>obj</var> with shape <var>kshape</var>, and <code>rt-&gt;</code><a href="https://dxr.mozilla.org/mozilla-central/search?q=id:protoHazardShape">protoHazardShape</a><code> == <var>vshape</var></code>, the lookup can be skipped. It is guaranteed that <var>obj</var> does not have an own property with the desired name and does not inherit a <code>JSPROP_SHARED</code> or <code>JSPROP_READONLY</code> property with that name from any prototype. It is guaranteed that <code>vword.isSprop()</code>, and <var>vword.toSprop()</var> describes the property that should be added to <var>obj</var>. With regard to property attributes, getters, setters, and so forth, the property cache entry must take into account several rules documented at <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetProperty" title="en/SpiderMonkey/JSAPI Reference/JS SetProperty"><code>JS_SetProperty</code></a>. Sometimes the new property can be created simply by calling <code>JSScope::extend</code>, but there are many special cases and pitfalls to watch out for.</p>
+
+<p>When a prototype gains a property that could invalidate an entry of this type, <code>rt-&gt;protoHazardShape</code> is bumped, effectively marking all such entries invalid at once.</p>
+
+<h2 id="Entry_value_words">Entry value words</h2>
+
+<p>For the <code>.vword</code> member of a non-adding property cache entry, one of the following is true:</p>
+
+<dl>
+ <dt><code>vword.isShape()</code></dt>
+ <dd>
+ <p><code>vword.toShape()</code> points to the <code>js::Shape</code> that describes the property in question. This is the default type of vword generated when neither of the two special cases below applies. A cache hit of this type saves a property lookup, but the interpreter still has to examine <code>vword.toShape()</code> to determine what to do next.</p>
+ </dd>
+ <dt><code>vword.isSlot()</code></dt>
+ <dd>
+ <p>The property has a slot which the interpreter can read directly.</p>
+
+ <p>This special kind of entry is used only for <code>JOF_GET</code> instructions and only when the property has a stub getter and has a slot (i.e. it is not <code>JSPROP_SHARED</code>). The slot index is <code>vword.toSlot()</code>.</p>
+ </dd>
+ <dt><code>vword.isObject()</code></dt>
+ <dd>
+ <p>The property has a stub getter and its value is <code>vword.toObject()</code>.</p>
+
+ <p>This special kind of entry is used only for <code>JOF_CALL</code> instructions and only when the result is a <code>Function</code>. It helps the JIT avoid extra loads and guards when calling methods.</p>
+
+ <p>Branded scopes exist to support this case. When a property cache entry of this type is created, the scope of the object that contains the property is branded. The "branded scope guarantee" documented above ensures that any changes to function-valued own properties of that object will bump its shape, conservatively invalidating all property cache entries of this type for that object (and JIT code that might inline a call to the function).</p>
+ </dd>
+</dl>
+
+<p>The JIT uses a fourth kind of <code>PCVal</code>, having <code>pcval.isNull()</code>, internally to indicate that a property lookup missed entirely. But property cache entries are never populated such that <code>.vword.isNull()</code>.</p>
+
+<h2 id="To_do">To do</h2>
+
+<ul>
+ <li>Treat cache invalidation systematically.</li>
+ <li>Does the global object always have a unique shape? a branded scope?</li>
+ <li>Explain {{ bug(554955) }}.</li>
+</ul>

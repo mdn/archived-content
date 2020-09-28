@@ -1,0 +1,289 @@
+<p>This article documents a few opportunities to improve the localization of <a href="https://github.com/mozilla-b2g/gaia">Gaia</a> (the UI layer of Firefox OS) by using L20n. In all presented examples, we try to show the existing code, explain the problem from the localizers' or developers' perspective, and suggest a solution.</p>
+
+<h2 id="Declensions">Declensions</h2>
+
+<p>In Gaia's Browser app, there's an <a href="https://github.com/mozilla-b2g/gaia/blob/c0265432b75c1586bbe0d5fd7366c680951404d6/apps/browser/locales/browser.en-US.properties#L50"><code>about-browser</code> string</a> defined as follows in <code>apps/browser/locales/browser</code>:</p>
+
+<pre class="brush: js">about-browser=About \{{browserBrandShortName}}</pre>
+
+<h3 id="Problem_definition">Problem definition</h3>
+
+<p>In many inflected languages (e.g. German, Finnish, Hungarian, all Slavic languages), the <em>about</em> preposition <a href="http://en.wikipedia.org/wiki/Case_government">governs the grammatical case</a> of the complement. It might be the accusative (German), ablative (Latin) or locative (Slavic languages). Let's take Slovenian as an example.</p>
+
+<p>In Slovenian, the ideal string would inflect the noun, like so:</p>
+
+<pre>O Firefoxu</pre>
+
+<p>However, since we want the name of the browser to be stored in the <code>browserBrandShortName</code> entity, we can't modify it. The work-around is to inflect an auxiliary noun complement, e.g. <em>browser</em>, to give <em>About the Firefox browser</em>. Needless to say, this ends up being long and often unnaturally-sounding to the native speakers.</p>
+
+<pre class="brush: js">about-browser=O brskalniku \{{browserBrandShortName}}</pre>
+
+<h3 id="Solution">Solution</h3>
+
+<p>In L20n, this problem can be easily solved by defining multiple variants of the <code>browserBrandShortName</code> entity, to match different grammatical cases of the noun.</p>
+
+<p>In <code>shared/branding/official/branding</code>, we can define <code>browserBrandShortName</code> as:</p>
+
+<pre class="brush: html">&lt;browserBrandShortName{
+  nominative: "Firefox",
+  genitive: "Firefoxa",
+  dative: "Firefoxu",
+  accusative: "Firefox",
+  locative: "Firefoxu",
+  instrumental:"Firefoxom"
+}&gt;
+</pre>
+
+<p>And in <code>shared/branding/unofficial/branding</code>, we can define <code>browserBrandShortName</code> as follows, to mean <em>Web Browser</em>:</p>
+
+<pre></pre>
+
+<p>Now, coming back to <code>apps/browser/locales/browser</code>, we can take advantage of the grammatical cases. Slovenian uses the locative case with its <em>About</em> preposition:</p>
+
+<pre class="brush: html">&lt;aboutBrowser "O \{{ browserBrandShortName.locative }}"&gt;
+ </pre>
+
+<p>For the official branding, we get:</p>
+
+<pre>O Firefoxu
+</pre>
+
+<p>And for the unofficial branding, we end up with:</p>
+
+<pre>O Brskalniku
+</pre>
+
+<h2 id="Genders">Genders</h2>
+
+<p>In the System app's <code>apps/system/locales/system</code>, there's a string called <a href="https://github.com/mozilla-b2g/gaia/blob/c0265432b75c1586bbe0d5fd7366c680951404d6/apps/system/locales/system.en-US.properties#L190"><code>crash-banner-os2</code></a>.</p>
+
+<pre>crash-banner-os2=\{{brandShortName}} just crashed.
+</pre>
+
+<h3 id="Problem_definition_2">Problem definition</h3>
+
+<p>In some languages, past participles (<em>crashed</em>) must be accorded with the gender of the subject (in case of reflexive verbs) or the gender of the object.</p>
+
+<p>In Polish, the grammatical form of <em>crashed</em> depends on the gender of <code>brandShortName</code>. In order to construct a grammatically-correct and naturally-sounding message, we must know the gender of the subject.</p>
+
+<h3 id="Solution_2">Solution</h3>
+
+<p>In L20n, the localizer can define the gender (or, in fact, any arbitrary trait) as an attribute of the entity.</p>
+
+<p>For Polish, we can define <code>brandShortName</code> in <code>shared/branding/official/branding</code> as:</p>
+
+<pre class="brush: html">&lt;brandShortName "Firefox OS"
+  _gender: "masculine"&gt;
+</pre>
+
+<p>And in <code>shared/branding/unofficial/branding</code>, as:</p>
+
+<pre class="brush: html">&lt;brandShortName "Boot2Gecko"
+ _gender:"neutral"&gt;
+</pre>
+
+<p>Now we can translate <code>crash-banner-os2</code> into Polish without sounding like a robot:</p>
+
+<pre class="brush: html">&lt;crashBannerOS2[brandShortName::_gender] {
+  masculine: "\{{ brandShortName }} uległ awarii",
+  feminine: "\{{ brandShortName }} uległa awarii",
+  neutral: "\{{ brandShortName }} uległo awarii"
+}&gt;
+</pre>
+
+<p>This will give us, depending on the current branding, the following messages:</p>
+
+<pre>Firefox OS uległ awarii
+Boot2Gecko uległo awarii
+</pre>
+
+<h2 id="Isolation">Isolation</h2>
+
+<p>Let's look at how the Settings app formats sizes. First, there is <a href="https://github.com/mozilla-b2g/gaia/blob/edb1dea8b45238add44b199cf02c9b4ed808b767/apps/settings/js/utils.js#L182-L197"><code>DeviceStorageHelper.showFormatedSize</code></a> (<em>sic</em>):</p>
+
+<pre class="brush: js">function showFormatedSize(element, l10nId, size) {
+  if (size === undefined || isNaN(size)) {
+    element.textContent = '';
+    return;
+  }
+
+  // KB - 3 KB (nearest ones), MB, GB - 1.2 MB (nearest tenth)
+  var fixedDigits = (size &lt; 1024 * 1024) ? 0 : 1;
+  var sizeInfo = FileSizeFormatter.getReadableFileSize(size, fixedDigits);
+
+  var _ = navigator.mozL10n.get;
+  element.textContent = _(l10nId, {
+    size: sizeInfo.size,
+    unit: _('byteUnit-' + sizeInfo.unit)
+  });
+}
+</pre>
+
+<p>The function is <a href="https://github.com/mozilla-b2g/gaia/blob/edb1dea8b45238add44b199cf02c9b4ed808b767/apps/settings/js/storage.js#L114-L121">used like so</a>:</p>
+
+<pre class="brush: js">// Application Storage
+updateAppFreeSpace: function storage_updateAppFreeSpace() {
+  var self = this;
+  this.getFreeSpace(this.appStorage, function(freeSpace) {
+    DeviceStorageHelper.showFormatedSize(self.appStorageDesc,
+      'availableSize', freeSpace);
+  });
+},</pre>
+
+<h3 id="Problem_definition_3">Problem definition</h3>
+
+<p>For all values of <code>freeSpace</code>, the following string is enough to construct a grammatically-correct sentence in English:</p>
+
+<div class="highlight">
+<pre class="brush: js">availableSize = \{{$size}} \{{$unit}} available
+</pre>
+
+<p>However, other languages might need to pluralize this string with different forms of the <em>available</em> adjective. Consequently, using the existing localization frameworks, the developer needs to predict which strings might need pluralization in other languages, and <a href="https://github.com/mozilla-b2g/gaia/blob/edb1dea8b45238add44b199cf02c9b4ed808b767/apps/settings/locales/settings.en-US.properties#L491-L497">pluralize them even in English</a>:</p>
+
+<pre class="brush: js">availableSize = {[ plural(size) ]}
+availableSize[other] = \{{$size}} \{{$unit}} available
+</pre>
+
+<p>An Italian translation might look like this:</p>
+
+<pre class="brush: js">availableSize = {[ plural(size) ]}
+availableSize[one] = \{{$size}} \{{$unit}} disponibile
+availableSize[other] = \{{$size}} \{{$unit}} disponibili
+</pre>
+
+<p>It's easy to imagine how developers might forget to pluralize some strings that in other languages might require pluralization (or other grammatical features that the framework supports).</p>
+
+<h3 id="Solution_3">Solution</h3>
+
+<p>L20n isolates each language so that grammatical requirements of one don't affect others. This takes the responsibility away from the developers and puts it in the hands of localizers, at the same time transforming it from a burden into an opportunity.</p>
+
+<p>In L20n, the English string could be as simple as:</p>
+
+<pre class="brush: html">&lt;availableSize "\{{ $size }} \{{ $unit }} available"&gt;
+</pre>
+
+<p>On the other hand, the Italian translation would make use of proper pluralization rules:</p>
+
+<pre class="brush: js">&lt;plural($n) {
+  $n == 1 ? "one" :
+            "other"
+}&gt;
+&lt;availableSize[plural($size)] {
+  one: "\{{ $size }} \{{ $unit }} disponibile",
+  other: "\{{ $size }} \{{ $unit }} disponibili"
+}&gt;
+</pre>
+
+<p>So far, so good. The JavaScript code hasn't changed yet, but there's another improvement that can be introduced, which is described below.</p>
+
+<h2 id="Asymmetry">Asymmetry</h2>
+
+<p>The example above could benefit from another of L20n's features: local variables. In L20n, localization files can be asymmetrical and have more entities that the source language.</p>
+
+<p>You'll notice that <a href="https://github.com/mozilla-b2g/gaia/blob/edb1dea8b45238add44b199cf02c9b4ed808b767/apps/settings/js/utils.js#L182-L197"><code>DeviceStorageHelper.showFormatedSize</code></a> passes a localized name of the unit to <code>availableSize</code>:</p>
+
+<pre class="brush: js">function showFormatedSize(element, l10nId, size) {
+  // …
+  var _ = navigator.mozL10n.get;
+  element.textContent = _(l10nId, {
+    size: sizeInfo.size,
+    unit: _('byteUnit-' + sizeInfo.unit)
+  });
+}
+</pre>
+
+<h3 id="Problem_definition_4">Problem definition</h3>
+
+<p>Even though there's no need to localize the units in English at all, we <a href="https://github.com/mozilla-b2g/gaia/blob/edb1dea8b45238add44b199cf02c9b4ed808b767/apps/settings/locales/settings.en-US.properties#L485-L489">still need to do it</a>, because in other languages we might need to use localized names.</p>
+
+<pre class="brush: js">byteUnit-B = B
+byteUnit-KB = KB
+byteUnit-MB = MB
+byteUnit-GB = GB
+byteUnit-TB = TB
+</pre>
+
+<p>For example in French, the unit abbreviations are as follows:</p>
+
+<pre class="brush: js">byteUnit-B = o
+byteUnit-KB = Ko
+byteUnit-MB = Mo
+byteUnit-GB = Go
+byteUnit-TB = To
+</pre>
+
+<h3 id="Solution_4">Solution</h3>
+
+<p>In L20n, the French localizer could provide the translation of unit abbreviations locally in the localization file, without impacting the English localization file.</p>
+
+<p>In the JavaScript code, the developer needs to pass <code>sizeInfo.unit</code> instead of a localized value:</p>
+
+<pre class="brush: js">function showFormatedSize(element, l10nId, size) {
+  // …
+  element.textContent = document.l10n.get(l10nId, {
+    size: sizeInfo.size,
+    unit: sizeInfo.unit
+  });
+}
+</pre>
+
+<p>And then use the <code>$unit</code> variable verbatim in the English message:</p>
+
+<pre class="brush: html">&lt;availableSize "\{{ $size }} \{{ $unit }} available"&gt;
+</pre>
+
+<p>In French, the localizer can then use the value of <code>$unit</code> to match it against a translated abbreviation, like so:</p>
+
+<pre class="brush: html">&lt;_uniteDeMesure {
+  B: "o",
+  KB: "Ko",
+  MB: "Mo",
+  GB: "Go",
+  TB: "To"
+}&gt;
+&lt;availableSize "Il reste \{{ $size }} \{{ _uniteDeMesure[unit] }}"&gt;
+</pre>
+
+<p>Similarly, other local variables could be used to provide better and more natural translations in French and other languages alike.</p>
+</div>
+
+
+
+<h2 id="Subnav">Subnav</h2>
+
+<section id="Quick_Links">
+<ol>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for developers wanting to implement localization functionality on their web apps using L20n">For Developers</span></summary>
+
+  <ol>
+   <li><a href="#" title="First read for developers looking to use the L20n infrastructure">Internationalization for your web app</a></li>
+   <li><a href="/en-US/docs/Mozilla/Projects/L20n/HTML_Bindings" title="Tutorial on implementing L20n in your HTML code">L20n's HTML bindings</a></li>
+   <li><a href="#" title="A complete description of the use, function, and role of L20n's .lol format.">.lol file format</a></li>
+   <li><a href="#" title="A simple cheatsheet to help developers as they add L20n to their localization infrastructure.">L20n syntax cheatsheet for developers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for Localizers creating localized content for a project that uses L20n.">For Localizers</span></summary>
+  <ol>
+   <li><a href="#" title="How to naturally localize applications using L20n. Complete with use cases and examples of L20n in action.">Learn the L20n syntax</a></li>
+   <li><a href="/en-US/docs/L20n/Localization_Use_Cases">Localization use cases</a></li>
+   <li><a href="#" title="How L20n impacts the Translation Memory eXchange standard for translation memory data.">L20n and Translation Memory eXchange (TMX)</a></li>
+   <li><a href="#" title="A simple cheatsheet to help localizers as they localize projects with L20n.">L20n syntax cheatsheet for localizers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Some additional resources for developers and localizers involved with L20n.">Additional resources</span></summary>
+  <ol>
+   <li><a href="http://www.l20n.org" title="You can try L20n live in your browser on the project page">L20n.org</a></li>
+   <li><a href="http://l20n.github.io/tinker/" title="Test out your own L20n code in L20n Tinker">L20n Tinker</a></li>
+   <li><a href="https://github.com/l20n/l20n.js" title="Where the main code for the L20n infrastructure and language lives">L20n GitHub repo</a></li>
+   <li><a href="https://wiki.mozilla.org/L20n" title="Info about the project to develop L20n">Mozilla Wiki</a></li>
+  </ol>
+  </details>
+ </li>
+</ol>
+</section>
+

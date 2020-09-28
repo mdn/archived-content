@@ -1,0 +1,43 @@
+<div class="syntaxbox" id="Get_Message_Header_from_a_URIURL">Get Message Header from a URI/URL</div>
+
+<p>Most operations on messages expect you to have an <code>nsIMsgDBHdr</code>; if all you have is a URI/URL, the first thing you'll need to do is to look up the header. The easiest way to do this, which should work for all kinds of messages (messages in folders, attached messages, and .eml files), is the following:</p>
+
+<pre class="brush: js">// In some windows, this already exists as a global variable (usually
+// named `gMessenger`).
+var messenger = Cc["@mozilla.org/messenger;1"]
+                  .createInstance(Ci.nsIMessenger);
+
+<span><span>var msgHdr = messenger.msgHdrFromURI(messageURI);</span></span></pre>
+
+<p><span><span>However, there are other ways to get the message header for specific kinds of URIs. </span></span>If you have a URI beginning with <code>mailbox-message://</code>, <code>imap-message://</code>, or <code>news-message://</code>, the following should work:</p>
+
+<pre class="brush: js"><span><span>var msgHdr = messenger.messageServiceFromURI(messageURI)
+                      .messageURIToMsgHdr(messageURI);</span></span></pre>
+
+<p><span><span>If your URI is an nsIURI object, and <code>uri.spec</code> begins with <code>mailbox://</code>, <code>imap://</code>, or <code>news://</code>, you can get the header directly from your</span></span> URI:</p>
+
+<pre class="brush: js"><span class="n">// If you have a URI as a string, create an nsIURI object first:
+Cu</span><span class="p">.</span><span class="k">import</span><span class="p">(</span><span class="s">"resource://gre/modules/Services.jsm"</span><span class="p">);</span>
+<span><span>var uri = Services.io.newURI(uriString, </span><span class="keyword">null</span><span>, </span><span class="keyword">null</span><span>);
+
+// Now get the message header.
+var msgHdr = uri.QueryInterface(Components.interfaces.nsIMsgMessageUrl)
+                .messageHeader;</span></span></pre>
+
+<h2 class="editable" id="List_Attachments">List Attachments</h2>
+
+<p>This is a quick recipe for getting a list of attachments present in a MIME message. This uses the new <code>MimeMessage</code> representation for multipart email messages. Technically speaking, the code belongs to Gloda, but it doesn't use the global database. It simply is a convenience layer on top of libmime that allows you to get a hierarchical representation of an email, manipulate it, examinate it, without having to abide by the streaming pattern enforced by libmime.</p>
+
+<p>If you have a <code>nsIMsgDbHdr</code>, you should first obtain a <code>MimeMessage</code> by calling <code>MsgHdrToMimeMessage</code> first. The function is defined <a class="external" href="https://dxr.mozilla.org/comm-central/source/mailnews/db/gloda/modules/mimemsg.js#178" rel="external" title="https://dxr.mozilla.org/comm-central/source/mailnews/db/gloda/modules/mimemsg.js#178">here</a> and you have all the documentation written. Examples can be found by a <a class="external" href="https://dxr.mozilla.org/comm-central/search?q=MsgHdrToMimeMessage" rel="external" title="https://dxr.mozilla.org/comm-central/search?q=MsgHdrToMimeMessage">dxr search</a>.</p>
+
+<p>This function returns a list of <code>MimeMessageAttachment</code>s. This class is defined in <a class="external" href="http://dxr.mozilla.org/comm-central/source/mailnews/db/gloda/modules/mimemsg.js" rel="external" title="https://dxr.mozilla.org/comm-central/source/mailnews/db/gloda/modules/mimemsg.js">http://dxr.mozilla.org/comm-central/source/mailnews/db/gloda/modules/mimemsg.js</a>, some of the useful attributes of a <code>MimeMessageAttachment</code> are: <code>contentType</code>, <code>name</code> (the filename of the attachment). Starting with Thunderbird 3.3, there's also a <code>size</code> property. use <code>nsIMessenger.formatFileSize</code> to get a nice human-readable size.</p>
+
+<p> </p>
+
+<h2 id="Get_Headers">Get Headers</h2>
+
+<p>Some header entries are available in  <span><span>msgHdr, some are not. Those can be found in the mimemessage returned by the callback in  </span></span><code>MsgHdrToMimeMessage</code> . They can be retrieved by aMimeMsg.get('in-reply-to') or aMimeMsg.headers['in-reply-to'][0] (if, for example, the in-reply-to header is required - note the [0] if aMimeMsg.headers is used).</p>
+
+<p><span><span> </span></span></p>
+
+<p> </p>

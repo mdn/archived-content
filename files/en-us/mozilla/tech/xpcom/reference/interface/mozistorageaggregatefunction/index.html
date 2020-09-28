@@ -1,0 +1,187 @@
+---
+title: mozIStorageAggregateFunction
+slug: Mozilla/Tech/XPCOM/Reference/Interface/mozIStorageAggregateFunction
+tags:
+  - Interfaces
+  - Storage
+  - XPCOM
+  - XPCOM API Reference
+---
+<p>This is an interface that must be implemented by consumers.  It allows consumers to add  aggregate functions that are available to SQL queries and triggers.  An aggregate function is a function that returns one value from a series of values.  There are a <a class="external" href="http://www.sqlite.org/lang_aggfunc.html" title="http://www.sqlite.org/lang_corefunc.html">number of already defined aggregate functions provided by SQLite</a>.  Objects implementing this interface can be registered with <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/mozIStorageConnection#createAggregateFunction()">mozIStorageConnection.createAggregateFunction()</a></code>.</p>
+
+
+
+<div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/storage/public/mozIStorageAggregateFunction.idl" rel="custom">storage/public/mozIStorageAggregateFunction.idl</a></code><span style="float: right; text-align: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;"><em>Please add a summary to this article.</em> </span>
+
+<div style="background: #eee; padding: 2px;"><span> </span> <span style="float: right; text-align: right;">Last changed in Gecko 1.9 (Firefox 3)</span></div>
+</div>
+
+
+
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></p>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#onStep()">onStep</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIStorageValueArray" title="">mozIStorageValueArray</a></code> aFunctionArguments);</code></td>
+  </tr>
+  <tr>
+   <td><code><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIVariant" title="">nsIVariant</a></code> <a href="#onFinal()">onFinal</a>();</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="onStep" name="onStep()">onStep()</h3>
+
+<p>This is called for each row of results returned by the query.  The implementation should store or perform some work to prepare to return a value.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note</strong> This callback is executed on the thread that the statement or trigger is executing on. If you use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/mozIStorageConnection#executeAsync()">mozIStorageConnection.executeAsync()</a></code> or, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/mozIStorageStatement#executeAsync()">mozIStorageStatement.executeAsync()</a></code> this callback will run on a different thread from the rest of your code. Likewise, if you execute SQL on a different thread, this callback will be executed on that thread. This callback should be <a href="http://en.wikipedia.org/wiki/Re-entrant_code">reentrant</a> if any of the above applies to your use of the storage APIs!</p>
+</div>
+
+<br>
+
+<pre class="eval">void onStep(
+  in mozIStorageValueArray aFunctionArguments
+);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>aFunctionArguments</code></dt>
+ <dd>A <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIStorageValueArray" title="">mozIStorageValueArray</a></code> holding the arguments passed in to the function.</dd>
+</dl>
+
+<h3 id="onFinal" name="onFinal()">onFinal()</h3>
+
+<p>This is called after all results have been obtained and notified via <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIStorageAggregateFunction" title="">mozIStorageAggregateFunction</a></code>.  The implementation should finish its calculations on the data, and return a result.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note</strong> This callback is executed on the thread that the statement or trigger is executing on. If you use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/mozIStorageConnection#executeAsync()">mozIStorageConnection.executeAsync()</a></code> or, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/mozIStorageStatement#executeAsync()">mozIStorageStatement.executeAsync()</a></code> this callback will run on a different thread from the rest of your code. Likewise, if you execute SQL on a different thread, this callback will be executed on that thread. This callback should be <a href="http://en.wikipedia.org/wiki/Re-entrant_code">reentrant</a> if any of the above applies to your use of the storage APIs!</p>
+</div>
+
+<br>
+
+<pre class="eval">nsIVariant onFinal()</pre>
+
+<h6 id="Return" name="Return">Return value</h6>
+
+<p>An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIVariant" title="">nsIVariant</a></code> this is the return value of the function.</p>
+
+<h2 id="Sample_Code">Sample Code</h2>
+
+<p>Both of the following code samples assume that the variable dbConn is an opened <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIStorageConnection" title="">mozIStorageConnection</a></code>.</p>
+
+<h3 id="JavaScript">JavaScript</h3>
+
+<pre class="brush: js">// First, create our object that will represent our function.
+var standardDeviationFunc = {
+  _numbers: [],
+  onStep: function(aArguments) {
+    this._numbers.push(aArguments.getInt32(0));
+  },
+  onFinal: function() {
+    let total = 0;
+    let iLength = this._numbers.length;
+    this._numbers.forEach(function(elt) { total += elt });
+    let mean = total / this._numbers.length;
+    let data = this._numbers.map(function(elt) {
+      let value = elt - mean;
+      return value * value;
+    });
+    total = 0;
+    data.forEach(function(elt) { total += elt });
+    this._numbers = [];
+    return Math.sqrt(total / iLength);
+  }
+};
+
+// Now, register our function with the database connection.
+dbConn.createAggregateFunction("stdDev", 1, standardDeviationFunc);
+
+// Run some query that uses the function.
+let stmt = dbConn.createStatement("SELECT stdDev(value) FROM some_table");
+try {
+  while (stmt.executeStep()) {
+    // handle the results
+  }
+}
+finally {
+  stmt.reset();
+}
+</pre>
+
+<h3 id="C">C++</h3>
+
+<pre class="brush: cpp">// First, create our class that will represent our function.
+class standardDeviationFunc : public mozIStorageAggregateFunction
+{
+public:
+  NS_IMETHOD OnStep(mozIStorageValueArray *aArguments)
+  {
+    PRInt32 value;
+    nsresult rv = aArguments-&gt;GetInt32(&amp;value);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    mNumbers.AppendElement(value);
+  }
+
+  NS_IMETHOD OnFinal(nsIVariant **_result)
+  {
+    PRInt64 total = 0;
+    for (PRUint32 i = 0; i &lt; mNumbers.Length(); i++)
+      total += mNumbers[i];
+    PRInt32 mean = total / mNumbers.Length();
+
+    nsTArray&lt;PRInt64&gt; data(mNumbers);
+    for (PRUint32 i = 0; i &lt; data.Length(); i++) {
+      PRInt32 value = data[i] - mean;
+      data[i] = value * value;
+    }
+
+    total = 0;
+    for (PRUint32 i = 0; i &lt; data.Length(); i++)
+      total += data[i];
+
+    nsCOMPtr&lt;nsIWritableVariant&gt; result =
+      do_CreateInstance("@mozilla.org/variant;1");
+    NS_ENSURE_TRUE(result, NS_ERROR_OUT_OF_MEMORY);
+
+    rv = result-&gt;SetAsDouble(sqrt(double(total) / double(data.Length())));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    NS_ADDREF(*_result = result);
+    return NS_OK;
+  }
+private:
+  nsTArray&lt;PRInt32&gt; mNumbers;
+};
+
+// Now, register our function with the database connection.
+nsCOMPtr&lt;mozIStorageFunction&gt; func = new standardDeviationFunc();
+NS_ENSURE_TRUE(func, NS_ERROR_OUT_OF_MEMORY);
+nsresult rv = dbConn-&gt;CreateFunction(
+  NS_LITERAL_CSTRING("stdDev"),
+  1,
+  func
+);
+NS_ENSURE_SUCCESS(rv, rv);
+
+// Run some query that uses the function.
+nsCOMPtr&lt;mozIStorageStatement&gt; stmt;
+rv = dbConn-&gt;CreateStatement(NS_LITERAL_CSTRING(
+  "SELECT stdDev(value) FROM some_table"),
+  getter_AddRefs(stmt)
+);
+NS_ENSURE_SUCCESS(rv, rv);
+PRBool hasMore;
+while (NS_SUCCEEDED(stmt-&gt;ExecuteStep(&amp;hasMore)) &amp;&amp; hasMore) {
+  // handle the results
+}
+</pre>

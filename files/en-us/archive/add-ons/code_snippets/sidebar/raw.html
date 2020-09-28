@@ -1,0 +1,120 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This page provides several snippets demonstrating how to work with the Firefox sidebar.</p>
+
+<p>See the <a href="/en/Creating_a_Firefox_sidebar" title="en/Creating_a_Firefox_sidebar">Creating a Firefox sidebar</a> tutorial for step-by-step instructions on creating a Firefox sidebar extension.</p>
+
+<h2 id="Opening_and_closing_the_sidebar" name="Opening_and_closing_the_sidebar">Opening and closing the sidebar</h2>
+
+<p>Firefox provides a built-in <code>SidebarUI</code> object function defined in <code><a href="https://dxr.mozilla.org/mozilla-central/source/browser/base/content/browser-sidebar.js">browser-sidebar.js</a></code>. This means that the function is available in all browser windows. You can use this function to show, hide, or toggle sidebars.</p>
+
+<pre class="eval">// toggle the bookmarks sidebar (close it if it's open or
+// open it if it's currently closed)
+SidebarUI.toggle("viewBookmarksSidebar");
+
+// show the history sidebar, whether it's hidden or already showing
+SidebarUI.show("viewHistorySidebar");
+
+// hide the sidebar, if one is showing
+SidebarUI.hide();
+</pre>
+
+<div class="note">
+<p>Avoid opening the sidebar on startup. Users have been known to complain about this "feature", and <a class="external" href="http://groups.google.com/group/mozilla.dev.extensions/msg/e6a6019e034975bd">if two or more extensions try to open their sidebars on startup, the user will see a flurry of sidebars opening and closing with which ever extension going last "winning"</a>.</p>
+</div>
+
+<h2 id="Accessing_the_sidebar_from_a_browser.xul_script" name="Accessing_the_sidebar_from_a_browser.xul_script">Web panels sidebar</h2>
+
+<p>Content such as web pages can be safely loaded as sidebar in the "viewWebPanelsSidebar". Bookmarks with "Load this bookmark in sidebar" checked in the properties open in the  "viewWebPanelsSidebar". A web page can use <a href="/en/DOM/window.sidebar" title="window.sidebar">window.sidebar</a> to create bookmark with that property. To open a page in the "viewWebPanelsSidebar" from chrome code (browser/addon/extension) such as from menuitem, it can call:<br>
+ <code>openWebPanel(aTitle, aURI);</code></p>
+
+<h2 id="Accessing_the_sidebar_from_a_browser.xul_script" name="Accessing_the_sidebar_from_a_browser.xul_script">Accessing the sidebar from a browser.xul script</h2>
+
+<p>The sidebar content is always in a document separate from the main browser document (the sidebar is actually implemented as a XUL <code><a href="/en-US/docs/Mozilla/Tech/XUL/browser" title="browser">browser</a></code> element). This means you can't directly access the sidebar content from a script referenced from a browser.xul overlay.</p>
+
+<p>To access your sidebar's <a href="/en-US/docs/Web/API/Window" title="The window object represents a window containing a DOM document; the document property points to the DOM document loaded in that window."><code>window</code></a> or <a href="/en-US/docs/Web/API/Document" title="The Document interface represents any web page loaded in the browser and serves as an entry point into the web page's content, which is the DOM tree."><code>document</code></a> objects, you need to use the <code>contentWindow</code> or <code>contentDocument</code> properties of <code>document.getElementById("sidebar")</code> respectively. For example the code below calls a function defined in the sidebar's context:</p>
+
+<pre class="eval">var sidebarWindow = document.getElementById("sidebar").contentWindow;
+// Verify that our sidebar is open at this moment:
+if (sidebarWindow.location.href ==
+      "<a class="external" rel="freelink">chrome://yourextension/content/whatever.xul</a>") {
+  // call "yourNotificationFunction" in the sidebar's context:
+  sidebarWindow.yourNotificationFunction(anyArguments);
+}
+</pre>
+
+<h2 id="Accessing_the_sidebar_from_a_browser.xul_script" name="Accessing_the_sidebar_from_a_browser.xul_script">Testing which sidebar is open</h2>
+
+<p>The sidebar content may contain different panels (bookmarks, history, webpanel, etc.) and sometimes one wants to only act on the sidebar when it contains a specific panel. The good practice to determine which sidebar is open at a time is by testing in location property, which is a chrome URL:</p>
+
+<pre>var sidebarWindow = document.getElementById("sidebar").contentWindow;
+if (sidebarWindow.location.href == "chrome://yourextension/content/whatever.xul") {
+  // Act on the sidebar content
+}</pre>
+
+<p>For example to test if the <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/browser/base/content/web-panels.js" title="http://mxr.mozilla.org/mozilla-central/source/browser/base/content/web-panels.js">web panel</a> from Firefox is open: </p>
+
+<pre class="eval">var sidebarWindow = document.getElementById("sidebar").contentWindow;
+if (sidebarWindow.location.href == "<a class="external" rel="freelink">chrome://browser/content/web-panels.xul</a>") {
+  // Act on the sidebar content only if it is the web panels
+}
+</pre>
+
+<h2 id="Accessing_the_browser.xul_window_from_a_sidebar_script" name="Accessing_the_browser.xul_window_from_a_sidebar_script">Accessing the browser.xul window from a sidebar script</h2>
+
+<p>See <a href="/en/Working_with_windows_in_chrome_code#Accessing_the_elements_of_the_top-level_document_from_a_child_window" title="en/Working_with_windows_in_chrome_code#Accessing_the_elements_of_the_top-level_document_from_a_child_window">Accessing the elements of the top-level document from a child window</a> section of <a href="/en/Working_with_windows_in_chrome_code" title="en/Working_with_windows_in_chrome_code">Working with windows in chrome code</a>.</p>
+
+<h2 id="Resizing_the_sidebar_programmatically" name="Resizing_the_sidebar_programmatically">Resizing the sidebar programmatically</h2>
+
+<p>In case you need to change the width of the sidebar, use the following code:</p>
+
+<pre class="eval">function setSidebarWidth(newwidth) {
+ var mainWindow = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+ .getInterface(Components.interfaces.nsIWebNavigation)
+ .QueryInterface(Components.interfaces.nsIDocShellTreeItem)
+ .rootTreeItem
+ .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+ .getInterface(Components.interfaces.nsIDOMWindow);
+ mainWindow.document.getElementById("sidebar-box").width=newwidth;
+}
+</pre>
+
+<p>or</p>
+
+<pre class="eval">function setSidebarWidth(newwidth) {
+  window.top.document.getElementById("sidebar-box").width=newwidth;
+}
+</pre>
+
+<p>You can also disable the ability to resize it manually, using the mouse, by hiding the sidebar's splitter element. For this snippet to work, you have to declare <code>mainWindow</code> as in the previous code block then write:</p>
+
+<pre class="eval">mainWindow.document.getElementById("sidebar-splitter").hidden = true;
+</pre>
+
+<p>Be aware that if you change the splitter's <code>hidden</code> attribute, you need to reset it to a safe value when your sidebar is closed, or replaced by another sidebar. For example, use this in your sidebar's <code>Unload</code> event handler:</p>
+
+<pre class="eval">mainWindow.document.getElementById("sidebar-splitter").hidden =
+  mainWindow.document.getElementById("sidebar-box").hidden;
+</pre>
+
+<h2 id="See_Also">See Also</h2>
+
+<ul>
+ <li>Bootstrap demo addon that creates a sidebar with HTML content: <a href="https://gist.github.com/Noitidart/8728393">https://gist.github.com/Noitidart/8728393</a></li>
+</ul>

@@ -1,0 +1,65 @@
+<h2 class="western" id="Loading_a_top_level_document_from_offline_cache">Loading a top level document from offline cache</h2>
+<p>This happens in nsHttpChannel::OpenCacheEntry(). All top level document loading (navigation) channels are set ChooseApplicationCache flag, which happens in nsDocShell::DoURILoad(). Channels having that flag set are searching for nsIApplicationCache object prior inspecting normal HTTP cache. nsIApplicationCacheService::ChooseApplicationCache is given the URL the channel is about to load. It synchronously returns an nsIApplicationCache object representing the most recent cache version from the most recent cache group containing the entry under the URL or a matching namespace.</p>
+<p>If no nsIApplicationCache object has been found, there is no offline cache to load from and the load continues a usual way by loading from normal HTTP cache, further steps are not executed.</p>
+<p>The channel remembers the nsIApplicationCache object.</p>
+<p>nsIApplicationCache is then queried a client ID (= the manifest URL + a unique time stamp). Then, nsICacheService is asked to open nsICacheSession with STORE_OFFLINE policy and the given client ID. Entry is queried using that session.</p>
+<p>nsHttpChannel::OnOfflineCacheEntryAvailable is then invoked.</p>
+<p>When aEntryStatus is a success code, entry has been found and we are loading it from the cache. LoadedFromApplicationCache flag is now set true on the channel.</p>
+<p>When aEntryStatus is a failure code, entry has not been found, but the URL is falling under one of the NETWORK or FALLBACK namespaces.</p>
+<p>When matching FALLBACK namespace, the associated fallback entry for it is remembered. The load then continues from the network as a usual load, using HTTP cache. When load of the resource fails fallback steps are performed (see “falling back on a resource load failure” chapter).</p>
+<h2 class="western" id="Associating_the_top_level_document_with_offline_cache">Associating the top level document with offline cache</h2>
+<p>This happens between document load start and the first sub-resource download start and is not about associating nsIApplicationCache object with the channel, but with the document object the load is performed for. Until steps described further the document doesn't know anything about its appcache. The association happens in nsContentSink::ProcessOfflineManifest() called from the HTML parser every time &lt;html&gt; tag has been parsed. ProcessOfflineManifest is an effective implementation of “cache selection algorithm” as described by the HTML5 spec.</p>
+<p>For purpose of this documentation it's enough to describe the simplest case ; for complete documentation of the selection algorithm refer to the spec or to the code.</p>
+<p>When the URL in the manifest attribute of the html tag is identical to the manifest URL the channel's nsIApplicationCache object belongs to and, the channel's LoadedFromApplicationCache flag is set, the document is associated with that nsIApplicationCache object and an update attempt for the manifest is scheduled after the document completely loads.</p>
+<h2 class="western" id="Marking_entries_as_foreign">Marking entries as foreign</h2>
+<p>When nsContentSink::ProcessOfflineManifest() discovers that the URL in the manifest attribute of the html tag is different from the manifest URL the channel's nsIApplicationCache object belongs to, the entry the document has been loaded from is marked “Foreign” and the page load is completely restarted. The load starts again from the top with a completely new channel. But this time the entry is not selected to load the top level document from. We search another, if available, potentially even in a different offline cache group.</p>
+<h2 class="western" id="Loading_subresources_of_a_document_using_offline_cache">Loading subresources of a document using offline cache</h2>
+<p>Each sub resource loading channel is set InheritApplicationCache flag. This flag is by default true, but it is dropped by nsDocShell::DoURILoad() to false only for top level document loading channels.</p>
+<p>The InheritApplicationCache flag instructs the channel to do GetInterface on its callbacks for nsIApplicationCacheContainer. This returns the top level document the whole load group is bound to. This is the same document object that is associated the nsIApplicationCache object during the “cache selection algorithm” in nsContentSink::ProcessOfflineManifest() described in “associating the top level document with offline cache” chapter above.</p>
+<p>nsIApplicationCacheContainer is then queried for nsIApplicationCache object. If found, the channel is then using that nsIApplicationCache object to load entries from.</p>
+<p>The following loading process decisions are then the same as for the top level load with one addition: when the entry is neither found in the cache nor matches any namespace in that cache we fail the resource load with DOCUMENT_NOT_FOUND.</p>
+<h2 class="western" id="Falling_back_on_a_resource_load_failure">Falling back on a resource load failure</h2>
+<p>When a resource previously matching a FALLBACK namespace failed to load from the network, we perform fallback to the previously remembered fallback entry. It's actually a redirect to the fallback URL loading from the associated nsIApplicationCache.</p>
+<h2 class="western" id="Updating_an_existing_cache_or_first_download_of_an_offline_cache">Updating an existing cache or first download of an offline cache</h2>
+<p>The process of updating or first caching is invoked asynchronously from nsContentSink::ProcessOfflineManifest() using nsOfflineCacheUpdateService.</p>
+<p>The implementation of offline cache update is in /uriloader/prefetch.</p>
+<p>nsOfflineCacheUpdateService is used to collect, schedule and generally take care of updates and its queue. Only one update is running at the time.</p>
+<p>nsOfflineCacheUpdate it self is the core of the update process.</p>
+<p>During initiation the update is first looking for an existing nsIApplicationCache object using nsIApplicationCacheService::GetActiveCache() with the manifest URL to load from as an argument. When found, this update is processing an “update” and this cache is used as a cache to satisfy each manifest item and the manifest it self load from. Otherwise, this is “first download”.</p>
+<p>Then creates a new nsIApplicationCache for the given manifest URL using nsIApplicationCacheService::CreateApplicationCache(). This new cache version is now pending to be activated after all following long and complicated download process passes. Until that it is not used for loading resources from.</p>
+<p>After these steps the update is in INITIALIZED state waiting to be scheduled.</p>
+<p>When the update is about to actually start, the scheduling service calls nsOfflineCacheUpdate::Begin() method, that switches the update to CHECKING state (+invokes onchecking event) and starts fetch of the manifest file.</p>
+<p>Note: whenever a load of an items (including the manifest) fails due to a network or server error or leads to a redirect, the update fails and completely rollbacks any changes made (i.e. all files downloaded are deleted and the new cache version is discarded.)</p>
+<p>An MD5 hash is then calculated from the manifest content we download from the server to be compared to existing MD5 (in case of an “update”).</p>
+<p>During the load, manifest is parsed according the “parsing the cache manifest” HTML5 spec, and lists of entries and namespaces are collected.</p>
+<p>After the manifest fetch is done, nsOfflineCacheUpdate::LoadCompleted() is called.</p>
+<p>nsOfflineCacheUpdate::LoadCompleted() is called for each finished entry load, including the manifest and is the main place handling each update state as following:</p>
+<ul>
+  <li>
+    <p>On CHECKING state, a state the update is at after manifest parsing has been done, LoadCompleted checks whether the new hash, i.e. the manifest content, differs or this is just “first download”. If so, the update switches to DOWNLOADING state and fetches in parallel items listed in the manifest by call to nsOfflineCacheUpdate::ProcessNextURI().</p>
+    <p>If the new hash is identical, update invokes onnoupdate event and is 'finished'. Then it associates any documents waiting for this update to finish with the current existing nsIApplicationCache.</p>
+    <p>If the manifest load failed, onerror event is invoked and the update 'finishes'.</p>
+    <p>The parallel load is implemented by asynchronous recursive calls to ProcessNextURI(), a method searching always a single entry that is scheduled to load. When found, channel is open for it (+onprogress event is invoked). ProcessNextURI then invokes it self asynchronously via dispatch to a main thread when not already on the concurrency limit of 15 loads. When concurrency limit is reached, the ProcessNextURI self-invocation cycle is stopped. From now on ProcessNextURI can only be called from LoadCompleted() again.</p>
+    <p>Note: the ProcessNextURI method early returns when state of the update is different then DOWNLOADING.</p>
+  </li>
+  <li>
+    <p>On DOWNLOADING state LoadCompleted checks whether load of the item succeeded. If so, its marked as valid in the new cache version and ProcessNextURI() is called. Otherwise, the update invokes onerror and 'finishes'.</p>
+    <ul>
+      <li>
+        <p>When ProcessNextURI discovers there are no more items to download it starts a “manifest check” implemented by nsManifestCheck.</p>
+        <p>nsManifestCheck downloads the manifest from the server one more time and checks its content has not changed again. The results is passed to the original update via ManifestCheckCompleted method.</p>
+        <p>When the manifest is identical, the cache is activated, onupdateready event is invoked and the update 'finishes'.</p>
+        <p>When the manifest has changed, the update is simply rescheduled, with limit of up to 3 retries (then it fails.)</p>
+        <p>When load of the manifest has failed or redirected, the original update invokes onerror and 'finishes'.</p>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p>On CANCELED state LoadCompleted invokes onerror event and 'finishes' the update (what transits the state to FINISHED). CANCELED can be set only by call to nsOfflineCacheUpdate::Cancel() public method that also cancels all running items downloads immediately.</p>
+  </li>
+  <li>
+    <p>On FINISHED state LoadCompleted just early returns. FINISHED state is set when updated is 'finished' and is the last state the update transits to after invoking one of the final DOM notifications (onnoupdate, onupdaterady or onerror.)</p>
+  </li>
+</ul>
+<p><br>
+   </p>

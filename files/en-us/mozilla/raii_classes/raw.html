@@ -1,0 +1,96 @@
+<p><a class="external" href="https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization" title="Resource acquisition is initialization">RAII</a> classes are useful when two operations (e.g., Lock/Unlock, AddRef/Release, PushState/PopState) must be paired.</p>
+
+<h2 id="Ensuring_RAII_classes_are_not_used_as_temporaries">Ensuring RAII classes are not used as temporaries</h2>
+
+<p>A common mistake when using RAII classes is to accidentally forget to name object, which causes its scope to be different from what is intended. For example, instead of writing:</p>
+
+<pre>  AutoLock lock(mMutex);</pre>
+
+<p>which causes the lock to be held until the end of the block, one might write:</p>
+
+<pre>  AutoLock(mMutex);</pre>
+
+<p>which erroneously causes the lock to be released at the end of the statement.</p>
+
+<p>We have two techniques for avoiding this problem: static analysis and runtime assertions.</p>
+
+<h3 id="Static_Analysis">Static Analysis</h3>
+
+<p>Static analysis passes are run on our testing infrastructure using our clang plugin, you can also run them locally</p>
+
+<p>Marking a RAII class for the static analysis is very simple, and performing this marking causes the static analysis to produce a build-time error whenever a RAII class is allocated as a temporary, on the heap, or in static storage.</p>
+
+<p>This involves just one addition to the class, and the inclusion of <a class="external" href="https://dxr.mozilla.org/mozilla-central/source/mfbt/Attributes.h">Attributes.h</a>:</p>
+
+<pre>class <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_RAII</span> nsAutoScriptBlocker {...}
+</pre>
+
+<p>This is much simpler and more thorough than the GuardObject runtime assertions, but are unfortunately currently only run on Mac OS X and Linux builds, which means that GuardObject should still be used for RAII guards which may be used in windows-only code.</p>
+
+<h3 id="Assertions">Assertions</h3>
+
+<p>Runtime assertions offer two benefits - firstly, they run on Windows, which the static analysis currently does not, and secondly they will run locally, even if the developer did not choose to run static analysis locally. The static analys</p>
+
+<p>Runtime assertions are often better at catching bugs in code that a developer is currently working on than static analysis, which he might not think to run. We have a set of macros that will cause a class to assert when it is instantiated at a temporary. They cause no extra complexity for users of the class, but they do slightly complicate the implementation of the class.</p>
+
+<p>These macros are provided in <a class="external" href="https://dxr.mozilla.org/mozilla-central/source/mfbt/GuardObjects.h">GuardObjects.h</a>.</p>
+
+<p>In the common case, using these macros involves these three additions to a class:</p>
+
+<pre>class MOZ_RAII nsAutoScriptBlocker {
+public:
+  explicit nsAutoScriptBlocker(JSContext *cx <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_PARAM</span>) { // Note: No ',' before macro
+    <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_INIT;</span>
+    nsContentUtils::AddScriptBlocker(cx);
+  }
+  ~nsAutoScriptBlocker() {
+    nsContentUtils::RemoveScriptBlocker();
+  }
+private:
+  <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER</span>
+ };
+</pre>
+
+<p>MOZ_GUARD_OBJECT_NOTIFIER_PARAM is added to the end of the constructor's parameter list. MOZ_GUARD_OBJECT_NOTIFIER_INIT is added as a statement in the constructor. MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER is added where private members should be declared.</p>
+
+<p>However, there are some variations for special cases:</p>
+
+<p>First, if the constructor (otherwise) takes no arguments, then you have to use the MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM macro instead. (This is needed because the macro adds a parameter only when DEBUG is defined, and in this case, it can't add the leading comma.)</p>
+
+<pre>class MOZ_RAII nsAutoScriptBlocker {
+public:
+  explicit nsAutoScriptBlocker(<span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM</span>) {
+    <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_INIT;</span>
+    nsContentUtils::AddScriptBlocker();
+  }
+  ~nsAutoScriptBlocker() {
+    nsContentUtils::RemoveScriptBlocker();
+  }
+private:
+  <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER</span>
+ };</pre>
+
+<p>Second, if the constructor is not inline, it needs the parameter added in its implementation as well. In this case, the implementation must use the MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL macro to add to the implementation:</p>
+
+<pre>nsAutoScriptBlocker::nsAutoScriptBlocker(JSContext *cx <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL</span>)
+{
+    <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_INIT;</span>
+    nsContentUtils::AddScriptBlocker(cx);
+}</pre>
+
+<p>or, if it is the only parameter:</p>
+
+<pre>nsAutoScriptBlocker::nsAutoScriptBlocker(<span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL</span>)
+{
+    <span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_INIT;</span>
+    nsContentUtils::AddScriptBlocker();
+}</pre>
+
+<p>Finally, if an RAII class that uses these macros has derived classes, the derived classes must also use some of the macros in order to get the benefit of the assertions. In particular, a class derived from a class using these macros does not use MOZ_GUARD_OBJECT_NOTIFIER_INIT or MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER, but instead uses either MOZ_GUARD_OBJECT_NOTIFIER_PARAM_TO_PARENT or MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_TO_PARENT:</p>
+
+<pre>nsSpecialAutoScriptBlocker::nsSpecialAutoScriptBlocker(<span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL</span>)
+  :  nsAutoScriptBlocker(<span style="background: #808000 none repeat scroll 0% 0%;">MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_TO_PARENT</span>)
+{
+}</pre>
+
+<p>Note that a few of these macros aren't actually implemented yet, but they can be implemented when needed.</p>

@@ -1,0 +1,87 @@
+<p>This example creates a simple tone generator, and plays the resulting tone. The function <code>requestSoundData()</code> produces the samples to be played. This function is called at a certain interval through the <code>setInterval()</code> function. The function <code>mozWriteAudio()</code> is called to write those samples produced in the audio stream. In order to always have samples to play, a buffer of 500 ms is created. The function <code>mozCurrentSampleOffset()</code> is used to know the position of the samples being played so that we can fill a 500 ms buffer of audio samples. </p>
+
+<pre class="brush: js">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;JavaScript Audio Write Example&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;input type="text" size="4" id="freq" value="440"&gt;&lt;label for="hz"&gt;Hz&lt;/label&gt;
+    &lt;button onclick="start()"&gt;play&lt;/button&gt;
+    &lt;button onclick="stop()"&gt;stop&lt;/button&gt;
+
+    &lt;script type="text/javascript"&gt;
+      function AudioDataDestination(sampleRate, readFn) {
+        // Initialize the audio output.
+        var audio = new Audio();
+        audio.mozSetup(1, sampleRate);
+
+        var currentWritePosition = 0;
+        var prebufferSize = sampleRate / 2; // buffer 500ms
+        var tail = null;
+
+        // The function called with regular interval to populate
+        // the audio output buffer.
+        setInterval(function() {
+          var written;
+          // Check if some data was not written in previous attempts.
+          if(tail) {
+            written = audio.mozWriteAudio(tail);
+            currentWritePosition += written;
+            if(written &lt; tail.length) {
+              // Not all the data was written, saving the tail...
+              tail = tail.subarray(written);
+              return; // ... and exit the function.
+            }
+            tail = null;
+          }
+
+          // Check if we need add some data to the audio output.
+          var currentPosition = audio.mozCurrentSampleOffset();
+          var available = currentPosition + prebufferSize - currentWritePosition;
+          if(available &gt; 0) {
+            // Request some sound data from the callback function.
+            var soundData = new Float32Array(parseFloat(available));
+            readFn(soundData);
+
+            // Writing the data.
+            written = audio.mozWriteAudio(soundData);
+            if(written &lt; soundData.length) {
+              // Not all the data was written, saving the tail.
+              tail = soundData.slice(written);
+            }
+            currentWritePosition += written;
+          }
+        }, 100);
+      }
+
+      // Control and generate the sound.
+
+      var frequency = 0, currentSoundSample;
+      var sampleRate = 44100;
+
+      function requestSoundData(soundData) {
+        if (!frequency) {
+          return; // no sound selected
+        }
+
+        var k = 2* Math.PI * frequency / sampleRate;
+        for (var i=0, size=soundData.length; i&lt;size; i++) {
+          soundData[i] = Math.sin(k * currentSoundSample++);
+        }
+      }
+
+      var audioDestination = new AudioDataDestination(sampleRate, requestSoundData);
+
+      function start() {
+        currentSoundSample = 0;
+        frequency = parseFloat(document.getElementById("freq").value);
+      }
+
+      function stop() {
+        frequency = 0;
+      }
+  &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</pre>

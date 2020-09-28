@@ -1,0 +1,128 @@
+---
+title: GCIntegration
+slug: SpiderMonkey/GCIntegration
+tags:
+  - Developing Mozilla
+  - Firefox
+  - Garbage collection
+  - Intermediate
+  - Intro
+  - JSAPI
+  - NeedsUpdate
+  - SpiderMonkey
+  - Tools
+  - memory
+---
+<p>The SpiderMonkey garbage collector (GC) will be changing a lot in the future. This page is intended to explain the changes that are happening, with a focus on how they will affect Gecko code that uses JSAPI. At a high level, there are three issues to be aware of:</p>
+
+<ul>
+ <li>Interactions between the garbage collector and the cycle collector</li>
+ <li>Incremental garbage collection</li>
+ <li>Moving garbage collection</li>
+</ul>
+
+<p>The APIs for GC/CC interaction and incremental GC are already in place. Development of moving GC (both generational and compacting) is under way, but only in the JavaScript shell so far. We're still thinking about how the APIs for moving GC should work.</p>
+
+<h3 id="Overview">Overview</h3>
+
+<p>Before digging too deep, here are some quick rules of thumb for how to write code that will work smoothly with the GC regardless of changes that happen in the future.</p>
+
+<ul>
+ <li>Avoid having C++ objects that point to JS objects (unless it's just to their own wrapper--that's okay). It's safe for JS objects to point to other JS objects or to C++ objects. If there is a choice between storing a GC thing inside a C++ object or its JS corresponding representation, prefer to store it in the JS representation.</li>
+ <li>Never store GC things in a <code>JSObject</code>'s private pointer (i.e., via <code>JS_SetPrivate()</code>). It's better to store them in reserved slots, since those will automatically be traced if the object is native.</li>
+ <li>As much as possible, avoid trace hooks. If objects are structured as described above, there should be no need for them.</li>
+ <li>This should be obvious by now, but never ever allow a GC thing point to a GC thing in a different compartment unless it's a wrapper that's registered in the cross-compartment wrapper map.</li>
+</ul>
+
+<p>Now, on to the details...</p>
+
+<h3 id="GCCC_interaction">GC/CC interaction</h3>
+
+<p>&lt;To be done later.&gt;</p>
+
+<h3 id="Incremental_GC">Incremental GC</h3>
+
+<p>Incremental GC divides GC marking into time slices. In between these slices, non-GC code is allowed to run. Done naively, this technique can lead to reachable object not being marked. Consider the following example.</p>
+
+<p>{{ Svg{source: "http://people.mozilla.org/~wmccloskey/incremental1.svg", embedding: "iframe", height:"130"} }}</p>
+
+<p>Assume object B is already marked, as in the leftmost frame, while objects A and C have not been marked yet. In the middle frame some code creates a pointer from B to C and destroys the pointer from A to C. In the last frame, A gets marked by the GC. The problem is that C is never marked even though it's reachable. This will likely lead to a crash if C is accessed via B.</p>
+
+<h4 id="Write_barriers">Write barriers</h4>
+
+<p>All the schemes for preventing this sort of thing require write barriers. Every time a pointer is updated, a small amount of code runs that may mark one of the objects involved in the update. This only happens if an incremental GC is in progress. SpiderMonkey uses a simple barrier commonly called a "snapshot at the beginning" barrier. The fundamental invariant that this barrier guarantees is that any object reachable when the incremental GC started will be marked. In addition, objects allocated during the incremental GC are marked unconditionally. At the end of the GC, any reachable object must have been newly allocated or else reachable at the beginning, since objects can never go from unreachable to reachable. The end result is that all reachable objects are marked.</p>
+
+<p>A simple way to visualize the invariant is that, when an incremental GC starts, an "initial snapshot" of the heap is taken. The snapshot consists of all objects reachable from the roots via traced pointers--as if someone did a <code>JS_DumpHeap()</code> at the beginning of the incremental GC. These objects, as well as any that were allocated since the GC started, are guaranteed to be marked.</p>
+
+<p>The write barrier guarantees the snapshot-at-the-beginning (SATB) invariant in a simple way. If, in the middle of an incremental GC, a pointer to an object X is destroyed (meaning overwritten or no longer traced for some reason), then X will be marked. In the diagram above, C will be marked when the pointer from A to C is nulled out. This barrier is conservative—it assumes that any destroyed pointer was pointing to an object that was part of the initial snapshot. Consequently, more objects may be marked than necessary, but those objects will be collected in the next GC if they're unreachable. SpiderMonkey implements the write barrier internally. Any time a property is updated in the VM or the JIT, a write barrier is invoked. The troublesome spots are the pointers in Gecko that SpiderMonkey doesn't know about.</p>
+
+<p>To understand the problem more, let's consider some reasons why barriers are <em>not</em> needed in common areas of Firefox:</p>
+
+<ul>
+ <li>If a pointer is never changed after it's initialized, then there's no need for a write barrier. Initializing a pointer never requires a write barrier because there was nothing being destroyed that might have part of the initial snapshot.</li>
+ <li>If a pointer is not traced via <code>JS_CALL_TRACER</code> or any similar mechanism, then there's no need for a write barrier (although see below about read barriers). The initial snapshot only contains objects reachable via traced pointers, so there's no danger that overwriting an untraced pointer will disrupt the snapshot.</li>
+ <li>Some pointers are guaranteed to be marked in the first slice of the GC. Therefore, it's not possible for code to modify them between when the initial snapshot is taken and when the pointer is marked, so no write barrier is needed. Many pointers in Gecko are traced via <span class="p"><code><a class="d external" href="http://mxr.mozilla.org/mozilla-central/ident?i=NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS">NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS</a></code> and its related macros. These pointers are always traced in the first slice, and so they don't need a write barrier.</span> Many other XPConnect pointers are also traced in this way. See <code><a class="external" href="http://mxr.mozilla.org/mozilla-central/search?string=XPCJSRuntime%3A%3ATraceBlackJS" title="http://mxr.mozilla.org/mozilla-central/search?string=XPCJSRuntime%3A%3ATraceBlackJS">XPCJSRuntime::TraceBlackJS</a></code> and <code><a class="external" href="http://mxr.mozilla.org/mozilla-central/search?string=XPCJSRuntime%3A%3ATraceGrayJS" title="http://mxr.mozilla.org/mozilla-central/search?string=XPCJSRuntime%3A%3ATraceGrayJS">XPCJSRuntime::TraceGrayJS</a></code>.</li>
+</ul>
+
+<p><span class="p">If a pointer doesn't fit one of these categories, then it probably requires a write barrier. Before the pointer is modified (except initializing writes, which don't need a barrier), </span>you should call <code>IncrementalReferenceBarrier()</code> or <code>IncrementalValueBarrier()</code>, passing it the value the pointer held before the write. There are several examples of this usage in XPConnect.</p>
+
+<p>The <code>js::ObjectPtr</code> class is intended to serve as a drop-in replacement for <code>JSObject *</code>. It has an assignment operator that automatically invokes a write barrier. So far, though, there hasn't been much use for this class—there aren't many places outside of SpiderMonkey where a write barrier is required.</p>
+
+<h4 id="Read_barriers">Read barriers</h4>
+
+<p>"Weak pointers" are a major complication to the scheme described above. For the purposes of this article, a weak pointer is one that is not traced during GC. At the end of the GC, if the pointer refers to an object that is not reachable via some other path, then it will be nulled out or dropped in some way. If the object is still reachable, then the pointer will be left alone. To see how weak pointers can cause trouble, consider the following situation:</p>
+
+<p>{{ Svg{source: "http://people.mozilla.org/~wmccloskey/incremental2.svg", embedding: "iframe", height:"130"} }}</p>
+
+<p>In the left frame, A has a weak pointer to C. Assume that an incremental GC has already started, and A and B have been marked. C was not marked by A because weak pointers are not traced. Now let's assume, between the left and right frames, that some code has read the weak pointer to C and then created a regular (strong) reference from B to C. Now C is reachable, but it won't be marked because B was already fully marked. No write barrier is invoked when creating the pointer from B to C because no pointer is being destroyed. As a concrete example of this, imagine that we call <code>GetWrapper()</code> on an <code>nsWrapperCache</code> instance. This will return a <code>JSObject *</code>. Then this pointer is installed as a property on another <code>JSObject</code> that was already marked.</p>
+
+<p>The solution to this problem is to require a read barrier on every weak reference. Whenever the weak pointer is read during incremental marking, we mark the object that it points to. In the example above, C would be marked when reading it out of A.</p>
+
+<p>A very simple way to identify weak pointers is to look for usage of <code><a class="external" href="http://mxr.mozilla.org/mozilla-central/ident?i=JS_IsAboutToBeFinalized" title="http://mxr.mozilla.org/mozilla-central/ident?i=JS_IsAboutToBeFinalized">JS_IsAboutToBeFinalized()</a></code>. If a pointer is weak, there's a good chance that <code>JS_IsAboutToBeFinalized()</code> is used to null it out if its referent is about to be finalized. However, this search misses some cases like the wrapper cache, where <code><a class="external" href="http://mxr.mozilla.org/mozilla-central/ident?i=ClearWrapper" title="http://mxr.mozilla.org/mozilla-central/ident?i=ClearWrapper">ClearWrapper()</a></code> is called directly from a finalizer.</p>
+
+<p>One saving grace is that most weak pointers <em>already</em> have a read barrier on them: <code>xpc_UnmarkGray()</code>. Besides gray unmarking, this function automatically checks if an incremental GC is running and, if so, marks the given object black. This is how the read barrier for <code>nsWrapperCache::GetWrapper()</code> actually works.</p>
+
+<h3 id="Moving_GC">Moving GC</h3>
+
+<p>There are two forms of moving GC we are likely to implement: generational GC and compacting GC. In generational GC, certain newly allocated are moved from one place (a nursery) to another (the tenured space). At least initially, only<code> JSString</code>s and <code>JSObject</code>s without finalizers will be allocated in the nursery, and so only they will be subject to moving. Compacting GC is more exhaustive: every object is subject to moving.</p>
+
+<h4 id="Stack_roots">Stack roots</h4>
+
+<p>To implement moving GC, we will remove the conservative stack scanner. We don't have a fully formed plan in place for what will replace it, but whatever it is will likely resemble auto-rooters. The main difference is that <em>every</em> reference will need to be rooted. For example, the following code will be incorrect:</p>
+
+<pre class="brush: js notranslate"><code>AutoRootedObject obj1 = ...;</code>
+<code>JSObject *obj2 = obj1;</code>
+<code>// use obj2</code>
+</pre>
+
+<p>If a GC runs in the middle of this code, and if <code>obj1</code>/<code>obj2</code> is moved, then the <code>obj1</code> pointer will be updated to point to the new location. The <code>obj2</code> pointer will not, and it will contain garbage.</p>
+
+<p>We have a three-pronged strategy for ensuring that no auto-rooters are missing:</p>
+
+<ul>
+ <li>All SpiderMonkey APIs will require that only rooted objects be passed to them. So you might be able to get your hands on an unrooted object, but you won't be able to do anything with it.</li>
+ <li>Brian Hackett has written a dynamic analysis that uses the existing conservative stack scanner to find unrooted pointers to GC things on the stack and poisons them. If these pointers are ever used again, the program will crash. We expect to test heavily with this analysis.</li>
+ <li>There's also a static analysis in the works that uses Sixgill.</li>
+</ul>
+
+<h4 id="Heap_pointers">Heap pointers</h4>
+
+<p>Pointers to GC things from the heap must be treated differently because they don't have stack-like lifetimes. For pointers that are traced using <code>JS_CALL_TRACER</code> we will most likely change the API so that the <strong>address</strong> of the pointer being traced is passed in, rather than the pointer itself. Then, if we need to move the object, we'll update the pointer to it as well.</p>
+
+<p>For pointers that are not traced, the solutions become more ad-hoc. It's likely that <code>JS_IsAboutToBeFinalized()</code> will also be changed to take the address of the pointer. If the given object is still alive, but it moved, then we can update the pointer. For wrapper caches, we may add a new class hook that is invoked if the object moves. Objects with wrapper caches could implement that hook to find their corresponding C++ object and update the wrapper field to point to the new location.</p>
+
+<p>Undoubtedly there will be more esoteric cases. We will need to handle pointers to array slots and string characters specially, since those may actually be pointers into the middle of GC things (inline slots or inline chars). We will need to explore how these situations occur in the browser now, and how best to handle them.</p>
+
+<h4 id="Write_barriers_2">Write barriers</h4>
+
+<p>Generational GC needs its own write barrier. The goal is to keep a list, called the remembered set, of all pointers from the tenured generation into the nursery. So every time a pointer is written somewhere, we need to check if the source is in the tenured gen and if the destination is in the nursery. If so, the pointer is added to the remembered set. The remembered set allows us to collect the nursery without needing to look at the tenured generation at all, aside from the remembered set entries.</p>
+
+<p>There are three simplifications, similar to the ones for incremental write barriers, that will allow us to avoid write barriers in some cases.</p>
+
+<ul>
+ <li>Only strings and objects without finalizers will be stored in the nursery, at least initially. Consequently, if the thing being stored is known to have a finalizer, then there is no need for a write barrier. Note that what matters is the value being written—if the object being written to has a finalizer, a write barrier may still be required.</li>
+ <li>If a pointer is not traced, as by <code>JS_CALL_TRACER</code>, then there is no need for a write barrier.</li>
+ <li>If a pointer is a root, then that pointer will be scanned during every nursery collection, so there is no need for a write barrier. As above, this means that classes governed by <span class="p"><code><a class="d external" href="http://mxr.mozilla.org/mozilla-central/ident?i=NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS">NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS</a></code> do not need a write barrier on their fields.</span></li>
+</ul>
+
+<p>We have not decided yet on an API for write barriers. We don't know yet how many there will be outside of the JavaScript engine.</p>

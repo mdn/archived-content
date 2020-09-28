@@ -1,0 +1,85 @@
+<div class="note">
+<p>In <span title="(Firefox 13 / Thunderbird 13 / SeaMonkey 2.10)">Gecko 13</span> this Interface was merged into the <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch" title="">nsIPrefBranch</a></code> interface.</p>
+</div>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#addObserver()">addObserver</a>(in string aDomain, in nsIObserver aObserver, in boolean aHoldWeak);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeObserver()">removeObserver</a>(in string aDomain, in nsIObserver aObserver);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="addObserver()" name="addObserver()">addObserver()</h3>
+
+<p>Add a preference change observer. On preference changes, the following arguments will be passed to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIObserver#observe()">nsIObserver.observe()</a></code>:</p>
+
+<p><code>aSubject</code> - The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch" title="">nsIPrefBranch</a></code> object (this).</p>
+
+<p><code>aTopic</code> - The string defined by <code>NS_PREFBRANCH_PREFCHANGE_TOPIC_ID</code></p>
+
+<p><code>aData</code> - The name of the preference which has changed, relative to the "root" of the <code>aSubject</code> branch.</p>
+
+<p><code>aSubject.get*Pref(aData)</code> will get the new value of the modified preference. For example, if your observer is registered with <code>addObserver("bar.", ...)</code> on a branch with root <code>"foo."</code>, modifying the preference <code>"foo.bar.baz"</code> will trigger the observer, and <code>aData</code> parameter will be <code>"bar.baz"</code>.</p>
+
+<pre class="eval">void addObserver(
+  in string aDomain,
+  in nsIObserver aObserver,
+  in boolean aHoldWeak
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>aDomain</code></dt>
+ <dd>The preference on which to listen for changes. This can be the name of an entire branch to observe. For example holding the "root" <code>prefbranch</code> and calling <code>addObserver("foo.bar.", ...)</code> will observe changes to <code>foo.bar.baz</code> and <code>foo.bar.bzip</code>.</dd>
+ <dt><code>aObserver</code></dt>
+ <dd>The object to be notified if the preference changes.</dd>
+ <dt><code>aHoldWeak</code></dt>
+ <dd><code>true</code> holds a weak reference to <code>aObserver</code>. The object must implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupportsWeakReference" title="">nsISupportsWeakReference</a></code> interface or this will fail. <code>false</code> holds a strong reference to <code>aObserver</code>.</dd>
+</dl>
+
+<h3 id="removeObserver()" name="removeObserver()">removeObserver()</h3>
+
+<p>Remove a preference change observer.</p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> You must call <code>removeObserver</code> method on the same nsIPrefBranch2 instance on which you called <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrefBranch2#addObserver()">addObserver()</a></code> method in order to remove <code>aObserver</code>; otherwise, the observer will not be removed.</div><p></p>
+
+<pre class="eval">  void removeObserver(
+     in string aDomain,
+     in nsIObserver aObserver
+  );
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>aDomain</code></dt>
+ <dd>The preference which is being observed for changes.</dd>
+ <dt><code>aObserver</code></dt>
+ <dd>An observer previously registered with <a href="#addObserver()">addObserver</a>.</dd>
+</dl>
+
+<h2 id="Remarks" name="Remarks">Remarks</h2>
+
+<p>Registering as a preference observer can open an object to potential cyclical references which will cause memory leaks. These cycles generally occur because an object both registers itself as an observer (causing the branch to hold a reference to the observer) and holds a reference to the branch object for the purpose of getting/setting preference values. There are 3 approaches which have been implemented in an attempt to avoid these situations:</p>
+
+<ol>
+ <li>The nsPrefBranch object supports <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupportsWeakReference" title="">nsISupportsWeakReference</a></code>. Any consumer may hold a weak reference to it instead of a strong one.</li>
+ <li>The nsPrefBranch object listens for xpcom-shutdown and frees all of the objects currently in its observer list. This ensures that long lived objects (services for example) will be freed correctly.</li>
+ <li>The observer can request to be held as a weak reference when it is registered. This insures that shorter lived objects (say one tied to an open window) will not fall into the cyclical reference trap.</li>
+</ol>
+
+<p>The list of registered observers may be changed during the dispatch of nsPref:changed notification. However, the observers are not guaranteed to be notified in any particular order, so you can't be sure whether the added/removed observer will be called during the notification when it is added/removed. </p>
+
+<p>It is possible to change preferences during the notification.</p>
+
+<p>It is not safe to change observers during this callback in releases before <span title="(Firefox 3)">Gecko 1.9</span>. If you want a safe way to remove a preference observer, please use an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITimer" title="">nsITimer</a></code>.</p>

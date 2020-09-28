@@ -1,0 +1,227 @@
+<p>The external-media-tests is a <a href="/en-US/docs/Mozilla/QA/Marionette">Marionette</a>-based test suite designed to test playback of video elements on arbitrary web pages. Right now, tests using this framework play videos on YouTube and Netflix pages, but the basic tests should be usable for any website which plays back HTML5 video. MediaTestCase uses the <a href="http://firefox-puppeteer.readthedocs.org/en/latest/">Firefox Puppeteer</a> library.</p>
+
+<p>Information about the use of external-media-tests in Mozilla automation can be found on <a href="https://wiki.mozilla.org/Auto-tools/Projects/Platform_Quality/External_Media_Tests">wiki.mozilla.org</a>.</p>
+
+<h2 id="Setup">Setup</h2>
+
+<p>Normally, you get this source by cloning a Firefox repo such as mozilla-central. The path to these tests would be in &lt;mozilla-central&gt;/dom/media/test/external, and these instructions refer to this path as <code>$PROJECT<strong style="color: rgb(0, 128, 0); font-weight: bold;">_</strong>HOME</code>. You can also get these tests by downloading one of the <code>tests.comon.zip</code> files matching a downloaded Firefox build from <a href="http://archive.mozilla.org">http://archive.mozilla.org</a>, or using <code>mozdownload</code> with the <code>--extension tests.common.zip</code> parameters.</p>
+
+<h3 id="Running_from_a_build">Running from a build</h3>
+
+<p>If you have built Firefox using <code>./mach build</code> from a source tree such as mozilla-central, you can run the following command:</p>
+
+<pre><code>$ ./mach external-media-tests</code></pre>
+
+<p>You can pass any of the test options on this command line. They are listed below.</p>
+
+<h3 id="Running_with_an_installer_and_a_tests_payload">Running with an installer and a tests payload</h3>
+
+<p>If you are testing a version of Firefox that you have not built, you must set up a virtualenv to run tests from. You will need a path to the installer or binary of Firefox.</p>
+
+<ul>
+ <li>Create a virtualenv called <code>foo</code>.</li>
+</ul>
+
+<pre><code>$ virtualenv foo
+$ source foo/bin/activate #or `foo\Scripts\activate` on Windows</code></pre>
+
+<ul>
+ <li>Install <code>external-media-tests</code> in development mode. (To get an environment that is closer to what is used in Mozilla's automation jobs, run <code>pip install -r requirements.txt</code> first.)</li>
+</ul>
+
+<pre><code>$ python setup.py develop ``` Now `external-media-tests` should be a recognized command. Try `external-media-tests --help` to see if it works.</code></pre>
+
+<h2 id="Running_the_Tests">Running the Tests</h2>
+
+<p>In the examples below, <code>$FF_PATH</code> is a path to a recent Firefox binary. If you are running from a source build, the commands below should be invoked with:</p>
+
+<pre><code>$ ./mach external-media-tests</code></pre>
+
+<p>If you are running with a virtualenv, you will need to run like this:</p>
+
+<pre><code>$ external-media-tests --binary $FF_PATH</code></pre>
+
+<p>or</p>
+
+<pre><code>$ external-media-tests --installer $FF_INSTALLER_PATH</code></pre>
+
+<p>or</p>
+
+<pre><code>$ external-media-tests --installer-url &lt;url to installer package&gt;</code></pre>
+
+<p>The following examples assume that you will use one of these command lines instead of <code>$EXTERNAL-MEDIA-TESTS</code>. This runs all the tests listed in <code>$PROJECT_HOME/external_media_tests/manifest.ini</code>:</p>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS</code></pre>
+
+<p>You can also run all the tests at a particular path:</p>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS some/path/foo</code></pre>
+
+<p>Or you can run the tests that are listed in a manifest file of your choice:</p>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS some/other/path/manifest.ini</code></pre>
+
+<p>By default, the URLs listed in <code>external_media_tests/urls/default.ini</code> are used for the tests, but you can also supply your ini file of URLs:</p>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS --urls some/other/path/my_urls.ini</code></pre>
+
+<h2 id="Running_EME_Tests">Running EME Tests</h2>
+
+<div class="note">
+<p>If you are running EME tests in a local build, you must build with the following parameters in your <code>mozconfig</code> file before you build Firefox:</p>
+
+<pre><code>ac_add_options --enable-eme=adobe</code></pre>
+
+<p>You must also copy the files <code>plugin-container.exe</code> and <code>voucher.bin</code> from a production build into your <code>&lt;objdir&gt;/dist/bin</code> directory. This is not necessary when running production builds.</p>
+</div>
+
+<p>To run EME tests, you must use a Firefox profile that has the credentials of the service you are using stored in it. With Netflix, this will be created when you log in and save the credentials. You must also use a custom .ini file for URLs to the provider's content and indicate which test to run, as above. For example:</p>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS some/path/tests.ini --profile custom_profile_dir --urls some/path/provider-urls.ini</code></pre>
+
+<p><code>Note, the profile argument needs to specify the directory of a profile, not the name of that profile. For example, the following arguments could be used:</code></p>
+
+<pre>$ <code>$EXTERNAL-MEDIA-TESTS</code> dom/media/test/external/external_media_tests/playback/eme.ini --profile ~/AppData/Roaming/Mozilla/Firefox/profiles/6usy8n4x.mozilla-debug-netflix/ --urls dom/
+media/test/external/external_media_tests/urls/netflix/default.ini</pre>
+
+<h2 id="Running_tests_in_a_way_that_provides_information_about_a_crash">Running tests in a way that provides information about a crash</h2>
+
+<p>What if Firefox crashes during a test run? You want to know why! To report crash data, the test runner needs access to a <code>minidump_stackwalk</code> binary and a <code>symbols.zip</code> file.</p>
+
+<ol>
+ <li>Download a <code>minidump_stackwalk</code> binary for your platform (save it wherever). Get it from <a href="http://hg.mozilla.org/build/tools/file/tip/breakpad/">Breakpad</a>.</li>
+ <li>Make <code>minidump_stackwalk</code> executable:</li>
+</ol>
+
+<pre><code>$ chmod +x path/to/minidump_stackwalk # Linux and Mac</code></pre>
+
+<ol start="3">
+ <li>Create an environment variable called <code>MINIDUMP_STACKWALK</code> that points to that local path:</li>
+</ol>
+
+<pre><code>$ export MINIDUMP_STACKWALK=path/to/minidump_stackwalk</code></pre>
+
+<ol start="4">
+ <li>Download the <code>crashreporter-symbols.zip</code> file for the Firefox build you are testing and extract it. For example, <a href="/en-US/docs/">ftp://ftp.mozilla.org/pub/firefox/tinderbox-builds/mozilla-aurora-win32/1427442016/firefox-38.0a2.en-US.win32.crashreporter-symbols.zip </a></li>
+ <li>Run the tests with a <code>--symbols-path</code> flag:</li>
+</ol>
+
+<pre><code>$ $EXTERNAL-MEDIA-TESTS --symbols-path path/to/example/firefox-38.0a2.en-US.win32.crashreporter-symbols</code></pre>
+
+<p>To check whether the above setup is working for you, trigger a (silly) Firefox crash while the tests are running. One way to do this is with the <a href="https://github.com/luser/crashme">crashme add-on</a>: you can add this to Firefox even while the tests are running. Another way on Linux and Mac OS systems:</p>
+
+<ol>
+ <li>Find the process id (PID) of the Firefox process being used by the tests.</li>
+</ol>
+
+<pre><code>$ ps x | grep 'Firefox'</code></pre>
+
+<ol start="2">
+ <li>Kill the Firefox process with SIGABRT.</li>
+</ol>
+
+<pre><code># 1234 is an example of a PID
+$ kill -6 1234</code></pre>
+
+<p> Somewhere in the output produced by <code>$EXTERNAL-MEDIA-TESTS</code>, you should see something like:</p>
+
+<pre><code>0:12.68 CRASH: MainThread pid:1234. Test:test_basic_playback.py TestVideoPlayback.test_playback_starts.
+Minidump anaylsed:False.
+Signature:[@ XUL + 0x2a65900]
+Crash dump filename:
+/var/folders/5k/xmn_fndx0qs2jcpcwhzl86wm0000gn/T/tmpB4Bolj
+.mozrunner/minidumps/DA3BB025-8302-4F96-8DF3-A97E424C877A.dmp
+Operating system: Mac OS X
+                  10.10.2 14C1514
+CPU: amd64
+     family 6 model 69 stepping 1
+     4 CPUs
+Crash reason: EXC_SOFTWARE / SIGABRT
+Crash address: 0x104616900
+...</code></pre>
+
+<h2 id="Setting_up_for_network_shaping_tests_(browsermobproxy)">Setting up for network shaping tests (browsermobproxy)</h2>
+
+<ol>
+ <li>Download the browsermob proxy zip file from <a href="http://bmp.lightbody.net/">http://bmp.lightbody.net/</a>. The most current version as of this writing is <code>browsermob-proxy-2.1.0-beta-2-bin.zip</code>.</li>
+ <li>Unpack the .zip file.</li>
+ <li>Verify that you can launch browsermobproxy on your machine by running <code>&lt;browsermob&gt;/bin/browsermob-proxy</code> (or <code>browsermob-proxy.bat</code> on Windows) on your machine. You may have to do a lot of work to install and use a Java that browsermobproxy would like.</li>
+ <li>Import the certificate into your Firefox profile. Select <code>Preferences-&gt;Advanced-&gt;Certificates-&gt;View Certificates-&gt;Import..</code>. Navigate to <code>&lt;browsermob&gt;/ssl-support</code> and select <code>cybervilliansCA.cer</code>. Select all of the checkboxes.</li>
+ <li>Tell Marionette where browsermobproxy is and what port to start it on. Add the following command-line parameters to your external-media-tests command line:</li>
+</ol>
+
+<pre><code>--browsermob-script &lt;browsermob&gt;/bin/browsermob-proxy --browsermob-port 999 --profile &lt;your saved profile&gt;</code></pre>
+
+<p>You can then call browsermob to shape the network. You can find an example in <code>external_media_tests/playback/test_playback_limiting_bandwidth.py</code>. Another example can be found at <a href="https://dxr.mozilla.org/mozilla-central/source/testing/marionette/harness/marionette/tests/unit/test_browsermobproxy.py">https://dxr.mozilla.org/mozilla-central/source/testing/marionette/harness/marionette/tests/unit/test_browsermobproxy.py</a>.</p>
+
+<h2 id="A_warning_about_video_URLs">A warning about video URLs</h2>
+
+<p>The ini files in <code>external_media_tests/urls</code> may contain URLs pulled from Firefox crash or bug data. Automated tests don't care about video content, but you might: visit these at your own risk and be aware that they may be NSFW. We do ever not intend to moderate or filter these URLs.</p>
+
+<h2 id="Writing_a_test">Writing a test</h2>
+
+<ul>
+ <li>Tests go into <code>$PROJECT_HOME/external_media_tests/playback</code>.</li>
+ <li>Your test should inherit from <code>MediaTestCase</code> (or a subclass). You may also need to inherit from <code>VideoPlaybackTestsMixin</code>, which gives you <code>test_playback_starts()</code> and <code>test_video_playback_partial()</code>.</li>
+ <li>You can check <code>$PROJECT_HOME/external_media_tests/media_utils</code> for other useful methods and tests to inherit.</li>
+ <li>If you have specific URLs you wish to test, create a <code>.ini</code> file and place it in <code>$PROJECT_HOME/external_media_tests/urls</code>, and pass it to your test via the '<code>--urls</code>' command-line parameter.</li>
+ <li>If you wish to create a suite of tests for a particular site or feature, you can list the tests you want into a <code>.ini</code> file in the <code>$PROJECT_HOME/external_media_tests/playback</code> folder, and pass that file in your test command-line.</li>
+</ul>
+
+<p>API testing for the classes in external-media-tests are on <a href="http://external-media-tests.readthedocs.org/en/latest/">readthedocs.org</a>.</p>
+
+<h2 id="Generating_API_documentation">Generating API documentation</h2>
+
+<p>API documentation is generated from the python source code itself. The documentation is added with <a href="https://en.wikipedia.org/wiki/Docstring">docstring</a>; the resulting documentation is generated with the <a href="http://www.sphinx-doc.org/en/stable/">Sphinx</a> tool.</p>
+
+<p>The document structure is located in <code>$PROJECT_HOME/docs</code>. The .rst files are written for Sphinx to process. Please consult the Sphinx documentation if you need to add more sections to the .rst files we already have.</p>
+
+<p>If you make changes to the docstrings in the python code, or if you make changes to the .rst files, you need to test your changes and see how they look. Follow these steps:</p>
+
+<ul>
+ <li>Setup a virtualenv and activate it.</li>
+</ul>
+
+<pre>virtualenv docenv
+. docenv/bin/activate</pre>
+
+<ul>
+ <li>Install Sphinx into your virtualenv.</li>
+</ul>
+
+<pre><code>pip install sphinx</code></pre>
+
+<ul>
+ <li>Install External Media Tests into your virtualenv.</li>
+</ul>
+
+<pre><code>cd $PROJECT_HOME
+python setup.py install</code></pre>
+
+<ul>
+ <li>Run the command to generate the docs</li>
+</ul>
+
+<pre>cd $PROJECT_HOME/docs
+make html</pre>
+
+<ul>
+ <li>Examing the resulting html files. The top-level html file will be at <code>$PROJECT_HOME/docs/_build/html/index.html</code>.</li>
+</ul>
+
+<p>Note that your virtualenv must be active to rerun the <code>make</code> command. Note also that if you change your python code to change documentation, you must rerun <code>python setup.py install</code> to pick those changes up.</p>
+
+<h2 id="License">License</h2>
+
+<p>This software is licensed under the <a href="http://mozilla.org/MPL/2.0/">Mozilla Public License 2.0</a></p>
+
+<h2 id="Other_resources">Other resources</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/QA/Marionette">Marionette</a></li>
+ <li><a href="/en-US/docs/Mozilla/Command_Line_Options">Firefox Command Line Options</a></li>
+ <li><a href="http://firefox-puppeteer.readthedocs.org/en/latest/">Firefox Puppeteer</a></li>
+ <li><a href="https://nightly.mozilla.org/">Firefox Nightly Downloads</a></li>
+</ul>
+
+<p> </p>

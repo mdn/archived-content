@@ -1,0 +1,230 @@
+---
+title: 使用Camera API
+slug: Web/Guide/API/Camera
+translation_of: Archive/B2G_OS/API/Camera_API/Introduction
+---
+<p>通过<a href="https://wiki.mozilla.org/Platform/Features/Camera_API" class="link-https">Camera API</a>,你可以使用手机的摄像头拍照,然后把拍到的照片发送给当前网页.这些操作主要是通过一个<code>input元素</code>来实现的,其中该元素的<code>type属性必须为"file",</code><code>accept属性要允许图片格式,</code>这样才能知道这个文件选择框是用来选择图片的.,完整的HTML结构看起来是这样的:</p>
+<pre class="brush: html">&lt;input type="file" id="take-picture" accept="image/*"&gt;
+</pre>
+<p>当用户激活这个HTML元素的时候,系统会呈现给用户一个选择界面,其中一个选项是选择本地的图片文件,另一个选项是要通过摄像头直接 拍摄照片作为所选文件.如果用户选择了摄像头,则会进入手机的拍照模式.拍照结束后,,用户可以选择确定还是放弃.如果接受了,则该照片会作为所选文件发 送给那个<code>&lt;input type="file"&gt;</code>元素,同时触发该元素的<code>onchange事件</code>.</p>
+<h2 id="获取到所拍摄照片的引用">获取到所拍摄照片的引用</h2>
+<p>通过<a href="/en/Using_files_from_web_applications" title="en/Using_files_from_web_applications">File API</a>,你可以获取到用户所拍摄的照片或者所选择的图片文件的引用:</p>
+<pre class="brush: js">var takePicture = document.querySelector("#take-picture");
+takePicture.onchange = function (event) {
+    // 获得图片文件的引用
+    var files = event.target.files,
+        file;
+    if (files &amp;&amp; files.length &gt; 0) {
+        file = files[0];
+    }
+};
+</pre>
+<h2 id="在网页中展示图片">在网页中展示图片</h2>
+<p>如果你获取到了那张照片的引用(也就是File对象),你就可以使用<a href="/zh-CN/docs/Web/API/Window/URL/createObjectURL" title="此页面仍未被本地化, 期待您的翻译!"><code>window.URL.createObjectURL()</code></a>方法创建一个指向那个照片的URL,然后把得到的URL赋给<code>img</code>元素的<code>src属性</code>:</p>
+<pre class="brush: js">// 获取到img元素
+var showPicture = document.querySelector("#show-picture");
+
+// 获取到window.URL对象
+var URL = window.URL || window.webkitURL;
+
+// 创建一个对象URL字符串
+var imgURL = URL.createObjectURL(file);
+
+// 设置img元素的src属性为那个URL
+showPicture.src = imgURL;
+
+// 释放那个对象URL,提高性能
+URL.revokeObjectURL(imgURL);
+</pre>
+<p>如果浏览器不支持<code>createObjectURL()</code>方法,还可以使用<a href="/zh-CN/docs/Web/API/FileReader" title="FileReader 对象允许Web应用程序异步读取存储在用户计算机上的文件（或原始数据缓冲区）的内容，使用 File 或 Blob 对象指定要读取的文件或数据。"><code>FileReader</code></a>来实现:</p>
+<pre class="brush: js">// 如果createObjectURL方法不可用
+var fileReader = new FileReader();
+fileReader.onload = function (event) {
+    showPicture.src = event.target.result;
+};
+fileReader.readAsDataURL(file);
+</pre>
+<h2 id="完整的示例代码">完整的示例代码</h2>
+<p>这里有一个<a href="http://robnyman.github.com/camera-api/" class="external">完整的使用Camera API的demo</a>,下面是这个demo的完整代码:</p>
+<h3 id="HTML页面">HTML页面:</h3>
+<pre class="brush: html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+    &lt;head&gt;
+        &lt;meta charset="utf-8"&gt;
+        &lt;title&gt;Camera API&lt;/title&gt;
+        &lt;link rel="stylesheet" href="css/base.css" type="text/css" media="screen"&gt;
+    &lt;/head&gt;
+
+    &lt;body&gt;
+
+        &lt;div class="container"&gt;
+            &lt;h1&gt;Camera API&lt;/h1&gt;
+
+            &lt;section class="main-content"&gt;
+                &lt;p&gt;A demo of the Camera API, currently implemented in Firefox and Google Chrome on Android. Choose to take a picture with your device's camera and a preview will be shown through createObjectURL or a FileReader object (choosing local files supported too).&lt;/p&gt;
+
+                &lt;p&gt;
+                    &lt;input type="file" id="take-picture" accept="image/*"&gt;
+                &lt;/p&gt;
+
+                &lt;h2&gt;Preview:&lt;/h2&gt;
+                &lt;p&gt;
+                    &lt;img src="about:blank" alt="" id="show-picture"&gt;
+                &lt;/p&gt;
+
+                &lt;p id="error"&gt;&lt;/p&gt;
+
+            &lt;/section&gt;
+
+            &lt;p class="footer"&gt;All the code is available in the &lt;a href="https://github.com/robnyman/robnyman.github.com/tree/master/camera-api"&gt;Camera API repository on GitHub&lt;/a&gt;.&lt;/p&gt;
+        &lt;/div&gt;
+
+
+        &lt;script src="js/base.js"&gt;&lt;/script&gt;
+
+
+    &lt;/body&gt;
+&lt;/html&gt;
+</pre>
+<h3 id="JavaScript文件">JavaScript文件:</h3>
+<pre class="brush: js">(function () {
+    var takePicture = document.querySelector("#take-picture"),
+        showPicture = document.querySelector("#show-picture");
+
+    if (takePicture &amp;&amp; showPicture) {
+        // Set events
+        takePicture.onchange = function (event) {
+            // Get a reference to the taken picture or chosen file
+            var files = event.target.files,
+                file;
+            if (files &amp;&amp; files.length &gt; 0) {
+                file = files[0];
+                try {
+                    // Get window.URL object
+                    var URL = window.URL || window.webkitURL;
+
+                    // Create ObjectURL
+                    var imgURL = URL.createObjectURL(file);
+
+                    // Set img src to ObjectURL
+                    showPicture.src = imgURL;
+
+                    // Revoke ObjectURL
+                    URL.revokeObjectURL(imgURL);
+                }
+                catch (e) {
+                    try {
+                        // Fallback if createObjectURL is not supported
+                        var fileReader = new FileReader();
+                        fileReader.onload = function (event) {
+                            showPicture.src = event.target.result;
+                        };
+                        fileReader.readAsDataURL(file);
+                    }
+                    catch (e) {
+                        //
+                        var error = document.querySelector("#error");
+                        if (error) {
+                            error.innerHTML = "Neither createObjectURL or FileReader are supported";
+                        }
+                    }
+                }
+            }
+        };
+    }
+})();
+</pre>
+<h2 id="浏览器兼容性">浏览器兼容性</h2>
+<p></p><div class="blockIndicator warning"><strong><a href="https://github.com/mdn/browser-compat-data">We're converting our compatibility data into a machine-readable JSON format</a></strong>.
+            This compatibility table still uses the old format,
+            because we haven't yet converted the data it contains.
+            <strong><a href="/zh-CN/docs/MDN/Contribute/Structures/Compatibility_tables">Find out how you can help!</a></strong></div>
+
+<div class="htab">
+    <a id="AutoCompatibilityTable" name="AutoCompatibilityTable"></a>
+    <ul>
+        <li class="selected"><a>Desktop</a></li>
+        <li><a>Mobile</a></li>
+    </ul>
+</div><p></p>
+<div id="compat-desktop">
+  <table class="compat-table">
+    <tbody>
+      <tr>
+        <th>Feature</th>
+        <th>Chrome</th>
+        <th>Firefox (Gecko)</th>
+        <th>Internet Explorer</th>
+        <th>Opera</th>
+        <th>Safari</th>
+      </tr>
+      <tr>
+        <td>Camera API</td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+      <tr>
+        <td><code><a href="/en-US/docs/DOM/window.URL.createObjectURL" title="/en-US/docs/DOM/window.URL.createObjectURL">createObjectURL()</a></code></td>
+        <td>16</td>
+        <td><a href="/en-US/Firefox/Releases/8" title="Released on 2011-11-08.">8.0</a> (8.0)</td>
+        <td>10+</td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+      <tr>
+        <td><a href="/zh-CN/docs/Web/API/FileReader" title="FileReader 对象允许Web应用程序异步读取存储在用户计算机上的文件（或原始数据缓冲区）的内容，使用 File 或 Blob 对象指定要读取的文件或数据。"><code>FileReader</code></a></td>
+        <td>16</td>
+        <td><a href="/en-US/Firefox/Releases/3.6" title="Released on 2010-01-21.">3.6</a> (1.9.2)</td>
+        <td>10+</td>
+        <td>11.6+</td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<div id="compat-mobile">
+  <table class="compat-table">
+    <tbody>
+      <tr>
+        <th>Feature</th>
+        <th>Android</th>
+        <th>Chrome for Android</th>
+        <th>Firefox Mobile (Gecko)</th>
+        <th>IE Mobile</th>
+        <th>Opera Mobile</th>
+        <th>Safari Mobile</th>
+      </tr>
+      <tr>
+        <td>Camera API</td>
+        <td>3.0</td>
+        <td><span style="color: #888;" title="Please update this with the earliest version of support.">(Yes)</span></td>
+        <td>10.0 (10.0)</td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+      <tr>
+        <td><code><a href="/en-US/docs/DOM/window.URL.createObjectURL" title="/en-US/docs/DOM/window.URL.createObjectURL">createObjectURL()</a></code></td>
+        <td>4</td>
+        <td><span style="color: #888;" title="Please update this with the earliest version of support.">(Yes)</span></td>
+        <td>10.0 (10.0)</td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+      <tr>
+        <td><a href="/zh-CN/docs/Web/API/FileReader" title="FileReader 对象允许Web应用程序异步读取存储在用户计算机上的文件（或原始数据缓冲区）的内容，使用 File 或 Blob 对象指定要读取的文件或数据。"><code>FileReader</code></a></td>
+        <td>3</td>
+        <td><span style="color: #888;" title="Please update this with the earliest version of support.">(Yes)</span></td>
+        <td>10.0 (10.0)</td>
+        <td><span style="color: #f00;">未实现</span></td>
+        <td>11.1</td>
+        <td><span style="color: #f00;">未实现</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p> </p>

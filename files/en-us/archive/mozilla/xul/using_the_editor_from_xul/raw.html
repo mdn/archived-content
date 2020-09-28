@@ -1,0 +1,187 @@
+<div class="blockIndicator warning">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> </p>
+</div>
+
+<h2 id="Overview" name="Overview">Overview</h2>
+
+<p>The editor in XUL lives on top of a XUL <code>&lt;iframe&gt;</code> element; it observes document loading in this <code>&lt;iframe&gt;</code>, and, when document loading is complete, it instantiates an editor on the loaded document. The <code>&lt;iframe&gt;</code> contents are then editable.</p>
+
+<p>Note that the <code>&lt;editor&gt;</code> element is really just an <code>&lt;iframe&gt;</code> which takes over some of the task of creating the editor from JavaScript.</p>
+
+<h2 id="Editor_creation" name="Editor_creation">Editor creation</h2>
+
+<p>So let's trace through the process of editor creation when bringing up the composer window. You can find the relevant XUL parts in <a class="external" href="http://lxr.mozilla.org/mozilla/source/editor/ui/composer/content/editor.xul">editor.xul</a>, the JavaScript parts in <a class="external" href="http://lxr.mozilla.org/mozilla/source/editor/ui/composer/content/editor.js">editor.js</a>, and the XBL binding for the <code>editor</code> element in <a class="external" href="http://lxr.mozilla.org/mozilla/source/toolkit/content/widgets/editor.xml">editor.xml</a>.</p>
+
+<ol>
+ <li>
+  <p>Something, somewhere, tells Mozilla to open the composer window. <code>editor.xul</code> is loaded. In <code>editor.xul</code>, the <code>&lt;window&gt;</code> tag has an onload handler: <code>onload="EditorOnLoad()"</code>. That causes the <code>EditorOnLoad()</code> JavaScript function to get executed when the XUL is done loading.</p>
+
+  <p>The XUL contains an <code>&lt;editor&gt;</code> tag, e.g.:</p>
+
+  <pre class="brush: xml;">&lt;editor type="content-primary" id="content-frame" src="about:blank" flex="1"/&gt;</pre>
+
+  <p>The attribute <code>type="content-primary"</code> identifies this as the window content element, i.e. that which you get from <code>window._content</code>. Having an <code>id</code> attribute, <code>id="content-frame"</code>, allows us to find this element with <code>document.getElementById("content-frame")</code>, and to style it from CSS.</p>
+ </li>
+ <li>
+  <p><code>EditorOnLoad()</code> is called. It does some getting of window.arguments (which is a way callers can pass parameters to new windows -- we use this to get the URL to be loaded), then it calls <code>EditorStartup()</code>, where the real work happens.</p>
+
+  <p>It passes two parameters; the first indicates whether we want a plain text or HTML editor (pass <code>text</code> or <code>html</code> here), and the second is the <code>&lt;iframe&gt;</code> element on which we wish to create the editor. We could either pass <code>document.getElementById("content-frame")</code> or <code>window._content</code> here.</p>
+ </li>
+ <li>
+  <p>The important stuff in <code>EditorStartup()</code> begins where we get or create an editorShell. The <code>&lt;editor&gt;</code> tag actually creates an <a class="external" href="http://lxr.mozilla.org/mozilla/source/layout/xul/base/src/nsEditorBoxObject.cpp">nsEditorBoxObject</a> behind the scenes. The nsEditorBoxObject creates an nsEditorShell, and holds the owning reference to it. Through the magic of <a href="en/XBL">XBL</a>, the <a class="external" href="http://lxr.mozilla.org/mozilla/source/xpfe/global/resources/content/xulBindings.xml">XUL bindings</a>, and the <a class="external" href="http://lxr.mozilla.org/mozilla/source/layout/xul/base/public/nsIEditorBoxObject.idl"><code>nsIEditorBoxObject</code></a> interface, you can get a JavaScript reference to the editorShell from the editor element with <code>element.editorShell</code>. We thus have an editorShell to play with.</p>
+ </li>
+ <li>
+  <p>Now we set up the editorShell by calling its Init() method, telling it what type of editor we want (text or HTML), pointing it at the webShellWindow to use, and telling it the content node that it lives on:</p>
+
+  <pre class="brush: js;">editorShell.Init();
+editorShell.SetEditorType(editorType);
+editorShell.webShellWindow = window;
+editorShell.contentWindow = window._content;</pre>
+
+  <p>The <code>webShellWindow</code> (a settable attribute on nsIEditorShell) points to the top-level window element, from which the editorShell can get the XUL document in which it is living. It needs this to poke the UI (e.g. for command state maintenance, starting and stopping the throbber etc.).</p>
+
+  <p>The <code>contentWindow</code> (another settable attribute on nsIEditorShell) points to the XUL element which is to become editable.</p>
+
+  <div class="blockIndicator note">
+  <p><strong>Note:</strong> since we already know this when we have an <code>&lt;editor&gt;&lt;/editor&gt;</code> tag, we should remove the need to call this.</p>
+  </div>
+ </li>
+ <li>
+  <p>EditorStartup() does some other minor bits of setup before finally kicking off the URL load, which the most important part here.</p>
+
+  <p>When the XUL was parsed, the <code>src</code> attribute on the content frame was set to <code>about:blank</code> (our default 'blank page' URL). We can't set that before XUL parsing, so we have to force a load of the page we now want to edit. We get the URL to load from the <code>args</code> element, then kick off the load:</p>
+
+  <pre class="brush: js;">var url = document.getElementById("args").getAttribute("value");
+editorShell.LoadUrl(url);</pre>
+
+  <p>Loading the document in the <code>&lt;iframe&gt;</code> of course happens asynchronously, so we need to know when we have a document that we can start editing.</p>
+
+  <p>nsEditorShell is able to observe the document load on the <code>&lt;iframe&gt;</code>, because it implements <code>nsIDocumentLoaderObserver</code>, and registered itself as a doc loader when it was assigned the content window. It thus gets callbacks for the start, progress, and end of the document load.</p>
+
+  <p><em>Note</em>: these callbacks also fire for every subdocument that loads as a result of the parent document load, for example with frameset documents, or HTML documents with their own embedded <code>&lt;iframe&gt;</code>s. In this case, we need to be careful to instantiate the editor on the correct document. We are currently only able to have one editor per composer window; in future, relaxing this restriction would allow us to edit all the subdocuments in a frameset at the same time.</p>
+
+  <p>We detect that the document we want to edit has loaded successfully in <code>nsEditorShell::OnEndDocumentLoad()</code>. After checking that we can actually edit this document, we go ahead and instantiate an editor on it (in <code>nsEditorShell::PrepareDocumentForEditing()</code>).</p>
+
+  <p>As well as making the editor (which happens via <code>nsEditorShell::DoEditorMode()</code>) we also hook up various listeners and observers for UI updating and user interaction, and store a file specifier for the document we opened.</p>
+
+  <p>The editor is now set up, and ready to go. One thing to note about editor initialization is that we pass into the editor's <code>Init()</code> method an <code>nsIContent*</code> that corresponds to the root of the content tree that the editor is allowed to work with. When initializing the editor from the nsEditorShell, we pass <code>NULL</code> here (which tells the editor that it can edit everything under the <code>&lt;body&gt;</code> of the document). This parameter is more important when the <a class="external" href="http://www.mozilla.org/editor/editor-textwidgets.html">editor is in a text widget</a>, where it points to the the subtree of the parent document that corresponds to widget content.</p>
+ </li>
+</ol>
+
+<h2 id="Editor_teardown" name="Editor_teardown">Editor teardown</h2>
+
+<p>Window destruction, and hence editor teardown is initiated in two ways, listed below. In both cases, the <code>EditorCanClose()</code> method is the JavaScript is called, which causes the nsEditorShell to display a dialog asking the user if they want to save the document, throw away their changes, or cancel. Note that if they cancel, the close operation is aborted.</p>
+
+<ul>
+ <li>The user clicks the Close widget in their OS/window manager. In this case, the <code>onclose</code> method on the <code>&lt;window&gt;</code> element is called.</li>
+</ul>
+
+<ul>
+ <li>The user chooses 'Close' from the File menu, uses the key shortcut, or quits the application, causing all windows to be closed. Before each window is closed, JavaScript code in <a class="external" href="http://lxr.mozilla.org/mozilla/source/xpfe/global/resources/content/globalOverlay.js">globalOverlay.js</a> tries to call a <code>tryToClose</code> method on each window. In <code>editor.js</code>, we set this to call <code>EditorCanClose()</code>.</li>
+</ul>
+
+<p>If the user chooses to save the document, or throw away their changes, then the window is closed. When the last reference to the <code>nsEditorShell</code> goes away (as a result of <code>nsEditorBoxObject</code> releasing its reference) it releases the owning reference on the editor.</p>
+
+<h2 id="Editor_event_handling" name="Editor_event_handling">Editor event handling</h2>
+
+<p>Editing operations happen in response to user events: mouse, key, drag and drop, and IME (international text input) events. In order to receive these events, the editor registers several event listeners on the document being edited. In addition, editor actions in the user interface are propagated via the XUL and JavaScript, and call methods on the <code>nsEditorShell</code>. This editor command dispatching is <a class="external" href="http://www.mozilla.org/editor/editor_commands.html">described separately</a>.</p>
+
+<p>The following event listeners are registered:</p>
+
+<ul>
+ <li>
+  <p>In <code>nsHTMLEditor::InstallEventListeners()</code>, we install the following. These get installed for all types of editor (i.e. for text widgets and composer):</p>
+
+  <ul>
+   <li><code>nsTextEditorKeyListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMKeyListener">nsIDOMKeyListener</a></code>)</li>
+   <li><code>nsTextEditorMouseListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMMouseListener">nsIDOMMouseListener</a></code>)</li>
+   <li><code>nsTextEditorFocusListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMFocusListener">nsIDOMFocusListener</a></code>)</li>
+   <li><code>nsTextEditorTextListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMTextListener">nsIDOMTextListener</a></code>)</li>
+   <li><code>nsTextEditorCompositionListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMCompositionListener">nsIDOMCompositionListener</a></code>)</li>
+   <li><code>nsTextEditorDragListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMDragListener">nsIDOMDragListener</a></code>)</li>
+  </ul>
+ </li>
+ <li>
+  <p>In <code>nsEditorShell::PrepareDocumentForEditing()</code>, we install a mouse listener. This only happens for situations where the <code>nsEditorShell</code> is used (i.e. not for text widgets):</p>
+
+  <ul>
+   <li>
+    <p><code>nsEditorShellMouseListener</code> (as a <code><a class="external" href="http://lxr.mozilla.org/mozilla/ident?i=nsIDOMMouseListener">nsIDOMMouseListener</a></code>)</p>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<div class="blockIndicator note">
+<p><strong>Note:</strong> Starting in <span title="(Firefox 12 / Thunderbird 12 / SeaMonkey 2.9)">Gecko 12</span>, the editor refuses any events sent by unprivileged content.</p>
+</div>
+
+<h4 id="nsTextEditorKeyListener" name="nsTextEditorKeyListener">nsTextEditorKeyListener</h4>
+
+<p>This event listener handles key presses for typing, and other editing operations (backspace, delete, enter/return). Cases that it does not handle explicitly it passes on to <code>nsHTMLEditor::EditorKeyPress()</code>, which is where normal typing keys end up. Note that it only responds to the <code>KeyPress</code> event; <code>KeyDown</code> and <code>KeyUp</code> events are ignored.</p>
+
+<h4 id="nsTextEditorMouseListener" name="nsTextEditorMouseListener">nsTextEditorMouseListener</h4>
+
+<p>The mouse listener is used to do middle-mouse paste (which is a Unix copy/paste feature). This happens in response to <code>MouseClick</code> with button 2. It also forces an IME commit.</p>
+
+<h4 id="nsTextEditorFocusListener" name="nsTextEditorFocusListener">nsTextEditorFocusListener</h4>
+
+<p>Editor responds to <code>Focus</code> and <code>Blur</code> events by showing and hiding the caret or selection as appropriate.</p>
+
+<h4 id="nsTextEditorTextListener" name="nsTextEditorTextListener">nsTextEditorTextListener</h4>
+
+<p>The <code>nsIDOMTextListener</code> interface that this implements is used by the IME code. In response to the <code>HandleText</code> event, the editor sets the inline input composition string.</p>
+
+<h4 id="nsTextEditorCompositionListener" name="nsTextEditorCompositionListener">nsTextEditorCompositionListener</h4>
+
+<p><code>nsTextEditorCompositionListener</code> implements another IME-related interface, <code>nsIDOMCompositionListener</code>. This is called by IME at the start, end, and to query the current composition.</p>
+
+<h4 id="nsTextEditorDragListener" name="nsTextEditorDragListener">nsTextEditorDragListener</h4>
+
+<p>The drag listener handles drag and drop events in the editor. It responds to the start of a drag in <code>DragGesture</code> by adding data to the drag, notifies the drag whether a drop can occur in <code>DragOver</code>, and handles the drop by inserting data in <code>DragDrop</code>.</p>
+
+<h4 id="nsEditorShellMouseListener" name="nsEditorShellMouseListener">nsEditorShellMouseListener</h4>
+
+<p>This is an odd-man-out event listener, in that it's registered from the editorShell, rather than internally to the editor. Note: this is ugly, and should probably be redesigned to work on callbacks out of the editor, or moved entirely to JavaScript. The <code>nsEditorShellMouseListener</code> essentially calls <code>nsEditorShell::HandleMouseClickOnElement</code> to show property dialogs for items that you double-click on.</p>
+
+<h3 id="The_path_of_a_key_press" name="The_path_of_a_key_press">The path of a key press</h3>
+
+<p>So what happens to a key press once it's got to the <code>nsTextEditorKeyListener</code>? How does that end up in the document? Let's trace through.</p>
+
+<ul>
+ <li>
+  <p><code>nsTextEditorKeyListener::KeyPress()</code> gets the key press event. For normal character keys, that falls into <code>nsHTMLEditor::EditorKeyPress()</code>.</p>
+ </li>
+ <li>
+  <p><code>nsHTMLEditor::EditorKeyPress()</code> gets the character code from the key event, puts that into a string, and calls <code>nsHTMLEditor::TypedText()</code>, which simply calls <code>nsHTMLEditor::InsertText()</code>.</p>
+ </li>
+ <li>
+  <p><code>nsHTMLEditor::InsertText()</code> hides quite a bit of complexity in some stack-based classes.</p>
+
+  <p><code>nsAutoPlaceHolderBatch</code> is a utility class that wraps text insertion with calls to turn off selection and layout updating (to avoid flicker), and the maintenance of a placeholder transaction. This placeholder transaction enables us to <a class="external" href="http://www.mozilla.org/editor/txmgr/transaction-manager.html#Batching">batch</a> typing events together, so that an Undo undoes the whole series of keystrokes.</p>
+
+  <p>Another stack-based class, <code>nsAutoRules</code>, ensures that text insertion is wrapped with calls to <code>nsHTMLEditor::StartOperation()</code> / <code>EndOperation()</code>. These functions call <code>BeforeEdit()</code> and <code>AfterEdit()</code> on the current typing rules.</p>
+
+  <p>Now, we initialize a <code>nsTextRulesInfo</code> with the information about the string being inserted, and call <code>WillDoAction()</code> on the current <a class="external" href="http://www.mozilla.org/editor/writing-rules.html">editing rules</a>. Because the implementation of inserting text differs between the different rules (plain text vs. HTML, for example), it is handled entirely by the rules code, in the <code>WillDoAction()</code>call.</p>
+
+  <p>In Composer, we are using <code>nsHTMLEditRules</code>, so we end up in <code>nsHTMLEditRules::WillDoAction()</code>. For text insertion, this drops into <code>nsHTMLEditRules::WillInsertText()</code>. This code first deletes the selection if there is one (e.g. you are typing over selected text), then calls a generic pre-insertion call <code>WillInsert()</code>, which sets up inline styles for the inserted text, and moves the selection to an appropriate place where the text is to be inserted.</p>
+
+  <p>Now we are ready to actually insert the text. Recall that we're going through a generic <code>InsertText()</code> call, so this code deals with pasting long strings, as well as inserting single characters. The code thus has to do the correct thing with linebreaks, so has a special case for inserting into <code>&lt;pre&gt;</code> sections. We call into the normal insertion code, which loops through the input string looking for linebreaks, and inserts each text run, followed by a <code>&lt;br&gt;</code> when necessary. When handling key presses, this will just insert a single character.</p>
+
+  <p>We fall out of the <code>WillDoAction()</code> call, and drop into <code>WillDoAction()</code>, which, for text insertion, does nothing.</p>
+
+  <p>The last thing that happens on a keypress is that <code>nsTextEditorKeyListener::KeyPress()</code> calls <code>ScrollSelectionIntoView()</code>, which, as the name suggests, ensures that the text that was just entered is visible.</p>
+ </li>
+</ul>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:mozilla-editor@mozilla.org">Editor Team</a></li>
+ <li>Last Updated Date: July 25, 2000</li>
+ <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:mozilla-editor@mozilla.org">Editor Team</a></li>
+</ul>
+</div>
+
+<p> </p>

@@ -1,0 +1,187 @@
+<p>{{AddonSidebar}}</p>
+
+<p>{{ gecko_minversion_header("45") }}</p>
+
+<p>Firefox supports automated updates to add-ons using JSON update manifests. Add-ons hosted on <a href="https://addons.mozilla.org/">AMO</a> automatically receive updates to new versions posted there. Other add-ons must specify the location of their update manifests.</p>
+
+<div class="blockIndicator note">
+<p> You must host your update manifest file on a secure (HTTPS) server.</p>
+</div>
+
+<p>A typical update manifest looks something like:</p>
+
+<pre class="brush: json">{
+  "addons": {
+    "{abcd1234-1abc-1234-12ab-abcdef123456}": {
+      "updates": [
+        { "version": "0.1",
+          "update_link": "https://example.com/addon-0.1.xpi" },
+        { "version": "0.2",
+          "update_link": "http://example.com/addon-0.2.xpi",
+          "update_hash": "sha256:fe93c2156f05f20621df1723b0f39c8ab28cdbeec342efa95535d3abff932096" },
+        { "version": "0.3",
+          "update_link": "https://example.com/addon-0.3.xpi",
+          "applications": {
+            "gecko": { "strict_min_version": "44" } } }
+      ]
+    }
+  }
+}
+</pre>
+
+<h2 id="Enabling_updates_to_your_extension">Enabling updates to your extension</h2>
+
+<p>If your extension is not hosted on <abbr title="addons.mozilla.org">AMO</abbr>, you must specify the location of your update manifest in your extension with the <a href="/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings">browser_specific_settings</a> key. For extensions developed with <a href="/Add-ons/WebExtensions">WebExtension APIs</a>, add the following to your manifest:</p>
+
+<pre class="brush: json">"browser_specific_settings": {
+  "gecko": {
+    "update_url": "https://example.com/updates.json"
+  }
+}
+</pre>
+
+<p>For XUL add-ons, add the following to the <code>&lt;Description about="urn:mozilla:install-manifest"&gt;</code> element of your <a href="/Add-ons/Install_Manifests"><code>install.rdf</code></a> file:</p>
+
+<pre class="brush: xml">  &lt;em:updateURL&gt;https://example.com/updates.json&lt;/em:updateURL&gt;
+</pre>
+
+<h2 id="Manifest_Structure">Manifest Structure</h2>
+
+<p>The manifest is a JSON file, with a top-level object literal. This object may have the following properties:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th>Property</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>addons</code></td>
+   <td><code>object</code></td>
+   <td>An object containing one entry for each add-on to be updated. For each such entry, the name of the property must be the add-on's UUID, and the value must be an <a href="#addon-object">object describing the add-on</a> and its updates.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Addon_objects"><a id="addon-object">Addon objects</a></h3>
+
+<p><code>addons[*]</code></p>
+
+<p>Properties of the <code>addons</code> object must contain object literals, each describing an add-on to update. These objects may have the following properties:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th>Property</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>updates</code></td>
+   <td><code>Array</code> {{ optional_inline() }}</td>
+   <td>An array containing zero or more <a href="#addon-update-object">update description objects</a> for the add-on.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Update_objects"><a id="addon-update-object">Update objects</a></h3>
+
+<p><code>addons[*].updates[*]</code></p>
+
+<p>Update description objects must be object literals. They may have the following properties:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th>Property</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>version</code></td>
+   <td><code>string</code></td>
+   <td>The version number this update entry describes. If an update URL is specified, it must use this version. If any compatibility information is specified, it will override the compatibility information of any installed version with this version number.</td>
+  </tr>
+  <tr>
+   <td><code>update_link</code></td>
+   <td><code>string</code> {{ optional_inline() }}</td>
+   <td>A link to the XPI file containing this version of the add-on. This must be an HTTPS URL, or an <code>update_hash</code> must be provided to verify it.</td>
+  </tr>
+  <tr>
+   <td><code>update_hash</code></td>
+   <td><code>string</code> {{ optional_inline() }}</td>
+   <td>A cryptographic hash of the file pointed to by <code>update_link</code>. This <em>must</em> be provided if <code>update_link</code> is not a secure URL. If present, this must be a string beginning with either <code>sha256:</code> or <code>sha512:</code>, followed by the hexadecimal-encoded hash of the matching type.</td>
+  </tr>
+  <tr>
+   <td><code>update_info_url</code></td>
+   <td><code>string</code> {{ optional_inline() }}</td>
+   <td>A link to an HTML file containing information about the update.</td>
+  </tr>
+  <tr>
+   <td><code>multiprocess_compatible</code> {{ deprecated_inline() }}</td>
+   <td><code>bool</code> {{ optional_inline() }}<br>
+    (default: <code>true</code>)</td>
+   <td>If false, this add-on requires compatibility shims to run in a <a href="/Firefox/Multiprocess_Firefox">multi-process Firefox</a> environment.</td>
+  </tr>
+  <tr>
+   <td><code>applications</code></td>
+   <td><code>object</code> {{ optional_inline() }}</td>
+   <td>
+    <p>An object containing application-specific compatibility information. Each property must contain an <a href="#addon-update-application">application object</a>, as described below.</p>
+
+    <p>The only application currently supported is <code>gecko</code>, which includes Firefox, and all other applications built on the same runtime.</p>
+
+    <p>If this property is omitted, support for Gecko is assumed. Otherwise, if this property is defined, it must contain a <code>gecko</code> property, or the update entry will be ignored.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Application_objects"><a id="addon-update-application">Application objects</a></h3>
+
+<p><code>addons[*].updates[*].applications.gecko</code></p>
+
+<p>Application objects specify compatibility information for a specific application. They must be object literals, and may have the following properties:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th>Property</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>strict_min_version</code></td>
+   <td><code>string</code> {{ optional_inline() }}<br>
+    (default: <code>42.0a1</code>)</td>
+   <td>The minimum version of the application this add-on will run on.</td>
+  </tr>
+  <tr>
+   <td><code>strict_max_version</code></td>
+   <td><code>string</code> {{ optional_inline() }}<br>
+    (default: <code>*</code>)</td>
+   <td>The maximum version of the application this add-on will run on.</td>
+  </tr>
+  <tr>
+   <td><code>advisory_max_version</code> {{ deprecated_inline() }}</td>
+   <td><code>string</code> {{ optional_inline() }}<br>
+    (default: <code>*</code>)</td>
+   <td>The maximum version of the application this add-on is likely to run on. This property is ignored in most cases.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Testing_Automatic_Updating">Testing Automatic Updating</h2>
+
+<p>By default, Firefox checks for updates every 86400 seconds (24 hours).  If you want to test whether or not the updater is working for your extension, you should browse to <code>about:config</code> and change the value of <code>extensions.update.interval</code> from 86400 to 120, which is apparently the minimum supported value.  (If you set it to less than 120, update checks will only occur every 2 minutes.)  While you're in there, verify that <code>extensions.update.enabled</code> is set to its default value of <code>true</code>.  Relaunch Firefox after making any changes.</p>
+
+<p>If your extension does not update as expected, open the console: <em>Tools</em> &gt; <em>Web Developer</em> &gt; <em>Browser Console</em>, filter for the name of your extension or update URL, and see if there are any errors logged.  If you see an error indicating that the <em>downloaded file hash … did not match provided hash …</em>, look up for the previous <em>GET</em> of your extension.  If it indicates that the download time was around zero milliseconds, for example  <code>[HTTP/1.1 200 OK 0ms]</code>, Firefox may have used a cached download, which might be your prior version if you just recently uploaded a new version, and this may explain the hash mismatch.</p>

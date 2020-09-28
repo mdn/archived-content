@@ -1,0 +1,96 @@
+<p>This article describes how to write textual data to streams, files and sockets in an internationalization-aware way.</p>
+
+<p>When writing textual data to an output stream or to a file, you need to pick a character encoding.</p>
+
+<p>Some character encodings (UTF-8, UTF-16, UTF-32) can represent "all" characters (the full repertoire of Unicode) while others can only represent a subset of the full repertoire.</p>
+
+<p>When the file is to be read only by the application/extension itself, using UTF-8 is often the best choice — it can represent all characters, and ASCII characters are represented efficiently.</p>
+
+<h3 id="Writing_to_a_stream" name="Writing_to_a_stream">Writing to a stream</h3>
+
+<p>In Gecko 1.8 (SeaMonkey 1.0, Firefox 1.5), you can use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIConverterOutputStream" title="">nsIConverterOutputStream</a></code>:</p>
+
+<pre class="brush: js">var charset = "UTF-8"; // Can be any character encoding name that Mozilla supports
+
+var os = Components.classes["@mozilla.org/intl/converter-output-stream;1"]
+                   .createInstance(Components.interfaces.nsIConverterOutputStream);
+
+// This assumes that fos is the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIOutputStream" title="">nsIOutputStream</a></code> you want to write to
+os.init(fos, charset, 0, 0x0000);
+
+os.writeString("Umlaute: \u00FC \u00E4\n");
+os.writeString("Hebrew:  \u05D0 \u05D1\n");
+// etc.
+
+os.close();
+</pre>
+
+<p>You can also write character arrays using the <code>write</code> function, although using <code>writeString</code> is simpler from JavaScript code.</p>
+
+<p>The example above passes 0 as the third argument, which disables buffering (Note: the implementation of the converter stream might not support buffering). Passing 0 ensures that data will be immediately written to the underlying stream; however, for better perfomance you should pass a value like 4096 instead.</p>
+
+<h4 id="Unsupported_characters" name="Unsupported_characters">Unsupported characters</h4>
+
+<p>You can specify what should happen with characters that are not supported by the selected character encoding. The last argument to init specifies that: 0x0000 means that writing unsupported characters throws an exception (with an error code of <a href="/en/NS_ERROR_LOSS_OF_SIGNIFICANT_DATA" title="en/NS_ERROR_LOSS_OF_SIGNIFICANT_DATA">NS_ERROR_LOSS_OF_SIGNIFICANT_DATA</a>), and no data will be written.</p>
+
+<p>To instead write a replacement character in such cases, specify the character instead of 0x00:</p>
+
+<pre class="brush: js">os.init(fos, charset, 0, "?".charCodeAt(0));
+</pre>
+
+<p>You can, of course, replace the <code>"?"</code> in that example with any other character. You can also specify any unicode character U+ABCD directly as 0xABCD.</p>
+
+<p><em>Note</em>: If the replacement character is not a supported character in the chosen character encoding, attempts to write unsupported characters will fail with <a href="/en/NS_ERROR_LOSS_OF_SIGNIFICANT_DATA" title="en/NS_ERROR_LOSS_OF_SIGNIFICANT_DATA">NS_ERROR_LOSS_OF_SIGNIFICANT_DATA</a>.</p>
+
+<h3 id="Versions_before_Gecko_1.8" name="Versions_before_Gecko_1.8">Versions before Gecko 1.8</h3>
+
+<p>Firefox 1.0.x, Mozilla 1.7.x and older versions do not support <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIConverterOutputStream" title="">nsIConverterOutputStream</a></code>.</p>
+
+<p>Alternative ways usable from JavaScript <strong>do not support character encodings that use embedded nulls</strong> (such as UTF-16 and UTF-32). They work by manually converting the string you want to write to a byte sequence using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableUnicodeConverter" title="">nsIScriptableUnicodeConverter</a></code>, and writing that to the stream.</p>
+
+<p>Here's an example:</p>
+
+<pre class="brush: js">// First, get and initialize the converter
+var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"]
+                          .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+converter.charset = /* The character encoding you want, using UTF-8 for this example */ "UTF-8";
+</pre>
+
+<p>Now you can convert and write to the stream:</p>
+
+<pre class="brush: js">// This code assumes that os is your nsIOutputStream
+// your_string here is the string you want to write.
+var chunk = converter.ConvertFromUnicode(your_string);
+os.write(chunk, chunk.length);
+// Repeat as needed for further strings
+</pre>
+
+<p>At the end, you need to call <code>Finish</code> and write its data to the stream. Note that not many character encodings need it, but for those that do calling this is important for proper output.</p>
+
+<pre class="brush: js"> var fin = converter.Finish();
+ if (fin.length &gt; 0)
+   os.write(fin, fin.length);
+ os.close();
+</pre>
+
+<h2 id="Converting_a_string_into_a_stream" name="Converting_a_string_into_a_stream">Converting a string into a stream</h2>
+
+<p>Sometimes, it is useful to convert a string into a stream, for example for uploading it using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIUploadChannel" title="">nsIUploadChannel</a></code>.</p>
+
+<p>The example here requires Gecko 1.8 (Firefox 1.5, SeaMonkey 1.0).</p>
+
+<p><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableUnicodeConverter" title="">nsIScriptableUnicodeConverter</a></code> has a simple method to do that:</p>
+
+<pre class="brush: js">// First, get and initialize the converter
+var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"]
+                          .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+converter.charset = /* The charset you want to use. Using UTF-8 in this example */ "UTF-8";
+
+// Now, convert a string to an nsIInputStream
+var stream = converter.convertToInputStream("A string with non-ASCII characters: \u00FC \u05D0\n");
+// stream can now be used as an nsIInputStream
+</pre>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<p><a href="/en/Reading_textual_data" title="en/Reading_textual_data">Reading textual data</a></p>

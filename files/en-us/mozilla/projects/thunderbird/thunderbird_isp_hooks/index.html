@@ -1,0 +1,235 @@
+---
+title: Thunderbird ISP hooks
+slug: Mozilla/Projects/Thunderbird/Thunderbird_ISP_hooks
+tags:
+  - Administration
+  - enterprise
+  - thunderbird
+---
+<p></p><div class="blockIndicator deprecated deprecatedHeader">
+            <p><strong><span class="icon-only-inline" title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Deprecated</strong><br>This feature is no longer recommended. Though some browsers might still support it, it may have already been removed from the relevant web standards, may be in the process of being dropped, or may only be kept for compatibility purposes. Avoid using it, and update existing code if possible; see the <a href="#Browser_compatibility">compatibility table</a> at the bottom of this page to guide your decision. Be aware that this feature may cease to work at any time.</p>
+        </div><p></p>
+
+<p>This format is no longer supported in Thunderbird 3 in favor of <a href="/en/Thunderbird/Autoconfiguration" title="en/Thunderbird/Autoconfiguration">Autoconfiguration</a>.</p>
+
+<h3 id="Introduction" name="Introduction">Introduction</h3>
+
+<p>Getting started with Thunderbird can be daunting for many users who use it to access e-mail from an ISP or a webmail provider. Users need to know specific information such as the mail server name, POP or IMAP, authentication options, security settings such as SSL/TLS, the SMTP server name, etc. Many ISPs and web mail providers must maintain online documentation walking a user through account setup in different mail clients with all of the various settings.</p>
+
+<p>Thunderbird now has hooks which makes account creation easy for ISP and webmail users. A new user provides the email address associated with the account and Thunderbird figures out the rest of the account details. Thunderbird 2 ships with ISP information for gmail and dotmac accounts. We'd like to add more in future releases. Additional ISP configurations can be installed as extensions.</p>
+
+<p>This document describes how to write an ISP configuration file and how to bundle it as an extension for Thunderbird.</p>
+
+<h3 id="How_does_it_work" name="How_does_it_work">How does it work</h3>
+
+<p>The idea is fairly straightforward. The account settings for an ISP or webmail provider are specified in an RDF or XML file. This file can be installed as an extension by the user.</p>
+
+<p>Thunderbird looks for these configuration files, adding a new account type for each one to the account wizard. The user provides his name and user name, the rest of the account settings come from the configuration file.</p>
+
+<p>Here's a screen shot of the account wizard, after adding an example ISP file:</p>
+
+<p><img src="/@api/deki/files/256/=ISPAccountwizard.png" alt="Image:ISPAccountwizard.png" class="internal"></p>
+
+<h3 id="Building_the_ISP_file" name="Building_the_ISP_file">Building the ISP file</h3>
+
+<p>The ISP file is a simple text file, with a UTF-8 encoding which describes the default settings for a mail account (IMAP, News, POP3, movemail) and (if appropriate) an SMTP server.</p>
+
+<h4 id="Existing_examples" name="Existing_examples">Existing examples</h4>
+
+<p>There are several example ISP data files you can use as a template:</p>
+
+<ul>
+ <li><a href="http://infosec.ufl.edu/tbird/Gatorlink.rdf" class="external" rel="freelink">http://infosec.ufl.edu/tbird/Gatorlink.rdf</a></li>
+</ul>
+
+<p>On Mozilla Add-ons, you can download or directly view the sources of the followings Add-ons:</p>
+
+<ul>
+ <li><a href="https://addons.mozilla.org/en-US/thunderbird/addon/6381" class="link-https" title="https://addons.mozilla.org/en-US/thunderbird/addon/6381">Gmail IMAP Account Setup</a></li>
+ <li><a href="https://addons.mozilla.org/en-US/thunderbird/addon/10331" class="link-https" title="https://addons.mozilla.org/en-US/thunderbird/addon/10331">Laposte.net IMAP Account Setup</a></li>
+ <li><a href="https://addons.mozilla.org/en-US/thunderbird/addon/5936" class="link-https" title="https://addons.mozilla.org/en-US/thunderbird/addon/5936">Russian Mail Accounts Setup</a></li>
+</ul>
+
+<h4 id="Adding_account_properties" name="Adding_account_properties">Adding account properties</h4>
+
+<p>A mail account has several objects associated with it: a mail server, SMTP server, and a user identity. Each object has its own settings which can be specified in the configuration file.</p>
+
+<ul>
+ <li>Generic server tags in the ISP file can match the attributes in <a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/base/public/nsIMsgIncomingServer.idl" rel="custom">nsIMsgIncomingServer.idl</a> (they automatically map to any object that's listed as "attribute" in this IDL file)</li>
+ <li>Identity tags match the same way for: <a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/base/public/nsIMsgIdentity.idl" rel="custom">nsIMsgIdentity.idl</a></li>
+ <li>SMTP Server tags match the same way for: <a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/compose/public/nsISmtpServer.idl" rel="custom">nsISmtpServer.idl</a></li>
+</ul>
+
+<p>Note: the incoming server type is a string, either "<code>imap</code>", "<code>pop3</code>", or "<code>nntp</code>". Here's an example for defining a POP server.</p>
+
+<pre>&lt;!-- pop3 server info --&gt;
+&lt;NC:incomingServer&gt;
+  &lt;NC:nsIMsgIncomingServer&gt;
+    &lt;NC:prettyName&gt;Mozilla ISP&lt;/NC:prettyName&gt;
+    &lt;NC:hostName&gt;pop.example.net&lt;/NC:hostName&gt;
+    &lt;NC:type&gt;pop3&lt;/NC:type&gt;
+    &lt;!--
+        On Thunderbird 3, following setting causes "TypeError: dest.setBoolAttribute is not a function"
+        and breaks the account which is going to be created.
+        &lt;NC:rememberPassword&gt;true&lt;/NC:rememberPassword&gt;
+    --&gt;
+  &lt;/NC:nsIMsgIncomingServer&gt;
+&lt;/NC:incomingServer&gt;
+</pre>
+
+<p>Changing <code>NC:type</code> to <code>imap</code> instead of <code>pop3</code> would cause the account to be created with an IMAP server.</p>
+
+<p>Looking at <a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/base/public/nsIMsgIncomingServer.idl" rel="custom">nsIMsgIncomingServer.idl</a> there is a generic attribute called "<code>port</code>". An ISP can specify a non-default port for this server by introducing the port attribute to the nsIMsgIncomingServer:</p>
+
+<pre>&lt;NC:incomingServer&gt;
+  &lt;NC:nsIMsgIncomingServer&gt;
+  ..
+  &lt;NC:port&gt;555&lt;/NC:port&gt;
+  ..
+  &lt;/NC:nsIMsgIncomingServer&gt;
+&lt;/NC:incomingServer&gt;
+</pre>
+
+<p>Another generic property in <code>nsIMsgIncomingServer</code> ISPs frequently like to adjust is <code>socketType</code>. Which can have a value of <code>0</code> (default socket), <code>1</code> (try TLS), <code>2</code> (always use TLS), <code>3</code> (use SSL).</p>
+
+<p>Any of the generic attributes listed in <code>nsIMsgIncomingServer</code> can be specified here. The same holds true for the identity and SMTP settings.</p>
+
+<h5 id="Attributes_for_specific_server_types" name="Attributes_for_specific_server_types">Attributes for specific server types</h5>
+
+<p>In addition to the generic attributes, some attributes only apply to a specific type of incoming server. Specify these in a separate section inside the server info. Here is an example for an IMAP server:</p>
+
+<pre>&lt;NC:ServerType-imap&gt;
+  &lt;NC:nsIImapIncomingServer&gt;
+    &lt;NC:cleanupInboxOnExit&gt;true&lt;/NC:cleanupInboxOnExit&gt;
+  &lt;/NC:nsIImapIncomingServer&gt;
+&lt;/NC:ServerType-imap&gt;
+</pre>
+
+<p>These tags match attributes in:</p>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/imap/public/nsIImapIncomingServer.idl" rel="custom">nsIImapIncomingServer.idl</a> for an IMAP server</li>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/local/public/nsIPop3IncomingServer.idl" rel="custom">nsIPop3IncomingServer.idl</a> for a POP3 server</li>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/local/public/nsIMovemailIncomingServer.idl" rel="custom">nsIMovemailIncomingServer.idl</a> for a movemail server</li>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/mailnews/news/public/nsINntpIncomingServer.idl" rel="custom">nsINntpIncomingServer.idl</a> for a news server</li>
+</ul>
+
+<h5 id="Username_requires_a_domain" name="Username_requires_a_domain">Username requires a domain</h5>
+
+<p>Some ISPs and webmail providers require the domain name to be appended to the user name for use with the mail server and/or the smtp server. This requirement can be specified by using the following tags in the configuration file: <code>incomingServerUserNameRequiresDomain</code> and <code>smtpUserNameRequiresDomain</code>.</p>
+
+<p>Here is an example SMTP server which requires a user name and the domain appended to the user name. Note that the <code>smtpUserNameRequiresDomain</code> tag appears after we close the <code>smtp</code>.</p>
+
+<pre>&lt;NC:smtp&gt;
+  &lt;NC:nsISmtpServer&gt;
+    &lt;NC:hostname&gt;smtp.mozilla.org&lt;/NC:hostname&gt;
+    &lt;NC:port&gt;465&lt;/NC:port&gt;
+    &lt;NC:trySSL&gt;3&lt;/NC:trySSL&gt;
+    &lt;NC:description&gt;Moco&lt;/NC:description&gt;
+  &lt;/NC:nsISmtpServer&gt;
+&lt;/NC:smtp&gt;
+
+&lt;NC:smtpUserNameRequiresDomain&gt;true&lt;/NC:smtpUserNameRequiresDomain&gt;
+&lt;NC:smtpRequiresUsername&gt;true&lt;/NC:smtpRequiresUsername&gt;
+&lt;NC:smtpCreateNewServer&gt;true&lt;/NC:smtpCreateNewServer&gt;
+&lt;NC:smtpUsePreferredServer&gt;true&lt;/NC:smtpUsePreferredServer&gt;
+</pre>
+
+<h3 id="An_example_configuration_file" name="An_example_configuration_file">An example configuration file</h3>
+
+<p>Here's the RDF file we generate for gmail support. If you copy this example, be sure to change the about attribute from "domain:gmail.com".</p>
+
+<pre>&lt;?xml version="1.0"?&gt;
+&lt;!DOCTYPE RDF&gt;
+&lt;RDF:RDF
+    xmlns:NC="http://home.netscape.com/NC-rdf#"
+    xmlns:RDF="http://www.w3.org/1999/02/22-rdf-syntax-ns#"&gt;
+
+  &lt;RDF:Description about="NC:ispinfo"&gt;
+    &lt;NC:providers&gt;
+      &lt;NC:nsIMsgAccount about="domain:gmail.com"&gt;
+        &lt;!-- pop3 server info --&gt;
+        &lt;NC:incomingServer&gt;
+          &lt;NC:nsIMsgIncomingServer&gt;
+            &lt;NC:prettyName&gt;Gmail&lt;/NC:prettyName&gt;
+            &lt;NC:hostName&gt;pop.gmail.com&lt;/NC:hostName&gt;
+            &lt;NC:type&gt;pop3&lt;/NC:type&gt;
+            &lt;NC:ServerType-pop3&gt;
+              &lt;NC:nsIPopIncomingServer&gt;
+                &lt;NC:leaveMessagesOnServer&gt;true&lt;/NC:leaveMessagesOnServer&gt;
+                &lt;NC:deleteMailLeftOnServer&gt;false&lt;/NC:deleteMailLeftOnServer&gt;
+              &lt;/NC:nsIPopIncomingServer&gt;
+            &lt;/NC:ServerType-pop3&gt;
+            &lt;NC:loginAtStartUp&gt;true&lt;/NC:loginAtStartUp&gt;
+            &lt;NC:downloadOnBiff&gt;true&lt;/NC:downloadOnBiff&gt;
+            &lt;!--
+                On Thunderbird 3, following setting causes "TypeError: dest.setBoolAttribute is not a function"
+                and breaks the account which is going to be created.
+                &lt;NC:rememberPassword&gt;true&lt;/NC:rememberPassword&gt;
+            --&gt;
+            &lt;NC:port&gt;995&lt;/NC:port&gt;
+            &lt;NC:socketType&gt;3&lt;/NC:socketType&gt;
+          &lt;/NC:nsIMsgIncomingServer&gt;
+        &lt;/NC:incomingServer&gt;
+
+        &lt;!-- smtp server info --&gt;
+        &lt;NC:smtp&gt;
+          &lt;NC:nsISmtpServer&gt;
+            &lt;NC:hostname&gt;smtp.gmail.com&lt;/NC:hostname&gt;
+            &lt;NC:port&gt;587&lt;/NC:port&gt;
+            &lt;NC:trySSL&gt;2&lt;/NC:trySSL&gt;
+            &lt;NC:description&gt;Gmail&lt;/NC:description&gt;
+          &lt;/NC:nsISmtpServer&gt;
+        &lt;/NC:smtp&gt;
+        &lt;NC:smtpRequiresUsername&gt;true&lt;/NC:smtpRequiresUsername&gt;
+        &lt;NC:smtpCreateNewServer&gt;true&lt;/NC:smtpCreateNewServer&gt;
+        &lt;NC:smtpUsePreferredServer&gt;true&lt;/NC:smtpUsePreferredServer&gt;
+
+        &lt;!-- identity defaults --&gt;
+        &lt;NC:identity&gt;
+          &lt;NC:nsIMsgIdentity&gt;
+          &lt;/NC:nsIMsgIdentity&gt;
+        &lt;/NC:identity&gt;
+
+        &lt;!-- other options --&gt;
+        &lt;NC:wizardSkipPanels&gt;true&lt;/NC:wizardSkipPanels&gt;
+        &lt;NC:wizardShortName&gt;Gmail&lt;/NC:wizardShortName&gt;
+        &lt;NC:wizardLongName&gt;Gmail&lt;/NC:wizardLongName&gt;
+        &lt;NC:wizardShow&gt;true&lt;/NC:wizardShow&gt;
+        &lt;NC:wizardPromote&gt;true&lt;/NC:wizardPromote&gt;
+        &lt;NC:emailProviderName&gt;Gmail&lt;/NC:emailProviderName&gt;
+        &lt;NC:sampleEmail&gt;example@gmail.com&lt;/NC:sampleEmail&gt;
+        &lt;NC:sampleUserName&gt;example&lt;/NC:sampleUserName&gt;
+        &lt;NC:emailIDDescription&gt;Gmail Username:&lt;/NC:emailIDDescription&gt;
+        &lt;NC:showServerDetailsOnWizardSummary&gt;true&lt;/NC:showServerDetailsOnWizardSummary&gt;
+      &lt;/NC:nsIMsgAccount&gt;
+    &lt;/NC:providers&gt;
+  &lt;/RDF:Description&gt;
+&lt;/RDF:RDF&gt;
+</pre>
+
+<h3 id="Testing" name="Testing">Testing</h3>
+
+<p>When developing the creation of an ISP configuration file, it is helpful to be able to quickly test the settings you are working on without installing it as an extension. You can do this by placing a copy of the configuration file in &lt;path to thunderbird.exe&gt;\isp\. gmail.rdf and rss.rdf should already be in this location. Restart Thunderbird and your account type will be listed in the account wizard.</p>
+
+<h3 id="Distribution" name="Distribution">Distribution</h3>
+
+<p>Now that you have a working configuration file for an ISP or webmail provider, you need to distribute it.</p>
+
+<p>There are two ways to do this: as an extension or distributing a custom build.</p>
+
+<h4 id="As_an_extension" name="As_an_extension">As an extension</h4>
+
+<p>Configuration files can be installed in Thunderbird 2 using the Mozilla Extension system. You can host the extension on <a href="https://addons.mozilla.org/thunderbird/extensions/" class="link-https">Mozilla Add-ons</a>.</p>
+
+<p>The extension needs to include the configuration file in a subdirectory called isp. Thunderbird 2.0.0.x walks through the list of enabled extensions looking for directories named isp. The account wizard is populated with any RDF or XML configuration files it finds in these locations.</p>
+
+<h5 id="Sample_extension" name="Sample_extension">Sample extension</h5>
+
+<p>Here is an example extension you can use as a template: <a href="/@api/deki/files/193/=Example-isp.xpi" title="File:en/Media_Gallery/Example-isp.xpi">Media:Example-isp.xpi</a>. Download this file locally. XPI files are actually ZIP files can be extraced using any zip program like WinZIP.</p>
+
+<h4 id="Custom_builds" name="Custom_builds">Custom builds</h4>
+
+<p>If you are distributing a customized version of Thunderbird 2, simply add the RDF or XML to <code>$INSTALLFOLDER/isp/</code> where <code>$INSTALLFOLDER</code> is the location of <code>thunderbird.exe</code>. Thunderbird looks in this directory for these RDF files.</p>
+
+<p>Note: For Thunderbird 1.5.0.x, the direction location you should use is: <code>$INSTALLFOLDER/defaults/isp</code>.</p>

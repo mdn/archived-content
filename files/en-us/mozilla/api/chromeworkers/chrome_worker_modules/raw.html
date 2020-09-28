@@ -1,0 +1,63 @@
+<p style="text-align: justify;">The preferred way to define and load modules for Chrome Workers is to use the Chrome Worker Module Loader. This module loader should not surprise developers familiar with CommonJS, as it implements a minimal CommonJS <code><code>require()</code></code>.</p>
+<h2 id="Loading_modules" style="text-align: justify;">Loading modules</h2>
+<p>Loading a module is simple. Start by importing the module loader. You only need to do it once for each worker, from within the chrome worker itself:</p>
+<pre class="brush: js" style="text-align: justify;">importScripts("resource://gre/modules/workers/require.js");
+</pre>
+<div class="note">
+  <p style="text-align: justify;"><strong>Note:</strong> Although you only need to do this once for each worker, it doesn't hurt if you do it more than once.</p>
+</div>
+<p style="text-align: justify;">This defines a global value <code>require()</code>, that you may now use as follows:</p>
+<pre class="brush: js">// Import the module
+// (here, we import the core of OS.File)
+let Core = require("resource://gre/modules/osfile/osfile_shared_allthreads.jsm");
+
+// We may now use module Core.
+Core.declareFFI(...)</pre>
+<p style="text-align: justify;">Note that, for the moment, <code>require()</code> only accepts absolute URIs. If the your module URI ends with “.js”, you can omit the extension.</p>
+<h2 id="Creating_modules" style="text-align: justify;">Creating modules</h2>
+<p style="text-align: justify;">Creating a module is just as simple.</p>
+<p style="text-align: justify;">A module is a file, whose filename generally ends with either “.js” or “.jsm”, and designed to be opened through <code>require()</code>. Any value you define in that file is private by default. To make the value public, you just have to add it to either global value <code>exports</code>, as follows:</p>
+<pre class="brush: js" style="text-align: justify;">/* File myModule.js */
+let secretKey = "this is a secret";
+let publicKey = "this is public";
+exports.key = publicKey;
+// secretKey is not exported
+// publicKey is exported with name "key"</pre>
+<p style="text-align: justify;">Alternatively, if you prefer that style, you may write</p>
+<div>
+  <pre class="brush: js">// variable |module| is a special global introduced by require()
+module.exports = {
+  key: publicKey
+};</pre>
+</div>
+<p style="text-align: justify;">Once this is done, we may load the module and use the values that have been exported</p>
+<div>
+  <pre class="brush: js">// Assuming that myModule.js is installed to resource://gre/modules/myModule.js
+let Module = require("resource://gre/modules/myModule.js")
+
+foo(Module.key); // Module.key == "this is public";
+// However, secretKey is not exported and cannot be used</pre>
+</div>
+<p style="text-align: justify;">For the installation of resources, please see the documentation on moz.build (if your code is part of the platform) or on chrome manifests (if your code is part of an add-on).</p>
+<h2 id="Stack_traces" style="text-align: justify;">Stack traces</h2>
+<p style="text-align: justify;">Unfortunately, the module loader doesn’t play nicely with error stack traces. That is, the following will not show human-readable stacks:</p>
+<pre class="brush: js">try {
+    MyModule.foo();
+} catch (ex) {
+    log("Exception raised at " + ex.fileName)
+    log("Stack: " + ex.stack);
+}</pre>
+<p style="text-align: justify;">Rather, you should use properties <code>moduleName</code> and <code>moduleStack</code>, as follows:</p>
+<div>
+  <pre class="brush: js">try {
+    MyModule.foo();
+} catch (ex) {
+    log("Exception raised at " + ex.moduleName)
+    log("Stack: " + ex.moduleStack);
+}</pre>
+</div>
+<h2 id="Subtleties" style="text-align: justify;">Subtleties</h2>
+<p style="text-align: justify;">You shouldn’t mix both styles <code>exports.foo = bar</code> and <code>module.exports = {foo: bar}</code>. If you do, know that any call to <code>module.exports</code> will overwrite all calls to `exports.foo = bar.</p>
+<p style="text-align: justify;">You should not modify <code>exports</code> or <code>module.exports</code> once your module initialization is complete.</p>
+<p style="text-align: justify;">The module loader supports cyclic calls to <code>require()</code>. However, if you have cyclic requirements, some of the modules involved in the cyclic requirements may become visible by the other modules before they are fully evaluated.</p>
+<p style="text-align: justify;">No attempt is made to fully isolate modules from each other. In particular, globals (<code>String</code>, <code>Math</code>, <code>Object</code>, <code>self</code>) and the worker global scope itself (<code>this</code>) are shared between workers. In other words, the true isolation unit is the worker itself, not the module.</p>

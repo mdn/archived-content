@@ -1,0 +1,164 @@
+---
+title: Limitations of frame scripts
+slug: >-
+  Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/_Limitations_of_frame_scripts
+tags:
+  - Firefox
+  - Guide
+  - Intermediate
+  - JavaScript
+---
+<div><section class="Quick_links" id="Quick_Links">
+  <ol>
+    <li class="toggle">
+        <details>
+            <summary>Firefox developer release notes</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Releases">Firefox developer release notes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Add-ons</summary>
+            <ol>
+              <li><a href="/en-US/Add-ons/WebExtensions">Browser extensions</a></li>
+              <li><a href="/en-US/Add-ons/Themes">Themes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Firefox internals</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/">Mozilla project</a></li>
+              <li><a href="/en-US/docs/Mozilla/Gecko">Gecko</a></li>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Headless_mode">Headless mode</a></li>
+              <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules">JavaScript code modules</a></li>
+              <li><a href="/en-US/docs/Mozilla/js-ctypes">JS-ctypes</a></li>
+              <li><a href="/en-US/docs/Mozilla/MathML_Project">MathML project</a></li>
+              <li><a href="/en-US/docs/Mozilla/MFBT">MFBT</a></li>
+              <li><a href="/en-US/docs/Mozilla/Projects">Mozilla projects</a></li>
+              <li><a href="/en-US/docs/Mozilla/Preferences">Preference system</a></li>
+              <li><a href="/en-US/docs/Mozilla/WebIDL_bindings">WebIDL bindings</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XUL">XUL</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Building and contributing</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions">Build instructions</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options">Configuring build options</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works">How the build system works</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Source_Code/Mercurial">Mozilla source code</a></li>
+              <li><a href="/en-US/docs/Mozilla/Localization">Localization</a></li>
+              <li><a href="/en-US/docs/Mozilla/Mercurial">Mercurial</a></li>
+              <li><a href="/en-US/docs/Mozilla/QA">Quality assurance</a></li>
+              <li><a href="/en-US/docs/Mozilla/Using_Mozilla_code_in_other_projects">Using Mozilla code in other projects</a></li>
+            </ol>
+        </details>
+    </li>
+  </ol>
+</section></div>
+
+<p>Frame scripts run with <a href="/en-US/docs/Security_check_basics#Principals">system privileges</a> and have access to the <a href="/en-US/docs/Components_object">Components</a> object, enabling them to use <a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a> objects and <a href="/en-US/docs/Mozilla/JavaScript_code_modules">JSMs</a>. Many privileged APIs will just work in a content process. Anything that just manipulates data structures will just work. XHR and Workers will work. However, some APIs that work in the chrome process will not work in a frame script. This article lists the most important of these APIs.</p>
+
+<h2 id="File_IO">File I/O</h2>
+
+<p>You should not write to or read from the disk from a frame script, in particular, the profile directory. Even if this is possible, you should not do it and may expect that it could stop working at any time. File I/O should all be done in the chrome process. For example:</p>
+
+<ul>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIFileStreams.idl"><code>nsIFileInputStream</code></a></li>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIFileStreams.idl"><code>nsIFileOutputStream</code></a></li>
+ <li><a href="/en-US/docs/Extensions/Using_the_DOM_File_API_in_chrome_code">Constructing a <code>File</code> from a string or <code>nsIFile</code></a> (but <code>File</code> objects can be sent via message manager)</li>
+ <li><code><a href="/en-US/docs/Web/API/HTMLInputElement/mozSetFileNameArray">HTMLInputElement.mozSetFileNameArray</a></code> (alternative: <code>mozSetFileArray</code>)</li>
+ <li><code>file:</code> URIs, see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1187099">bug 1187099</a></li>
+ <li>&lt;...&gt;</li>
+</ul>
+
+<h2 id="XUL_and_browser_UI">XUL and browser UI</h2>
+
+<p>Anything that tries to touch the browser UI or anything to do with XUL is likely not to work in the content process. For example:</p>
+
+<ul>
+ <li><code><a href="http://dxr.mozilla.org/mozilla-central/source/embedding/components/windowwatcher/nsIPromptService.idl">nsIPromptService</a></code></li>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/widget/nsIFilePicker.idl"><code>nsIFilePicker</code></a></li>
+ <li><code>nsIXUL*</code></li>
+ <li>&lt;need more examples&gt;</li>
+</ul>
+
+<h2 id="Services">Services</h2>
+
+<p>Some services will not work in frame scripts.</p>
+
+<ul>
+ <li>Services.search</li>
+ <li>Services.downloads</li>
+</ul>
+
+<h2 id="Chrome_windows">Chrome windows</h2>
+
+<p>Anything that needs to use Chrome windows will not work in the content process. For example:</p>
+
+<ul>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/mobile/android/components/SessionStore.idl"><code>nsISessionStore</code></a></li>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/xpfe/appshell/nsIWindowMediator.idl"><code>nsIWindowMediator</code></a></li>
+ <li>&lt;need more examples&gt;</li>
+</ul>
+
+<h2 id="Places_API">Places API</h2>
+
+<p>The <a href="/en-US/docs/Mozilla/Tech/Places">Places API</a> can't be used inside a frame script. For example:</p>
+
+<ul>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsINavHistoryService.idl"><code>nsINavHistoryService</code></a></li>
+ <li><a href="http://dxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsINavBookmarksService.idl"><code>nsINavBookmarksService</code></a></li>
+</ul>
+
+<h2 id="Observers_in_the_content_process">Observers in the content process</h2>
+
+<p>As noted in <a href="https://developer.mozilla.org/en-US/Firefox/Multiprocess_Firefox/Limitations_of_chrome_scripts#Observers_in_the_chrome_process">Observers in the chrome process</a>, most <a href="http://dxr.mozilla.org/mozilla-central/source/xpcom/ds/nsIObserver.idl">observers</a> should be registered in the chrome process and will not work in the content process. The exceptions are:</p>
+
+<ul>
+ <li><code><a href="https://developer.mozilla.org/en-US/docs/Observer_Notifications#Documents">content-document-global-created</a></code></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Observer_Notifications#Documents"><code>document-element-inserted</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Observer_Notifications#Windows"><code>outer-window-destroyed</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Observer_Notifications#Windows"><code>inner-window-destroyed</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Observer_Notifications#Windows"><code>dom-window-destroyed</code></a></li>
+</ul>
+
+<p>These must be registered in the content process.</p>
+
+<h2 id="QI_from_content_window_to_chrome_window">QI from content window to chrome window</h2>
+
+<div>There's a particular pattern often used to get from a content window to the associated chrome window. It looks something like this:</div>
+
+<div></div>
+
+<pre class="brush: js notranslate">window.QueryInterface(Ci.nsIInterfaceRequestor)
+                         .getInterface(Ci.nsIWebNavigation)
+                         .QueryInterface(Ci.nsIDocShellTreeItem)
+                         .rootTreeItem
+                         .QueryInterface(Ci.nsIInterfaceRequestor)
+                         .getInterface(Ci.nsIDOMWindow);</pre>
+
+<div>This will no longer work. In the content process, the root tree item is an <a href="http://dxr.mozilla.org/mozilla-central/source/dom/interfaces/base/nsITabChild.idl"><code>nsITabChild</code></a>, that cannot be converted to an <code>nsIDOMWindow</code>, so the second <code>getInterface</code> call here will fail.</div>
+
+<div></div>
+
+<p>If you want a chrome window: send a message from the content process using the <a href="/en-US/Firefox/Multiprocess_Firefox/The_message_manager">message manager</a>. The <a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIMessageListener#receiveMessage()"><code>target</code></a> property of the object passed into the message handler in the chrome process is the XUL <a href="/en-US/docs/XUL/browser"><code>&lt;browser&gt;</code></a> receiving the message, and you can get the chrome window from that (I'm not sure how).</p>
+
+<h2 id="nsIAboutModule">nsIAboutModule</h2>
+
+<p>By default, custom <code>about:</code> pages registered using <a href="http://dxr.mozilla.org/mozilla-central/source/netwerk/protocol/about/nsIAboutModule.idl"><code>nsIAboutModule</code></a> are loaded in the chrome process. This means that you can't access their content from the content process (via XHR, for example).</p>
+
+<p>There is a shim for this that makes the content of <code>about:</code> pages registered by the add-on transparently available in the content process.</p>
+
+<p>To avoid the shim: If you need to access the content of your about page from the content process, you need to register the <code>nsIAboutModule</code> in the content process as well as the chrome process. By default, <code>about:</code> pages (except for a small whitelist) are loaded in the chrome process when browsed to from the AwesomeBar.</p>
+
+<h2 id="JavaScript_code_modules_JSMs">JavaScript code modules (JSMs)</h2>
+
+<div>In multiprocess Firefox, a JSM loaded into the content process does not share any state with the same JSM loaded into the chrome process. See the entry in the <a href="/en-US/Firefox/Multiprocess_Firefox/Limitations_of_chrome_scripts#JavaScript_code_modules_%28JSMs%29">Limitations on chrome scripts</a> page.</div>

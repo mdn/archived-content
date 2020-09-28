@@ -1,0 +1,599 @@
+<div class="warning">
+<p>MozMill is a deprecated test tool and framework that has been superceded by <a href="https://developer.mozilla.org/docs/Marionette">Marionette</a>. The tests are being migrated over to Marionette. For Thunderbird MozMill tests see <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Thunderbird/Thunderbird_MozMill_Testing">Thunderbird MozMill Testing</a></p>
+</div>
+
+<p><a href="/en-US/docs/Mozmill">Mozmill</a> is not just another testing tool inside the <a href="/en-US/docs/Mozilla_automated_testing">automated testing framework</a> provided by Mozilla. Instead, it offers possibilities other test suites cannot fulfill. Mozmill does not require a "test-enabled" Firefox build. Any official build, including releases and <a href="/en-US/docs/Downloading_Nightly_or_Trunk_Builds">nightly builds</a>, work out-of-the-box. You only need to <a href="Mozmill#Installation">install</a> Mozmill once. After that, you can immediately run Mozmill tests <span style="background-color: rgb(245, 246, 245);">on any local build</span>.</p>
+
+<p>Mozmill tests are written in <a href="/en-US/docs/JavaScript">JavaScript</a> and get executed in the scope of the browser window, which enables them to have access to any part of the UI and also to all available <a href="/docs/Mozilla/XPCOM">XPCOM</a> components. Using Mozmill's <a href="/en-US/docs/Mozmill#The_Command_Line_Client">command line client</a> also offers the ability to run tests that require a restart of the application.</p>
+
+<h2 id="Mozmill_test_automation">Mozmill test automation</h2>
+
+<p>Running functional tests with Mozmill in an automated manner is very helpful for <a href="http://quality.mozilla.org/">mozQA</a>. In the past, all the tests had to be run manually. Seeing a still increasing number of manual tests, it takes longer for mozQA to run all the needed tests against release candidates or nightly builds of Firefox. The way Mozmill operates can help us to automate nearly all of those tests and let them run on all platforms and across localized builds.</p>
+
+<p>To handle all the work that needs to be done to have a fully automated Mozmill test suite available, the <a class="link-https" href="https://wiki.mozilla.org/QA/Mozmill_Test_Automation">Mozmill Test Automation project</a> has been created. Head over to the project page and see which sub-projects we are working on and how the work is coordinated.</p>
+
+<p>In the following, we give tips and tricks on using Mozmill to run our existing Mozmill tests against Firefox and how you can contribute to the project by creating new or fixing broken tests. The following information tells you everything you need to know to start helping out.</p>
+
+<h2 id="Installing_Mozmill">Installing Mozmill</h2>
+
+<p>To get Mozmill running on your machine, you only have to <a href="https://mozqa.com/mozmill-env/">download</a> and unzip our complete Mozmill environment. Just make sure that you pick the most recent version for your platform. That is all. Once unzipped, execute the 'run' command. After that, all of the tools are available.</p>
+
+<p>Alternatively, you can use the Python Package Index:</p>
+
+<pre class="language-html"><code class="language-html">pip install mozmill</code></pre>
+
+<p>If you want to start with Mozmill framework development, have a look at the step-by-step <a href="/en-US/docs/Mozmill#Installation">installation instructions</a> on the <a href="/en-US/docs/Mozmill">Mozmill</a> page itself.</p>
+
+<h2 id="The_Mozmill-Test_repository">The Mozmill-Test repository</h2>
+
+<p>Having a central place for storage makes it always easier to distribute existing content to consumers. That is why a <a href="http://en.wikipedia.org/wiki/Distributed_revision_control">distributed version control system</a> is used to manage the test repository and to give access to current tests and our self-developed <a href="/en-US/docs/Mozmill_Tests/Shared_Modules">shared modules</a>. Fortunately, this repository has already been created at <a href="http://hg.mozilla.org/qa/mozmill-tests/">http://hg.mozilla.org/qa/mozmill-tests/</a> and is based on <a href="http://mercurial.selenic.com/">Mercurial</a>.</p>
+
+<h2 id="The_test_repository">The test repository</h2>
+
+<p>To be able to run Mozmill tests, you have to be familiar with our repository and the tools we are using. Read this section to learn how to clone the repository, run the tests, and contribute by writing or fixing tests.</p>
+
+<p>If you prefer git over mercurial, read the following details on how to use Mercurial then head over to the <a href="/en-US/docs/Mozilla/QA/Mozmill_tests#Using_Git">git section</a> where we cover the differences.</p>
+
+<h3 id="Mercurial_Installation">Mercurial Installation</h3>
+
+<p>Before a copy of the repository can be cloned to the local disk, Mercurial has to be installed by following <a href="/en-US/docs/Installing_Mercurial">these instructions</a>.</p>
+
+<h3 id="Configuring_Mercurial">Configuring Mercurial</h3>
+
+<p>With Mercurial installed, the default configuration has to be prepared. All the changes should be made in the <a href="http://www.selenic.com/mercurial/hgrc.5.html#files">default Mercurial resource configuration file</a>. If the file does not exist on your machine, you should create it; then open the file in your preferred editor and update its contents so it includes the configuration information below:</p>
+
+<pre>[ui]
+username = Your Real Name <span class="plain">&lt;</span><a class="link-mailto" href="mailto:user@example.com" rel="external nofollow"><span class="plain">user@example.com</span></a><span class="plain">&gt;</span>
+merge = internal:merge (or <em>your-merge-program</em>)
+
+[diff]
+git = 1
+showfunc = 1
+unified = 8
+
+[defaults]
+qnew = -U
+
+[extensions]
+hgext.color =
+hgext.mq =
+hgext.transplant =
+
+[hooks]
+pretxncommit.whitespace = hg export tip | (! egrep '^\+(.*[ ]*|[\t]*)$')
+prechangegroup.mq-no-pull = ! hg qtop &gt; /dev/null 2&gt;&amp;1
+</pre>
+
+<p>As you can see, a couple of entries have been added. Under the <code>[ui]</code> section, the <code>username</code> should be set to your full name and the preferred email address. If you do not want to use the internal merge tool, you can specify your preferred application in the <code>merge</code> line; otherwise you can leave it set to <code>internal:merge</code>. Within the <code>[diff]</code> section, the output from the <code>diff</code> command can be specified. It is suggested to leave the values as they stand. The next section <code>[extensions]</code> enables the <a href="http://mercurial.selenic.com/wiki/MqExtension">Mercurial Queue</a> and <a href="http://mercurial.selenic.com/wiki/TransplantExtension">Transplant</a> extension, which can be used to handle a patch queue for easier management. Last but not least, hooks have been added to the <code>[hooks]</code> section to make sure that no trailing white-spaces are introduced and that you don't destroy the local repository when calling "<em>hg pull</em>" while a patch is applied. With those changes, the environment has been prepared to clone the Mozmill test repository.</p>
+
+<h3 id="Cloning_the_test_repository">Cloning the test repository</h3>
+
+<p>The cloning process is a one time action. Once you have a copy of the repository on your machine it can be updated instead; see <a href="/en-US/docs/Mozmill_Tests#Updating_the_local_copy">the next section</a>. Cloning the repository only requires one command, which retrieves all the files from the central repository and save them to a subfolder of your choice. Change into a folder of your choice before executing the <code><code>hg clone</code></code> command:</p>
+
+<pre>$ cd %folder%
+$ hg clone <a href="http://hg.mozilla.org/qa/mozmill-tests"><span class="plain">http://hg.mozilla.org/qa/mozmill-tests</span></a> [subfolder]</pre>
+
+<p>Now a copy of the repository can be found under the specified <code>subfolder</code>. If you wish to use the repository name as the name of the subfolder, don't specify that parameter and a copy is saved under <code>mozmill-tests</code>.</p>
+
+<h3 id="Updating_the_local_copy">Updating the local copy</h3>
+
+<p>To always stay on the bleeding edge, you have to pull the newest version of the repository regularly. With the command below, all new, changed, and removed files are updated in your local copy (run this in the specified <code>subfolder</code> of the cloned repository, where an .hg file is located):</p>
+
+<pre>$ hg pull -u
+</pre>
+
+<div class="note"><strong>Note</strong>: Before you run any of the Mozmill tests in Firefox make sure you have the latest revision checked out.</div>
+
+<h3 id="Handling_branches">Handling branches</h3>
+
+<p>The <code>mozmill-tests</code> repository contains tests for different versions of Firefox. That is necessary because UI elements or their behavior could have been changed between major versions. With only one set of tests and modules in place, the test-run would produce test failures and make the results unreliable.</p>
+
+<p>Instead of using multiple repositories for the different versions of Firefox we handle everything inside the same repository by using named branches. At the moment, the following heads exist in the repository:</p>
+
+<p><code><strong>default</strong></code> -&gt; Firefox Nightly (<a href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-central" title="http://nightly.mozilla.org/">Download</a>)<br>
+ <code><strong>mozilla-aurora</strong></code> -&gt; Firefox Aurora (<a href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-aurora" title="http://aurora.mozilla.org/">Download</a>)<br>
+ <code><strong>mozilla-beta</strong></code> -&gt;Firefox Beta (<a href="http://beta.mozilla.org/" title="http://beta.mozilla.org/">Download</a>)<br>
+ <code><strong>mozilla-release</strong></code> -&gt; Firefox Release (<a href="http://www.mozilla.org/en-US/firefox/new/" title="http://www.mozilla.org/en-US/firefox/new/">Download</a>)<br>
+ <code><strong>mozilla-esr31</strong></code> -&gt; Firefox 31.0 ESR (<a href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-esr31">Download</a>)</p>
+
+<p>By cloning the repository, the <code>default</code> branch is selected automatically. As long as the tests are run against a Nightly build of Firefox, that is fine. However, if you want to run the tests against an older version, the branch has to be switched. To check which branches exist, run the command below.  The command produces a list of branches, with the revision ID of the latest check-in.</p>
+
+<pre>$ hg branches
+default                     4330:2c1e3a8a982e
+mozilla-beta                4329:d23d24af886b
+mozilla-aurora              4328:bbc166ff702a
+mozilla-esr31               4327:99ba85df489a
+mozilla-release             4326:9bfa4c5996b3
+</pre>
+
+<p>If you do not know which branch is selected, run:</p>
+
+<pre>$ hg branch
+default
+</pre>
+
+<p>Given the output, the default branch is currently selected, and the tests will work with versions of Firefox Nightly builds. If another branch is needed because tests have to be run against Firefox builds on the Aurora channel, the following command switches to the aurora branch:</p>
+
+<pre>$ hg up -C mozilla-aurora
+84 files updated, 0 files merged, 1 files removed, 0 files unresolved
+</pre>
+
+<p>The repository and all of its tests are updated to the latest version the of tests in that branch.</p>
+
+<div class="note"><strong>Note</strong>: According to the rapid release cycle of Firefox, code merges between the branches happen every six weeks. Our branches have to follow the merge process on the same day. If needed, see these <a href="/en-US/docs/Mozmill_Tests/Merging_named_branches">details and step by step instructions</a>.</div>
+
+<h3 id="Using_Git">Using Git</h3>
+
+<p>If you prefer git over mercurial, we have a mirror set up at <a href="http://github.com/mozilla/qa-mozmill-tests" style="font-size: 14px; line-height: 1.5; text-decoration: underline;">http://github.com/mozilla/qa-mozmill-tests</a><span style="font-size: 14px; line-height: 1.5;">. We do not work with pull requests for <code>mozmill-tests</code>. Instead, export a patch and upload it to Bugzilla.</span></p>
+
+<p>Clone the repository with:</p>
+
+<pre>git clone http://github.com/mozilla/qa-mozmill-tests<code><span style="font-size: 14px; line-height: 1.5;"> </span></code></pre>
+
+<p>The different branch names are the same mentioned above with one difference: Instead if the <code>default</code> branch used with hg, git uses <code>master</code>.</p>
+
+<h4 id="Preparing_a_patch">Preparing a patch</h4>
+
+<p>To work on a patch using <code>git</code>, you should first create a new development branch based on the branch you want that code to be based off. Usually, this will always be the master branch and has not to be specified. However, i<span style="font-size: 14px; line-height: 1.5;">f your patch needs to land on a different branch then </span><code style="font-size: 14px; font-style: normal; line-height: 1.5;">master</code><span style="font-size: 14px; line-height: 1.5;">, it needs the source branch name:</span></p>
+
+<pre>git checkout -b %branch_name% %source_branch%</pre>
+
+<p>Now you can work on the changes. When you are done, make sure you commit the updates. Before check if any new file has to be added for tracking.<br>
+  </p>
+
+<pre>git status
+git add %filename%
+git commit -m "Bug %bug_id% - %commit_message%. r=%reviewer%"</pre>
+
+<p>You can check the latest commit with:</p>
+
+<pre>git show</pre>
+
+<p>You can create a patch using <code>format-patch</code>.</p>
+
+<pre>git format-patch HEAD^</pre>
+
+<p>Before uploading the patch to Bugzilla, make the patch mercurial-compatible by using the <code>git-patch-to-hg-patch</code> from <a href="http://github.com/mozilla/moz-git-tools">http://github.com/mozilla/moz-git-tools</a></p>
+
+<h4 id="Update_a_patch">Update a patch</h4>
+
+<p>If you need to update a patch, make the necessary changes, and commit them as described earlier. However, rebase all of the commits against the source branch first. Afterward <code>git log</code> should only show a single commit for all of your changes.</p>
+
+<pre>git commit -m "whatever because it will be lost by the interactive rebase"
+git rebase -i %source_branch%  # Mark all commits except the first one with 'f' (which stands for fixup)
+git log</pre>
+
+<h4 id="Rebase_against_latest_changes_to_mozmill-tests">Rebase against latest changes to mozmill-tests</h4>
+
+<p>If other changes landed in <code>mozmill-tests</code> which are in conflict with your patch, you will have to rebase your changes. For this update the source branch and rebase your changes on top:</p>
+
+<pre>git checkout master
+git pull origin master
+git checkout %work_branch%
+git rebase master </pre>
+
+<p>At this point, you might need to resolve conflicts and finish the rebase. Follow the instructions given by <code>git rebase</code>.</p>
+
+<h2 id="Running_Mozmill_tests">Running Mozmill tests</h2>
+
+<p>To get familiar with Mozmill test scripts, you can take a look at the Firefox tests that you checked out of the <code>mozmill-test</code> repository.</p>
+
+<p>To run the tests you use the Mozmill command line client with one of the options as given below. A fresh profile will automatically be created so the test always runs in a clean environment. Keep in mind, however, that if you want to run multiple tests inside a folder, all those tests will be executed in the same profile. Beneath those normal tests you will also be able to run restart tests like what is needed for extension installations.</p>
+
+<p>You can run the <code>mozmill</code> command with the <code>--help</code> option to get a list of available options:</p>
+
+<pre>$ mozmill --help
+Usage: mozmill [options]
+
+UI Automation tool for Mozilla applications
+
+Options:
+  --version             show program's version number and exit
+  -h, --help            show this help message and exit
+
+  MozRunner options:
+    -p PROFILE, --profile=PROFILE
+                        The path to the profile to operate on. If none,
+                        creates a new profile in temp directory
+    -a ADDONS, --addon=ADDONS
+                        Addon paths to install. Can be a filepath, a directory
+                        containing addons, or a url
+    --addon-manifests=ADDON_MANIFESTS
+                        An addon manifest to install
+    --pref=PREFS        A preference to set. Must be a key-value pair
+                        separated by a ':'
+    --preferences=FILE  read preferences from a JSON or INI file. For INI, use
+                        'file.ini:section' to specify a particular section.
+    -b BINARY, --binary=BINARY
+                        Binary path.
+    --app=APP           Application to use [DEFAULT: firefox]
+    --app-arg=APPARGS   provides an argument to the test application
+    --debugger=DEBUGGER
+                        run under a debugger, e.g. gdb or valgrind
+    --debugger-args=DEBUGGER_ARGS
+                        arguments to the debugger
+    --interactive       run the program interactively
+    --info              Print module information
+
+  MozMill options:
+    -t TESTS, --test=TESTS
+                        Run test
+    --timeout=TIMEOUT   Seconds before harness timeout if no communication is
+                        taking place
+    --restart           Restart the application and reset the profile between
+                        each test file
+    -m MANIFEST, --manifest=MANIFEST
+                        test manifest .ini file
+    -D, --debug         debug mode
+    --list-tests        List test files that would be run, in order
+    --handler=PATH:CLASS
+                        Specify an event handler given a file PATH and the
+                        CLASS in the file
+    --screenshots-path=PATH
+                        Path of directory to use for screenshots
+    --disable=HANDLER   Disable a default event handler
+                        (Report,PythonCallbacks,Logging)
+    --manual            start the browser without running any tests
+
+  Report options:
+    --report=URL        Report the results. Requires URL to results server.
+                        Use 'stdout' for stdout.
+
+  Logging options:
+    -l LOG_FILE, --log-file=LOG_FILE
+                        Log all events to file.
+    --console-level=[CRITICAL|ERROR|WARNING|INFO|DEBUG]
+                        level of console logging (default: INFO)
+    --file-level=[CRITICAL|ERROR|WARNING|INFO|DEBUG]
+                        Level of file logging if --log-file has been specified
+                        (default: INFO)
+    --format=[json|pprint|pprint-color]
+                        Format for logging (default: pprint-color)
+</pre>
+
+<p>Three of these options are the ones you will use most:</p>
+
+<ul>
+ <li>The most important option is <code>-m</code>, which specifies a manifest with references to tests to be executed</li>
+ <li>To run a single test or a folder with tests the <code>-t</code> option can be used.</li>
+ <li>The <code>-b</code> option is useful if the Firefox binary cannot automatically found, so it can be specified by pointing to the binary or app bundle on OS X</li>
+ <li>The <code>--console-level=ERROR</code> option lets you get more comprehensive error output in the shell window. Below you can find some examples specific to our <code>mozmill-test</code> repository for Firefox.</li>
+</ul>
+
+<h3 id="Examples">Examples</h3>
+
+<p>To start the default Firefox application, execute the given manifest with tests, and close Firefox itself afterward:</p>
+
+<pre>$ mozmill -m firefox/tests/functional/testPreferences/manifest.ini
+</pre>
+
+<p>To start the default Firefox application, execute the given test, and close Firefox itself afterward:</p>
+
+<pre>$ mozmill -t firefox/tests/functional/testPreferences/testRestoreHomepageToDefault.js
+</pre>
+
+<p>To start the default Firefox application, execute all the tests in the given folder and its subfolders, and close Firefox itself afterward:</p>
+
+<pre>$ mozmill -t firefox/tests/functional/testPreferences/
+</pre>
+
+<p>To start the specified version of Firefox (Windows, Linux, or OS X), execute the given test, and close the browser afterward:</p>
+
+<pre>$ mozmill -t firefox/tests/functional/testPreferences/testRestoreHomepageToDefault.js -b "c:\firefox 3.5\firefox.exe"   (Windows)
+$ mozmill -t firefox/tests/functional/testPreferences/testRestoreHomepageToDefault.js -b "/usr/bin/firefox"             (Linux)
+$ mozmill -t firefox/tests/functional/testPreferences/testRestoreHomepageToDefault.js -b "/Applications/Firefox.app"    (Mac OS X)
+</pre>
+
+<div class="note"><strong>Note</strong>: When using the <code>-b</code> option the full path to the executable has to be specified on Windows and Linux while on OS X the application bundle can be used.</div>
+
+<div class="note"><strong>Note</strong>: When using OSX you may not have a default Firefox set. You will need to include the binary when running tests.</div>
+
+<h3 id="Restart_tests">Restart tests</h3>
+
+<p>Restart tests allow you to run tests like installing an extension which need a restart to finish. For restart tests you will specify a manifest or a test folder via the <code>-t</code> option. It will run all the test files in that manifest or folder in an alphabetical order.</p>
+
+<p>To start the system's default Firefox application, run all the tests in the given manifest by restarting Firefox in between each test, and finally close Firefox, you can use the following command, for example. The same profile is used for all test files inside this folder.</p>
+
+<pre>$ mozmill -m firefox/tests/functional/restartTests/testExtensionInstallUninstall/manifest.ini
+</pre>
+
+<p>To start the system's default Firefox application, run the restart tests for all sub folders, and finally close Firefox, a command like the following can be used. The same profile is only used for one subfolder; it's not shared between the different subfolders.</p>
+
+<pre>$ mozmill -t firefox/tests/functional/restartTests/
+</pre>
+
+<p>To start the specified version of Firefox, run all the tests in the given folder by restarting Firefox in between each test, and close the browser afterward:</p>
+
+<pre>$ mozmill -t firefox/tests/functional/restartTests/testExtensionInstallUninstall/ -b "c:\firefox 3.5\firefox.exe"   (Windows)
+$ mozmill -t firefox/tests/functional/restartTests/testExtensionInstallUninstall/ -b "/usr/bin/firefox"             (Linux)
+$ mozmill -t firefox/tests/functional/restartTests/testExtensionInstallUninstall/ -b "/Applications/Firefox.app"    (Mac OS X)
+</pre>
+
+<div class="note"><strong>Note</strong>: When using the <code>-b</code> option the full path to the executable has to be specified on Windows and Linux while on OS X the application bundle is used.</div>
+
+<h3 id="Run_via_the_automation_scripts">Run via the automation scripts</h3>
+
+<p>To run all of our Mozmill tests you should use our <a href="https://github.com/mozilla/mozmill-automation/">mozmill automation scripts</a>. They handle all various kinds of testruns supported as of now. To get an overview type 'testrun_' in the mozmill-env terminal and hit the tabulator key twice.</p>
+
+<p>Example to run our functional tests for the given version of Firefox:</p>
+
+<pre>$ testrun_functional --report=http://mozmill-crowd.blargon7.com/db/ %path_to_firefox% (on Mac to .app)</pre>
+
+<p>The testrun script will automatically clone the remote mozmill-tests repository, selects the correct named branch for the version of Firefox to test, runs all the tests, and reports results to our Mozmill dashboard.</p>
+
+<div class="note">
+<p>Note: If you want to use a local version of the tests you can use the --repository option with the path added, which is supported by any of the scripts.</p>
+</div>
+
+<h2 id="Writing_Mozmill_tests">Writing Mozmill tests</h2>
+
+<p>Now that you know how to run Mozmill tests, you can help by writing new tests or by fixing existing ones. It's not hard to do, but you have to follow some simple rules so we can guarantee long-living and understandable tests for everyone.</p>
+
+<h3 id="How_to_start">How to start</h3>
+
+<p>To make it easier for you to create your first Mozmill tests, we have prepared a couple of template files. They will help you get familiar with the license block, needed test functions, shared modules, and the proper syntax to use when writing tests. You can find these files in your local version of the test repository or <a href="http://hg.mozilla.org/qa/mozmill-tests/file/tip/templates">online</a>.</p>
+
+<p>Some specific things to pay attention to when creating tests:</p>
+
+<ul>
+ <li>Please update the name and the email address in the license block.</li>
+ <li>Use a meaningful name for your test function; one which indicates the overall target of the test.</li>
+</ul>
+
+<h3 id="Logging_test_results">Logging test results</h3>
+
+<p>Results are logged in our tests through either of two verification objects: <code><strong>assert</strong></code> and <strong><code>expect</code></strong>.</p>
+
+<p>These should both be imported into your test module (note that the exact path may differ, depending on which subdirectory your test is in):</p>
+
+<pre>var {assert, expect} = require("../../../lib/assertions");</pre>
+
+<p>Each object has the same methods, detailed below. If an <code>assert</code> or <code>expect</code> method passes, each of them will log a PASS for that verification and continue. The difference is in what happens when a test fails:</p>
+
+<p>A failure in an <code>expect</code> method will not stop the test, but will log a FAIL to the results system. Any failed result will still cause the test to also be marked as failed overall. Examples of verifications that would usually use <code>expect</code> include color, non-essential item text, and other aspects of state that don't really affect anything else.</p>
+
+<p><strong><code>expect</code> should be used when failure for that test result will not invalidate the rest of the test.</strong></p>
+
+<p>A failure in an <code>assert</code> method will not only log a FAIL, but stop the test. Examples of verifications that would usually use <code>assert</code> include tab or dialog presence, whether a page has loaded, and other aspects of state that completely block the test if they're not as expected.</p>
+
+<p><strong><code>assert</code> should be used when failure for that test result will invalidate the rest of the test.</strong></p>
+
+<p>When possible, <code>expect</code> should be used so that the test will continue, both to get partial results and to provide additional context to the failure. Only use <code>assert</code> when continuing on failure doesn't make any sense.</p>
+
+<h4 id="assert_expect_methods">assert / expect methods</h4>
+
+<p><code><strong>ok(aValue, aMessage)</strong></code></p>
+
+<p>Logs a PASS if <code>aValue</code> is true, and a FAIL if <code>aValue</code> is false. Use this when you have a single true/false value to test. For comparisons between an actual and expected value, see <code>equal()</code>and <code>notEqual()</code> below.</p>
+
+<p><span style="background-color: rgb(245, 246, 245);">For non-boolean values</span>, true/false operates in terms of JavaScript truth. For example, <code>0</code> and <code>null</code> are false; <code>1</code> and <code>"foo"</code> are true.</p>
+
+<pre>expect.ok(button.getNode().hidden, "Button is hidden");
+</pre>
+
+<p><code><strong>equal(aValue, aExpected, aMessage)</strong></code></p>
+
+<p>Logs a PASS if aValue exactly equals aExpected, FAIL otherwise. Use this for comparisons between an actual and expected value.</p>
+
+<pre>assert.equal(numTabs, 3, "The correct number of tabs are shown");
+</pre>
+
+<p><code><strong>notEqual(aValue, aNotExpected, aMessage)</strong></code></p>
+
+<p>Logs a PASS if aValue exactly equals anything other than aNotExpected, FAIL otherwise. The most common cases for this are checking that something is not 0 or a blank string, or when checking that a text value is changing but the new value isn't predictable. For predictable values, favor an <code>equal()</code> comparison with the new value.</p>
+
+<pre>assert.notEqual(newText, oldText, "The text has changed");
+</pre>
+
+<p><code><strong>match(aString, aRegEx, aMessage)</strong></code></p>
+
+<p>Logs a PASS if aString matches the regular expression given in aRegEx, FAIL otherwise.</p>
+
+<pre>expect.match(captionText, "/mozilla/i", "The word 'Mozilla' appears somewhere in the caption");</pre>
+
+<p><code><strong>notMatch(aString, aRegEx, aMessage)</strong></code></p>
+
+<p>Logs a PASS if aString does not match the regular expression given in aRegEx, FAIL otherwise.</p>
+
+<pre>expect.notMatch(captionText, "/mozilla/i", "The word 'Mozilla' does not appear in the caption");
+</pre>
+
+<p><strong><code>pass(aMessage)</code></strong></p>
+
+<p>Logs an unconditional PASS. This should be used extremely rarely, and only in cases where a fully custom verification structure is needed and none of the other methods make sense to use. It's almost always better to save the result as a boolean and use <code>ok()</code> instead.</p>
+
+<pre>expect.pass("If the code got here, this test is passing (for now)");
+</pre>
+
+<p><strong><code>fail(aMessage)</code></strong></p>
+
+<p>Logs an unconditional FAIL. This should be used extremely rarely, and only in cases where a fully custom verification structure is needed and none of the other methods make sense to use. It's almost always better to save the result as a boolean and use <code>ok()</code> instead.</p>
+
+<pre>expect.fail("If the code got here, this test is failing");
+</pre>
+
+<h3 id="Coding_style">Coding style</h3>
+
+<p>There are some <a href="/en-US/docs/Mozmill_Tests/Mozmill_Style_Guide">coding style rules</a> you should follow when writing new tests or contributing to existing tests. These rules help make the review process as efficient as possible and makes it easier for others to read your code.</p>
+
+<p>If that was not enough information, you should take a look at the existing tests or shared modules in the <a href="http://hg.mozilla.org/qa/mozmill-tests/file/default">Mozmill test repository</a>.</p>
+
+<h3 id="Tips_and_tricks">Tips and tricks</h3>
+
+<p>Sometimes you will run into trouble while creating Mozmill tests. Here are some suggestions that may help you sort out the problems you might run into.</p>
+
+<ul>
+ <li>Get familiar with the functionality provided by <a href="/en-US/docs/Mozmill">Mozmill</a> and all of our <a href="/en-US/docs/Mozmill_Tests/Shared_Modules">Shared Modules</a>; this will ease the test creation process.</li>
+ <li>Use the Inspector or Recorder to create the skeleton of your test. You have to add additional steps like calls to sleep functions or element checks before the test can be run.</li>
+ <li>If you are using <code>controller.open()</code> to load a web page, a <code>controller.waitForPageLoad()</code> has to be used right afterward to prevent continuing with the test before the page finishes loading; calling <code>controller.sleep()</code> is not sufficient.</li>
+ <li>Use the controller's <a href="/en-US/docs/Mozmill/Mozmill_Controller_Object#Working_with_Menus">menu API</a> to reach commands which are only available via the main menu. A list of existing IDs for menu items can be found in the <a href="http://mxr.mozilla.org/mozilla1.9.1/source/browser/base/content/browser-menubar.inc">browser-menubar.inc</a> file. Due to our localization efforts please always use the IDs of menu items instead of their names.</li>
+ <li>If your test needs exactly one tab open use <code>TabbedBrowsingAPI.closeAllTabs(controller);</code> inside the <code>setupModule()</code> function.</li>
+ <li>If you modify preferences or other global data, make sure to reset those values inside the <code>teardownModule()</code> function. That will clean up the environment for the next Mozmill test.</li>
+ <li>Avoid using any hardcoded strings for the elementslib <code>Lookup()</code> function. Doing so will break Mozmill tests for localized builds. After using the inspector you have to manually remove those attributes (e.g. <code>label</code> or <code>accesskey</code>) from the element string (see the next bullet).</li>
+ <li>If an element can only be referenced by the elementslib <code>Lookup()</code> function please try to remove as many attributes as possible from each hierarchy. That will make the test more readable and can avoid failed lookups when the code in Firefox changes.</li>
+</ul>
+
+<h3 id="The_review_process">The review process</h3>
+
+<p>Before your test can be checked into the <code>mozmill-test</code> repository, you have to pass the review process. The reviewer has to learn about the test and check if everything is done correctly. In order to make the review as easy as possible, be sure your test script abides by the guidelines given above. In addition to checking the syntax and code style of the test, make sure the test runs with the command line client before requesting a review. If questions arise feel free to ask in <a href="http://www.mibbit.com/chat/?server=irc.mozilla.org&amp;channel=%23automation">#automation</a> or the <a href="https://lists.mozilla.org/listinfo/dev-automation">automation developer mailing list</a> at any time.</p>
+
+<h4 id="Simplified_patch_creation">Simplified patch creation</h4>
+
+<p>The easiest way to create a patch is by using the <code>hg diff</code> command bounded by two other commands. With <code>hg add</code> you advise Mercurial to start tracking your test file. It's needed to see your test content in the diff output. Once the patch has been created you can use <code>hg rm</code> to safely remove the test from the tracking list. That will guarantee that no conflicts will happen when you pull a new version to your local copy of the repository.</p>
+
+<p>Imagine you have created a test called <code>testZoomSettings.js</code> which is saved under <code>tests/functional/testLayout/</code> and you want to create a patch called <code>patch_file</code>:</p>
+
+<pre>$ hg add tests/functional/testLayout/testZoomSettings.js
+$ hg diff &gt;patch_file
+$ hg rm -f tests/functional/testLayout/testZoomSettings.js
+</pre>
+
+<p>After running those commands, you will find the file <code>patch_file</code> in the current folder which can be uploaded as attachment to the bug report.</p>
+
+<h4 id="Advanced_patch_creation">Advanced patch creation</h4>
+
+<p>As you can imagine, it's hard to track all your files when you are working on several tests in parallel, because all those files will lingering around in your working copy. To prevent that and to gain the overview you can use the <a href="/en-US/docs/Mercurial_Queues">Mercurial Queue</a> extension.</p>
+
+<p>In the example below, you can see how it works, starting with a new test named <code>testZoomSettings.js</code>:</p>
+
+<pre>$ hg qnew zoomsettings                                    (Add a new named patch to the queue of patches)
+$ vi tests/functional/testLayout/testZoomSettings.js       (Create your test and apply the template structure)
+$ hg add tests/functional/testLayout/testZoomSettings.js  (Start tracking the test file)
+$ hg diff                                                 (Create a diff output of the current state)
+$ hg qrefresh -m "Commit message (see below)"             (Update the patch by accepting all changes and giving a necessary commit message)
+$ vi tests/functional/testLayout/testZoomSettings.js       (Continue to update your test)
+$ hg diff                                                 (Create a diff against the last version of your patch)
+$ hg qdiff                                                (Create a complete diff against the current version of the repository)
+$ hg qrefresh                                             (Refresh the patch with the latest changes)
+$ hg qpop                                                 (Pop the patch from the stack)
+$ hg qpush                                                (Push the patch back to the stack)
+$ hg export tip &gt;patch_file                               (Create a patch based on the current state)
+</pre>
+
+<h4 id="Commit_message">Commit message</h4>
+
+<p>Your commit message should follow a standard format of:</p>
+
+<p>"Bug %number% - %Description%. r=%reviewer1%, r=%reviewer2%..."</p>
+
+<p>Description should include a concise description of the changes made. Please do not include the branch name in the description.</p>
+
+<p>Ex:</p>
+
+<pre>$ hg qrefresh -m "Bug 553616 - Fixing testPasteLocationBar.js to use utils clipboard clearing. r=hskupin"
+</pre>
+
+<h3 id="Reviewing">Reviewing</h3>
+
+<p>When using the advanced way of creating a patch, all existing patches are located under <code>.hg/patches</code>. Before you ask for a review you should check the patch to ensure that it's valid. You can use the online <a href="http://beaufour.dk/jst-review/">review tool</a>. The only warnings you should get should be those indicating that lines are too long. Further you should also check that the test is working as expected. The best solution here is to run the test via the appropriate testrun script and report the results to our dashboard. Mention the link to the report in the review request.</p>
+
+<p>Reviews are managed in Bugzilla. So once your new test has been created, file a <a class="link-https" href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Mozilla%20QA&amp;component=Mozmill%20Tests">new bug report</a> (see <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=479314">bug 479720</a> as example). Also add the MozTrap testcase IDs for all branches in the first comment of the bug. Finally your patch for the test has to be attached to the bug. Now you can request review from <a class="link-mailto" href="mailto:hskupin@gmail.com">Henrik Skupin</a>, or <a href="mailto:andreea.matei@softvision.ro">Andreea Matei</a>. If the bug you're working on has a mentor assigned at the "whiteboard" tag, then you can use request review from that person.</p>
+
+<div class="note"><strong>Note</strong>: Initial patches should be created for the default branch of the <code>mozmill-test</code> repository. Tests for older versions of Firefox will be backported after the test has been landed on the default branch.</div>
+
+<h3 id="Landing_of_patches">Landing of patches</h3>
+
+<p>Once a patch has been reviewed and is ready for check-in, the reviewer will land the patch immediately or will add the keyword "checkin-needed" if another person has to land the patch. If you are the one who has check-in permissions and you have to land the patch, the following steps should be obeyed:</p>
+
+<p><strong>Preparation</strong>: Before you can push any patch to the repository the .hg/hgrc file of the local copy has to be updated so it contains the default-push path, which is usually an ssh connection:</p>
+
+<pre style="margin-left: 40px;">[paths]
+default = https://hg.mozilla.org/qa/mozmill-tests
+default-push = ssh://hg.mozilla.org/qa/mozmill-tests/
+</pre>
+
+<p><strong>Check-in:</strong></p>
+
+<ol>
+ <li>Make sure that the <a href="#Handling_branches">correct branch</a> of the mozmill-tests repository has been selected, if not update accordingly.</li>
+ <li>Run a "hg pull -u" to make sure that no other patches have been pushed since your last pull request.</li>
+ <li>Download the patch to your local disk and import it via "hg qimport %patch%".</li>
+ <li>Use "hg qpush" to push the patch to your queue. It will end-up on-top of your local queue. You can check with "hg tip".</li>
+ <li>Run "hg out" to check if the user, the email address, and the summary has been set correctly.</li>
+ <li>If the user name is not valid, update the changeset with "hg qrefresh -u "%username% &lt;%email%&gt;".</li>
+ <li>If the summary is not valid, update the changeset with "hg qrefresh -m 'Bug %number% - %Description%. r=%reviewer1%, r=%reviewer2%...'".</li>
+ <li>Run "hg qfinish tip", which removes the patch from your queue and commit the changes.</li>
+ <li>Finally, push the patch to the public repository with "hg push".</li>
+</ol>
+
+<div class="note"><strong>Note:</strong> If you want to become a committer, please review our <a href="/en-US/docs/Mozmill_Tests/Commit_Policy">commit policy</a>.</div>
+
+<h4 class="note" id="Transplanting_a_Patch"><strong>Transplanting a Patch</strong></h4>
+
+<p class="note">In some instances, it will be necessary to check in a patch on several branches. Using the <a href="/en-US/docs/Mozmill_Tests#Configuring_Mercurial">transplant extension</a> makes it easy.</p>
+
+<p>1. Update to the target branch</p>
+
+<pre>hg pull -u &amp;&amp; hg update -C %target_branch%
+</pre>
+
+<p>2. Transplant the source changeset</p>
+
+<pre>hg transplant %changeset_ID%
+</pre>
+
+<p>3. Finally, push the change</p>
+
+<pre>hg push
+</pre>
+
+<div class="note"><strong>NOTE</strong>: To use <em>transplant</em>, you need to have the transplant extension added to your <a href="/en-US/docs/Mozmill_Tests#Configuring_Mercurial">.hgrc file</a></div>
+
+<h3 id="Backing_out_patches">Backing out patches</h3>
+
+<p>If a new test immediately fails after its check-in, we will have to back out the responsible changeset. Follow <a href="/en-US/docs/Mercurial_FAQ#Backing_out_changes">those instructions</a> in how to correctly do a back-out. As back-out comment use "Backed out changeset %id% due to %failure%".</p>
+
+<h3 id="Merging_heads">Merging heads</h3>
+
+<p>If multiple heads have been created accidentally on a branch, those have to be merged into the original head of the given branch.</p>
+
+<pre class="bz_comment_text" id="comment_text_13"><span class="quote">$ hg heads                                              # Check if multiple heads per branch exist
+$ hg up -C %target_branch%                              # Switch to the target branch
+$ hg merge -r %changeset%                               # Merge duplicate changeset
+$ hg diff                                               # Check diff of merge and ask for feedback/review if necessary
+$ hg commit -m "Merge %changeset% into </span>%target_branch%  # Commit the merge and specify a comment
+$ hg push                                               # Push the merge
+</pre>
+
+<h2 id="Managing_Mozmill_test_failures">Managing Mozmill test failures</h2>
+
+<p>If you encounter a Mozmill test failure that can be consistently reproduced, you should raise a bug in Bugzilla using one of the following templates:</p>
+
+<ul>
+ <li><a href="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=nobody%40mozilla.org&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;comment=Module%3A%20%20%20%20MODULE%0D%0ATest%3A%20%20%20%20%20%20FUNCTION%20%20%20%20%0D%0AFailure%3A%20%20%20MESSAGE%0D%0ABranches%3A%20%20BRANCH%0D%0APlatforms%3A%20OS&amp;component=Mozmill%20Tests&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-41=X&amp;flag_type-607=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20QA&amp;qa_contact=mozmill-tests%40mozilla-qa.bugs&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-41=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Test%20failure%20%27FAILURE%27%20in%20FILENAME&amp;status_whiteboard=[mozmill-test-failure]&amp;target_milestone=---&amp;version=unspecified" title="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=nobody%40mozilla.org&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;comment=Module%3A%20%20%20%20MODULE%0D%0ATest%3A%20%20%20%20%20%20FUNCTION%20%20%20%20%0D%0AFailure%3A%20%20%20MESSAGE%0D%0ABranches%3A%20%20BRANCH%0D%0APlatforms%3A%20OS&amp;component=Mozmill%20Tests&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-41=X&amp;flag_type-607=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20QA&amp;qa_contact=mozmill-tests%40mozilla-qa.bugs&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-41=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Test%20failure%20%27FAILURE%27%20in%20FILENAME&amp;status_whiteboard=[mozmill-test-failure]&amp;target_milestone=---&amp;version=unspecified">General failure</a></li>
+ <li><a href="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;cf_blocking_b2g=---&amp;cf_blocking_fennec=---&amp;cf_crash_signature=&amp;cf_status_b2g18=---&amp;cf_status_b2g18_1_0_0=---&amp;cf_status_b2g18_1_0_1=---&amp;cf_status_b2g_1_1_hd=---&amp;cf_status_firefox22=---&amp;cf_status_firefox23=---&amp;cf_status_firefox24=---&amp;cf_status_firefox25=---&amp;cf_status_firefox_esr17=---&amp;cf_status_seamonkey219=---&amp;cf_status_seamonkey220=---&amp;cf_status_seamonkey221=---&amp;cf_status_seamonkey222=---&amp;cf_tracking_b2g18=---&amp;cf_tracking_firefox22=---&amp;cf_tracking_firefox23=---&amp;cf_tracking_firefox24=---&amp;cf_tracking_firefox25=---&amp;cf_tracking_firefox_esr17=---&amp;cf_tracking_firefox_relnote=---&amp;cf_tracking_relnote_b2g=---&amp;cf_tracking_seamonkey219=---&amp;cf_tracking_seamonkey220=---&amp;cf_tracking_seamonkey221=---&amp;cf_tracking_seamonkey222=---&amp;comment=Our%20Mozmill%20l10n%20tests%20have%20been%20shown%20that%20there%20are%20some%20access%20keys%20which%20are%20used%20multiple%20times%20in%20the%20same%20scope.%20The%20full%20list%20of%20those%20keys%20you%20can%20find%20here%3A%0D%0A%0D%0A%2AAdd%20the%20link%20to%20the%20l10n%20report%20in%20the%20mozmill-test%20dashboard%20%28usually%20mozmill-daily%29%0D%0A%0D%0ADetails%3A%0D%0A%0D%0A%2ACopy%20and%20paste%20all%20the%20failures%20from%20the%20report%2A%0D%0A%0D%0AAttached%20you%20can%20find%20the%20screenshots%20of%20the%20reported%20failures.&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-607=X&amp;flag_type-730=X&amp;flag_type-733=X&amp;flag_type-746=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;flag_type-803=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20Localizations&amp;qa_contact=&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Multiple%20access%20keys%20used%20in%20the%20YYY%20dialog%20for%20XYZ%20locale&amp;status_whiteboard=%5Bmozmill-l10n%5D%5Bmozmill-test-failure%5D&amp;target_milestone=---&amp;version=unspecified" title="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;cf_blocking_b2g=---&amp;cf_blocking_fennec=---&amp;cf_crash_signature=&amp;cf_status_b2g18=---&amp;cf_status_b2g18_1_0_0=---&amp;cf_status_b2g18_1_0_1=---&amp;cf_status_b2g_1_1_hd=---&amp;cf_status_firefox22=---&amp;cf_status_firefox23=---&amp;cf_status_firefox24=---&amp;cf_status_firefox25=---&amp;cf_status_firefox_esr17=---&amp;cf_status_seamonkey219=---&amp;cf_status_seamonkey220=---&amp;cf_status_seamonkey221=---&amp;cf_status_seamonkey222=---&amp;cf_tracking_b2g18=---&amp;cf_tracking_firefox22=---&amp;cf_tracking_firefox23=---&amp;cf_tracking_firefox24=---&amp;cf_tracking_firefox25=---&amp;cf_tracking_firefox_esr17=---&amp;cf_tracking_firefox_relnote=---&amp;cf_tracking_relnote_b2g=---&amp;cf_tracking_seamonkey219=---&amp;cf_tracking_seamonkey220=---&amp;cf_tracking_seamonkey221=---&amp;cf_tracking_seamonkey222=---&amp;comment=Our%20Mozmill%20l10n%20tests%20have%20been%20shown%20that%20there%20are%20some%20access%20keys%20which%20are%20used%20multiple%20times%20in%20the%20same%20scope.%20The%20full%20list%20of%20those%20keys%20you%20can%20find%20here%3A%0D%0A%0D%0A%2AAdd%20the%20link%20to%20the%20l10n%20report%20in%20the%20mozmill-test%20dashboard%20%28usually%20mozmill-daily%29%0D%0A%0D%0ADetails%3A%0D%0A%0D%0A%2ACopy%20and%20paste%20all%20the%20failures%20from%20the%20report%2A%0D%0A%0D%0AAttached%20you%20can%20find%20the%20screenshots%20of%20the%20reported%20failures.&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-607=X&amp;flag_type-730=X&amp;flag_type-733=X&amp;flag_type-746=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;flag_type-803=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20Localizations&amp;qa_contact=&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Multiple%20access%20keys%20used%20in%20the%20YYY%20dialog%20for%20XYZ%20locale&amp;status_whiteboard=%5Bmozmill-l10n%5D%5Bmozmill-test-failure%5D&amp;target_milestone=---&amp;version=unspecified">L10n accesskey failure</a></li>
+ <li><a href="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;cf_blocking_b2g=---&amp;cf_blocking_fennec=---&amp;cf_crash_signature=&amp;cf_status_b2g18=---&amp;cf_status_b2g18_1_0_0=---&amp;cf_status_b2g18_1_0_1=---&amp;cf_status_b2g_1_1_hd=---&amp;cf_status_firefox22=---&amp;cf_status_firefox23=---&amp;cf_status_firefox24=---&amp;cf_status_firefox25=---&amp;cf_status_firefox_esr17=---&amp;cf_status_seamonkey219=---&amp;cf_status_seamonkey220=---&amp;cf_status_seamonkey221=---&amp;cf_status_seamonkey222=---&amp;cf_tracking_b2g18=---&amp;cf_tracking_firefox22=---&amp;cf_tracking_firefox23=---&amp;cf_tracking_firefox24=---&amp;cf_tracking_firefox25=---&amp;cf_tracking_firefox_esr17=---&amp;cf_tracking_firefox_relnote=---&amp;cf_tracking_relnote_b2g=---&amp;cf_tracking_seamonkey219=---&amp;cf_tracking_seamonkey220=---&amp;cf_tracking_seamonkey221=---&amp;cf_tracking_seamonkey222=---&amp;comment=Our%20Mozmill%20l10n%20tests%20have%20been%20shown%20that%20there%20are%20some%20elements%20which%20are%20cut-off%20due%20to%20the%20localization.%20The%20results%20of%20the%20test%20you%20can%20find%20here%3A%0D%0A%0D%0A%2AAdd%20the%20link%20to%20the%20l10n%20report%20in%20the%20mozmill-test%20dashboard%20%28usually%20mozmill-daily%29%2A%0D%0A%0D%0ADetails%3A%0D%0A%0D%0A%2ACopy%20and%20paste%20all%20the%20failures%20from%20the%20report%2A%0D%0A%0D%0AAttached%20you%20can%20find%20the%20screenshots%20of%20the%20reported%20failures.&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-607=X&amp;flag_type-730=X&amp;flag_type-733=X&amp;flag_type-746=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;flag_type-803=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20Localizations&amp;qa_contact=&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Elements%20cut-off%20in%20the%20YYY%20dialog%20for%20XYZ%20locale&amp;status_whiteboard=%5Bmozmill-l10n%5D%5Bmozmill-test-failure%5D&amp;target_milestone=---&amp;version=unspecified" title="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=hskupin%40gmail.com&amp;cf_blocking_b2g=---&amp;cf_blocking_fennec=---&amp;cf_crash_signature=&amp;cf_status_b2g18=---&amp;cf_status_b2g18_1_0_0=---&amp;cf_status_b2g18_1_0_1=---&amp;cf_status_b2g_1_1_hd=---&amp;cf_status_firefox22=---&amp;cf_status_firefox23=---&amp;cf_status_firefox24=---&amp;cf_status_firefox25=---&amp;cf_status_firefox_esr17=---&amp;cf_status_seamonkey219=---&amp;cf_status_seamonkey220=---&amp;cf_status_seamonkey221=---&amp;cf_status_seamonkey222=---&amp;cf_tracking_b2g18=---&amp;cf_tracking_firefox22=---&amp;cf_tracking_firefox23=---&amp;cf_tracking_firefox24=---&amp;cf_tracking_firefox25=---&amp;cf_tracking_firefox_esr17=---&amp;cf_tracking_firefox_relnote=---&amp;cf_tracking_relnote_b2g=---&amp;cf_tracking_seamonkey219=---&amp;cf_tracking_seamonkey220=---&amp;cf_tracking_seamonkey221=---&amp;cf_tracking_seamonkey222=---&amp;comment=Our%20Mozmill%20l10n%20tests%20have%20been%20shown%20that%20there%20are%20some%20elements%20which%20are%20cut-off%20due%20to%20the%20localization.%20The%20results%20of%20the%20test%20you%20can%20find%20here%3A%0D%0A%0D%0A%2AAdd%20the%20link%20to%20the%20l10n%20report%20in%20the%20mozmill-test%20dashboard%20%28usually%20mozmill-daily%29%2A%0D%0A%0D%0ADetails%3A%0D%0A%0D%0A%2ACopy%20and%20paste%20all%20the%20failures%20from%20the%20report%2A%0D%0A%0D%0AAttached%20you%20can%20find%20the%20screenshots%20of%20the%20reported%20failures.&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-607=X&amp;flag_type-730=X&amp;flag_type-733=X&amp;flag_type-746=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;flag_type-803=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20Localizations&amp;qa_contact=&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Elements%20cut-off%20in%20the%20YYY%20dialog%20for%20XYZ%20locale&amp;status_whiteboard=%5Bmozmill-l10n%5D%5Bmozmill-test-failure%5D&amp;target_milestone=---&amp;version=unspecified">L10n crop failure</a></li>
+ <li><a href="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=nobody%40mozilla.org&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_ignored=0&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=dave.hunt%40gmail.com&amp;cc=anthony.s.hughes%40gmail.com&amp;cc=hskupin%40gmail.com&amp;comment=Branches%3A%20%20BRANCH%0D%0APlatforms%3A%20OS%0D%0ACharts%3A%20%20%20%20URL%0D%0ATests%3A%20%20%20%20%20TESTS%0D%0A%0D%0ALast%20good%3A%0D%0ABuild%20ID%3A%20BUILD_ID%0D%0AReport%3A%20%20%20URL%0D%0AMemory%3A%20%20%20MEMORY%0D%0A%0D%0AFirst%20bad%3A%0D%0ABuild%20ID%3A%20BUILD_ID%0D%0AReport%3A%20%20%20URL%0D%0AMemory%3A%20%20%20MEMORY&amp;component=Mozmill%20Tests&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-41=X&amp;flag_type-607=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20QA&amp;qa_contact=mozmill-tests%40mozilla-qa.bugs&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-41=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Memory%20usage%20spike%20in%20%27TEST%27%20on%20%27PLATFORM%27&amp;status_whiteboard=%5Bmozmill-test-failure%5D%5Bendurance%5D&amp;target_milestone=---&amp;version=unspecified" title="https://bugzilla.mozilla.org/enter_bug.cgi?alias=&amp;assigned_to=nobody%40mozilla.org&amp;attach_text=&amp;blocked=&amp;bug_file_loc=http%3A%2F%2F&amp;bug_ignored=0&amp;bug_severity=normal&amp;bug_status=NEW&amp;cc=dave.hunt%40gmail.com&amp;cc=anthony.s.hughes%40gmail.com&amp;cc=hskupin%40gmail.com&amp;comment=Branches%3A%20%20BRANCH%0D%0APlatforms%3A%20OS%0D%0ACharts%3A%20%20%20%20URL%0D%0ATests%3A%20%20%20%20%20TESTS%0D%0A%0D%0ALast%20good%3A%0D%0ABuild%20ID%3A%20BUILD_ID%0D%0AReport%3A%20%20%20URL%0D%0AMemory%3A%20%20%20MEMORY%0D%0A%0D%0AFirst%20bad%3A%0D%0ABuild%20ID%3A%20BUILD_ID%0D%0AReport%3A%20%20%20URL%0D%0AMemory%3A%20%20%20MEMORY&amp;component=Mozmill%20Tests&amp;contenttypeentry=&amp;contenttypemethod=autodetect&amp;contenttypeselection=text%2Fplain&amp;data=&amp;dependson=&amp;description=&amp;flag_type-37=X&amp;flag_type-4=X&amp;flag_type-41=X&amp;flag_type-607=X&amp;flag_type-781=X&amp;flag_type-787=X&amp;flag_type-791=X&amp;flag_type-800=X&amp;form_name=enter_bug&amp;keywords=&amp;maketemplate=Remember%20values%20as%20bookmarkable%20template&amp;op_sys=All&amp;priority=--&amp;product=Mozilla%20QA&amp;qa_contact=mozmill-tests%40mozilla-qa.bugs&amp;rep_platform=All&amp;requestee_type-4=&amp;requestee_type-41=&amp;requestee_type-607=&amp;requestee_type-781=&amp;requestee_type-787=&amp;requestee_type-791=&amp;requestee_type-800=&amp;short_desc=Memory%20usage%20spike%20in%20%27TEST%27%20on%20%27PLATFORM%27&amp;status_whiteboard=%5Bmozmill-test-failure%5D%5Bendurance%5D&amp;target_milestone=---&amp;version=unspecified">Endurance regression</a></li>
+</ul>
+
+<p>Ideas on how to investigate failures:</p>
+
+<ul>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Mozmill/How_to_do_regression_testing" title="https://developer.mozilla.org/en-US/docs/Mozmill/How_to_do_regression_testing">How to do regression testing</a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/Mozmill/how_to_investigate_update_failures" title="https://developer.mozilla.org/en-US/docs/Mozmill/how_to_investigate_update_failures">How to investigate update failures</a></li>
+</ul>
+
+<h3 id="Bug_Priorities">Bug Priorities</h3>
+
+<p>We use the following priorities for bugs:</p>
+
+<ul>
+ <li> P1 - critical failures, constant (regressions)</li>
+ <li style="margin: 0px; padding: 0px 0px 0px 5px; line-height: 1.4;"><span style="line-height: 1.5em;">P2 - new tests - the ones with [qa-needed] whiteboard entry are handled first</span></li>
+ <li style="margin: 0px; padding: 0px 0px 0px 5px; line-height: 1.4;">P3 - intermittent failures, enhancements</li>
+ <li style="margin: 0px; padding: 0px 0px 0px 5px; line-height: 1.4;">P4 - Rare failures (once a month)</li>
+ <li style="margin: 0px; padding: 0px 0px 0px 5px; line-height: 1.4;">P5 - refactoring, small enhancements</li>
+</ul>
+
+<div class="note">
+<p>If a bug becomes dependent on another bug, make sure the priority is reflected in the blocking bug. You can also add the [qa-automation-blocked] whiteboard entry so the bug shows up in our <a href="https://bugzilla.mozilla.org/buglist.cgi?status_whiteboard_type=allwordssubstr&amp;query_format=advanced&amp;status_whiteboard=[qa-automation-blocked]&amp;bug_status=UNCONFIRMED&amp;bug_status=NEW&amp;bug_status=READY&amp;bug_status=ASSIGNED&amp;bug_status=REOPENED&amp;list_id=7840080" title="https://bugzilla.mozilla.org/buglist.cgi?status_whiteboard_type=allwordssubstr&amp;query_format=advanced&amp;status_whiteboard=[qa-automation-blocked]&amp;bug_status=UNCONFIRMED&amp;bug_status=NEW&amp;bug_status=READY&amp;bug_status=ASSIGNED&amp;bug_status=REOPENED&amp;list_id=7840080">blockers list</a>.</p>
+</div>
+
+<h2 id="Other_types_of_Mozmill_tests">Other types of Mozmill tests</h2>
+
+<p>Mozmill is also able to automate testing in various other areas. For now we cover areas like:</p>
+
+<ul>
+ <li><a href="/en-US/docs/Mozmill_Tests/Addon_tests">Mozmill tests for add-ons</a></li>
+ <li><a class="link-https" href="https://wiki.mozilla.org/QA/Mozmill_Test_Automation/Endurance_Tests/Documentation">Mozmill Endurance Tests</a></li>
+</ul>

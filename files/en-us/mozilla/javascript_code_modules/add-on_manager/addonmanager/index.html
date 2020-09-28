@@ -1,0 +1,946 @@
+---
+title: AddonManager
+slug: Mozilla/JavaScript_code_modules/Add-on_Manager/AddonManager
+tags:
+  - Add-on Manager
+  - Add-ons
+  - Interfaces
+  - 'Interfaces:Scriptable'
+  - Reference
+---
+<div class="blockIndicator warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+</div>
+
+<p><span style="color: #000000; display: inline !important; float: none; font-family: Cantarell; font-size: 14.666666984558105px; font-style: normal; font-weight: normal; letter-spacing: normal; text-align: start; text-indent: 0px; text-transform: none; white-space: normal;"></span></p><div class="blockIndicator warning"><p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p><p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p><p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p><p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p><p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p></div><p></p>
+
+<p>The AddonManager object is the global API used to access information about add-ons installed in the application and to manipulate them. The majority of the methods are asynchronous meaning that results are delivered through callbacks passed to the method. The callbacks will be called just once but that may be before or after the method returns.</p>
+
+<p>One of the forces of the AddonManager is that it deals with any kind (type) of add-on in a generic manner. To do so many methods of the AddonManager take the add-on types as parameters. The existing add-on types are defined in <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/mozapps/extensions/internal/XPIProvider.jsm" rel="custom">XPIProvider.jsm</a> and are, at this time, the following: <code>extension</code>, <code>theme</code>, <code>locale</code>, <code>multipackage</code>, <code>dictionary</code> and <code>experiment</code>.</p>
+
+<p>To import the AddonManager object in the Add-on SDK, use:</p>
+
+<pre>const { AddonManager } = require("resource://gre/modules/AddonManager.jsm");
+</pre>
+
+<p>To import it in a normal bootstrapped extension or similar, use:</p>
+
+<pre>Cu.import("resource://gre/modules/AddonManager.jsm");</pre>
+
+<h2 id="Method_Overview">Method Overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>Promise? <a href="#getInstallForURL()" title="AddonManager.getInstallForURL()">getInstallForURL</a>(in string url, in <a href="#InstallCallback()" title="AddonManager.InstallCallback()">InstallCallback</a>? callback, in string mimetype, in string hash, in string name, in string iconURL, in string version, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILoadGroup" title="">nsILoadGroup</a></code> loadGroup)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getInstallForFile()" title="AddonManager.getInstallForFile()">getInstallForFile</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> file, in <a href="#InstallCallback()" title="AddonManager.InstallCallback()">InstallCallback</a>? callback, in string mimetype)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAllInstalls()" title="AddonManager.getAllInstalls()">getAllInstalls</a>(in <a href="#InstallListCallback()" title="AddonManager.getInstallListCallback()">InstallListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getInstallsByTypes()" title="AddonManager.getInstallsByCallback()">getInstallsByTypes</a>(in string types[], in <a href="#InstallListCallback()" title="AddonManager.InstallListCallback()">InstallListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#installAddonsFromWebpage()" title="AddonManager.installAddonsFromWebpage()">installAddonsFromWebpage</a>(in string mimetype, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindow" title="">nsIDOMWindow</a></code> source, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> uri, in <a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a> installs[])</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#addInstallListener()" title="AddonManager.addInstallListener()">addInstallListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeInstallListener()" title="AddonManager.removeInstallListener()">removeInstallListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAllAddons()" title="AddonManager.getAllAddons()">getAllAddons</a>(in <a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAddonByID()" title="AddonManager.getAddonByID()">getAddonByID</a>(in string id, in <a href="#AddonCallback()" title="AddonManager.AddonCallback()">AddonCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAddonBySyncGUID()" title="AddonManager.getAddonBySyncGUID()">getAddonBySyncGUID</a>(in string id, in <a href="#AddonCallback()" title="AddonManager.AddonCallback()">AddonCallback</a>? callback) </code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAddonsByIDs()" title="AddonManager.getAddonsByIDs()">getAddonsByIDs</a>(in string ids[], in <a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAddonsByTypes()" title="AddonManager.getAddonsByTypes()">getAddonsByTypes</a>(in string types[], in <a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise? <a href="#getAddonsWithOperationsByTypes()" title="AddonManager.getAddonsWithOperationsByTypes()">getAddonsWithOperationsByTypes</a>(in string types[], in <a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a>? callback)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#addAddonListener()" title="AddonManager.addAddonListener()">addAddonListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeAddonListener()" title="AddonManager.removeAddonListener()">removeAddonListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#addTypeListener()" title="AddonManager.addTypeListener()">addTypeListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeTypeListener()" title="AddonManager.removeTypeListener()">removeTypeListener</a>(in <a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a> listener)</code></td>
+  </tr>
+  <tr>
+   <td><code><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> <a href="#getURIForResourceInFile()" title="AddonManager.getURIForResourceInFile()">getURIForResourceInFile</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> aFile, in string aPath)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Properties_Overview">Properties Overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>addonTypes</code></td>
+   <td><code>dictionary</code></td>
+   <td>A dictionary that maps type ID to <code><a href="/en-US/Add-ons/Add-on_Manager/AddonType" title="AddonType">AddonType</a></code>.</td>
+  </tr>
+  <tr>
+   <td><code>autoUpdateDefault</code></td>
+   <td><code>boolean</code></td>
+   <td>Whether add-ons should auto-update by default (overrideable per add-on). Corresponds to the <code>extensions.autoUpdateDefault</code> preference.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Callbacks">Callbacks</h2>
+
+<h3 id="InstallCallback()">InstallCallback()</h3>
+
+<p>A callback that is passed a single <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code></p>
+
+<pre class="eval">void InstallCallback(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> install
+)</pre>
+
+<h6 id="Parameters">Parameters</h6>
+
+<dl>
+ <dt>install</dt>
+ <dd>The <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> passed back from the asynchronous request</dd>
+</dl>
+
+<h3 id="InstallListCallback()">InstallListCallback()</h3>
+
+<p>A callback that is passed an array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s</p>
+
+<pre class="eval">void InstallListCallback(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> installs[]
+)</pre>
+
+<h6 id="Parameters_2">Parameters</h6>
+
+<dl>
+ <dt>installs</dt>
+ <dd>The array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s passed back from the asynchronous request</dd>
+</dl>
+
+<h3 id="AddonCallback()">AddonCallback()</h3>
+
+<p>A callback that is passed a single <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code></p>
+
+<pre class="eval">void AddonCallback(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> addon
+)</pre>
+
+<h6 id="Parameters_3">Parameters</h6>
+
+<dl>
+ <dt>addon</dt>
+ <dd>The <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> passed back from the asynchronous request. If an error occurred (such as an add-on not being found), <code>null</code> is passed back instead.</dd>
+</dl>
+
+<h3 id="AddonListCallback()">AddonListCallback()</h3>
+
+<p>A callback that is passed an array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s</p>
+
+<pre class="eval">void AddonListCallback(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> addons[]
+)</pre>
+
+<h6 id="Parameters_4">Parameters</h6>
+
+<dl>
+ <dt>addons</dt>
+ <dd>The array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s passed back from the asynchronous request</dd>
+</dl>
+
+<h2 id="Constants">Constants</h2>
+
+<h3 id="AddonInstall_states">AddonInstall states</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>STATE_AVAILABLE</code></td>
+   <td>An install that is waiting to be started.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_DOWNLOADING</code></td>
+   <td>An install that is in the process of being downloaded.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_CHECKING</code></td>
+   <td>An install that is checking for updated information.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_DOWNLOADED</code></td>
+   <td>An install that has finished downloading and is ready to install.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_DOWNLOAD_FAILED</code></td>
+   <td>An install that failed to download.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_INSTALLING</code></td>
+   <td>An install that is in the process of being installed.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_INSTALLED</code></td>
+   <td>An install that has successfully been installed.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_INSTALL_FAILED</code></td>
+   <td>An install that has failed to install.</td>
+  </tr>
+  <tr>
+   <td><code>STATE_CANCELLED</code></td>
+   <td>An install that has been canceled.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="AddonInstall_errors">AddonInstall errors</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>ERROR_NETWORK_FAILURE</code></td>
+   <td>A network error occurred.</td>
+  </tr>
+  <tr>
+   <td><code>ERROR_INCORRECT_HASH</code></td>
+   <td>The downloaded file did not match the expected hash.</td>
+  </tr>
+  <tr>
+   <td><code>ERROR_CORRUPT_FILE</code></td>
+   <td>The file appears to be corrupt.</td>
+  </tr>
+  <tr>
+   <td><code>ERROR_FILE_ACCESS</code></td>
+   <td>There was an error accessing the filesystem.</td>
+  </tr>
+  <tr>
+   <td><code>ERROR_SIGNEDSTATE_REQUIRED</code></td>
+   <td>The addon must be signed and isn't.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Update_check_reasons">Update check reasons</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_WHEN_USER_REQUESTED</code></td>
+   <td>An update check performed at the explicit request of the user.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_WHEN_NEW_APP_DETECTED</code></td>
+   <td>An update check performed when a new version of the application has been detected.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_WHEN_NEW_APP_INSTALLED</code></td>
+   <td>An update check performed after a new version of the application has been installed.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_WHEN_PERIODIC_UPDATE</code></td>
+   <td>An update check performed automatically in the background.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_WHEN_ADDON_INSTALLED</code></td>
+   <td>An update check performed when a new add-on has been installed.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Update_status_values">Update status values</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_NO_ERROR</code></td>
+   <td>No error was encountered.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_TIMEOUT</code></td>
+   <td>﻿The update check timed out.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_DOWNLOAD_ERROR</code></td>
+   <td>There was an error while downloading the update information.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_PARSE_ERROR</code></td>
+   <td>The update information was malformed in some way.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_UNKNOWN_FORMAT</code></td>
+   <td>The update was not in any known format.</td>
+  </tr>
+  <tr>
+   <td><code>UPDATE_STATUS_SECURITY_ERROR</code></td>
+   <td>The update information was not correctly signed or there was an SSL error.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Auto_update_values">Auto update values</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>AUTOUPDATE_DISABLE</code></td>
+   <td>Indicates that the add-on should not update automatically.</td>
+  </tr>
+  <tr>
+   <td><code>AUTOUPDATE_DEFAULT</code></td>
+   <td>Indicates that the add-on should update automatically only if that's the global default.</td>
+  </tr>
+  <tr>
+   <td><code>AUTOUPDATE_ENABLE</code></td>
+   <td>Indicates that the add-on should update automatically.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Pending_operations">Pending operations</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_NONE</code></td>
+   <td>No operations are pending.</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_ENABLE</code></td>
+   <td>This add-on will be enabled after the application restarts.</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_DISABLE</code></td>
+   <td>This add-on will be disabled after the application restarts.</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_UNINSTALL</code></td>
+   <td>This add-on will be uninstalled after the application restarts.</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_INSTALL</code></td>
+   <td>This add-on will be installed after the application restarts.</td>
+  </tr>
+  <tr>
+   <td><code>PENDING_UPGRADE</code></td>
+   <td>This add-on will be upgraded after the application restarts.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Permissions">Permissions</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>PERM_CAN_UNINSTALL</code></td>
+   <td>This add-on can be uninstalled.</td>
+  </tr>
+  <tr>
+   <td><code>PERM_CAN_ENABLE</code></td>
+   <td>This add-on can be enabled.</td>
+  </tr>
+  <tr>
+   <td><code>PERM_CAN_DISABLE</code></td>
+   <td>This add-on can be disabled.</td>
+  </tr>
+  <tr>
+   <td><code>PERM_CAN_UPGRADE</code></td>
+   <td>This add-on can be upgraded.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Operations_requiring_restart">Operations requiring restart</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>OP_NEEDS_RESTART_NONE</code></td>
+   <td>No operations will require a restart.</td>
+  </tr>
+  <tr>
+   <td><code>OP_NEEDS_RESTART_ENABLE</code></td>
+   <td>Enabling the add-on will require a restart.</td>
+  </tr>
+  <tr>
+   <td><code>OP_NEEDS_RESTART_DISABLE</code></td>
+   <td>Disabling the add-on will require a restart.</td>
+  </tr>
+  <tr>
+   <td><code>OP_NEEDS_RESTART_UNINSTALL</code></td>
+   <td>Uninstalling the add-on will require a restart.</td>
+  </tr>
+  <tr>
+   <td><code>OP_NEEDS_RESTART_INSTALL</code></td>
+   <td>Installing the add-on will require a restart.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Installation_scopes">Installation scopes</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Value</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>SCOPE_ALL</code></td>
+   <td>15</td>
+   <td>A combination of all the installation scopes.</td>
+  </tr>
+  <tr>
+   <td><code>SCOPE_APPLICATION</code></td>
+   <td>4</td>
+   <td>This add-on is a part of the current application (Installed and owned by Firefox).</td>
+  </tr>
+  <tr>
+   <td><code>SCOPE_PROFILE</code></td>
+   <td>1</td>
+   <td>This add-on is installed in the current profile directory.</td>
+  </tr>
+  <tr>
+   <td><code>SCOPE_SYSTEM</code></td>
+   <td>8</td>
+   <td>This add-on is installed somewhere global to the system (installed for all users of the computer).</td>
+  </tr>
+  <tr>
+   <td><code>SCOPE_USER</code></td>
+   <td>2</td>
+   <td>This add-on is installed somewhere specific to the current user (all profiles of the logged-in user).</td>
+  </tr>
+ </tbody>
+</table>
+
+<div class="note"><strong>Note:</strong> The <code>extensions.enabledScopes</code> preference lets you configure which of these scopes are enabled; however, you can't turn off the profile scope. Starting in Firefox 8, you can also set the value of the preference <code>extensions.autoDisabledScopes</code> to prevent Firefox from automatically installing add-ons from the specified scopes.</div>
+
+<h2 id="AddonType_viewTypes">AddonType viewTypes</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>VIEW_TYPE_LIST</code></td>
+   <td>The type should be displayed in a regular list view in the UI.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="AddonType_flags">AddonType flags</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>TYPE_UI_HIDE_EMPTY</code></td>
+   <td>The type should be hidden from the UI if no add-ons of that type are currently installed.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Startup_change_types">Startup change types</h2>
+
+<p>These constants represent the lists of types of changes that can occur to add-ons during startup; they're used with the <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Add-on_Manager/AddonManager#getStartupChanges()">getStartupChanges()</a></code>, <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Add-on_Manager/AddonManager#addStartupChange()">addStartupChange()</a></code>, and <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Add-on_Manager/AddonManager#removeStartupChange()">removeStartupChange()</a></code> methods.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Constant</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>STARTUP_CHANGE_INSTALLED</code></td>
+   <td>A list of add-ons that were detected as newly-installed during application startup. This doesn't include add-ons that were awaiting installation the last time the application was running.</td>
+  </tr>
+  <tr>
+   <td><code>STARTUP_CHANGE_CHANGED</code></td>
+   <td>A list of add-ons that were detected as having changed during startup. This includes an add-on being moved to a new location, changing version, or having been detected as possibly altered.</td>
+  </tr>
+  <tr>
+   <td><code>STARTUP_CHANGE_UNINSTALLED</code></td>
+   <td>A list of add-ons that were detected as having been uninstalled during startup. This doesn't include add-ons for which uninstall was pending the last time the application was running.</td>
+  </tr>
+  <tr>
+   <td><code>STARTUP_CHANGE_DISABLED</code></td>
+   <td>A list of add-ons that were detected as having become disabled during startup. This normally means the application determined that the add-on is incompatible. This doesn't include add-ons that were pending becoming disabled the last time the application was running.</td>
+  </tr>
+  <tr>
+   <td><code>STARTUP_CHANGE_ENABLED</code></td>
+   <td>A list of add-ons that were detected as having become enabled during startup. This normally means the application determined that an application change has made the add-on compatible. This doesn't include add-ons that were pending becoming enabled the last time the application was running.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="addStartupChange()">addStartupChange()</h3>
+
+<p>Adds an add-on change from the add-on changes list. This is used to build the lists of changed add-ons reported by the <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Add-on_Manager/AddonManager#getStartupChanges()">getStartupChanges()</a></code> method.</p>
+
+<div class="note"><strong>Note:</strong> Calling this method more than once for the same add-on will replace the last change that was recorded with the new one; an add-on can only appear once across all change types.</div>
+
+<pre>void addStartupChange(
+  in string changeType,
+  in string id
+);
+</pre>
+
+<h6 id="Parameters_5">Parameters</h6>
+
+<dl>
+ <dt><code>changeType</code></dt>
+ <dd>The type of change that occurred for the specified add-on. This can be one of the <a href="#Startup_change_types">Startup change types</a> or a custom value defined by your own provider.</dd>
+ <dt><code>id</code></dt>
+ <dd>The add-on ID to add to the change list.</dd>
+</dl>
+
+<h3 id="removeStartupChange()">removeStartupChange()</h3>
+
+<p>Removes an add-on from the add-on changes list.</p>
+
+<pre>void addStartupChange(
+  in string changeType,
+  in string id
+);
+</pre>
+
+<h6 id="Parameters_6">Parameters</h6>
+
+<dl>
+ <dt><code>changeType</code></dt>
+ <dd>The type of change to remove for the specified add-on. This can be one of the <a href="#Startup_change_types">Startup change types</a> or a custom value defined by your own provider.</dd>
+ <dt><code>id</code></dt>
+ <dd>The add-on ID to remove from the change list.</dd>
+</dl>
+
+<h3 id="getStartupChanges()">getStartupChanges()</h3>
+
+<p>Returns an array of add-on IDs that changed for a given startup change type.</p>
+
+<pre>string[] getStartupChanges(
+  in string changeType
+);
+</pre>
+
+<h6 id="Parameters_7">Parameters</h6>
+
+<dl>
+ <dt><code>changeType</code></dt>
+ <dd>The change type for which to retrieve a list of changed add-ons. This can be one of the <a href="#Startup_change_types">Startup change types</a> or a custom value defined by your own provider.</dd>
+</dl>
+
+<h6 id="Return_value">Return value</h6>
+
+<p>An array of add-on IDs indicating the add-ons for which the specified change type applies.</p>
+
+<h3 id="getInstallForURL()">getInstallForURL()</h3>
+
+<p>Asynchronously gets an <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> for a URL.</p>
+
+<pre class="eval">Promise? getInstallForURL(
+  in string url,
+  in <code><a href="#InstallCallback()" title="AddonManager.InstallCallback()">InstallCallback</a></code>? callback,
+  in string mimetype,
+  in string hash,
+  in string name,
+  in string iconURL,
+  in string version,
+  in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILoadGroup" title="">nsILoadGroup</a></code> loadGroup
+)
+</pre>
+
+<h6 id="Parameters_8">Parameters</h6>
+
+<dl>
+ <dt>url</dt>
+ <dd>The url the add-on is located at</dd>
+ <dt>callback</dt>
+ <dd>A callback to pass the <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> to</dd>
+ <dt>mimetype</dt>
+ <dd>The mimetype of the add-on</dd>
+ <dt>hash</dt>
+ <dd>An optional hash of the add-on</dd>
+ <dt>name</dt>
+ <dd>An optional placeholder name while the add-on is being downloaded</dd>
+ <dt>iconURL</dt>
+ <dd>An optional placeholder icon URL while the add-on is being downloaded</dd>
+ <dt>version</dt>
+ <dd>An optional placeholder version while the add-on is being downloaded</dd>
+ <dt>loadGroup</dt>
+ <dd>An optional <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILoadGroup" title="">nsILoadGroup</a></code> to associate any network requests with</dd>
+</dl>
+
+<h3 id="getInstallForFile()">getInstallForFile()</h3>
+
+<p>Asynchronously gets an <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> for an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>.</p>
+
+<pre class="eval">Promise? getInstallForFile(
+  in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> file,
+  in <code><a href="#InstallCallback()" title="AddonManager.InstallCallback()">InstallCallback</a></code>? callback,
+  in string mimetype
+)
+</pre>
+
+<h6 id="Parameters_9">Parameters</h6>
+
+<dl>
+ <dt>file</dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> where the add-on is located</dd>
+ <dt>callback</dt>
+ <dd>A callback to pass the <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> to</dd>
+ <dt>mimetype</dt>
+ <dd>An optional mimetype hint for the add-on</dd>
+</dl>
+
+<h3 id="getAllInstalls()">getAllInstalls()</h3>
+
+<p>Asynchronously gets all current <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s.</p>
+
+<pre class="eval">Promise? getAllInstalls(
+  in <code><a href="#InstallListCallback()" title="AddonManager.InstallCallback()">InstallListCallback</a></code>? callback
+)
+</pre>
+
+<h6 id="Parameters_10">Parameters</h6>
+
+<dl>
+ <dt>callback</dt>
+ <dd>A callback which will be passed an array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s</dd>
+</dl>
+
+<h3 id="getInstallsByTypes()">getInstallsByTypes()</h3>
+
+<p>Asynchronously gets all current <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s optionally limiting to a list of types.</p>
+
+<pre class="eval">Promise? getInstallsByTypes(
+  in string types[],
+  in <code><a href="#InstallListCallback()" title="AddonManager.InstallListCallback()">InstallListCallback</a></code>? callback
+)
+</pre>
+
+<h6 id="Parameters_11">Parameters</h6>
+
+<dl>
+ <dt>types</dt>
+ <dd>An optional array of types to retrieve. Each type is a string name.</dd>
+ <dt>callback</dt>
+ <dd>A callback which will be passed an array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s.</dd>
+</dl>
+
+<h3 id="installAddonsFromWebpage()">installAddonsFromWebpage()</h3>
+
+<p>Starts installation of an array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> notifying the registered web install listener of blocked or started installs.</p>
+
+<pre class="eval">void installAddonsFromWebpage(
+  in string mimetype,
+  in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindow" title="">nsIDOMWindow</a></code> source,
+  in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> uri,
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code> installs[]
+)
+</pre>
+
+<h6 id="Parameters_12">Parameters</h6>
+
+<dl>
+ <dt>mimetype</dt>
+ <dd>The mimetype of add-ons being installed</dd>
+ <dt>source</dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindow" title="">nsIDOMWindow</a></code> that started the installs</dd>
+ <dt>uri</dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> that started the installs</dd>
+ <dt>installs</dt>
+ <dd>The array of <code><a href="/en-US/Add-ons/Add-on_Manager/AddonInstall" title="AddonInstall">AddonInstall</a></code>s to be installed</dd>
+</dl>
+
+<h3 id="addInstallListener()">addInstallListener()</h3>
+
+<p>Adds a new <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> if the listener is not already registered.</p>
+
+<pre class="eval">void addInstallListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> listener
+)
+</pre>
+
+<h6 id="Parameters_13">Parameters</h6>
+
+<dl>
+ <dt>listener</dt>
+ <dd>The <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> to add</dd>
+</dl>
+
+<h3 id="removeInstallListener()">removeInstallListener()</h3>
+
+<p>Removes an <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> if the listener is registered.</p>
+
+<pre class="eval">void removeInstallListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> listener
+)
+</pre>
+
+<h6 id="Parameters_14">Parameters</h6>
+
+<dl>
+ <dt>listener</dt>
+ <dd>The <code><a href="/en-US/Add-ons/Add-on_Manager/InstallListener" title="InstallListener">InstallListener</a></code> to remove</dd>
+</dl>
+
+<h3 id="getAllAddons()">getAllAddons()</h3>
+
+<p>Asynchronously gets all installed <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s.</p>
+
+<pre class="eval">Promise? getAllAddons(
+  in <code><a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a><code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_15"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>callback</code></code></dt>
+ <dd><code><code>A callback which will be passed an array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s</code></code></dd>
+</dl>
+
+<h3 id="getAddonByID()"><code><code>getAddonByID()</code></code></h3>
+
+<p><code><code>Asynchronously gets an <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> with a specific ID.</code></code></p>
+
+<pre class="eval"><code><code>Promise? getAddonByID(
+  in string id,
+  in <code><a href="#AddonCallback()" title="AddonManager.AddonCallback()">AddonCallback</a></code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_16"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>id</code></code></dt>
+ <dd><code><code>The ID of the <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> to retrieve</code></code></dd>
+ <dt><code><code>callback</code></code></dt>
+ <dd><code><code>The callback to pass the retrieved <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> to</code></code></dd>
+</dl>
+
+<h3 id="getAddonBySyncGUID()"><code><code>getAddonBySyncGUID()</code></code></h3>
+
+<p><code><code>Asynchronously gets an <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> with a specific Sync GUID.</code></code></p>
+
+<pre class="eval"><code><code>Promise? getAddonBySyncGUID(
+  in string guid,
+  in <code><a href="#AddonCallback()" title="AddonManager.AddonCallback()">AddonCallback</a></code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_17"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code><code>guid</code></code></code></dt>
+ <dd><code><code>The Sync GUID of the <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> to retrieve</code></code></dd>
+ <dt><code><code><code>callback</code></code></code></dt>
+ <dd><code><code>The callback to pass the retrieved <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code> to</code></code></dd>
+</dl>
+
+<h3 id="getAddonsByIDs()"><code><code>getAddonsByIDs()</code></code></h3>
+
+<p><code><code>Asynchronously gets an array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s.</code></code></p>
+
+<pre class="eval"><code><code>Promise? getAddonsByIDs(
+  in string ids[],
+  in <code><a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a></code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_18"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>ids</code></code></dt>
+ <dd><code><code>The array of IDs to retrieve</code></code></dd>
+ <dt><code><code>callback</code></code></dt>
+ <dd><code><code>The callback to pass an array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s to</code></code></dd>
+</dl>
+
+<h3 id="getAddonsByTypes()"><code><code>getAddonsByTypes()</code></code></h3>
+
+<p><code><code>Asynchronously gets <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s of specific types.</code></code></p>
+
+<pre class="eval"><code><code>Promise? getAddonsByTypes(
+  in string types[],
+  in <code><a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a></code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_19"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>types</code></code></dt>
+ <dd><code><code>An optional array of types to retrieve. Each type is a string name</code></code></dd>
+ <dt><code><code>callback</code></code></dt>
+ <dd><code><code>The callback to pass an array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s to</code></code></dd>
+</dl>
+
+<h3 id="getAddonsWithOperationsByTypes()"><code><code>getAddonsWithOperationsByTypes()</code></code></h3>
+
+<p><code><code>Asynchronously gets <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s that have operations waiting for an application restart to complete.</code></code></p>
+
+<pre class="eval"><code><code>Promise? getAddonsWithOperationsByTypes(
+  in string types[],
+  in <code><a href="#AddonListCallback()" title="AddonManager.AddonListCallback()">AddonListCallback</a></code>? callback
+)
+</code></code></pre>
+
+<h6 id="Parameters_20"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>types</code></code></dt>
+ <dd><code><code>An optional array of types to retrieve. Each type is a string name.</code></code></dd>
+ <dt><code><code>callback</code></code></dt>
+ <dd><code><code>The callback to pass the array of <code><a href="/en-US/Add-ons/Add-on_Manager/Addon" title="Addon">Addon</a></code>s to.</code></code></dd>
+</dl>
+
+<h3 id="addAddonListener()"><code><code>addAddonListener()</code></code></h3>
+
+<p><code><code>Adds a new <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> if the listener is not already registered.</code></code></p>
+
+<pre class="eval"><code><code>void addAddonListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> listener
+)
+</code></code></pre>
+
+<h6 id="Parameters_21"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>listener</code></code></dt>
+ <dd><code><code>The <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> to add</code></code></dd>
+</dl>
+
+<h3 id="removeAddonListener()"><code><code>removeAddonListener()</code></code></h3>
+
+<p><code><code>Removes an <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> if the listener is registered.</code></code></p>
+
+<pre class="eval"><code><code>void removeAddonListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> listener
+)
+</code></code></pre>
+
+<h6 id="Parameters_22"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>listener</code></code></dt>
+ <dd><code><code>The <code><a href="/en-US/Add-ons/Add-on_Manager/AddonListener" title="AddonListener">AddonListener</a></code> to remove</code></code></dd>
+</dl>
+
+<h3 id="addTypeListener()"><code><code>addTypeListener()</code></code></h3>
+
+<p><code><code>Adds a new <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> if the listener is not already registered.</code></code></p>
+
+<pre class="eval"><code><code>void addTypeListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> listener
+)
+</code></code></pre>
+
+<h6 id="Parameters_23"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>listener</code></code></dt>
+ <dd><code><code>The <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> to add</code></code></dd>
+</dl>
+
+<h3 id="removeTypeListener()"><code><code>removeTypeListener()</code></code></h3>
+
+<p><code><code>Removes a <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> if the listener is registered.</code></code></p>
+
+<pre class="eval"><code><code>void removeTypeListener(
+  in <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> listener
+)
+</code></code></pre>
+
+<h6 id="Parameters_24"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>listener</code></code></dt>
+ <dd><code><code>The <code><a href="/en-US/Add-ons/Add-on_Manager/TypeListener" title="TypeListener">TypeListener</a></code> to remove</code></code></dd>
+</dl>
+
+<h3 id="getURIForResourceInFile()"><code><code>getURIForResourceInFile()</code></code></h3>
+
+<pre class="eval"><code><code><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> getURIForResourceInFile(
+  in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> aFile,
+  in string aPath
+)
+</code></code></pre>
+
+<h6 id="Parameters_25"><code><code>Parameters</code></code></h6>
+
+<dl>
+ <dt><code><code>aFile</code></code></dt>
+ <dd><code><code>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> containing the resources; must be either a directory or an XPI file.</code></code></dd>
+ <dt><code><code>aPath</code></code></dt>
+ <dd><code><code>The path to find the resource at, "/" separated. If <code>aPath</code> is empty then the URI to the root of the contained files will be returned.</code></code></dd>
+</dl>
+
+<h6 id="Returns"><code><code>Returns</code></code></h6>
+
+<p><code><code>An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> pointing at the resource.</code></code></p>

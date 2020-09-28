@@ -1,0 +1,267 @@
+---
+title: How to build an XPCOM component in JavaScript
+slug: Mozilla/Tech/XPCOM/Guide/Building_components_in_JavaScript
+tags:
+  - Add-ons
+  - Extensions
+  - JavaScript
+  - Tutorial
+  - XPCOM
+---
+<p>If you are looking for Add-on SDK solution for XPCOM JavaScript components then check out <a href="https://addons.mozilla.org/en-US/developers/docs/sdk/latest/modules/sdk/platform/xpcom.html" title="https://addons.mozilla.org/en-US/developers/docs/sdk/latest/modules/sdk/platform/xpcom.html">platform/xpcom</a> module first.</p>
+
+<p>This is a "Hello World" tutorial for creating an XPCOM component in JavaScript. This tutorial does not describe how and why XPCOM works the way it does, or what every bit of the example code does. That's been detailed <a href="/en/XPCOM" title="en/XPCOM">elsewhere</a>. This tutorial will show you what you need to do to get a component <em>working</em> in as few and as simple steps as possible.</p>
+
+<h2 id="Implementation" name="Implementation">Implementation</h2>
+
+<p>This example component will expose a single method, which returns the string "Hello World!".</p>
+
+<h3 id="Defining_the_Interface" name="Defining_the_Interface">Defining the Interface</h3>
+
+<p>If you want to use your component in other XPCOM components, you must define the interfaces that you want exposed. If you want to use your component <em>only</em> from JavaScript, you can skip to the <a href="#Using_XPCOMUtils">next section</a>.</p>
+
+<p>There are many interfaces already defined in Mozilla applications, so you may not need to define a new one. You can browse existing XPCOM interfaces at various locations in the Mozilla source code, or using <a class="external" href="http://www.ondrejd.info/projects/xpcomviewer/" title="http://www.ondrejd.info/projects/xpcomviewer/">XPCOMViewer</a>, a GUI for browsing registered interfaces and components. You can download an old version of XPCOMViewer that works with Firefox 1.5 from <a class="external" href="http://downloads.mozdev.org/xpcomviewer/">mozdev mirrors</a>.</p>
+
+<p>If an interface exists that meets your needs, then you do not need to write an IDL, or compile a typelib, and may skip to the <a href="#Using_XPCOMUtils">next section</a>.</p>
+
+<p>If you don't find a suitable pre-existing interface, then you must define your own. XPCOM uses a dialect of IDL to define interfaces, called <a href="/en/XPIDL" title="en/XPIDL">XPIDL</a>. Here's the XPIDL definition for our HelloWorld component:</p>
+
+<p>HelloWorld.idl</p>
+
+<pre>#include "nsISupports.idl"
+
+[scriptable, uuid(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)]
+interface nsIHelloWorld : nsISupports
+{
+  string hello();
+};
+</pre>
+
+<p>Note that you must generate a new UUID for each XPCOM component that you create. See <a href="/en/Generating_GUIDs" title="en/Generating_GUIDs">Generating GUIDs</a> for more information.</p>
+
+<h3 id="Compiling_the_Typelib" name="Compiling_the_Typelib">Compiling the Typelib</h3>
+
+<p>Your interface definition must be compiled into a binary format (XPT) in order to be registered and used within Mozilla applications. The compilation can be done using the Gecko SDK. You can learn how to get Mac, Linux, and Windows versions of the Gecko SDK by reading the article <a href="/en/Gecko_SDK" title="en/Gecko_SDK">Gecko SDK</a>.</p>
+
+<h4 id="For_code_outside_the_tree">For code outside the tree</h4>
+
+<div class="note"><strong>Note:</strong> On Windows if you download the Gecko SDK without the whole build tree, you will be missing some required DLLs for xpidl.exe and it will run with no errors but not do anything. To fix this download the <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/mozilla/source/wintools.zip">Mozilla build tools for Windows</a> and copy the DLLs from <code>windows\bin\x86</code> within the zip into the <code>bin</code> directory of the Gecko SDK.</div>
+
+<div class="note"><strong>Note:</strong> The Mac version of the SDK provided for download is PowerPC-only. If you need an Intel version, you'll need to compile it yourself as described on that page.</div>
+
+<p>Execute this command to compile the <code>typelib</code>. Here, <code>{sdk_dir}</code> is the directory in which you unpacked the Gecko SDK.</p>
+
+<pre class="eval">{sdk_dir}/bin/xpidl -m typelib -w -v -I {sdk_dir}/idl -e HelloWorld.xpt HelloWorld.idl
+</pre>
+
+<div class="note"><strong>Note:</strong> On Windows you must use forward slashes for the include path.</div>
+
+<div class="note"><strong>Note:</strong> (The -I flag is an uppercase i, not a lowercase L.)</div>
+
+<p>This will create the <code>typelib</code> file <code>HelloWorld.xpt</code> in the current working directory.</p>
+
+<h4 id="For_a_new_component_in_FirefoxThunderbirdB2G">For a new component in Firefox/Thunderbird/B2G</h4>
+
+<p>If you are adding a new feature to applications in the mozilla-central repository, you can create a Makefile listing the IDL files and the build system will automatically generate the typelib. A sample <code>Makefile.in</code></p>
+
+<pre># This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+DEPTH = @DEPTH@
+topsrcdir = @top_srcdir@
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+include $(DEPTH)/config/autoconf.mk
+
+
+<span id="the-code"># MODULE specifies where header files from this Makefile are installed</span>
+# Use dom if your component implements a DOM API
+MODULE = dom
+
+# Name of the typelib
+XPIDL_MODULE = dom_apps
+
+# Set to 1 if the module should be part of the Gecko Runtime common to all applications
+GRE_MODULE = 1
+
+# The IDL sources
+XPIDLSRCS = \
+ HelloWorld.idl \
+ $(NULL)
+
+include $(topsrcdir)/config/rules.mk
+
+XPIDL_FLAGS += \
+ -I$(topsrcdir)/dom/interfaces/base \
+ -I$(topsrcdir)/dom/interfaces/events \
+ $(NULL)</pre>
+
+<h3 id="Using_XPCOMUtils" name="Using_XPCOMUtils">Creating the Component Using XPCOMUtils</h3>
+
+<p> In <a href="/en/Firefox_3_for_developers" title="en/Firefox_3_for_developers">Firefox 3</a> and later you can use import <a href="/en/JavaScript_code_modules/XPCOMUtils.jsm" title="en/XPCOMUtils.jsm">XPCOMUtils.jsm</a> using <a href="/en/Components.utils.import" title="en/Components.utils.import">Components.utils.import</a> to simplify the process of writing your component slightly. The imported library contains functions for generating the module, factory, and the NSGetModule and QueryInterface functions for you. <strong>Note:</strong> it doesn't do the work of creating your interface definition file or the type library for you, so you still have to go through those steps above if they haven't been done. The library provides a simple example of its use in the source code (<code><a href="https://dxr.mozilla.org/mozilla-central/source/js/xpconnect/loader/XPCOMUtils.jsm" rel="custom">js/xpconnect/loader/XPCOMUtils.jsm</a></code>), but here's another using this example. To begin, include a line at the top of your interface to import the <code>XPCOMUtils</code> library:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+</pre>
+
+<p>then implement your interface the same way you did above, except with a few modifications so that <code>XPCOMUtils</code> can set it up properly:</p>
+
+<pre class="brush: js">/***********************************************************
+class definition
+***********************************************************/
+
+//class constructor
+function HelloWorld() {
+// If you only need to access your component from JavaScript, uncomment the following line:
+//this.wrappedJSObject = this;
+}
+
+// class definition
+HelloWorld.prototype = {
+
+  // properties required for XPCOM registration:
+  classDescription: "My Hello World JavaScript XPCOM Component",
+  classID:          Components.ID("{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}"),
+  contractID:       "@dietrich.ganx4.com/helloworld;1",
+
+  // [optional] custom factory (an object implementing nsIFactory). If not
+  // provided, the default factory is used, which returns
+  // |(new MyComponent()).QueryInterface(iid)| in its createInstance().
+  _xpcom_factory: { ... },
+
+  // [optional] an array of categories to register this component in.
+  _xpcom_categories: [{
+
+    // Each object in the array specifies the parameters to pass to
+    // nsICategoryManager.addCategoryEntry(). 'true' is passed for both
+    // aPersist and aReplace params.
+    category: "some-category",
+
+    // optional, defaults to the object's classDescription
+    entry: "entry name",
+
+    // optional, defaults to the object's contractID (unless 'service' is specified)
+    value: "...",
+
+    // optional, defaults to false. When set to true, and only if 'value' is not
+    // specified, the concatenation of the string "service," and the object's contractID
+    // is passed as aValue parameter of addCategoryEntry.
+     service: true
+  }],
+
+  // QueryInterface implementation, e.g. using the generateQI helper (remove argument if skipped steps above)
+  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIHelloWorld]),
+
+  // Optional, but required if you want your component to be exposed to DOM
+  classInfo: XPCOMUtils.generateCI({classID: Components.ID("{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}"),
+                                    contractID: "@dietrich.ganx4.com/helloworld;1",
+                                    interfaces: [Ci.nsIHelloWorld],
+                                    flags: Ci.nsIClassInfo.DOM_OBJECT}),
+
+  // ...component implementation...
+  // define the function we want to expose in our interface
+  hello: function() {
+      return "Hello World!";
+  },
+};
+</pre>
+
+<p><code>XPCOMUtils</code> does the work of creating the module and factory for you after this. Finally, you create an array of your components to be created:</p>
+
+<pre class="brush: js"> var components = [HelloWorld];
+</pre>
+
+<p>and replace <code>NSGetFactory</code>/<code>NSGetModule</code> to use this array and <code>XPCOMUtils</code>:</p>
+
+<pre class="brush: js"> if ("generateNSGetFactory" in XPCOMUtils)
+   var NSGetFactory = XPCOMUtils.generateNSGetFactory(components);  // Firefox 4.0 and higher
+ else
+   var NSGetModule = XPCOMUtils.generateNSGetModule(components);    // Firefox 3.x
+</pre>
+
+<p>So the total simplified version of your component now looks like (of course documentation and comments aren't a bad thing, but as a template something smaller is nice to have):</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+function HelloWorld() { }
+
+HelloWorld.prototype = {
+  classDescription: "My Hello World JavaScript XPCOM Component",
+  classID:          Components.ID("{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}"),
+  contractID:       "@dietrich.ganx4.com/helloworld;1",
+  QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIHelloWorld]),
+  hello: function() { return "Hello World!"; }
+};
+var components = [HelloWorld];
+if ("generateNSGetFactory" in XPCOMUtils)
+  var NSGetFactory = XPCOMUtils.generateNSGetFactory(components);  // Firefox 4.0 and higher
+else
+  var NSGetModule = XPCOMUtils.generateNSGetModule(components);    // Firefox 3.x
+</pre>
+
+<div class="note"><strong>Note:</strong> Starting with Firefox 4.0 you will need to declare your component in <code>chrome.manifest</code>; <code>classDescription</code> and <code>contractID</code> properties on the other hand are no longer required. See <a href="/en/XPCOM/XPCOM_changes_in_Gecko_2.0" title="XPCOM changes in Gecko 2.0">XPCOM changes in Gecko 2.0</a> for more details.</div>
+
+<h2 id="Installation" name="Installation">Installation</h2>
+
+<h3 id="For_extensions:" name="For_extensions:">For extensions:</h3>
+
+<ol>
+ <li>Copy <code>HelloWorld.js</code>, and <code>HelloWorld.xpt</code> (only if you defined and compiled the IDL) to <code>{extensiondir}/components/</code>.</li>
+ <li>Delete <code>compreg.dat</code> and <code>xpti.dat</code> from your profile directory.</li>
+ <li>Restart application.</li>
+</ol>
+
+<h3 id="For_Firefox" name="For_Firefox">For Firefox:</h3>
+
+<ol>
+ <li>Copy <code>HelloWorld.js</code>, and <code>HelloWorld.xpt</code> (only if you defined and compiled the IDL) to the <code>{objdir}/dist/bin/components</code> directory, if running from the source.</li>
+ <li>Delete <code>compreg.dat</code> and <code>xpti.dat</code> from the components directory.</li>
+ <li>Delete <code>compreg.dat</code> and <code>xpti.dat</code> from your profile directory.</li>
+ <li>Restart application.</li>
+</ol>
+
+<h2 id="Using_Your_Component" name="Using_Your_Component">Using Your Component</h2>
+
+<h3 id="Using_wrappedJSObject" name="Using_wrappedJSObject">Using wrappedJSObject</h3>
+
+<p>If you only intend to access your component from JavaScript, i.e. you skipped the sections "Defining the Interface" and "Compiling the Typelib" above, you uncommented the "wrappedJSObject" line in the class constructor, and you removed the "[Components.interfaces.nsIHelloWorld]" argument for the call to XPCOMUtils.generateQI() in QueryInterface, then you can access your component like this:</p>
+
+<pre class="brush: js">try {
+        var myComponent = Components.classes['@dietrich.ganx4.com/helloworld;1']
+                                    .getService().wrappedJSObject;
+
+        alert(myComponent.hello());
+} catch (anError) {
+        dump("ERROR: " + anError);
+}
+</pre>
+
+<p>For more information about wrappedJSObject, see <a href="/en/wrappedJSObject" title="en/wrappedJSObject">here</a>.</p>
+
+<h3 id="Using_XPCOM_instantiation" name="Using_XPCOM_instantiation">Using XPCOM instantiation</h3>
+
+<pre class="brush: js">try {
+        var myComponent = Components.classes['@dietrich.ganx4.com/helloworld;1']
+                                    .createInstance(Components.interfaces.nsIHelloWorld);
+
+        alert(myComponent.hello());
+} catch (anError) {
+        dump("ERROR: " + anError);
+}
+</pre>
+
+<h2 id="Other_resources" name="Other_resources">Other resources</h2>
+
+<ul>
+ <li>rm lanTwo mozillazine forums threads about implementing XPCOM components in JS with some explanations, example code, and troubleshooting tips:
+  <ul>
+   <li><a class="external" href="http://forums.mozillazine.org/viewtopic.php?t=308369" rel="freelink">http://forums.mozillazine.org/viewtopic.php?t=308369</a></li>
+   <li><a class="external" href="http://forums.mozillazine.org/viewtopic.php?t=367298" rel="freelink">http://forums.mozillazine.org/viewtopic.php?t=367298</a></li>
+  </ul>
+ </li>
+ <li><a class="external" href="http://kb.mozillazine.org/Implementing_XPCOM_components_in_JavaScript">Implementing XPCOM components in JavaScript</a> at kb.mozillazine.org</li>
+ <li><a class="external" href="http://www.mozilla.org/scriptable/avoiding-leaks.html">Using XPCOM in JavaScript without leaking</a> - A must-read.</li>
+ <li><a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/sample/nsSample.js">An example component</a></li>
+ <li><a class="external" href="http://www.mozilla.org/scriptable/js-components-status.html">Older JS+XPCOM notes</a> - includes some wrappedJSObject information.</li>
+ <li><a class="external" href="https://web.archive.org/web/20110829175619/http://weblogs.mozillazine.org/weirdal/archives/019620.html" title="http://weblogs.mozillazine.org/weirdal/archives/019620.html (archive)">Writing an XPCOM <em><u>Service</u></em> in JavaScript</a></li>
+</ul>

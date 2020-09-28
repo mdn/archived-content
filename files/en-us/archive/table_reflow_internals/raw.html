@@ -1,0 +1,148 @@
+<h3 id="Overview">Overview</h3>
+<ul> <li>Review of reflow</li> <li>Table frames</li> <li>Table reflow</li> <li>Intro to paginated reflow</li> <li>Table paginated reflow</li>
+</ul>
+<h3 id="Review_of_Reflow">Review of Reflow</h3>
+<ul> <li>Reflow process starts when <ul> <li>An html document starts loading (the frame tree contains only viewport, scroll(s), canvas, html, body).</li> <li>The initial chunk of an xml doc is loaded.</li> <li>The initial chunk of an html doc (or a subsequent chunk of an xml doc) is loaded. The container posts a dirty reflow command with itself as the target.</li> <li>Content is inserted, appended, or deleted through the DOM. The container posts a dirty reflow command with itself as the target.</li> <li>Style changes through the DOM - javascript, browser change font (CTRL+/-), a preference changes, etc.</li> </ul> </li>
+</ul>
+<h3 id="Review_of_Reflow_2">Review of Reflow</h3>
+<ul> <li>Reflow starts with pres shell <ul> <li>Which reflows the reflow root (usually the viewport frame),</li> <li>Which reflows it children, etc.</li> </ul> </li> <li>Ususally it starts when the pres shell processes its queue of reflow commands.</li> <li>The reflower <ul> <li>Positions reflowee (if it can) before actually reflowing in case views are involved (e.g. absolutely positioned elements)</li> <li>Reflows reflowee and passes a reflow state (in) and a reflow metrics (in/out)</li> </ul> </li>
+</ul>
+<h3 id="Review_of_Reflow_3">Review of Reflow</h3>
+<ul> <li>The reflow state: <ul> <li>Is a node in a tree structurally equivalent to the frame tree of reflow participants</li> <li>contains: <ul> <li>reflow type,</li> <li>avail size,</li> <li>various computed values,</li> <li>resolved style structs</li> <li>possible request for preferred size and more.</li> </ul> </li> </ul> </li>
+</ul>
+<h3 id="Review_of_Reflow_4">Review of Reflow</h3>
+<ul> <li>the reflow metrics contains: <ul> <li>max element size (if requested) - the minimum size it can be</li> <li>preferred size (if requested) - the size it would like to be given no size constraints.</li> <li>desired size - the size it would like to be given the avail size. This is equivalent to preferred size if the avail size is not constrained.</li> </ul> </li>
+</ul>
+<h3 id="Review_of_Reflow_5">Review of Reflow</h3>
+<ul> <li>The reflowee sets various sizes in the reflow metrics after (possibly) reflowing some or all of its children which reflows it children, etc.</li> <li>The reflowee returns a reflow status which indicates <ul> <li>if it is complete, and thus not have to continue (split)</li> <li>breaking status (in the case of some inline frames)</li> <li>if there is truncation (it can't fit in the space and can't split). This is just a convience mechanism.</li> </ul> </li>
+</ul>
+<h3 id="Kinds_of_reflows">Kinds of reflows</h3>
+<ul> <li>Initial - reflowee's first reflow must be of this type (reflower's responsibility).</li> <li>Resize - reflowee gets a change in available space only. Similar to initial, except it can reoccur.</li> <li>Incremental - has a reflow path (tree) where each node has a command with a target frame, reflow command types are: <ul> <li>dirty - something changed inside a target (e.g. it gains, loses children)</li> <li>style changed - a target changed stylisticly (recall, size is a style property)</li> <li>content changed - a target's content changed (e.g. a text run)</li> <li>user defined - currently only used for fixed positioned frames</li> </ul> </li>
+</ul>
+<h3 id="Kinds_of_reflows_2">Kinds of reflows</h3>
+<ul> <li>Incremental reflow (continued) <ul> <li>reflower not allowed to change available size of reflowee</li> <li>reflow commands get coalesced to streamline processing</li> </ul> </li> <li>Style change <ul> <li>a target changed stylistic if there is a target, otherwise every frame may need to respond</li> <li>parent of target usually turns it into an incremental reflow with a style changed command type</li> </ul> </li>
+</ul>
+<h3 id="Table_Frames">Table Frames</h3>
+<table> <tbody> <tr> <td> </td> <td style="width: 2%;"> </td> <td> </td> <td class="space" style="width: 2%;"> </td> <td> </td> <td class="space" style="width: 2%;"> </td> <td> </td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableOuter<br> Frame</td> <td> </td> <td> </td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td style="text-align: center;">↙</td> <td> </td> <td style="text-align: center;">↘</td> </tr> <tr> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTable<br> Frame</td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableCaption<br> Frame</td> </tr> <tr> <td> </td> <td style="text-align: center;">↙</td> <td> </td> <td style="text-align: center;">↘</td> <td> </td> <td> </td> <td style="text-align: center;">↓</td> </tr> <tr> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableCol<br> GroupFrame</td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableRow<br> GroupFrame</td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsBlockFrame</td> </tr> <tr> <td style="text-align: center;">↓</td> <td> </td> <td> </td> <td> </td> <td style="text-align: center;">↓</td> </tr> <tr> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableCol<br> Frame</td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableRow<br> Frame</td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td> </td> <td style="text-align: center;">↓</td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsTableCell<br> Frame</td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td> </td> <td style="text-align: center;">↓</td> </tr> <tr> <td> </td> <td> </td> <td> </td> <td> </td> <td style="border: 1px solid rgb(51, 51, 51); text-align: center;">nsBlock<br> Frame</td> </tr> </tbody>
+</table>
+<h3 id="Table_Reflow">Table Reflow</h3>
+<ul> <li>Outer table reflows table and caption (if present)</li> <li>Table reflows row groups in multiple passes <ul> <li>Pass 1 - unconstrained width, height and requests max elem width.</li> <li>The table figures out the column widths (balances) given the style width constraints on the table, col groups, cols, cells the preferred and max element sizes of the cells (from the pass 1 reflow), and considers colspans</li> <li>Pass 2 - cell widths are constrained by the column widths (heights are only constrained in paginated mode).</li> </ul> </li>
+</ul>
+<h3 id="Table_Reflow_2">Table Reflow</h3>
+<ul> <li>Table reflows row groups (continued) <ul> <li>The row group figures out the row heights given its style height constraints, its rows and cells, and the actual heights of its rows and cells from the pass 2 reflow.</li> <li>If the table has a style height, it allocates extra height to its row groups, rows and cells.</li> </ul> </li> <li>In each pass, row groups reflow rows which reflow cells which reflow cell blocks.</li>
+</ul><h3 id="Table_Reflow_Example">Table Reflow Example</h3>
+<pre class="eval"> &lt;table width=300&gt;
+   &lt;tr&gt;
+     &lt;td&gt;foo&lt;/td&gt;
+     &lt;td&gt;bar zap&lt;/td&gt;
+   &lt;/tr&gt;
+ &lt;/table&gt;
+</pre>
+<p>Key:</p>
+<pre class="eval"> r  = reflow reason,
+      0 (initial),
+      2 (resize)
+ a  = avail w, h
+ c  = computed w, h
+ d  = desired w, h
+ me = max elem w
+</pre>
+<p><a href="/en/Debugging_Frame_Reflow" title="en/Debugging_Frame_Reflow">Debugging Frame Reflow</a> gives instructions for turning this on:</p>
+<pre class="eval"> tblO 030176CC r=0 a=8940,UC c=0,0 cnt=429
+   tbl 030178C4 r=0 a=8940,UC c=4470,UC cnt=430
+    rowG 03017A7C r=0 a=UC,UC c=UC,UC cnt=431
+     row 03017C08 r=0 a=UC,UC c=UC,UC cnt=432
+      cell 03017DA8 r=0 a=UC,UC c=UC,UC cnt=433
+       block 03017E08 r=0 a=UC,UC c=UC,UC cnt=434
+       block 03017E08 d=870,300 me=480
+      cell 03017DA8 d=930,360 me=540
+      cell 0301A8CC r=0 a=UC,UC c=UC,UC cnt=436
+       block 0301A92C r=0 a=UC,UC c=UC,UC cnt=437
+       block 0301A92C d=1335,300 me=465
+      cell 0301A8CC d=1395,360 me=525
+     row 03017C08 d=UC,360
+    rowG 03017A7C d=UC,360
+    rowG 03017A7C r=2 a=4470,UC c=4470,UC cnt=442
+     row 03017C08 r=2 a=4470,UC c=4470,UC cnt=443
+      cell 03017DA8 r=2 a=1755,UC c=1695,UC cnt=444
+       block 03017E08 r=2 a=1695,UC c=1695,UC cnt=445
+       block 03017E08 d=1695,300
+      cell 03017DA8 d=1755,360
+      cell 0301A8CC r=2 a=2625,UC c=2565,UC cnt=446
+       block 0301A92C r=2 a=2565,UC c=2565,UC cnt=447
+       block 0301A92C d=2565,300
+      cell 0301A8CC d=2625,360
+     row 03017C08 d=4470,360
+    rowG 03017A7C d=4470,360
+   tbl 030178C4 d=4500,450
+  tblO 030176CC d=4500,450
+</pre>
+<h3 id="Table_reflow_optimizations">Table reflow optimizations</h3>
+<ul> <li>If the table is already balanced, pass 1 constrains the width (like a normal pass 2) based on the current column widths. The pass 2 will get skipped if the table doesn't need to rebalance.</li> <li>Nested table reflowed with an unconstrained width (i.e. an ancestor is doing a pass 1 reflow) will only do a pass 1 reflow on its children</li> <li>Outer table caches last avail width and avoids reflowing children if resize reflow is the same as previous</li> <li>Table caches max element, preferred widths in case they are requested and it isn't rebalanced</li> <li>Cell caches prior avail width. if this doesn't change, the row may not have to reflow the cell</li>
+</ul>
+<h3 id="Table_incremental_reflow">Table incremental reflow</h3>
+<ul> <li>Outer table is a target when a caption is added or removed (dirty) or the table or caption margin changes (style changed).</li> <li>Caption is a target when it changes stylistically (style changed).</li> <li>Table, row group, row, col group, col is a target when a child is added or removed (dirty) or it changes stylistically (style changed).</li> <li>In the dirty cases, a target posted the reflow command in AppendFrames, InsertFrames, or DeleteFrame.</li>
+</ul>
+<h3 id="Table_incremental_reflow_2">Table incremental reflow</h3>
+<ul> <li>In the style change cases where a target is between the table and the cell, the table is told to rebalance.</li> <li>When a target is the cell or below and the cell changes size, the row tells the table so it can decide if it needs to rebalance</li> <li>When a target is inside the cell's block, the cell requests max element, preferred sizes of its block in case they change</li> <li>After the table reflows the row group(s) containing the targets, if it rebalances, it then does a pass 2 reflow.</li>
+</ul>
+<h3 id="Special_height_reflow">Special height reflow</h3>
+<ul> <li>When there is a % height frame inside a cell without a computed height <ul> <li>the frame will never get a chance to size based on the final cell height</li> <li>in paginated mode when there is a height on the table, the table doesn't allocate extra height to rows until after it does a pass 2 reflow and then it is too late</li> </ul> </li> <li>This can be fixed by doing a special 3rd pass reflow</li>
+</ul>
+<h3 id="Special_Reflow_Example">Special Reflow Example</h3>
+<pre class="eval"> &lt;table border=2 width=300&gt;
+   &lt;tr&gt;
+     &lt;td&gt;
+       This cell's width is
+       constrained by the
+       table and image widths.
+       Its exact height is
+       hard to determine.
+     &lt;/td&gt;
+     &lt;td&gt;
+       &lt;img src=raptor.jpg
+        width=200 height=100%&gt;
+     &lt;/td&gt;
+   &lt;/tr&gt;
+ &lt;/table&gt;
+</pre>
+<table> <tbody> <tr> <td>This cell's width is constrained by the table and image widths.<br> <br> Its height is hard to determine.<br> <br> The image needs to be as high as the cell.</td> <td> <p><img alt="Image:raptor.jpg" class=" internal" src="/@api/deki/files/821/=Raptor.jpg"></p> </td> </tr> </tbody>
+</table>
+<h3 id="Special_height_reflow_2">Special height reflow</h3>
+<ul> <li>The reflow state holds an observer and initiator</li> <li>Observer <ul> <li>is the table cell used as the height basis</li> <li>set by frame without computed height in DidReflow</li> <li>gives its block a computed height during 3rd pass</li> <li>doesn't change height during 3rd pass</li> </ul> </li> <li>Initiator <ul> <li>is the table containing the observer</li> <li>starts the 3rd pass reflow and sets a bit in the reflow state</li> <li>gives its block a computed height during 3rd pass</li> <li>could also be inside a cell which is an observer</li> </ul> </li>
+</ul>
+<h3 id="Special_height_reflow_3">Special height reflow</h3>
+<ul> <li>Optimizations <ul> <li>only frames needing 3rd pass actually get it</li> <li>frames gettting a 3rd pass only get it once</li> </ul> </li>
+</ul>
+<h3 id="Intro_to_paginated_reflow">Intro to paginated reflow</h3>
+<ul> <li>When a reflowee's available height is constrained, it may not fit and need to either split/continue on the next page, or start on the next page. <ul> <li>If it can continue, it returns an incomplete status.</li> <li>If it can't continue it returns a complete status.</li> </ul> </li> <li>A continuation may also need to be continued</li> <li>Continuations are linked together by prevInFlow and nextInFlow pointers</li>
+</ul>
+<h3 id="Pagination_Illustration">Pagination Illustration</h3>
+<table style="margin: auto; width: 98%;"> <tbody> <tr> <td>nsSimplePageSequence</td> </tr> <tr> <td style="border: 2px solid black;"> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td>nsPageFrame</td> </tr> <tr> <td style="border: 2px solid black;"> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td>nsPageContentFrame</td> </tr> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td>areaFrame (html)</td> </tr> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td>blockFrame (body)</td> </tr> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td>nsTableOuterFrame</td> </tr> <tr> <td style=""> </td> </tr> </tbody> </table> </td> </tr> </tbody> </table> </td> </tr> </tbody> </table> </td> </tr> </tbody> </table> </td> </tr> </tbody> </table> <p> </p> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td style="border: 2px solid black;"> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td style=""> <table style="margin: auto; width: 98%;"> <tbody> <tr> <td style=""> </td> </tr> <tr> <td>nsTableOuterFrame</td> </tr> </tbody> </table> </td> </tr> <tr> <td>blockFrame (body)</td> </tr> </tbody> </table> </td> </tr> <tr> <td>areaFrame (html)</td> </tr> </tbody> </table> </td> </tr> <tr> <td>nsPageContentFrame continued</td> </tr> </tbody> </table> </td> </tr> <tr> <td>nsPageFrame continued</td> </tr> </tbody> </table> </td> </tr> </tbody>
+</table>
+<h3 id="Intro_to_paginated_reflow_2">Intro to paginated reflow</h3>
+<ul> <li>The page sequence starts with one page and reflows it. If the page is incomplete then the page sequence creates a continuation for the page and sets it as the page's next sibling (it is also the page's nextInFlow).</li> <li>The page was incomplete because the page content was incomplete because the doc root was incomplete</li> <li>The doc root was incomplete because it contained lines that didn't fit (or if it was mapped to a table, because the table didn't fit) becacause a line contained something that didn't fit, etc.</li>
+</ul>
+<h3 id="Intro_to_paginated_reflow_3">Intro to paginated reflow</h3>
+<ul> <li>If the reflowee is incomplete, the reflower has the responsiblity to: <ul> <li>Create a continuation for the reflowee</li> <li>Ensure that the continuation gets put in the frame hierarchy at the right place and gets reflowed at the right time.</li> <li>Typically, a reflower accomplishes this by putting the continuation (c) on an overflow list which the reflower owns. When the reflower's continuation gets reflowed, it takes c and its siblings as children and reflows them.</li> </ul> </li> <li>If the reflowee is complete, truncated (it didn't fit), not at the top of page, the reflower should put the reflowee on its overflow list and return an incomplete status.</li>
+</ul>
+<h3 id="Intro_to_paginated_reflow_4">Intro to paginated reflow</h3>
+<ul> <li>Special assumptions <ul> <li>There are only initial and (possibly) resize reflows. Incremental and style change reflows are not allowed.</li> <li>Multiple resize reflows may be necessary (e.g. a child is truncated and gets reflowed on a subsequent page) but they should not change the available width from the last time.</li> <li>Multiple resize reflows may require special handling if a frame split previously. It may need to "pull up" children from a continuation.</li> </ul> </li>
+</ul>
+<h3 id="Table_paginated_reflow">Table paginated reflow</h3>
+<ul> <li>The block containing the outer table reflows it. If it is incomplete, the block will <ul> <li>create a continuation for the outer table (which also creates a continuation for the table).</li> <li>put the continuation on a new line and place that line on its overflow lines property.</li> </ul> </li> <li>The outer table reflows the table and just returns the status of the table.</li> <li>The table does a pass 1 reflow and balances. If it is incomplete, <ul> <li>it will become the first-in-flow</li> <li>it will be the only frame among its continuations to ever balance or calc the cell map, and it only does this once</li> </ul> </li>
+</ul>
+<h3 id="Table_paginated_reflow_2">Table paginated reflow</h3>
+<ul> <li>The table does a pass 2 reflow constraining both avail heights and widths. If a row group is incomplete, the table <ul> <li>creates a continuation for the row group</li> <li>puts the continuation in its overflow frames property</li> </ul> </li> <li>What follows only applies during the pass 2 reflow.</li> <li>The row group <ul> <li>reflows all of its rows with unconstrained heights and calculates the row heights,</li> <li>figures out which row falls on a page boundary and reflows it with a constrained height. If there will be a pass 3 reflow then this should (bug) happen at that time instead.</li> </ul> </li>
+</ul>
+<h3 id="Table_paginated_reflow_3">Table paginated reflow</h3>
+<ul> <li>The row group (continued) <ul> <li>creates a continuation for the incomplete row (which also creates continuations for all of its cells and all of the cell blocks)</li> <li>puts the continuation in its overflow frames property. If the row was truncated and not top of page, the row is put in the overflow frames property.</li> </ul> </li>
+</ul>
+<h3 id="Table_paginated_reflow_4">Table paginated reflow</h3>
+<ul> <li>The row and cells (getting the constrained height reflow) just reflow their children with a constrained height. They don't need an overflow list for continued children because the continuations were created when the row group created the row's continutation.</li> <li>A cell is incomplete because its block is incomplete. The block uses the overflow lines mechanism (mentioned above) for its continued children</li> <li>There are two splitting scenarios for a table <ul> <li>An incomplete cells block causes the cell, row, row group, table, outer table to be incomplete</li> <li>A truncated row or a row that started too far down the page causes the row group, table, outer table to be incomplete.</li> </ul> </li>
+</ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information">Original Document Information</h2>
+<ul> <li>Author(s): Chris Karnaze</li> <li>Last Updated Aug 7, 2002</li>
+</ul>
+</div>

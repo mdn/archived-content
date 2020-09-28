@@ -1,0 +1,349 @@
+<p>BloatView is a tool that shows information about cumulative memory usage and leaks. If it finds leaks, you can use <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Performance/Refcount_tracing_and_balancing">refcount tracing and balancing</a> to discover the root cause.</p>
+
+<h2 id="How_to_build_with_BloatView">How to build with BloatView</h2>
+
+<p>Build with <code>--enable-debug</code> or <code>--enable-logrefcnt</code>.</p>
+
+<h2 id="How_to_turn_on_refcnt.2Fmemory_logging" name="How_to_turn_on_refcnt.2Fmemory_logging">How to run with BloatView</h2>
+
+<p>The are two environment variables that can be used.</p>
+
+<dl>
+ <dt><code>XPCOM_MEM_BLOAT_LOG</code></dt>
+</dl>
+
+<dl>
+ <dd>If set, this causes a <em>bloat log</em> to be printed on program exit, and each time <code>nsTraceRefcnt::DumpStatistics</code> is called. This log contains data on leaks and bloat (a.k.a. usage).</dd>
+</dl>
+
+<dl>
+ <dt><code>XPCOM_MEM_LEAK_LOG</code></dt>
+</dl>
+
+<dl>
+ <dd>This is similar to <code>XPCOM_MEM_BLOAT_LOG</code>, but restricts the log to only show data on leaks.</dd>
+</dl>
+
+<p>You can set these environment variables to any of the following values.</p>
+
+<ul>
+ <li><strong>1</strong> - log to stdout.</li>
+ <li><strong>2</strong> - log to stderr.</li>
+ <li><em><strong>filename</strong></em> - write log to a file.</li>
+</ul>
+
+<h2 id="Reading_individual_bloat_logs">Reading individual bloat logs</h2>
+
+<p>Full BloatView output contains per-class statistics on allocations and refcounts, and provides gross numbers on the amount of memory being leaked broken down by class. Here's a sample of the BloatView output.</p>
+
+<pre>== BloatView: ALL (cumulative) LEAK AND BLOAT STATISTICS, tab process 1862
+    |&lt;----------------Class---------------&gt;|&lt;-----Bytes------&gt;|&lt;----Objects----&gt;|
+    |                                      | Per-Inst   Leaked|   Total      Rem|
+  0 |TOTAL                                 |       17     2484|253953338       38|
+ 17 |AsyncTransactionTrackersHolder        |       40       40|   10594        1|
+ 78 |CompositorChild                       |      472      472|       1        1|
+ 79 |CondVar                               |       24       48|    3086        2|
+279 |MessagePump                           |        8        8|      30        1|
+285 |Mutex                                 |       20       60|   89987        3|
+302 |PCompositorChild                      |      412      412|       1        1|
+308 |PImageBridgeChild                     |      416      416|       1        1|</pre>
+
+<p>The first line tells you the pid of the leaking process, along with the type of process.</p>
+
+<p>Here's how you interpret the columns.</p>
+
+<ul>
+ <li>The first, numerical column <a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/base/nsTraceRefcnt.cpp#365">is the index</a> of the leaking class.</li>
+ <li><strong>Class</strong> - The name of the class in question (truncated to 20 characters).</li>
+ <li><strong>Bytes Per-Inst</strong> - The number of bytes returned if you were to write <code>sizeof(<em>Class</em>)</code>. Note that this number does not reflect any memory held onto by the class, such as internal buffers, etc. (E.g. for <code>nsString</code> you'll see the size of the header struct, not the size of the string contents!)</li>
+ <li><strong>Bytes Leaked</strong> - The number of bytes per instance times the number of objects leaked: (Bytes Per-Inst) x (Objects Rem). Use this number to look for the worst offenders. (Should be zero!)</li>
+ <li><strong>Objects Total</strong> - The total count of objects allocated of a given class.</li>
+ <li><strong>Objects Rem</strong> - The number of objects allocated of a given class that weren't deleted. (Should be zero!)</li>
+</ul>
+
+<p>Interesting things to look for:</p>
+
+<ul>
+ <li><strong>Are your classes in the list?</strong> - Look! If they aren't, then you're not using the <code>NS_IMPL_ADDREF</code> and <code>NS_IMPL_RELEASE</code> (or <code>NS_IMPL_ISUPPORTS</code> which calls them) for xpcom objects, or <code>MOZ_COUNT_CTOR</code> and <code>MOZ_COUNT_DTOR</code> for non-xpcom objects. Not having your classes in the list is <em>not</em> ok. That means no one is looking at them, and we won't be able to tell if someone introduces a leak. (See <a href="/en-US/docs/Mozilla/Performance/BloatView#How_to_instrument_your_objects_for_BloatView">below</a> for how to fix this.)</li>
+ <li><strong>The Bytes Leaked for your classes should be zero!</strong> - Need I say more? If it isn't, you should use the other tools to fix it.</li>
+ <li><strong>The number of objects remaining might not be equal to the total number of objects.</strong> This could indicate a hand-written Release method (that doesn't use the <code>NS_LOG_RELEASE</code> macro from nsTraceRefcnt.h), or perhaps you're just not freeing any of the instances you've allocated. These sorts of leaks are easy to fix.</li>
+ <li><strong>The total number of objects might be 1.</strong> This might indicate a global variable or service. Usually this will have a large number of refcounts.</li>
+</ul>
+
+<p>If you find leaks, you can use <a href="/en-US/docs/Mozilla/Performance/Refcount_tracing_and_balancing">refcount tracing and balancing</a> to discover the root cause.</p>
+
+<h2 id="Viewing.2C_Sorting.2C_and_Comparing_Bloat_Logs" name="Viewing.2C_Sorting.2C_and_Comparing_Bloat_Logs">Combining and sorting bloat logs</h2>
+
+<p>You can view one or more bloat logs in your browser by running the following program.</p>
+
+<blockquote><code>perl</code> <code>tools/bloatview/bloattable.pl</code> <em>log1</em> <em>log2</em> ... <em>logn</em> <code>&gt;</code> <em>htmlfile</em></blockquote>
+
+<p>This will produce an HTML file that contains a table similar to the following (but with added JavaScript so you can sort the data by column).</p>
+
+<blockquote><strong>Byte Bloats</strong>
+
+<table>
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>File</th>
+   <th>Date</th>
+  </tr>
+  <tr>
+   <td>blank</td>
+   <td><code>blank.txt</code></td>
+   <td>Tue Aug 29 14:17:40 2000</td>
+  </tr>
+  <tr>
+   <td>mozilla</td>
+   <td><code>mozilla.txt</code></td>
+   <td>Tue Aug 29 14:18:42 2000</td>
+  </tr>
+  <tr>
+   <td>yahoo</td>
+   <td><code>yahoo.txt</code></td>
+   <td>Tue Aug 29 14:19:32 2000</td>
+  </tr>
+  <tr>
+   <td>netscape</td>
+   <td><code>netscape.txt</code></td>
+   <td>Tue Aug 29 14:20:14 2000</td>
+  </tr>
+ </tbody>
+</table>
+</blockquote>
+
+<p>The numbers do not include <code>malloc</code> 'd data such as string contents.</p>
+
+<p>Click on a column heading to sort by that column. Click on a class name to see details for that class.</p>
+
+<blockquote>
+<table>
+ <tbody>
+  <tr>
+   <th rowspan="2">Class Name</th>
+   <th rowspan="2">Instance Size</th>
+   <th colspan="5">Bytes allocated</th>
+   <th colspan="5">Bytes allocated but not freed</th>
+  </tr>
+  <tr>
+   <th>
+    <p>blank</p>
+   </th>
+   <th>
+    <p>mozilla</p>
+   </th>
+   <th>
+    <p>yahoo</p>
+   </th>
+   <th>
+    <p>netscape</p>
+   </th>
+   <th>Total</th>
+   <th>
+    <p>blank</p>
+   </th>
+   <th>
+    <p>mozilla</p>
+   </th>
+   <th>
+    <p>yahoo</p>
+   </th>
+   <th>
+    <p>netscape</p>
+   </th>
+   <th>
+    <p>Total</p>
+   </th>
+  </tr>
+  <tr>
+   <td>
+    <p>TOTAL</p>
+   </td>
+   <td class="num"> </td>
+   <td class="neg"> </td>
+   <td class="neg"> </td>
+   <td class="neg"> </td>
+   <td class="neg"> </td>
+   <td class="num"> </td>
+   <td class="pos">1754408</td>
+   <td class="pos">432556</td>
+   <td class="pos">179828</td>
+   <td class="pos">404184</td>
+   <td class="num">2770976</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsStr</p>
+   </td>
+   <td class="num">20</td>
+   <td class="pos">6261600</td>
+   <td class="pos">3781900</td>
+   <td class="pos">1120920</td>
+   <td class="pos">1791340</td>
+   <td class="num">12955760</td>
+   <td class="pos">222760</td>
+   <td class="pos">48760</td>
+   <td class="pos">13280</td>
+   <td class="pos">76160</td>
+   <td class="num">360960</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsHashKey</p>
+   </td>
+   <td class="num">8</td>
+   <td class="pos">610568</td>
+   <td class="pos">1842400</td>
+   <td class="pos">2457872</td>
+   <td class="pos">1134592</td>
+   <td class="num">6045432</td>
+   <td class="pos">32000</td>
+   <td class="pos">536</td>
+   <td class="pos">568</td>
+   <td class="pos">1216</td>
+   <td class="num">34320</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsTextTransformer</p>
+   </td>
+   <td class="num">548</td>
+   <td class="pos">8220</td>
+   <td class="pos">469088</td>
+   <td class="pos">1414936</td>
+   <td class="pos">1532756</td>
+   <td class="num">3425000</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="num">0</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsStyleContextData</p>
+   </td>
+   <td class="num">736</td>
+   <td class="pos">259808</td>
+   <td class="pos">325312</td>
+   <td class="pos">489440</td>
+   <td class="pos">338560</td>
+   <td class="num">1413120</td>
+   <td class="pos">141312</td>
+   <td class="pos">220800</td>
+   <td class="neg">-11040</td>
+   <td class="pos">94944</td>
+   <td class="num">446016</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsLineLayout</p>
+   </td>
+   <td class="num">1100</td>
+   <td class="pos">2200</td>
+   <td class="pos">225500</td>
+   <td class="pos">402600</td>
+   <td class="pos">562100</td>
+   <td class="num">1192400</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="neg">0</td>
+   <td class="num">0</td>
+  </tr>
+  <tr>
+   <td>
+    <p>nsLocalFile</p>
+   </td>
+   <td class="num">424</td>
+   <td class="pos">558832</td>
+   <td class="pos">19928</td>
+   <td class="pos">1696</td>
+   <td class="pos">1272</td>
+   <td class="num">581728</td>
+   <td class="pos">72080</td>
+   <td class="pos">1272</td>
+   <td class="pos">424</td>
+   <td class="neg">-424</td>
+   <td class="num">73352</td>
+  </tr>
+ </tbody>
+</table>
+</blockquote>
+
+<p>The first set of columns, <strong>Bytes allocated</strong>, shows the amount of memory allocated for the first log file (<code>blank.txt</code>), the difference between the first log file and the second (<code>mozilla.txt</code>), the difference between the second log file and the third (<code>yahoo.txt</code>), the difference between the third log file and the fourth (<code>netscape.txt</code>), and the total amount of memory allocated in the fourth log file. These columns provide an idea of how hard the memory allocator has to work, but they do not indicate the size of the working set.</p>
+
+<p>The second set of columns, <strong>Bytes allocated but not freed</strong>, shows the net memory gain or loss by subtracting the amount of memory freed from the amount allocated.</p>
+
+<p>The <strong>Show Objects</strong> and <strong>Show References</strong> buttons show the same statistics but counting objects or <code>AddRef</code>'d references rather than bytes.</p>
+
+<h2 id="Comparing_Bloat_Logs" name="Comparing_Bloat_Logs">Comparing Bloat Logs</h2>
+
+<p>You can also compare any two bloat logs (either those produced when the program shuts down, or written to the bloatlogs directory) by running the following program.</p>
+
+<blockquote><code>perl tools/bloatview/bloatdiff.pl</code> &lt;previous-log&gt; &lt;current-log&gt;</blockquote>
+
+<p>This will give you output of the form:</p>
+
+<pre class="eval  language-html"><code class="language-html">Bloat/Leak Delta Report
+ Current file:  dist/win32_D.OBJ/bin/bloatlogs/all-1999-10-22-133450.txt
+ Previous file: dist/win32_D.OBJ/bin/bloatlogs/all-1999-10-16-010302.txt
+ --------------------------------------------------------------------------
+ CLASS                     LEAKS       delta      BLOAT       delta
+ --------------------------------------------------------------------------
+ TOTAL                   6113530       2.79%   67064808       9.18%
+ StyleContextImpl         265440      81.19%     283584     -26.99%
+ CToken                   236500      17.32%     306676      20.64%
+ nsStr                    217760      14.94%    5817060       7.63%
+ nsXULAttribute           113048     -70.92%     113568     -71.16%
+ LiteralImpl               53280      26.62%      75840      19.40%
+ nsXULElement              51648       0.00%      51648       0.00%
+ nsProfile                 51224       0.00%      51224       0.00%
+ nsFrame                   47568     -26.15%      48096     -50.49%
+ CSSDeclarationImpl        42984       0.67%      43488       0.67%</code></pre>
+
+<p>This "delta report" shows the leak offenders, sorted from most leaks to fewest. The delta numbers show the percentage change between runs for the amount of leaks and amount of bloat (negative numbers are better!). The bloat number is a metric determined by multiplying the total number of objects allocated of a given class by the class size. Note that although this isn't necessarily the amount of memory consumed at any given time, it does give an indication of how much memory we're consuming. The more memory in general, the worse the performance and footprint. The percentage 99999.99% will show up indicating an "infinite" amount of leakage. This happens when something that didn't leak before is now leaking.</p>
+
+<h2 id="Bloat_Statistics_on_Tinderbox" name="Bloat_Statistics_on_Tinderbox">BloatView and continuous integration</h2>
+
+<p>BloatView runs on debug builds for many of the test suites Mozilla has running under continuous integration. If a new leak occurs, it will trigger a test job failure.</p>
+
+<p>BloatView's output file can also show you where the leaked objects are allocated.  To do so, the <code>XPCOM_MEM_LOG_CLASSES</code> environment variable should be set to the name of the class from the BloatView table:</p>
+
+<pre>XPCOM_MEM_LOG_CLASSES=MyClass mach mochitest [options]</pre>
+
+<p>Multiple class names can be specified by setting <code>XPCOM_MEM_LOG_CLASSES</code> to a comma-separated list of names:</p>
+
+<pre>XPCOM_MEM_LOG_CLASSES=MyClass,MyOtherClass,DeliberatelyLeakedClass mach mochitest [options]</pre>
+
+<p>Test harness scripts typically accept a <code>--setenv</code> option for specifying environment variables, which may be more convenient in some cases:</p>
+
+<pre>mach mochitest --setenv=XPCOM_MEM_LOG_CLASSES=MyClass [options]</pre>
+
+<p>For getting allocation stacks in automation, you can add the appropriate <code>--setenv</code> options to the test configurations for the platforms you're interested in.  Those configurations are located in <code>testing/mozharness/configs/</code>.  The most likely configs you'll want to modify are listed below:</p>
+
+<ul>
+ <li>Linux: <code>unittests/linux_unittest.py</code></li>
+ <li>Mac: <code>unittests/mac_unittest.py</code></li>
+ <li>Windows: <code>unittests/win_unittest.py</code></li>
+ <li>Android: <code>android/androidarm_4_3.py</code></li>
+</ul>
+
+<h2 id="How_to_instrument_your_objects_for_BloatView">How to instrument your objects for BloatView</h2>
+
+<p>First, if your object is an xpcom object and you use the <code>NS_IMPL_ADDREF</code> and <code>NS_IMPL_RELEASE</code> (or a variation thereof) macro to implement your <code>AddRef</code> and <code>Release</code> methods, then there is nothing you need do. By default, those macros support refcnt logging directly.</p>
+
+<p>If your object is not an xpcom object then some manual editing is in order. The following sample code shows what must be done:</p>
+
+<pre><code>MyType::MyType()
+{
+  MOZ_COUNT_CTOR(MyType);
+  ...
+}</code></pre>
+
+<pre><code>MyType::~MyType()
+{
+  MOZ_COUNT_DTOR(MyType);
+  ...
+}</code></pre>

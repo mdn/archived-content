@@ -1,0 +1,402 @@
+---
+title: File I/O
+slug: Code_snippets/File_I_O
+tags:
+  - Add-ons
+  - Extensions
+translation_of: Archive/Add-ons/Code_snippets/File_I_O
+---
+<p>
+</p><p>この文書では、chrome JavaScript 内でローカルのファイル入出力を行う方法について解説しています。
+</p><p>ファイルシステムには、Mozilla <a href="ja/XPCOM">XPCOM</a> コンポーネント経由でアクセスできます。ローカル I/O のために利用されるコンポーネントのリストは <a href="http://xulplanet.com/references/xpcomref/group_FilesandStreams.html" class="external">XUL Planet</a> にあります。
+</p><p><span id="Available_libraries"></span>
+</p>
+<h3 id="利用可能なライブラリ">利用可能なライブラリ</h3>
+<p>いくつかの I/O に関する XPCOM コンポーネントの JavaScript ラッパが存在します。<a href="http://jslib.mozdev.org/" class="external">JSLib</a> や <a href="ja/Io.js">io.js</a> (<a href="http://gratisdei.com/io.js" class="external">MonkeeSage</a> が元) を参照してください。io.js モジュールはより小さくて、非常に簡単に利用できます。(簡単なサンプルがモジュール内にあります)
+</p><p><span id="Creating_a_file_object_("></span>
+</p>
+<h3 id="ファイルオブジェクトの作成_(ファイルを_開く)">ファイルオブジェクトの作成 (ファイルを "開く")</h3>
+<pre>var file = Components.classes["@mozilla.org/file/local;1"]
+                     .createInstance(Components.interfaces.nsILocalFile);
+file.initWithPath("/home");
+</pre>
+<div class="note">
+<p><b>注意</b>: <code>initWithPath()</code> へ渡すパスは、(&lt;tt&gt;"C:\\Windows"&lt;/tt&gt; といった) ネイティブ形式である必要があります。もし、初期化に <a class=" external">file://</a> URI を利用したいならば下を参照してください。
+</p>
+</div>
+<div class="note">
+<p><b>注意</b>: <code>initWithPath()</code> / <code>initWithFile()</code> 関数はファイルが存在しなくても例外を投げません。例外は、<code>isDirectory()</code>, <code>moveTo()</code> といったファイルが存在する必要のあるメソッドを読んだ時に投げられます。
+</p>
+</div>
+<p><span id="Getting_special_files"></span>
+</p>
+<h3 id="特殊ファイルを取得する">特殊ファイルを取得する</h3>
+<pre>// get profile directory
+var file = Components.classes["@mozilla.org/file/directory_service;1"]
+                     .getService(Components.interfaces.nsIProperties)
+                     .get("ProfD", Components.interfaces.nsIFile);
+</pre>
+<p><code>"ProfD"</code> に入れるべき文字列は以下のものです。(MonkeeSage の I/O モジュールコンポーネントから抜粋)
+</p>
+<table class="standard-table">
+<tbody><tr>
+<th> 文字列
+</th><th> 意味
+</th></tr>
+<tr>
+<td>ProfD </td><td> プロファイルディレクトリ
+</td></tr>
+<tr>
+<td> DefProfRt </td><td> ユーザの (/root/.mozilla など)
+</td></tr>
+<tr>
+<td> UChrm </td><td> %profile%/chrome
+</td></tr>
+<tr>
+<td> DefRt </td><td> %installation%/defaults
+</td></tr>
+<tr>
+<td> PrfDef </td><td> %installation%/defaults/pref
+</td></tr>
+<tr>
+<td> ProfDefNoLoc </td><td> %installation%/defaults/profile
+</td></tr>
+<tr>
+<td> APlugns </td><td> %installation%/plugins
+</td></tr>
+<tr>
+<td> AChrom </td><td> %installation%/chrome
+</td></tr>
+<tr>
+<td> ComsD </td><td> %installation%/components
+</td></tr>
+<tr>
+<td> CurProcD </td><td> (通常) インストールされたディレクトリ
+</td></tr>
+<tr>
+<td> Home </td><td> OS ルートディレクトリ (/root など)
+</td></tr>
+<tr>
+<td> TmpD </td><td> OS 一時ディレクトリ (/tmp など)
+</td></tr>
+<tr>
+<td> ProfLD </td><td> Windows でのローカル設定; ネットワークキャッシュや fastload ファイルの保管場所
+</td></tr>
+<tr>
+<td> resource:app </td><td> XULRunner アプリケーションでのアプリケーションディレクトリ
+</td></tr></tbody></table>
+<p>他の利用可能な文字列に関しては、ソースを見てください : <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsDirectoryServiceDefs.h" rel="custom">xpcom/io/nsDirectoryServiceDefs.h</a></code> や <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsAppDirectoryServiceDefs.h" rel="custom">xpcom/io/nsAppDirectoryServiceDefs.h</a></code>
+</p><p><span id="Getting_your_extension's_folder"></span>
+</p>
+<h4 id="あなたの拡張のフォルダーを取得する">あなたの拡張のフォルダーを取得する</h4>
+<div class="note">
+<p><b>注意</b>: Firefox/Thunderbird 1.5+ で動作します。1.0 では動きません。
+</p>
+</div>
+<p>拡張がインストールされているディレクトリを取得するには、<code>nsIExtensionManager</code> を次のように呼びます。
+</p>
+<pre class="eval">const id = "ID";
+var ext = Components.classes["@mozilla.org/extensions/manager;1"]
+                    .getService(Components.interfaces.nsIExtensionManager)
+                    .getInstallLocation(id)
+                    .getItemLocation(id);
+// ext は nsIFile のインスタンス、ext.path はディレクトリ文字列を保持します
+</pre>
+<p><i>ID</i> を拡張の <a href="ja/Install_Manifests#id">ID</a> に置き換えてください。<code>nsIFile</code> に拡張のディレクトリが入って戻ります。この値は読み出し専用です。詳細については、ソースを見てください : <code><a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/mozapps/extensions/public/nsIExtensionManager.idl" rel="custom">toolkit/mozapps/extensions/public/nsIExtensionManager.idl</a></code>
+</p><p>JavaScript XPCOM コンポーネント中では、<a href="ja/Creating_Custom_Firefox_Extensions_with_the_Mozilla_Build_System#Accessing_Data_Files_From_Components">ここ</a> に述べられている特別な <code>__LOCATION__</code> 変数を利用することもできます。
+<a href="http://groups.google.com/group/mozilla.dev.extensions/browse_frm/thread/7df3952aad134252/c25a5d29f08e612d#c25a5d29f08e612d" class="external">ここにあるように</a>、この方法は、より信頼性が高く、Firefox/Thunderbird 1.5+ と 1.0 の両方で動作します。
+</p><p><span id="Creating_Folders"></span>
+</p>
+<h3 id="フォルダーの作成">フォルダーの作成</h3>
+<p>フォルダーを作成するには、<code>nsIFile.create()</code> を利用します。
+</p>
+<pre class="eval">var file = Components.classes["@mozilla.org/file/directory_service;1"]
+                     .getService(Components.interfaces.nsIProperties)
+                     .get("ProfD", Components.interfaces.nsIFile);
+file.append(<i>"DIR"</i>);
+if( !file.exists() || !file.isDirectory() ) {   // if it doesn't exist, create
+   file.create(Components.interfaces.nsIFile.DIRECTORY_TYPE, 0664);
+}
+</pre>
+<p>上のサンプルは、<a href="http://www.mozilla.org/support/firefox/profile" class="external">プロファイルフォルダー</a> の中に <i>"DIR"</i> という名前のフォルダーを作成します。詳細は、<a href="ja/NsIFile/create"><code>nsIFile.create</code> リファレンス</a> を参照してください。
+</p><p><span id="Creating_temporary_files"></span>
+</p>
+<h3 id="一時ファイルの作成">一時ファイルの作成</h3>
+<p>一時ファイルを作成するには、<code>nsIFile.createUnique()</code> を利用します。
+</p>
+<pre>var file = Components.classes["@mozilla.org/file/directory_service;1"]
+                     .getService(Components.interfaces.nsIProperties)
+                     .get("TmpD", Components.interfaces.nsIFile);
+file.append("suggestedName.tmp");
+file.createUnique(Components.interfaces.nsIFile.NORMAL_FILE_TYPE, 0664);
+// 作成したファイルに必要なことを行ってください
+alert(file.path);
+</pre>
+<p><span id="User_input_via_nsIFilePicker"></span>
+</p>
+<h3 id="nsIFilePicker_経由のユーザからの入力">nsIFilePicker 経由のユーザからの入力</h3>
+<p><a href="ja/NsIFilePicker">ファイル選択コンポーネント (nsIFilePicker)</a> を、標準的なファイルを開く・保存するダイアログを開くのに利用できます。このコンポーネントは、<code><a href="ja/NsIFile">nsIFile</a></code> でユーザの指定したファイルを返します。
+</p><p><span id="nsIFile_and_path_strings"></span>
+</p>
+<h3 id="nsIFile_とパス文字列">nsIFile とパス文字列</h3>
+<p><code>nsIFile.path</code> をプラットフォーム依存のパス文字列を取得するのに利用可能です。たとえば、 &lt;tt&gt;"C:\Windows\System32"&lt;/tt&gt; や &lt;tt&gt;"/usr/share"&lt;/tt&gt; などです。
+</p><p>もし、ファイルの <i><a class=" external">file://</a></i> URL や <i><a class=" external">file://</a></i> URL から <code>nsIFile</code> を取得したいなら、<a href="ja/NsIFileProtocolHandler">nsIFileProtocolHandler</a> を利用できます。
+</p>
+<pre>// file is nsIFile
+var ios = Components.classes["@mozilla.org/network/io-service;1"]
+                    .getService(Components.interfaces.nsIIOService);
+var fileHandler = ios.getProtocolHandler("file")
+                     .QueryInterface(Components.interfaces.nsIFileProtocolHandler);
+var URL = fileHandler.getURLSpecFromFile(file);
+</pre>
+<p><i><a class=" external">file://</a></i>, <i><a href="http://" class=" external">http://</a></i>, <i><a class=" external">chrome://</a></i>, <i><a class=" external">resource://</a></i> や他の URL 形式から直接読み込むには、<a href="ja/XMLHttpRequest">XMLHttpRequest</a> か <a href="ja/NsIChannel">nsIChannel</a> を利用してください (<a href="http://forums.mozillazine.org/viewtopic.php?p=921150#921150" class="external">サンプル</a>)。
+</p><p>一般的には <code>nsIFile::path</code> を利用する必要はありません。可能ならば <code>nsIFile</code> を直接利用してください。以下のサンプルで、ユーザ設定にどのようにパスを保存するかを示しています。
+</p><p><span id="Storing_nsILocalFile_in_preferences"></span>
+</p>
+<h3 id="nsILocalFile_をオプションに保存する">nsILocalFile をオプションに保存する</h3>
+<p>次の二つのコード例は、ファイルパスをユーザのオプションに保存する正しい方法を示しています。(<a href="ja/Code_snippets/Preferences">Mozilla でのオプションについての詳細</a>):
+</p><p><span id="Absolute_path_(nsILocalFile)"></span>
+</p>
+<h4 id="絶対パス_(nsILocalFile)">絶対パス (nsILocalFile)</h4>
+<p>絶対パスをユーザのオプションに保存するには、次のコードを利用します。
+</p>
+<pre>// |file| is nsILocalFile
+// 1. パスを prefs に書き込む
+var prefs = Components.classes["@mozilla.org/preferences-service;1"]
+                      .getService(Components.interfaces.nsIPrefService)
+                      .getBranch("extensions.myext.");
+prefs.setComplexValue("filename", Components.interfaces.nsILocalFile, file);
+
+// 2. prefs からパスを読み込む
+var file = prefs.getComplexValue("filename", Components.interfaces.nsILocalFile);
+</pre>
+<p><span id="Relative_path_(nsIRelativeFilePref)"></span>
+</p>
+<h4 id="相対パス_(nsIRelativeFilePref)">相対パス (nsIRelativeFilePref)</h4>
+<p>プロファイルフォルダーからの相対パスといった、上にリストされているフォルダーを親とする相対パスを保存するには、次のコードを利用します。
+</p>
+<pre>// 1. prefs へ書き込む
+var relFile = Components.classes["@mozilla.org/pref-relativefile;1"]
+                        .createInstance(Components.interfaces.nsIRelativeFilePref);
+relFile.relativeToKey = "ProfD"; // ProfD もしくは上にリストされている文字列
+relFile.file = file;             // |file| is nsILocalFile
+prefs.setComplexValue("filename",
+     Components.interfaces.nsIRelativeFilePref, relFile);
+
+// 2. prefs から読み込む
+var value = prefs.getComplexValue("filename",
+     Components.interfaces.nsIRelativeFilePref);
+// |value.file| is the file.
+</pre>
+<p><span id="Navigating_with_nsIFile"></span>
+</p>
+<h3 id="nsIFile_でナビゲーションを行う">nsIFile でナビゲーションを行う</h3>
+<p><span id="Get_a_file_in_given_directory"></span>
+</p>
+<h4 id="与えられたディレクトリのファイルを取得する">与えられたディレクトリのファイルを取得する</h4>
+<p><code>file</code> は <code>nsIFile</code> で、なんらかのディレクトリをさしているとします。(ユーザプロファイルディレクトリなど) <code>file.append("myfile.txt");</code> で、<code>file</code> が同じディレクトリの中の &lt;tt&gt;myfile.txt&lt;/tt&gt; をさすようにできます。
+</p>
+<div class="note">
+<p><b>注</b>: クロスプラットフォームでないことから、<code>dir.path+"\\"+"myfile.txt"</code> を利用しないでください。<code>((path.search(/\\/) != -1) ? path + "\\" : path + "/") + "myfile.txt";</code> のようなものも可能ですが、<code>nsIFile.append()</code> がより簡単に読め、Mozilla が動作する全てのプラットフォームで動作が保障されています。
+</p>
+</div>
+<p><span id="Enumerating_files_in_given_directory"></span>
+</p>
+<h4 id="与えられたディレクトリのファイルを表示する">与えられたディレクトリのファイルを表示する</h4>
+<p>以下のコードは、与えられたディレクトリのサブディレクトリやサブファイルの <code>nsIFile</code> の配列を作成します。フォルダーかファイルかは、それぞれの <code>entry</code> で <code>nsIFile.isDirectory()</code> と、<code>nsIFile.isFile()</code> を呼ぶことで判断できます。
+</p>
+<pre>// file は nsIFile のディレクトリです
+var entries = file.directoryEntries;
+var array = [];
+while(entries.hasMoreElements())
+{
+  var entry = entries.getNext();
+  entry.QueryInterface(Components.interfaces.nsIFile);
+  array.push(entry);
+}
+</pre>
+<p><span id="Reading_from_a_file"></span>
+</p>
+<h3 id="ファイルを読み込む">ファイルを読み込む</h3>
+<div class="note">
+<p><b>注</b>: 以下のサンプルコードは non-ASCII 文字を含むテキストを処理できません。詳細とそれらの文字を含むテキストを読む方法については、<a href="ja/Reading_textual_data">Reading textual data</a> を参照してください。
+</p>
+</div>
+<p><span id="Simple"></span>
+</p>
+<h4 id="単純な方法">単純な方法</h4>
+<pre>// |file| is nsIFile
+var data = "";
+var fstream = Components.classes["@mozilla.org/network/file-input-stream;1"]
+                        .createInstance(Components.interfaces.nsIFileInputStream);
+var sstream = Components.classes["@mozilla.org/scriptableinputstream;1"]
+                        .createInstance(Components.interfaces.nsIScriptableInputStream);
+fstream.init(file, -1, 0, 0);
+sstream.init(fstream);
+
+var str = sstream.read(4096);
+while (str.length &gt; 0) {
+  data += str;
+  str = sstream.read(4096);
+}
+
+sstream.close();
+fstream.close();
+alert(data);
+</pre>
+<p><span id="Line_by_line"></span>
+</p>
+<h4 id="行ごとに">行ごとに</h4>
+<pre>// file から入力ストリームを開く
+var istream = Components.classes["@mozilla.org/network/file-input-stream;1"]
+                        .createInstance(Components.interfaces.nsIFileInputStream);
+istream.init(file, 0x01, 0444, 0);
+istream.QueryInterface(Components.interfaces.nsILineInputStream);
+
+// 行を配列に読み込む
+var line = {}, lines = [], hasmore;
+do {
+  hasmore = istream.readLine(line);
+  lines.push(line.value);
+} while(hasmore);
+
+istream.close();
+
+// データで何かする
+alert(lines);
+</pre>
+<p><span id="Asynchronously"></span>
+</p>
+<h4 id="非同期">非同期</h4>
+<p>以下のサンプルでファイルを UI スレッドとは独立に読み込めます。
+</p>
+<pre>// |file| is nsIFile
+var ios = Components.classes["@mozilla.org/network/io-service;1"]
+                    .getService(Components.interfaces.nsIIOService);
+var fileURI = ios.newFileURI(file);
+var channel = ios.newChannelFromURI(fileURI);
+var observer = {
+  onStreamComplete : function(aLoader, aContext, aStatus, aLength, aResult)
+  {
+    alert(aResult);
+  }
+};
+var sl = Components.classes["@mozilla.org/network/stream-loader;1"]
+                   .createInstance(Components.interfaces.nsIStreamLoader);
+sl.init(channel, observer, null);
+</pre>
+<p><span id="Binary_File"></span>
+</p>
+<h4 id="バイナリファイル">バイナリファイル</h4>
+<p>単純な例として、PNG ファイルのデータの取得方法
+</p>
+<pre>var ios = Components.classes["@mozilla.org/network/io-service;1"]
+                    .getService(Components.interfaces.nsIIOService);
+var url = ios.newURI(aFileURL, null, null);
+
+if (!url || !url.schemeIs("file")) throw "Expected a file URL.";
+
+var pngFile = Components.classes["@mozilla.org/file/local;1"]
+                        .createInstance(Components.interfaces.nsILocalFile);
+pngFile.initWithPath(url.path);
+
+var istream = Components.classes["@mozilla.org/network/file-input-stream;1"]
+                        .createInstance(Components.interfaces.nsIFileInputStream);
+istream.init(pngFile, -1, -1, false);
+
+var bstream = Components.classes["@mozilla.org/binaryinputstream;1"]
+                        .createInstance(Components.interfaces.nsIBinaryInputStream);
+bstream.setInputStream(istream);
+
+var bytes = bstream.readBytes(bstream.available());
+</pre>
+<p><span id="Writing_to_a_file"></span>
+</p>
+<h3 id="ファイルに書き出す">ファイルに書き出す</h3>
+<div class="note">
+<p>'<i>注</i>: このコードは国際化されていません。non-ASCII文字列では、<b>正常に動作しません</b>。国際化については、<a href="ja/Writing_textual_data">Writing textual data</a> を参照してください。
+</p>
+</div>
+<pre>// file は nsIFile、data は文字列
+var foStream = Components.classes["@mozilla.org/network/file-output-stream;1"]
+                         .createInstance(Components.interfaces.nsIFileOutputStream);
+
+// ファイル追記の際は、0x02 | 0x10 を使う
+foStream.init(file, 0x02 | 0x08 | 0x20, 0664, 0); // write, create, truncate
+foStream.write(data, data.length);
+foStream.close();
+</pre>
+<p><code>nsIFileOutputStream::init()</code> 関数のフラグパラメータは次のようなものです。
+(詳細は <code><a href="https://dxr.mozilla.org/mozilla-central/source/nsprpub/pr/include/prio.h" rel="custom">nsprpub/pr/include/prio.h</a></code> を参照してください)
+</p><p><b>フラグ</b>: ファイルステータスフラグです。以下のBITフラグの bit ごとの OR を利用します。(最初の三つについては、どれか一つを利用します)
+</p>
+<table class="standard-table">
+<tbody><tr>
+<th> 名前 </th><th> 値 </th><th> 説明
+</th></tr>
+<tr>
+<td> PR_RDONLY </td><td> 0x01 </td><td> 読み込み専用
+</td></tr>
+<tr>
+<td> PR_WRONLY </td><td> 0x02 </td><td> 書き出し専用
+</td></tr>
+<tr>
+<td> PR_RDWR </td><td> 0x04 </td><td> 読み書き両方
+</td></tr>
+<tr>
+<td> PR_CREATE_FILE </td><td> 0x08 </td><td>
+<p>ファイルが存在しないならば作成する。ファイルがあれば何もしない。
+</p>
+</td></tr>
+<tr>
+<td> PR_APPEND </td><td> 0x10 </td><td>
+<p>書き込みごとにファイルポインタはファイルの最後にセットされます。(追記モード)
+</p>
+</td></tr>
+<tr>
+<td> PR_TRUNCATE </td><td> 0x20 </td><td>
+<p>ファイルが存在すれば、長さを 0 にします。
+</p>
+</td></tr>
+<tr>
+<td> PR_SYNC </td><td> 0x40 </td><td>
+<p>書き込みごとにファイルデータとステータスが物理的にアップデートされるのを待ちます。
+</p>
+</td></tr>
+<tr>
+<td> PR_EXCL </td><td> 0x80 </td><td>
+<p>PR_CREATE_FILE と一緒に利用された場合、ファイルが存在しなければ作成されます。
+ファイルが存在すれば、NULL を返してなにもしません。
+</p>
+</td></tr></tbody></table>
+<p><span id="Writing_a_Binary_File"></span>
+</p>
+<h4 id="バイナリファイルを書き込む">バイナリファイルを書き込む</h4>
+<p>例として、PNG データをファイルに書き込むサンプルです。
+</p>
+<pre>// pngBinary は既に存在する
+var aFile = Components.classes["@mozilla.org/file/local;1"]
+                      .createInstance(Components.interfaces.nsILocalFile);
+
+aFile.initWithPath( "/tmp/mypicture.png" );
+aFile.createUnique( Components.interfaces.nsIFile.NORMAL_FILE_TYPE, 600);
+
+var stream = Components.classes["@mozilla.org/network/safe-file-output-stream;1"]
+                       .createInstance(Components.interfaces.nsIFileOutputStream);
+stream.init(aFile, 0x04 | 0x08 | 0x20, 664, 0); // write, create, truncate
+
+stream.write(pngBinary, pngBinary.length);
+if (stream instanceof Components.interfaces.nsISafeOutputStream) {
+    stream.finish();
+} else {
+    stream.close();
+}
+</pre>
+<p><span id="More"></span>
+</p>
+<h3 id="発展">発展</h3>
+<p><code>nsIFile</code> と <code>nsILocalFile</code> インターフェースにはよりたくさんのメソッドとプロパティーがありますので、
+<a href="http://xulplanet.com/references/xpcomref/group_Files.html" class="external">XUL Planet</a> のドキュメントを参照してください。これらのメソッド・プロパティーは大半が一目瞭然ですので、ここにはサンプルを入れていません。
+</p>
+<div class="noinclude">
+</div>

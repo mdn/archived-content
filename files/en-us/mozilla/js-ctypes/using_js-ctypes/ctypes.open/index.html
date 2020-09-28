@@ -1,0 +1,114 @@
+---
+title: ctypes.open
+slug: Mozilla/js-ctypes/Using_js-ctypes/ctypes.open
+tags:
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+ <ol>
+  <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+  <li class="toggle">
+      <details open>
+        <summary>Introduction</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>References</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>Examples</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li></ol>
+      </details>
+  </li>
+ </ol>
+</section>
+
+<p>At the heart of js-ctypes is the <code><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes#open%28%29">ctypes.open()</a></code> function. This must be called before any work can commence. There are two options:</p>
+
+<ul>
+ <li>Custom Native File (DLL, SO, DYLIB, etc.)</li>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li>
+</ul>
+
+<h3 id="Custom_native_file">Custom native file</h3>
+
+<p>For this method, a native file must be created. A native file for use on UNIX systems is an SO file, which is created and a C function called <code>add()</code> is written.</p>
+
+<pre>int add(int a, int b) {
+  return a + b;
+}
+</pre>
+
+<p>To make this a shared library, a native file which can be loaded and used from js-ctypes, compile it with these commands:</p>
+
+<pre>gcc -fPIC -c myCFuntionsForUnix.c
+gcc -shared -o myCFuntionsForUnix.so myCFuntionsForUnix.o
+</pre>
+
+<p>A file named <code>myCFuntionsForUnix.so</code> is successfully created. This native file can be placed in any folder of an addon and then loaded from js-ctypes. They can also be loaded from the system library path.</p>
+
+<h4 id="Loading_the_native_file">Loading the native file</h4>
+
+<p>If your addon is restartless, you must set it to be unpacked. See: http://stackoverflow.com/questions/19382201/how-to-load-dll-from-sdk-addon-data-folder</p>
+
+<p>It is important to note that custom native files cannot be loaded through <code>chrome://</code> or <code>resource://</code> URIs. They must be accessed through a local file path  (<code>file://</code>) or a JAR path (<code>jar:</code>). If the addon is an unpacked addon, such as bootstrap or <a href="/en-US/docs/Mozilla/Add-ons/SDK">Add-on SDK</a> addons, the JAR path must be used. Therefore, the path has to be converted and then the converted path is used for loading with <code><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes#open%28%29">ctypes.open</a></code>.</p>
+
+<p>If the native file is located at <code>chrome://youraddon/content/mySubFolder/myCFunctionsForUnix.so</code> then it is converted to a File URI like this:</p>
+
+<pre class="brush: js">Components.utils.import(&quot;resource://gre/modules/Services.jsm&quot;);
+var cr = Components.classes[&apos;@mozilla.org/chrome/chrome-registry;1&apos;].getService(Components.interfaces.nsIChromeRegistry);
+
+var chromeURI_myLib = Services.io.newURI(&apos;chrome://youraddon/content/mySubFolder/myCFunctionsForUnix.so&apos;, &apos;UTF-8&apos;, null);
+var localFile_myLib = cr.convertChromeURL(chromeURI_myLib);
+var jarPath_myLib = localFile_myLib.spec; // &quot;jar:file:///C:/Users/Vayeate/AppData/Roaming/Mozilla/Firefox/Profiles/aecgxse.Unnamed%20Profile%201/extensions/youraddon@jetpack.xpi!/mySubFolder/myCFunctionsForUnix.so&quot;
+var filePath_myLib = localFilemyLib.path; // &quot;file:///C:/Users/Vayeate/AppData/Roaming/Mozilla/Firefox/Profiles/aecgxse.Unnamed%20Profile%201/extensions/youraddon@jetpack.xpi!/mySubFolder/myCFunctionsForUnix.so&quot;</pre>
+
+<div class="note">
+<p>If your add-on is a bootstrap add-on, then you don&apos;t need to use this method to convert a chrome:// path; instead, on startup procedure of the bootstrap add-on obtain the File and/or JAR path from installPath from the aData parameter.</p>
+
+<pre>function startup(aData, aReason) {
+    var nsIFile_folder = aData.installPath; // if addon is unpacked, this will be the addon folder. if addon is packed, this will be addon xpi
+}</pre>
+
+<p>This can then be joined with your file name to obtain it&apos;s path like this:</p>
+
+<pre>function startup(aData, aReason) {
+
+    var jarPath_folder = &apos;jar:&apos; + OS.Path.toFileURI(aData.installPath.path) + &apos;!/&apos;; // if unpacked is false in install.rdf this will look like: &quot;jar:file:///C:/Users/Vayeate/AppData/Roaming/Mozilla/Firefox/Profiles/aksozfjt.Unnamed%20Profile%2010/extensions/AsyncZip@jetpack!/&quot;
+    var filePath_folder = aData.installPath.path; // if unpacked is set to false in install.rdf this will look like: &quot;C:\Users\Vayeate\AppData\Roaming\Mozilla\Firefox\Profiles\aksozfjt.Unnamed Profile 10\extensions\AsyncZip@jetpack&quot;
+
+    var filePath_myLib = OS.Path.join(filePath_folder, &apos;mySubFolder&apos;, &apos;myCFunctionsForUnix.so&apos;);
+    var jarPath_myLib = jarPath_folder + &apos;mySubFolder/myCFunctionsForUnix.so&apos;;
+}</pre>
+</div>
+
+<p>This can then be opened and the C functions within can be used from js-ctypes.</p>
+
+<pre>var lib = ctypes.open(filePath_myLib);
+
+var add_with_c = lib.declare(&quot;add&quot;, ctypes.default_abi,
+    ctypes.int,    // return type
+    ctypes.int,    // a
+    ctypes.int     // b
+);
+
+var rez = add_with_c(2, 5); // rez is 7
+
+lib.close();
+</pre>
+
+<h4 id="References">References</h4>
+
+<ul>
+ <li><a href="https://harthur.wordpress.com/2010/02/28/playing-around-with-js-ctypes-in-linux/">Heather&apos;s Paragraphs: Playing Around with JS-Ctypes on Linux</a> - Credits for basis of this article</li>
+ <li><a href="https://github.com/diegocr/fx-sapi-test">GitHub :: diegocr - fx-sapi-test</a> - Creating a native file for Windows (DLL) and use in a simple bootstrap add-on</li>
+</ul>
+
+<h3 id="Standard_OS_Libraries">Standard OS Libraries</h3>
+
+<p>See <a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></p>

@@ -1,0 +1,59 @@
+<p><a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> <abbr title="Application Binary Interface">ABI</abbr> is the binary interface of XPCOM components. While XPCOM components written in a scripting language (such as <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a>) can be moved across platforms (such as Windows and OS X) without adaptation, those written in a compiled language (such as C++) require recompilation when moving to a different platform. Often, compiled XPCOM components are called 'binary' or 'native'.</p>
+
+<p>A binary XPCOM component consists of an <code>.xpt</code> file which fits all platforms and a <abbr title="Dynamic Link Library">DLL</abbr> (<code>.dll</code> on Windows, <code>.so</code> on Unix) which is platform-specific and has a certain ABI. Only applications which use this ABI could use this XPCOM component. To put it simply, an XPCOM component built for a specific ABI would only be compatible with Firefox, Thunderbird or other XULRunner application built for the same ABI.</p>
+
+<h2 id="ABI_Naming" name="ABI_Naming">ABI Naming</h2>
+
+<p>Each ABI is named with a string <sup><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/XPCOM_ABI#endnote_TARGET_XPCOM_ABI">[TARGET_XPCOM_ABI]</a></sup> of the following format:</p>
+
+<pre class="eval"><em>{CPU_ARCH}</em>-<em>{TARGET_COMPILER_ABI}</em>
+</pre>
+
+<p><em>{CPU_ARCH} </em><sup><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/XPCOM_ABI#endnote_Platforms">[Platforms]</a></sup> represents the CPU architecture and may be either:</p>
+
+<ul>
+ <li><code>x86</code> - i386 and higher series (including x86-64 CPUs in 32-bit mode)</li>
+ <li><code>ppc</code> - PowerPC series</li>
+ <li><code>Alpha</code> - Alpha series</li>
+ <li><code>x86_64</code> - AMD64/EMT64 series in 64-bit mode (32-bit mode is still considered <code>x86</code>)</li>
+ <li><code>sparc</code> - SPARC series</li>
+ <li><code>ia64</code> - Itanium series</li>
+</ul>
+
+<p><em>{TARGET_COMPILER_ABI}</em><sup><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/XPCOM_ABI#endnote_Platforms">[Platforms]</a></sup> represents the compiler ABI and may be either:</p>
+
+<ul>
+ <li><code>msvc</code> - Microsoft Visual C++</li>
+ <li><code>n32</code> - IRIX 6 C++ Compiler</li>
+ <li><code>gcc2</code> - GNU C++ Compiler 2.x</li>
+ <li><code>gcc3</code> - GNU C++ Compiler 3.x or 4.x</li>
+ <li><code>sunc</code> - Sun C++ Compiler</li>
+ <li><code>ibmc</code> - IBM C++ Compiler</li>
+</ul>
+
+<p>For example:</p>
+
+<ul>
+ <li>Firefox built with the GNU C++ Compiler 4.0.0 for the Intel Pentium processor would have XPCOM ABI of <code>x86-gcc3</code></li>
+</ul>
+
+<p>The XPCOM ABI string can be retrieved programmatically by using the <a href="/en/nsIXULRuntime" title="en/nsIXULRuntime">nsIXULRuntime</a> interface. To retrieve the ABI of your Firefox or Thunderbird, open the Error Console (accessible through <code>Tools | Error Console</code>) and evaluate the following JavaScript code:</p>
+
+<pre class="eval">Components.classes["@mozilla.org/xre/app-info;1"]
+          .getService(Components.interfaces.nsIXULRuntime)
+          .XPCOMABI
+</pre>
+
+<p>If either the CPU architecture or the C++ Compiler are unknown, the application wouldn't have an XPCOM ABI string and attempts to get it will result in error NS_ERROR_NOT_AVAILABLE. It would still be a distinct ABI, but we just wouldn't have a name for it.</p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> Platforms</div> This is not an exhaustive list of possible CPU architectures and compiler ABIs. Newest information can always be found by exploring the build system.<p></p>
+
+<p></p><div class="blockIndicator note"><strong>Note:</strong> TARGET_XPCOM_ABI</div> In the Mozilla build system, the variable storing the XPCOM ABI is named <code>TARGET_XPCOM_ABI</code>. (This is an internals detail and should be of no concern to an extension developer.)<p></p>
+
+<h2 id="Extension_Installation" name="Extension_Installation">Extension Installation</h2>
+
+<p>When the application (e.g. Firefox) is built, the name of the ABI it supports is embedded into it. Later on, it could use this value to check compatibility with third-party binary XPCOM components.</p>
+
+<p>A common point of compatibility check is during the installation of extensions. If an extension provides binary XPCOM components, it should declare their XPCOM ABI in the <a href="/en/Install_Manifests#targetPlatform" title="en/Install_Manifests#targetPlatform">Install Manifest</a>. An extension author may build (compile) the XPCOM component for each and every supported machine and pack all the builds into a single XPI, each into its distinctive <a href="/en/Bundles#Platform-specific_Subdirectories" title="en/Bundles#Platform-specific_Subdirectories">platform-specific subdirectory</a>. At extension installation time, the application will choose the most fitting component build for its own ABI. If no such build is found, the extension will be deemed incompatible and the application will refuse to install it.</p>
+
+<p>If the application doesn't have an XPCOM ABI string (due to the fact that either its CPU architecture or C++ Compiler are unknown, as described in the <a href="#ABI_Naming">ABI Naming</a> section), you should use the operating system's name (without appending the XPCOM ABI) as the platform name in the Install Manifest etc.</p>

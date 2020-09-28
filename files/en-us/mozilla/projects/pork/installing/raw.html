@@ -1,0 +1,104 @@
+<p>These instructions are to install <a href="/en-US/docs/Mozilla/Projects/Pork" title="en/Pork">Pork</a> on a Linux system.</p>
+
+<h3 id="Prerequisites" name="Prerequisites">Prerequisites</h3>
+
+<ul>
+ <li>Flex &gt;2.5.4 (flex-old on ubuntu)</li>
+ <li>Bison</li>
+ <li><strong>GCC</strong></li>
+</ul>
+
+<p>Pork uses GCC to generate .i/.ii files (preprocessed C/C++) for Elsa to parse.</p>
+
+<p>The recommended version of GCC is GCC 4.2.</p>
+
+<p>Elsa (the C++ parser in Pork) has a hard time with some of the new features used in later GCC C++ headers. Our recent work has gotten Mozilla to compile with GCC 4.2. GCC 4.3 should also work fairly well, but there may be 5 or so files that Elsa can't parse.</p>
+
+<p>To make Pork easy to use, you will want to install MCPP that integrates into GCC. You will probably want a separate GCC for this so you don't have to modify your standard system GCC. You can install GCC in the normal way in a special directory.</p>
+
+<h3 id="Build_and_Install_MCPP" name="Build_and_Install_MCPP">Build and Install MCPP</h3>
+
+<p>MCPP generates macro expansion comments that allow Pork's Elsa to undo macros, which is necessary in order to get exact position information.</p>
+
+<p>To tell MCPP which gcc installation to integrate itself with, place the selected GCC bin dir as the first element of your path:</p>
+
+<pre>PATH=/bindir/of/my/gcc:$PATH</pre>
+
+<p>If you want to use a GCC that has binaries named something other than "gcc" and "g++", or you use "ccache" for you main gcc installation and want mcpp to override a separate installation, you need to pass the options "CC=gccXXX CXX=g++XXX" to "./configure". But don't give absolute paths there: MCPP won't build right. Instead, make sure the commands will be found on the PATH, as above.</p>
+
+<pre>svn co https://mcpp.svn.sourceforge.net/svnroot/mcpp/trunk mcpp
+cd mcpp
+./configure --enable-replace-cpp
+make
+sudo make install</pre>
+
+<p>Note: if you followed the <a href="/En/Dehydra/Installing_Dehydra#Building_GCC_with_plugin_support_on_Linux" title="en/Dehydra_GCC#Building_GCC_with_plugin_support_on_Linux">Dehydra installation instructions</a> for Linux and compiled your own gcc, then you should not need to "sudo" make install. If you run simply "make install" and see file permission errors, mcpp is likely trying to override your main gcc installation. Make sure that (1) your "$PATH" is correct; (2) you passed the correct "CC=..." and "CXX=..." to "./configure".</p>
+
+<h3 id="Install_the_Pork_Oink_Stack" name="Install_the_Pork_Oink_Stack">Install the Pork Stack</h3>
+
+<p>Pork is a set of tools written at Mozilla for refactoring C++. Pork's aim is to simply doing C/C++ refactoring through Elsa.</p>
+
+<pre class="eval">hg clone <a class="external" href="http://hg.mozilla.org/rewriting-and-analysis/pork/" rel="freelink">http://hg.mozilla.org/rewriting-and-analysis/pork/</a>
+cd pork
+hg clone <a class="external" href="http://hg.mozilla.org/rewriting-and-analysis/elsa" rel="freelink">http://hg.mozilla.org/rewriting-and-analysis/elsa</a>
+./configure
+make
+</pre>
+
+
+
+<h3 id="Building_Mozilla_with_MCPP" name="Building_Mozilla_with_MCPP">Building Mozilla with MCPP</h3>
+
+<p>To build Mozilla with MCPP to generate annotated .ii files, use the following configure command:</p>
+
+<pre class="eval">ac_cv_visibility_hidden=no CC="gcc34 -save-temps -Wp,-W0,-K" CXX="g++ -save-temps -Wp,-W0,-K" CPPFLAGS=-DNS_DISABLE_LITERAL_TEMPLATE $srcdir/configure --enable-debug --disable-optimize --disable-accessibility --enable-application=browser --disable-crashreporter
+</pre>
+
+<p>Building will probably require disabling WARNINGS_AS_ERRORS:</p>
+
+<pre class="eval">make WARNINGS_AS_ERRORS=
+</pre>
+
+<p>"-Wp,-W0,-K" are options that get passed to MCPP. See the MCPP manual. In particular, -K tells MCPP to add the macro annotations we use to get exact source positions. C++ files from other projects can be preprocessed with gcc -E -Wp,-W0,-K.</p>
+
+<h3 id="Building_a_32-bit_MCPP_on_a_64-bit_system" name="Building_a_32-bit_MCPP_on_a_64-bit_system">Building a 32-bit MCPP on a 64-bit system</h3>
+
+<p>This is dark magic, and I hope I've got it right. First I built GCC in a separate <code>--prefix=/builds/gcc-3.4.6-installed</code>. <em>Note: once you do this, you can only use this version of GCC in -m32 mode.</em></p>
+
+<p><span style="color: #999999;">Apply this patch:</span></p>
+
+<p style="margin-left: 40px;"><em>NOTE: this doesn't seem necessary in the latest version; CPPFLAGS is already an argument.</em></p>
+
+<pre><span style="color: #999999;">Index: src/set_mcpp.sh
+===================================================================
+--- src/set_mcpp.sh     (revision 78)
++++ src/set_mcpp.sh     (working copy)
+@@ -35,14 +35,14 @@
+ echo "  cd ${inc_dir}/mcpp-gcc"
+ cd ${inc_dir}/mcpp-gcc
+ if test ! -f gcc${gcc_maj_ver}${gcc_min_ver}_predef_std.h; then
+-    echo "  generating g*.h header files"
+-    ${CC} -E -xc -dM /dev/null | sort | grep ' *#define *_'       \
++    echo "  generating g*.h header files: ${CPPFLAGS}"
++    ${CC} ${CPPFLAGS} -E -xc -dM /dev/null | sort | grep ' *#define *_'       \
+             &gt; gcc${gcc_maj_ver}${gcc_min_ver}_predef_std.h
+-    ${CC} -E -xc -dM /dev/null | sort | grep -E ' *#define *[A-Za-z]+'    \
++    ${CC} ${CPPFLAGS} -E -xc -dM /dev/null | sort | grep -E ' *#define *[A-Za-z]+'    \
+             &gt; gcc${gcc_maj_ver}${gcc_min_ver}_predef_old.h
+-    ${CXX} -E -xc++ -dM /dev/null | sort | grep ' *#define *_'    \
++    ${CXX} ${CPPFLAGS} -E -xc++ -dM /dev/null | sort | grep ' *#define *_'    \
+             &gt; gxx${gcc_maj_ver}${gcc_min_ver}_predef_std.h
+-    ${CXX} -E -xc++ -dM /dev/null | sort | grep -E ' *#define *[A-Za-z]+' \
++    ${CXX} ${CPPFLAGS} -E -xc++ -dM /dev/null | sort | grep -E ' *#define *[A-Za-z]+' \
+             &gt; gxx${gcc_maj_ver}${gcc_min_ver}_predef_old.h
+ fi
+ if test ${host_system} = SYS_CYGWIN; then</span></pre>
+
+<p>If you don't do this, MCPP will get the wrong set of automatic definitions and you'll end up with an unpleasant hybrid x86-64/i686 build system.</p>
+
+<pre>$ export PATH=/builds/gcc-3.4.6-installed/bin:$PATH
+$ export CPPFLAGS=-m32
+$ CC=gcc34 CXX=g++34 CPPFLAGS=-m32 LDFLAGS=-m32 ../src/configure --enable-replace-cpp --prefix=/builds/gcc-3.4.6-installed  --target=i686-pc-linux
+$ make
+$ make install program_transform_name=</pre>
+

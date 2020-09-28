@@ -1,0 +1,25 @@
+<p>This document describes some low-level details about the internals of Firefox preferences. These details are important to understand when changing preferences, either in Firefox directly or via external mechanisms like Shield.</p>
+
+<h3 id="Structure">Structure</h3>
+
+<p>Preferences are represented as a key/value store. Keys are dotted strings (such as <code>browser.startup.homepage</code>) and values are strings, integers, or booleans. The key of a preference implies a tree structure (<code>homepage</code> being a child of <code>startup</code>, and <code>startup being</code> a child of <code>browser</code>), this is only a convention. At a technical level, the key is a simple flat string.</p>
+
+<h3 id="Branches">Branches</h3>
+
+<p>The preferences have two branches, the <em>default</em> branch and the <em>user</em> branch. Every preference logically exists in both branches, but may not have a value on a given branch.</p>
+
+<p>The default branch gets its values from a file shipped with Firefox and cannot be changed, except through a browser update. However, it can be changed during the runtime, but these changes do not persist between browser restarts.  The next time the browser starts the default branch will hold the original value of the preference again. The user branch is stored in a file in the profile directory, and stores any changes made to preferences. For example, a user setting their homepage, or the add-on <em>updater </em>storing the last time it checked for updates.</p>
+
+<h3 id="Individual_preferences">Individual preferences</h3>
+
+<p>Getting the value of a preference follows a simple algorithm:</p>
+
+<ol>
+ <li>If the user branch has a value for the preference, return it.</li>
+ <li>If the default branch has a value for the preference, return it.</li>
+ <li>Otherwise, return null.</li>
+</ol>
+
+<p>Preferences have the concept of "being user set". This means that the preference has a value on the user branch. Although, this <strong>does not</strong> mean that the user took direct action, or even that the user is aware of the change. Any permanent changes to preferences are done on the user branch, so if a preference is user set it means that it has been changed from its original value.</p>
+
+<p>Preferences do not store any historical values. When setting a new value on the user branch, this results in destroying the old value. It is important to be able to roll back to the previous user-set value, therefore the old value must be stored elsewhere. The default branch value may be read directly, but for it to affect the browser the default branch value must be deleted.</p>

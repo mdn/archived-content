@@ -1,0 +1,179 @@
+---
+title: nsITraceableChannel
+slug: Mozilla/Tech/XPCOM/Reference/Interface/NsITraceableChannel
+tags:
+  - HTTP
+  - Interfaces
+  - 'Interfaces:Scriptable'
+  - XPCOM
+  - XPCOM Interface Reference
+---
+<div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsITraceableChannel.idl" rel="custom">netwerk/base/public/nsITraceableChannel.idl</a></code><span style="float: right; text-align: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">This interface is used to allow intercepting of <a href="/en-US/docs/HTTP" title="/en-US/docs/HTTP">HTTP</a> traffic. It is implemented by <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIHttpChannel" title="">nsIHttpChannel</a></code>.</span>
+
+<div style="height: 42px; position: relative; padding: 2px; width: auto;">
+<div style="top: 22px; font-size: 11px; position: absolute;">1.0</div>
+
+<div style="top: 22px; font-size: 11px; position: absolute; left: 0px; text-align: right; float: right; width: 100%;">66</div>
+
+<div style="height: 8px; top: 16px; background: #dd0000; left: 0px; position: absolute; width: 8.952380571428572%;"></div>
+
+<div style="height: 8px; top: 16px; left: 8.952380571428572%; background: #00dd00; position: absolute; width: 91.04761942857142%;" title="Introduced in Gecko 1.9.0.4 "></div>
+
+<div style="top: 0px; font-size: 11px; position: absolute; left: 8.952380571428572%;">Introduced</div>
+
+<div style="top: 22px; font-size: 11px; position: absolute; left: 8.952380571428572%;">Gecko 1.9.0.4</div>
+</div>
+
+<div style="background: #eee; padding: 2px;">Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code> <span style="float: right; text-align: right;">Last changed in Gecko 1.9.0.4 </span></div>
+</div>
+
+
+
+<p>The typical way to use this interface is as follows:</p>
+
+<ul>
+ <li><a href="/en/XUL_School/Intercepting_Page_Loads#HTTP_Observers" title="en/XUL_School/Intercepting_Page_Loads#HTTP_Observers">Register for the "http-on-examine-response" notification</a> to track all HTTP responses;</li>
+ <li>Skip redirects (<code>responseStatus</code> = 3xx on <a href="/en-US/docs/XPCOM_Interface_Reference/nsIHttpChannel" title="/en-US/docs/XPCOM_Interface_Reference/nsIHttpChannel">nsIHttpChannel</a>), since otherwise you may <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=728901#c8" title="https://bugzilla.mozilla.org/show_bug.cgi?id=728901#c8">end up with two listeners registered for a channel</a>;</li>
+ <li>QI the channel passed as the "<code>subject</code>" to your observer to <code>nsITraceableChannel</code>, and replace the default <code>nsIStreamListener</code> (that passes the data to the original requester - e.g. to XMLHttpRequest or to the browser tab that made the request) with your own implementation (see <a href="#Using_channel_listeners" title="#Using_channel_listeners">"Implementing nsIStreamListener"</a> below).</li>
+</ul>
+
+<p>After that your <code>nsIStreamListener</code> implementation will get the response data and will be able to pass the data on to the original nsIStreamListener (possibly modifying it).</p>
+
+<p>See <a class="external" href="http://www.softwareishard.com/blog/firebug/nsitraceablechannel-intercept-http-traffic/" title="http://www.softwareishard.com/blog/firebug/nsitraceablechannel-intercept-http-traffic/">nsITraceableChannel, Intercept HTTP Traffic</a> for a more detailed description with code samples.</p>
+
+<p>See <a href="http://stackoverflow.com/questions/5205672/modify-url-before-loading-page-in-firefox/" title="http://stackoverflow.com/questions/5205672/modify-url-before-loading-page-in-firefox/"> Modify URL before loading page in firefox</a> for an overview of how to <strong>modify</strong> a request before it is made.</p>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>nsIStreamListener <a href="#setNewListener()">setNewListener</a>(in nsIStreamListener aListener);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="setNewListener" name="setNewListener()">setNewListener()</h3>
+
+<p>Replaces the channel's current listener with a new one, returning the listener previously assigned to the channel.</p>
+
+<pre class="eval">nsIStreamListener setNewListener(
+  in nsIStreamListener aListener
+);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>aListener</code></dt>
+ <dd>An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> to be notified of events on the HTTP channel.</dd>
+</dl>
+
+<h6 id="Return_value" name="Return_value">Return value</h6>
+
+<p>The previous listener for the channel. Each listener call through to the previous listener for every call, in order to establish a call chain to allow all interested parties a chance to act on each event.</p>
+
+<h2 id="Using_channel_listeners" name="Using_channel_listeners">Implementing nsIStreamListener</h2>
+
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> passed to <code>setNewListener()</code> should implement the following methods, which are called to notify it of events that occur on the HTTP stream:</p>
+
+<ul>
+ <li><code>onStartRequest</code>: An HTTP request is beginning.</li>
+ <li><code>onDataAvailable</code>: Data is arriving on the HTTP channel.</li>
+ <li><code>onStopRequest</code>: The HTTP request is ending.</li>
+</ul>
+
+<div class="note"><strong>Note:</strong> It is critical that you pass along requests to the previous listener as soon as possible -- especially for <code>onStartRequest</code>.</div>
+
+<p>Channels may restrict when you may replace the listener. In particular, listeners typically should not be replaced after <code>onStartRequest</code> has been called.</p>
+
+<h3 id="Example">Example</h3>
+
+<p>This example can be copied and pasted into a JavaScript interpreter and run. This example uses <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a> syntax that is available in Firefox 30 and onwards.</p>
+
+<pre>/////// START - DO NOT EDIT
+var {classes: Cc, interfaces: Ci, results: Cr, Constructor: CC, utils: Cu} = Components;
+Cu.import('resource://gre/modules/Services.jsm');
+
+var BinaryInputStream = CC('@mozilla.org/binaryinputstream;1', 'nsIBinaryInputStream', 'setInputStream');
+var BinaryOutputStream = CC('@mozilla.org/binaryoutputstream;1', 'nsIBinaryOutputStream', 'setOutputStream');
+var StorageStream = CC('@mozilla.org/storagestream;1', 'nsIStorageStream', 'init');
+
+function TracingListener() {
+	this.receivedChunks = []; // array for incoming data. holds chunks as they come, onStopRequest we join these junks to get the full source
+	this.responseBody; // we'll set this to the
+	this.responseStatusCode;
+
+	this.deferredDone = {
+		promise: null,
+		resolve: null,
+		reject: null
+	};
+	this.deferredDone.promise = new Promise(function(resolve, reject) {
+		this.resolve = resolve;
+		this.reject = reject;
+	}.bind(this.deferredDone));
+	Object.freeze(this.deferredDone);
+	this.promiseDone = this.deferredDone.promise;
+}
+TracingListener.prototype = {
+	onDataAvailable: function(aRequest, aContext, aInputStream, aOffset, aCount) {
+		var iStream = new BinaryInputStream(aInputStream) // binaryaInputStream
+		var sStream = new StorageStream(8192, aCount, null); // storageStream // not sure why its 8192 but thats how eveyrone is doing it, we should ask why
+		var oStream = new BinaryOutputStream(sStream.getOutputStream(0)); // binaryOutputStream
+
+		// Copy received data as they come.
+		var data = iStream.readBytes(aCount);
+		this.receivedChunks.push(data);
+
+		oStream.writeBytes(data, aCount);
+
+		this.originalListener.onDataAvailable(aRequest, aContext, sStream.newInputStream(0), aOffset, aCount);
+	},
+	onStartRequest: function(aRequest, aContext) {
+		this.originalListener.onStartRequest(aRequest, aContext);
+	},
+	onStopRequest: function(aRequest, aContext, aStatusCode) {
+		this.responseBody = this.receivedChunks.join("");
+		delete this.receivedChunks;
+		this.responseStatus = aStatusCode;
+		this.originalListener.onStopRequest(aRequest, aContext, aStatusCode);
+
+		this.deferredDone.resolve();
+	},
+	QueryInterface: function(aIID) {
+		if (aIID.equals(Ci.nsIStreamListener) || aIID.equals(Ci.nsISupports)) {
+			return this;
+		}
+		throw Cr.NS_NOINTERFACE;
+	}
+};
+
+var httpResponseObserver = {
+	observe: function(aSubject, aTopic, aData) {
+		var newListener = new TracingListener();
+		aSubject.QueryInterface(Ci.nsITraceableChannel);
+		newListener.originalListener = aSubject.setNewListener(newListener);
+/////// END - DO NOT EDIT
+		newListener.promiseDone.then(
+			function() {
+				// no error happened
+				console.log('yay response done:', newListener.responseBody);
+			},
+			function(aReason) {
+				// promise was rejected, right now i didnt set up rejection, but i should listen to on abort or bade status code then reject maybe
+			}
+		).catch(
+			function(aCatch) {
+				console.error('something went wrong, a typo by dev probably:', aCatch);
+			}
+		);
+	}
+};
+
+Services.obs.addObserver(httpResponseObserver, 'http-on-examine-response', false);
+// Services.obs.removeObserver(httpResponseObserver, 'http-on-examine-response'); // call this when you dont want to listen anymore</pre>

@@ -1,0 +1,94 @@
+<p>{{SpiderMonkeySidebar("JSAPI")}}{{ obsolete_header("jsapi29") }}</p>
+
+<p>Check whether a running script may access a given object property.</p>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="eval"><a href="/En/SpiderMonkey/JSAPI_Reference/JSBool" title="en/JSBool">JSBool</a> <strong>JS_CheckAccess</strong>(<a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/JSRuntime">JSContext</a> *cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JSObject" title="en/JSObject">JSObject</a> *obj, <a href="/en/SpiderMonkey/JSAPI_Reference/jsid" title="en/jsid">jsid</a> id,
+    <a href="/en/SpiderMonkey/JSAPI_Reference/JS_CheckAccess" title="en/JS_CheckAccess">JSAccessMode</a> mode, <a href="/En/SpiderMonkey/JSAPI_Reference/Jsval" title="en/jsval">jsval</a> *vp, <a href="/en/SpiderMonkey/JSAPI_Reference/jsint" title="en/jsint">unsigned int</a> *attrsp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/JSRuntime">JSContext</a> *</code></td>
+   <td>The context in which to perform the access check. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSObject" title="en/JSObject">JSObject</a> *</code></td>
+   <td>The object that has the property being accessed.</td>
+  </tr>
+  <tr>
+   <td><code>id</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/jsid" title="en/jsid">jsid</a></code></td>
+   <td>The name or index of the property being accessed.</td>
+  </tr>
+  <tr>
+   <td><code>mode</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CheckAccess" title="en/JS_CheckAccess">JSAccessMode</a></code></td>
+   <td>The type of access requested (read, write, etc.)</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td><code><a href="/En/SpiderMonkey/JSAPI_Reference/Jsval" title="en/jsval">jsval</a> *</code></td>
+   <td>Out parameter. On success, <code>*vp</code> receives the property's <a href="/En/SpiderMonkey/JSAPI_Reference/Stored_value" title="en/JSAPI/Stored_value">stored value</a>.</td>
+  </tr>
+  <tr>
+   <td><code>attrsp</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/jsint" title="en/jsint">unsigned int</a> *</code></td>
+   <td>Out parameter. On success, <code>*attrsp</code> receives the property attributes.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JS_CheckAccess</code> determines whether the property of <code>obj</code> given by <code>id</code> can be accessed by the code currently running in the context <code>cx</code>.</p>
+
+<p>The <code>mode</code> parameter specifies what kind of access to check for. It is one of the following values:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Value</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>JSACC_PROTO</code></td>
+   <td>Check for permission to read to <code>obj</code>'s prototype. (This is redundant with passing the string id <code>"__proto__"</code> as <code>id</code>.)</td>
+  </tr>
+  <tr>
+   <td><code>JSACC_PARENT</code></td>
+   <td>Check for permission to read <code>obj</code>'s parent. (This is redundant with passing the string id <code>"__parent__"</code> as <code>id</code>.)</td>
+  </tr>
+  <tr>
+   <td><code>JSACC_IMPORT</code></td>
+   <td>Check for permission to import the property.</td>
+  </tr>
+  <tr>
+   <td><code>JSACC_WATCH</code></td>
+   <td>Check for permission to place a watchpoint on the property.</td>
+  </tr>
+  <tr>
+   <td><code>JSACC_READ</code></td>
+   <td>Check for permission to get the property's value.</td>
+  </tr>
+  <tr>
+   <td><code>JSACC_WRITE</code></td>
+   <td>When bitwise-<code>OR</code>ed with one of the above values, check for permission to write the property, not read it.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>The access check proceeds as follows. If <code>obj</code> has custom <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSObjectOps" title="en/JSObjectOps">JSObjectOps</a></code>, the access check is delegated to the <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSObjectOps.checkAccess" title="en/JSObjectOps.checkAccess">JSObjectOps.checkAccess</a></code> callback. Otherwise, if <code>obj</code>'s class has a non-null <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSClass.checkAccess" title="en/JSClass.checkAccess">JSClass.checkAccess</a></code> callback, then it is called to perform the check. Otherwise, if a runtime-wide check-object-access callback has been installed by calling <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetCheckObjectAccessCallback" title="en/JS_SetCheckObjectAccessCallback">JS_SetCheckObjectAccessCallback</a></code>, then that is called to perform the check. Otherwise, access is granted.</p>
+
+<p>On success, <code>JS_CheckAccess</code> returns <code>JS_TRUE</code>, <code>*vp</code> is set to the current value of the specified property, and <code>*attrsp</code> is set to the property's attributes. On error or exception, including if access is denied, <code>JS_CheckAccess</code> returns <code>JS_FALSE</code>, and the values left in <code>*vp</code> and <code>*attrsp</code> are undefined.</p>
+
+<p>{{ LXRSearch("ident", "i", "JS_CheckAccess") }}</p>

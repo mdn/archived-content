@@ -1,0 +1,78 @@
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/mozIThirdPartyUtil.idl" rel="custom">netwerk/base/public/mozIThirdPartyUtil.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+Utility functions for determining whether a given URI, channel, or window hierarchy is third party with respect to a known URI.
+</span>
+
+  <div style="height: 42px; position: relative; padding: 2px; width: auto;">
+
+  <div style="top: 22px; font-size: 11px; position: absolute;">1.0</div>
+
+  <div style="top: 22px; font-size: 11px; position: absolute; left: 0px; text-align: right; float: right; width: 100%;">66</div>
+
+  <div style="height: 8px; top: 16px; background: #dd0000; left: 0px; position: absolute; width: 11.428571428571429%;"></div>
+
+<div style="height: 8px; top: 16px; left: 11.428571428571429%; background: #00dd00; position: absolute; width: 88.57142857142857%;" title="Introduced in Gecko 2.0 (Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)"></div>
+
+<div style="top: 0px; font-size: 11px; position: absolute; left: 11.428571428571429%;">Introduced</div>
+<div style="top: 22px; font-size: 11px; position: absolute; left: 11.428571428571429%;">Gecko 2.0</div>
+
+</div>
+
+<div style="background: #eee; padding: 2px;">
+Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code>
+<span style="text-align: right; float: right;">Last changed in Gecko 2.0 (Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)</span></div>
+</div><p></p>
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+<table class="standard-table"> <tbody> <tr> <td><code>boolean <a href="#isThirdPartyChannel()">isThirdPartyChannel</a>(in nsIChannel aChannel, [optional] in nsIURI aURI);</code></td> </tr> <tr> <td><code>boolean <a href="#isThirdPartyURI()">isThirdPartyURI</a>(in nsIURI aFirstURI, in nsIURI aSecondURI);</code></td> </tr> <tr> <td><code>boolean <a href="#isThirdPartyWindow()">isThirdPartyWindow</a>(in nsIDOMWindow aWindow, [optional] in nsIURI aURI);</code></td> </tr> </tbody>
+</table>
+<h2 id="Methods" name="Methods">Methods</h2>
+<h3 id="isThirdPartyChannel()" name="isThirdPartyChannel()">isThirdPartyChannel()<code><br>
+</code></h3>
+<p>Determine whether the given channel and its content window hierarchy is third party. This is done as follows:</p>
+<ol> <li>If <code>aChannel</code> is an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIHttpChannel" title="">nsIHttpChannel</a></code> and has the 'forceAllowThirdPartyCookie' property set, then: <ol> <li style="list-style-type: lower-alpha;">If <code>aURI</code> is <code>null</code>, return <code>false</code>.</li> <li style="list-style-type: lower-alpha;">Otherwise, find the URI of the channel, determine whether it is foreign with respect to <code>aURI</code>, and return.</li> </ol> </li> <li>Find the URI of the channel and determine whether it is third party with respect to the URI of the channel. If so, return.</li> <li>Obtain the bottommost <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindow" title="">nsIDOMWindow</a></code>, and its same-type parent if it exists, from the channel's notification callbacks. Then: <ol> <li style="list-style-type: lower-alpha;">If the parent is the same as the bottommost window, and the channel has the LOAD_DOCUMENT_URI flag set, return <code>false</code>. This represents the case where a toplevel load is occurring and the window's URI has not yet been updated. (We have already checked that <code>aURI</code> is not foreign with respect to the channel URI.)</li> <li style="list-style-type: lower-alpha;">Otherwise, return the result of <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIThirdPartyUtil#isThirdPartyWindow()">isThirdPartyWindow()</a></code> with arguments of the channel's bottommost window and the channel URI, respectively.</li> </ol> </li>
+</ol>
+<p>Therefore, both the channel's URI and each level in the window hierarchy associated with the channel is tested.</p>
+<p>For example, if <code>aURI</code> is "<a class=" external" href="http://mail.google.com/" rel="freelink">http://mail.google.com/</a>", <code>aChannel</code> has a URI of "<a class=" external" href="http://google.com/" rel="freelink">http://google.com/</a>", and its parent is the topmost content window with a URI of "<a class=" external" href="http://mozilla.com" rel="freelink">http://mozilla.com</a>", the result will be <code>true</code>.</p>
+<pre class="eval">boolean isThirdPartyChannel(
+  in nsIChannel aChannel,
+  in nsIURI aURI <span class="inlineIndicator optional optionalInline">Optional</span>
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aChannel</code></dt> <dd>The channel associated with the load.</dd> <dt><code>aURI</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt> <dd>A URI to test against. If <code>null</code>, the URI of the channel will be used.</dd>
+</dl>
+<h6 id="Return_value" name="Return_value">Return value</h6>
+<p><code>true</code> if <code>aURI</code> is third party with respect to the channel URI or any of the URIs associated with the same-type window hierarchy of the channel.</p>
+<h3 id="isThirdPartyURI()" name="isThirdPartyURI()">isThirdPartyURI()<code><br>
+</code></h3>
+<p>Determine whether two URIs are third party with respect to each other. This is determined by computing the base domain for both URIs. If they can be determined, and the base domains match, the request is defined as first party. If it cannot be determined because one or both URIs do not have a base domain (for instance, in the case of IP addresses, host aliases such as 'localhost', or a file:// URI), an exact string comparison on host is performed.</p>
+<p>For example, the URI "<a class=" external" href="http://mail.google.com/" rel="freelink">http://mail.google.com/</a>" is not third party with respect to "<a class=" external" href="http://images.google.com/" rel="freelink">http://images.google.com/</a>", but "<a class=" external" href="http://mail.yahoo.com/" rel="freelink">http://mail.yahoo.com/</a>" and "<a class=" external" href="http://192.168.1.1/" rel="freelink">http://192.168.1.1/</a>" are.</p>
+<pre class="eval">boolean isThirdPartyURI(
+  in nsIURI aFirstURI,
+  in nsIURI aSecondURI
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aFirstURI</code></dt> <dd>Missing Description</dd> <dt><code>aSecondURI</code></dt> <dd>Missing Description</dd>
+</dl>
+<h6 id="Return_value" name="Return_value">Return value</h6>
+<p><code>true</code> if <code>aFirstURI</code> is third party with respect to <code>aSecondURI</code>.</p>
+<h3 id="isThirdPartyWindow()" name="isThirdPartyWindow()">isThirdPartyWindow()<code><br>
+</code></h3>
+<p>Determine whether the given window hierarchy is third party. This is done as follows:</p>
+<ol> <li>Obtain the URI of the principal associated with <code>aWindow</code>. Call this the 'bottom URI'.</li> <li>If <code>aURI</code> is provided, determine if it is third party with respect to the bottom URI. If so, return.</li> <li>Find the same-type parent window, if there is one, and its URI. Determine whether it is third party with respect to the bottom URI. If so, return.</li>
+</ol>
+<p>Therefore, each level in the window hierarchy is tested. (This means that nested iframes with different base domains, even though the bottommost and topmost URIs might be equal, will be considered third party.)</p>
+<p>For example, if <code>aURI</code> is "<a class=" external" href="http://mail.google.com/" rel="freelink">http://mail.google.com/</a>", 'aWindow' has a URI of "<a class=" external" href="http://google.com/" rel="freelink">http://google.com/</a>", and its parent is the topmost content window with a URI of "<a class=" external" href="http://mozilla.com" rel="freelink">http://mozilla.com</a>", the result will be <code>true</code>.</p>
+<pre class="eval">boolean isThirdPartyWindow(
+  in nsIDOMWindow aWindow,
+  in nsIURI aURI <span class="inlineIndicator optional optionalInline">Optional</span>
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aWindow</code></dt> <dd>The bottommost window in the hierarchy.</dd> <dt><code>aURI</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt> <dd>A URI to test against. If <code>null</code>, the URI of the principal associated with <code>aWindow</code> will be used.</dd>
+</dl>
+<h6 id="Return_value" name="Return_value">Return value</h6>
+<p><code>true</code> if <code>aURI</code> is third party with respect to any of the URIs associated with <code>aWindow</code> and its same-type parents.</p>

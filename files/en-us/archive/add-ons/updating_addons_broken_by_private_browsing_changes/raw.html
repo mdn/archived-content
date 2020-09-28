@@ -1,0 +1,98 @@
+<p>After reading this document, contact <a href="http://mailto:josh@joshmatthews.net" title="http://mailto:josh@joshmatthews.net">Josh Matthews</a> with further questions or clarifications, or <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Firefox&amp;component=Extension%20Compatibility&amp;blocked=pbnextensions&amp;cc=josh@joshmatthews.net" title="https://bugzilla.mozilla.org/enter_bug.cgi?product=Firefox&amp;component=Extension%20Compatibility&amp;blocked=pbnextensions&amp;cc=josh@joshmatthews.net">file a bug</a> if your extension has stopped working due to a change described here and you are having trouble updating it.</p>
+
+<h2 id="How_do_I_know_if_my_addon_is_affected_by_these_changes">How do I know if my addon is affected by these changes?</h2>
+
+<p>If your code refers to any of the following interfaces:</p>
+
+<pre><u>FF 15:</u>
+<code>nsIDOMStorageManager</code>
+
+<u>FF 16:</u>
+<code>nsITransferable</code>
+
+<u>FF 18:</u><code>
+imgICache
+mozIAsyncFavicons
+nsIFaviconService
+nsIWebBrowserPersist</code>
+
+<u>FF 19:</u><code>
+nsIContentPrefService
+nsIDownloadManager
+nsIDownload
+nsIHttpAuthManager
+nsIStrictTransportSecurityService</code>
+
+<u>FF 20:</u>
+<code>nsIPrivateBrowsingService
+nsIRecentBadCertService
+</code></pre>
+
+<p>Furthermore, if your code uses any of these common chrome APIs:</p>
+
+<pre><u>FF 19</u>:
+<code>saveURL</code>
+<code>saveInternal
+openLinkIn
+</code>
+<u>FF 20:</u>
+<code>OpenBrowserWindow
+gPrivateBrowsingUI</code>
+</pre>
+
+<p>Finally, if your code watches for any of these observer notifications:<br>
+ <code>private-browsing<br>
+ private-browsing-cancel-vote<br>
+ private-browsing-change-granted<br>
+ private-browsing-transition-complete</code><br>
+ <br>
+ Then your addon will require updating to correctly support the new per-window private browser feature in Firefox 20 (and will require updating to work correctly in releases of Firefox since the ones listed).</p>
+
+<h2 id="IDLs">IDLs</h2>
+
+<p><strong>nsITransferable</strong>: See <a href="https://developer.mozilla.org/en-US/docs/Using_the_Clipboard" title="https://developer.mozilla.org/en-US/docs/Using_the_Clipboard">Using the clipboard</a> for information about the new <code>init</code> method.<br>
+ <br>
+ <strong>imgICache</strong>: This must no longer be obtained as a service. See <a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/imgICache" title="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/imgICache">the imgICache article</a> for more information.<br>
+ <br>
+ <strong>mozIAsyncFavicons</strong>/<strong>nsIFaviconService</strong>: <code>setAndFetchFaviconForPage</code>/<code>setAndLoadFaviconForPage</code> now take a required privacy status argument, either <code>nsIFaviconService.FAVICON_LOAD_PRIVATE</code> or <code>nsIFaviconService.FAVICON_LOAD_NON_PRIVATE</code>.<br>
+ <br>
+ <strong>nsIWebBrowserPersist</strong>: <code>saveURI</code> gained a new argument; see <a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIWebBrowserPersist" title="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIWebBrowserPersist">the nsIWebBrowserPersist docs</a> for more information.<br>
+ <br>
+ <strong>nsIContentPrefService</strong>: <code>getPref</code>, <code>setPref</code>, <code>hasPref</code>, <code>hasCachedPref</code>, <code>removePref</code>, <code>removeGroupedPrefs</code>, <code>removePrefsByName</code>, <code>getPrefs</code>, and <code>getPrefsByName</code> all take a required <code>nsILoadContext</code> argument to indicate the privacy status of the pref in question. Use <code>PrivateBrowsingUtils.getPrivacyContextFromWindow(win)</code> to obtain it from the relevant window.<br>
+ <br>
+ <strong>nsIDownloadManager</strong>/<strong>nsIDownload</strong>:</p>
+
+<ul>
+ <li>Integer download IDs (and specifically the <code>id</code> property of <code>nsIDownload)</code> are deprecated, and don't allow access to private downloads. All downloads now use GUIDs, and contain a new guid property.</li>
+ <li><code>nsIDownload</code> now has <code>retry</code>, <code>cancel</code>, <code>remove</code>, <code>pause</code>, and <code>resume</code> methods which should be used instead of deprecated similarly-named <code>nsIDownloadManager</code> methods.</li>
+ <li><code>nsIDownload</code>'s <code>getDownload</code> method is deprecated; use the asynchronous <code>getDownloadByGUID</code> method instead.</li>
+ <li><code>nsIDownloadManager</code> now has <code>activePrivateDownloads</code>, <code>activePrivateDownloadCount</code>, and <code>privateDBConnection</code> members to complement the existing public ones.</li>
+ <li><code>nsIDownloadManager</code>'s <code>addListener</code> method is deprecated. <code>addPrivacyAwareListener</code> should be used instead, or no notifications will be received for private downloads.</li>
+ <li>There is a new <code>download-manager-remove-download-guid</code> notification, which passes an <code>nsISupportsCString</code> subject for the GUID or <code>null</code>.</li>
+</ul>
+
+<p><br>
+ <strong>nsIHttpAuthManager</strong>: <code>setAuthIdentity</code> and <code>getAuthIdentity</code> now take an optional boolean parameter to indicate whether the identity is classified as private.<br>
+ <br>
+ <strong>nsIStrictTransportSecurityService</strong>: <code>processStsHeader</code>, <code>removeStsState</code>, <code>isStsHost</code>, and <code>isStsUri</code> now take a flags parameter that understands <code>nsISocketProvider.NO_PERMANENT_STORAGE</code> or nothing.<br>
+ <br>
+ <strong>nsIPrivateBrowsingService</strong>: This service is deprecated, and as of Firefox 20 it is now an empty interface. If your code depends on this interface, it will break. The global private browsing service is actively being removed, and may not even exist as of Firefox 21.</p>
+
+<p><strong>nsIRecentBadCertsService</strong>: This is no longer a global service, and has been renamed to <code>nsIRecentBadCerts</code>. To obtain this, acquire the <code>nsIX509CertDB</code> service, and use the new <code>getRecentBadCerts</code> method, passing a boolean indicating whether the private bad certificates or public ones are desired.</p>
+
+<h2 id="Observer_notifications">Observer notifications</h2>
+
+<p>None of the ones listed above will be sent as of Firefox 20. The <a href="https://developer.mozilla.org/en-US/docs/Supporting_per-window_private_browsing" title="https://developer.mozilla.org/en-US/docs/Supporting_per-window_private_browsing">supporting per-window private browsing</a> article explains further about the equivalent notifications, which are all backwards compatible through to Firefox 12 (and are sent side-by-side with the global private browsing notifications in older versions).<br>
+  </p>
+
+<h2 id="Chrome_APIs">Chrome APIs</h2>
+
+<p><strong>OpenBrowserWindow</strong><strong>:</strong> Takes an optional parameter to indicate desired properties of the window. Passing <code>{private: true}</code> will cause a private window to open, otherwise the window will always be non-private. Use <code>{private: PrivateBrowsingUtils.isWindowPrivate(window)}</code> to open a window that matches the current window's privacy status.<br>
+ <br>
+ <strong>openLinkIn</strong><strong>:</strong> Can receive an extra <code>private</code> boolean property in the parameter object.<br>
+ <br>
+ <strong>internalSave</strong>: Takes a new required Document argument (prior to the optional boolean and string arguments) indicating the document that originated the save action.<br>
+ <br>
+ <strong>gPrivateBrowsingUI</strong>: Can no longer be used to control private browsing of any kind. Any new private browsing session should be opened using <code>OpenBrowserWindow</code>, and any queries for private browsing status should use <code>PrivateBrowsingUtils.isWindowPrivate(win)</code> on a relevant window object.<br>
+ <br>
+ <strong>saveURL</strong>: Takes a new required Document argument indicating the source of the URL being saved.</p>

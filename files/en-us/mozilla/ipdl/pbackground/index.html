@@ -1,0 +1,67 @@
+---
+title: PBackground
+slug: Mozilla/IPDL/PBackground
+tags:
+  - Electrolysis
+  - IPC
+  - IPDL
+  - PBackground
+  - e10s
+---
+<p class="summary">All new code written in Gecko going forward is designed to be compatible with <a href="/en-US/docs/Mozilla/Firefox/Multiprocess_Firefox">Multiprocess Firefox</a> (otherwise known as Electrolysis, or e10s.) <strong>PBackground</strong> is a mechanism available since <a href="https://developer.mozilla.org/en-US/Firefox/Releases/30">Gecko 30</a> (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=956218" title="FIXED: Add a mechanism for communicating with a non-main I/O thread via thread and process links">bug 956218</a>) that builds on top of IPDL to provide a solution to common problems that arise when handling multiple threads in the chrome process, for example communication between workers and multiple child processes and other parent-process worker threads. This article outlines what PBackground is, and how it works.</p>
+
+<h2 id="IPDL_recap">IPDL recap</h2>
+
+<p>IPDL is a language used to define "protocols" — essentially formalized versions of how two things can communicate. It is similar in some respects to <a class="glossaryLink" href="/en-US/docs/Glossary/IDL" title="IDL: An IDL (Interface Description Language) is a generic language used to specified objects' interfaces apart from any specific programming language.">IDL</a> and <a class="glossaryLink" href="/en-US/docs/Glossary/WebIDL" title="WebIDL: WebIDL is the interface description language used to describe the data types, interfaces, methods, properties, and other components which make up a Web application programming interface (API). It uses a somewhat stylized syntax which is independent of any specific programming language, so that the underlying code which is used to build each API can be written in whatever language is most appropriate, while still being possible to map the API's components to JavaScript-compatible constructs.">WebIDL</a>. At build time the IPDL compiler automatically generates a large amount of C++ glue code from the IPDL files. IPDL protocols are used to specify how the chrome and content processes talk to each other and verify that a content process is "following the rules".</p>
+
+<div class="note">
+<p><strong>Note</strong>: If you want more detailed information on IPDL, start out by reading the <a href="/en-US/docs/Mozilla/IPDL/Tutorial">IPDL tutorial</a>.</p>
+</div>
+
+<p>When used at run time, every protocol has two <a href="https://en.wikipedia.org/wiki/Actor_model">actors</a> — a <strong>parent</strong> and a <strong>child</strong>. These actors can live in different processes due to IPDL, which automatically serializes calls on one side and transmits them to the other. This is the foundation of how chrome and content processes talk to each other in e10s.</p>
+
+<h2 id="The_actor_tree">The actor tree</h2>
+
+<p>All live actors exist in a tree. The root of the tree is known as the <strong>top-level actor</strong>, an instance of one of a small number of top-level protocols. All actors in a tree "live" on the same thread, and can only be used safely from that thread. The top-level actor for most things is <strong>PContent</strong>, which connects the main thread of the chrome process to the main thread of a child process.</p>
+
+<p>For most purposes this is great, because the DOM is already bound to the main thread. But in some cases we don't necessarily want to talk to the main thread.</p>
+
+<h2 id="What_if_I_want_to_talk_to_a_different_thread">What if I want to talk to a different thread?</h2>
+
+<p>Not every communication between the chrome and content processes necessarily wants to go through the main threads of both (or even either) processes.</p>
+
+<p>For example, when we are uploading textures from the content process we don't need to go through the main thread of the parent process. Instead we can go directly to the compositor thread in the parent process by creating a new top-level protocol that connects the compositor thread in the parent process to the main thread of a child process. This protocol is called <strong>PCompositor</strong>, and allows us to bypass the main thread of the parent process, which trims the latency of texture uploads since they will not get bogged down if that thread is busy.</p>
+
+<h2 id="Writing_code_that_works_in_both_chrome_and_content_processes">Writing code that works in both chrome and content processes</h2>
+
+<p>A lot of code "just works" in the content process. But some things, such as APIs that need to manipulate files or device settings (e.g. geolocation) cannot run in the content process because it has restricted privileges. Instead, these APIs must ask the chrome process to do something on their behalf via an IPDL protocol. This has lead to a rather awkward pattern seen in some parts of the Gecko codebase, looking something like this (try <a href="https://dxr.mozilla.org/mozilla-central/search?q=GeckoProcessType_Default">searching for GeckoProcessType_Default in DXR</a>):</p>
+
+<pre class="brush: cpp">if (XRE_GetProcessType() == GeckoProcessType_Default) {
+  DoTheThing(arguments);
+} else {
+  mIPDLProtocol-&gt;SendDoTheThing(arguments);
+}</pre>
+
+<p>This can get unwieldy very quickly, so a better solution was needed.</p>
+
+<h2 id="PBackground">PBackground</h2>
+
+<p><strong>PBackground</strong> exists to solve such problems. It connects a designated "background" thread in the chrome process to any other thread in any other process. PBackground allows us to</p>
+
+<ul>
+ <li>bypass the chrome process's main thread if used from the content process' main thread.</li>
+ <li>bypass both main threads if used from a non-main thread in a content process</li>
+ <li>write process-agnostic code because it can be used even from another thread in the parent process</li>
+</ul>
+
+<p>The parent side of a PBackground actor pair is always on the designated background thread, while the child side is on the thread that chooses to use PBackground. The background thread is designed to be responsive (nobody is allowed to do long running computation or file I/O on it) to guarantee better latency than going through the main threads (which can run arbitrary JS, GC, etc.) can provide.</p>
+
+<h2 id="Examples">Examples</h2>
+
+<p>IndexedDB was rebuilt on top of PBackground last year. This allows the DOM code to generally not worry about what thread (main vs. worker) or process (single vs. multiple) it is running in. Instead, it simply turns all of its operations into IPDL calls on a set of PBackground-based actors and the processing, file I/O, etc, can be controlled from the PBackground thread regardless of where the DOM calls are being made.</p>
+
+<p>The logic is all implemented in <code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/indexedDB/ActorsParent.cpp">ActorsParent.cpp</a></code> and <code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/indexedDB/ActorsChild.cpp">ActorsChild.cpp</a></code> in the <a href="https://dxr.mozilla.org/mozilla-central/source/dom/indexedDB">dom/indexedDB directory</a>. These are not small files (<code>ActorsParent.cpp</code> was over 27k lines of code as of this publication) but the logic that needs to run in the parent is very clearly separated from the DOM code no matter what thread it's running on.</p>
+
+<div class="note">
+<p><strong>Note</strong>: This article was original published as <a href="http://blog.kylehuey.com/post/136679681701/what-is-pbackground">What is PBackground?</a>, by Kyle Huey.</p>
+</div>

@@ -1,0 +1,83 @@
+<p>This document provides a high-level overview of the overall database design of the <a href="/en-US/docs/Mozilla/Tech/Places" title="en/Places">Places</a> system. Places is designed to be a complete replacement for the Firefox bookmarks and history systems using <a href="/en/Storage" title="en/Storage">Storage.</a></p>
+
+<p>The places schema looks like so:</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/15838/places-erd.png" style="display: block; margin: 0 auto;"></p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Core URL table</h3>
+
+<ul>
+ <li><strong>moz_places</strong>: This is the main table of URIs and is managed by the <a href="/en-US/docs/Mozilla/Tech/Places/Using_the_Places_history_service" title="en/Using_the_Places_history_service">history service</a> (see also <a href="/en-US/docs/Mozilla/Tech/Places/History_Service_Design" title="en/Places/History_Service/Design">History service design</a>). Any time a Places component wants to reference a URL, whether visited or not, it refers to this table. Each entry has an optional reference to the <code>moz_favicon</code> table to identify the favicon of the page. No two entries may have the same value in the url column.</li>
+ <li><strong>moz_hosts</strong>: One entry in this table is created each time you visit a new host. It contains the host url, frequency of access, if typed or not, and it's prefix (https://, ftp://, etc).</li>
+</ul>
+
+<h3 id="History_tables" name="History_tables">History tables</h3>
+
+<ul>
+ <li><strong>moz_historyvisits</strong>: One entry in this table is created each time you visit a page. It contains the date, referrer, and other information specific to that visit. It contains a reference to the <code>moz_places</code> table which contains the URL and other global statistics.</li>
+</ul>
+
+<p>See <a href="/en-US/docs/Mozilla/Tech/Places/History_Service_Design" title="en/Places/History_Service/Design">History service design</a> for more information.</p>
+
+<h3 id="Bookmarks_Tables" name="Bookmarks_Tables">Bookmarks Tables</h3>
+
+<ul>
+ <li><strong>moz_bookmarks</strong>: This table contains bookmarks, folders, separators and tags, and defines the hierarchy. The hierarchy is defined via the parent column, which points to the <code>moz_bookmarks</code> record which is the parent. The position column numbers each of the peers beneath a given parent starting with 0 and incrementing higher with each addition. The fk column provides the id number of the corresponding record in <code>moz_places</code>.</li>
+</ul>
+
+<ul>
+ <li><strong>moz_bookmarks_roots</strong>: Lists special folders that are the root folders of certain content types in the bookmarks system. The records in this table are mapped to records in the <code>moz_bookmarks</code> table. Bookmarks, folders and separators are descendants of the bookmarks root, while tags and tagged URIs are descendants of the tag root.</li>
+</ul>
+
+<ul>
+ <li><strong>moz_keywords</strong>: This table is a unique list of keywords. The <code>moz_bookmarks</code> table has a <code>keyword_id</code> column that maps to a record in <code>moz_keywords</code> table.</li>
+</ul>
+
+<p>See <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/Places/Manipulating_bookmarks_using_Places">Manipulating bookmarks using Places</a> for more information.</p>
+
+<h3 id="Annotation_Tables" name="Annotation_Tables">Annotation Tables</h3>
+
+<ul>
+ <li><strong>moz_anno_attributes</strong>: Contains the names of all the annotations in the system and a name ID. There should be relatively few unique names.</li>
+</ul>
+
+<ul>
+ <li><strong>moz_annos</strong>: Contains the values of page annotations. It maps a page (reference to <code>moz_places</code>) and an annotation name (reference to <code>moz_anno_attributes</code>) to the value of the annotation.</li>
+</ul>
+
+<ul>
+ <li><strong>moz_items_annos</strong>: Contains the values of bookmark item annotations. It maps a bookmark, folder or separator (reference to <code>moz_bookmarks</code>) and an annotation name (reference to <code>moz_anno_attributes</code>) to the value of the annotation.</li>
+</ul>
+
+<h3 id="Favicon_table" name="Favicon_table">Favicon table</h3>
+
+<ul>
+ <li><strong>moz_favicons</strong>: This contains a list of unique favicon URIs and data. One or more pages in <code>moz_places</code> refer to each entry. When no pages reference a favicon, the icon entry will be deleted.
+
+  <ul>
+   <li>If the mime type of the image is image/png, the data blob must be reencoded from base16 (the format in which it is stored) to base64 in order to display correctly.</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Expiration" name="Expiration">Expiration</h3>
+
+<p>Expiration is handled in <code><a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsPlacesExpiration.js" rel="custom">toolkit/components/places/nsPlacesExpiration.js</a></code>. This algorithm determines the lifetime of all objects in the Places system.</p>
+
+<p>Periodically at runtime, the following happens to expire pages:</p>
+
+<ul>
+ <li>Expire visits that are older than the history expiration threshold.</li>
+ <li>Delete the history entries that were referenced by the expired visits and not referenced by any non-expired visit or bookmark.</li>
+ <li>Delete favicons for those expiring history entries that are not referenced by any other history entry.</li>
+ <li>Delete annotations that belong to the expiring pages.</li>
+</ul>
+
+<p>At shutdown time, an extra step is performed in case there are any orphans. There are several ways for orphans to be created, including calling <code>markPageAsTyped</code> and then never visiting the page. Extensions might also set favicons for pages that have never been visited.</p>
+
+<ul>
+ <li>Delete any history entries that have no visits, are not bookmarked, and are not place: URIs.</li>
+ <li>Delete any favicons that are not referenced by any history entries.</li>
+</ul>
+
+<p>See <a class="internal" href="/en-US/docs/Mozilla/Tech/Places/Places_Expiration" title="En/Places Expiration">Places Expiration</a> for more information.</p>

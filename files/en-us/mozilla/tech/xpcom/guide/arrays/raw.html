@@ -1,0 +1,629 @@
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<h4 id="Array_types" name="Array_types">Array types</h4>
+
+<p>Mozilla has many array classes because each array is optimized for a particular usage pattern. This guide describes the available arrays as well as the enumerator classes that can be used to get to them. In this document the term Array refers to a container for multiple objects with a numeric, zero-based index.</p>
+
+<p>The standard array classes are:</p>
+
+<ul>
+ <li><code><a href="#nsIArray_.2F_nsIMutableArray">nsIArray</a></code> - a scriptable container for scriptable XPCOM objects. This array is read-only, and the interface does not provide any methods that will allow adding and removing members.</li>
+ <li><a href="/#nsIArray_.2F_nsIMutableArray" title="#nsIArray .2F nsIMutableArray"><code>nsIMutableArray</code></a> - a scriptable container for scriptable XPCOM objects, which allows addition and removal of member objects. This interface actually derives from <code>nsIArray</code>.</li>
+ <li><code>nsTArray<span class="nowiki">&lt;T&gt;</span></code> - a C++ class which provides a typesafe container for objects or primitive types (pointers, integers, and so on). The objects must define a default constructor and a copy constructor. To use <code>IndexOf</code> without providing a comparator, they must also define an <code>operator==</code>. For sorting without providing a comparator they must define an <code><span class="nowiki">operator&lt;</span></code>. Note that this class differs from the other array types by using unsigned indices.</li>
+ <li><code>nsCOMArray<span class="nowiki">&lt;T&gt;</span></code> - a C++ class which provides a typesafe, reference-counted container for pointers to a single type of COM object.</li>
+ <li><code>nsAutoTArray<span class="nowiki">&lt;T, N&gt;</span></code> - a version of <code>nsTArray</code> which includes N entries of internal storage for the array data.</li>
+ <li><code>nsTPtrArray<span class="nowiki">&lt;T&gt;</span></code> and <code>nsAutoTPtrArray<span class="nowiki">&lt;T&gt;</span></code> - similar to using <code>T*</code> with the above arrays, but also provides a <code>SafeElementAt()</code> accessor. As of Gecko 8, <code>SafeElementAt()</code> is now directly available on <code>nsTArray</code> for arrays instantiated with pointer types.</li>
+ <li>Some other arrays: <code>FallibleTArray</code>, <code>AutoFallibleTArray</code>, <code>InfallibleTArray</code>, <code>AutoInfallibleTArray</code>, <code>nsTObserverArray</code>, <code>nsAutoTObserverArray</code>.</li>
+</ul>
+
+<p>This handy chart may make it easier to understand the different arrays:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Class</th>
+   <th>Data Type</th>
+   <th>Scriptable?</th>
+   <th>Typesafe?</th>
+   <th>Can be modified?</th>
+   <th>Built in buffer?</th>
+   <th>Ownership</th>
+  </tr>
+  <tr>
+   <td><code><a href="#nsIArray_.2F_nsIMutableArray">nsIArray</a></code></td>
+   <td>XPCOM object</td>
+   <td>Yes</td>
+   <td>No</td>
+   <td>No</td>
+   <td>No</td>
+   <td>Reference Counted, Weak/Strong</td>
+  </tr>
+  <tr>
+   <td><a href="/#nsIArray_.2F_nsIMutableArray" title="#nsIArray .2F nsIMutableArray"><code>nsIMutableArray</code></a></td>
+   <td>XPCOM object</td>
+   <td>Yes</td>
+   <td>No</td>
+   <td>Yes</td>
+   <td>No</td>
+   <td>Reference Counted, Weak/Strong</td>
+  </tr>
+  <tr>
+   <td><code>nsCOMArray&lt;T&gt;</code></td>
+   <td>XPCOM object</td>
+   <td>No</td>
+   <td>Yes</td>
+   <td>Yes*</td>
+   <td>No</td>
+   <td>Reference Counted, Strong</td>
+  </tr>
+  <tr>
+   <td><code>nsTArray&lt;T&gt;</code></td>
+   <td>Any that has a default constructor and copy constructor</td>
+   <td>No</td>
+   <td>Yes</td>
+   <td>Yes*</td>
+   <td>No</td>
+   <td>Can hold objects directly, in which case it owns them. When holding pointers, doesn't own the pointer.</td>
+  </tr>
+  <tr>
+   <td><code>nsAutoTArray&lt;T,N&gt;</code></td>
+   <td>Any that has a default constructor and copy constructor</td>
+   <td>No</td>
+   <td>Yes</td>
+   <td>Yes*</td>
+   <td>Yes</td>
+   <td>Can hold objects directly, in which case it owns them. When holding pointers, doesn't own the pointer.</td>
+  </tr>
+  <tr>
+   <td><code>nsISupportsArray</code></td>
+   <td>XPCOM Object</td>
+   <td>Yes</td>
+   <td>No</td>
+   <td>Yes*</td>
+   <td>No</td>
+   <td>Reference Counted, Strong</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>(*) Note: Concrete C++ arrays can be made read-only by declaring them const. For example:</p>
+
+<pre class="eval">// HandleList cannot modify the array because of const
+void HandleList(const nsTArray&lt;T&gt;&amp;);
+</pre>
+
+<h4 id="In-place_enumeration" name="In-place_enumeration">In-place enumeration</h4>
+
+<p>Most of the arrays presented here provide callback-style means to enumerate members of an array. Instead of incrementally accessing each element of the array by its index, the arrays provide a way to pass in a callback function that will be called for each element in the array.</p>
+
+<p>For most concrete C++ classes like <code>nsTArray&lt;T&gt;</code> and <code>nsCOMArray&lt;T&gt;</code>, indexing should be faster than the callback-style enumeration, because accessing an indexed member of such an array is usually very fast, while enumeration has slight function call overhead. In the case of scriptable arrays like nsIArray however, the enumeration mechanism is often preferred because it avoids the AddRef / Release overhead that comes from accessing each object.</p>
+
+<p>The only functional drawback to in-place enumeration is that you cannot manipulate the array itself during the enumeration. For example, you should not delete elements of an array during the enumeration as this will often confuse the loop which is enumerating the array.</p>
+
+<h4 id="Enumerators" name="Enumerators">Enumerators</h4>
+
+<p>Most arrays provide access to an object which is used to enumerate members of the array. These Enumerators maintain state about the current position in the array. Enumerators are used to access the elements in an ordered way, without relying on the underlying array type. These enumerators include:</p>
+
+<ul>
+ <li><code>nsISimpleEnumerator</code> - an enumerator for COM objects.</li>
+ <li><code>nsIStringEnumerator</code> / <code>nsIUTF8StringEnumerator</code> - enumerators for strings</li>
+</ul>
+
+<h4 id="Obsolete_arrays_.2F_enumerators" name="Obsolete_arrays_.2F_enumerators">Obsolete arrays / enumerators</h4>
+
+<p>There are some deprecated classes which <strong>should not be used by new code</strong>.</p>
+
+<ul>
+ <li><code>nsISupportsArray</code> - obsoleted by <code><a href="#nsIArray_.2F_nsIMutableArray">nsIArray</a></code> and <code><a href="/#nsIArray_.2F_nsIMutableArray" title="#nsIArray .2F nsIMutableArray">nsIMutableArray</a></code>, use those instead.</li>
+ <li><code>nsIEnumerator</code> - obsoleted by <code>nsISimpleEnumerator</code>, use that instead.</li>
+ <li><code>nsIBidirectionalEnumerator</code> - obsoleted by <code>nsISimpleEnumerator</code>, use that instead.</li>
+</ul>
+
+<h2 id="Which_Array_should_I_use.3F" name="Which_Array_should_I_use.3F">Which Array should I use?</h2>
+
+<ul>
+ <li>Do not use <code>nsISupportsArray</code>; it is deprecated.</li>
+ <li>Does your array need to be scriptable? If so, use <code>nsIArray</code>.<br>
+  <br>
+  Example: an array attribute in an IDL file would be <code>nsIArray</code>.</li>
+ <li>Will your array store non-refcounted objects and need automatic resizing? If so, use <code>nsTArray<span class="nowiki">&lt;T&gt;</span></code>.<br>
+  <br>
+  Example: an array of integers or an array of strings.</li>
+ <li>Will your array store non-refcounted objects and be a fixed size? If so, just use a native C++ array unless you need the enumeration options on <code>nsTArray<span class="nowiki">&lt;T&gt;</span></code>.<br>
+  <br>
+  Example: an array of error message static const char* pointers.</li>
+ <li>Are all the things you are storing interface pointers to instances of the same interface? If so, use <code>nsCOMArray</code>.<br>
+  <br>
+  Example: a content node's list of <code>nsIContent</code> children.</li>
+ <li>Otherwise use <code>nsIArray</code> and make liberal use of <code>QueryElementAt()</code>.</li>
+ <li>The point of <code>nsCOMArray</code> is that it's a template, and all the pointers in it must be pointers to the same type; it's nice to be able to use it because you get type-safety and don't have to spend time and code QIing (like you have to with <code>nsIArray</code>).</li>
+</ul>
+
+<h2 id="Array_Guidelines" name="Array_Guidelines">Array Guidelines</h2>
+
+<p>Here are a few simple rules which will keep your code clean and your developers happy:</p>
+
+<ul>
+ <li>Use typesafe arrays like <code>nsCOMArray<span class="nowiki">&lt;T&gt;</span></code> <code>nsTArray<span class="nowiki">&lt;T&gt;</span></code> wherever possible.</li>
+ <li>Avoid all obsolete arrays and enumerators.</li>
+ <li>Avoid creating temporary arrays.</li>
+</ul>
+
+<h2 id="Scriptable_Arrays" name="Scriptable_Arrays">Scriptable Arrays</h2>
+
+<h3 id="nsIArray_.2F_nsIMutableArray" name="nsIArray_.2F_nsIMutableArray">nsIArray / nsIMutableArray</h3>
+
+<h4 id="Usage" name="Usage">Usage</h4>
+
+<p><code>nsIArray</code> is useful if you need to pass arrays of COM objects through interfaces or require a scriptable array. It can hold strong or weak references to its container objects. This basic interface only allows querying of existing elements in the array. The methods that modify the array have been broken out into <code>nsIMutableArray</code>.</p>
+
+<p>An <code>nsIArray</code> implementation can be created from C++ or JavaScript using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIComponentManager#createInstance()">nsIComponentManager.createInstance()</a></code> and the <a href="/en/Creating_XPCOM_Components/An_Overview_of_XPCOM#Contract_ID" title="en/Creating_XPCOM_Components/An_Overview_of_XPCOM#Contract_ID">contract ID</a> "@mozilla.org/array;1". The created array implements <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIMutableArray" title="">nsIMutableArray</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIArray" title="">nsIArray</a></code>. Since <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIMutableArray" title="">nsIMutableArray</a></code> derives from <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIArray" title="">nsIArray</a></code>, the resulting array can be cast to a read-only array.</p>
+
+<p>C++ Example</p>
+
+<pre class="eval">void GetList(nsIArray** aResult) {
+  nsCOMPtr&lt;nsIMutableArray&gt; array = do_CreateInstance(NS_ARRAY_CONTRACTID);
+
+  // append some elements
+  ...
+
+  // return it to the caller
+  *aResult = array;
+  NS_ADDREF(*aResult);
+}
+</pre>
+
+<p>JavaScript Example</p>
+
+<pre class="eval">function getList() {
+  var array = Components.classes["@mozilla.org/array;1"]
+                        .createInstance(Components.interfaces.nsIMutableArray);
+  // append some elements
+  ...
+
+  // return it to the caller
+  return array;
+}
+</pre>
+
+<h4 id="Access_to_elements" name="Access_to_elements">Access to elements</h4>
+
+<p>Since <code>nsIArray</code> is a regular XPCOM object, its interfaces follows the standard conventions of ownership. Access to specific elements is through <code>QueryElementAt</code>, which is similar to <code>QueryInterface</code>, but it takes a specific index.</p>
+
+<pre class="eval">void NotifyObservers(nsIArray* aArray) {
+  PRUint32 length;
+  aArray-&gt;GetLength(&amp;length);
+  for (PRUint32 i=0; i&lt;length; ++i) {
+    nsCOMPtr&lt;nsIMyObserver&gt; element;
+    aArray-&gt;QueryElementAt(i, NS_GET_IID(nsIElement), getter_AddRefs(element));
+    element-&gt;Observe();
+  }
+}
+</pre>
+
+<p>A simpler option is to use the helper <code>do_QueryElementAt</code> which is typesafe.</p>
+
+<pre class="eval">void NotifyObservers(nsIArray* aArray) {
+  PRUint32 length;
+  aArray-&gt;GetLength(&amp;length);
+  for (PRUint32 i=0; i&lt;length; ++i) {
+    nsCOMPtr&lt;nsIMyObserver&gt; element = do_QueryElementAt(aArray, i);
+    element-&gt;Observe();
+  }
+}
+</pre>
+
+<h4 id="Passing_as_a_parameter" name="Passing_as_a_parameter">Passing as a parameter</h4>
+
+<p>Since <code>nsIArray</code> is an XPCOM object, it should be passed as a pointer. To distinguish between read-only arrays and writable arrays, you should make sure to pass a nsIArray or <code>nsIMutableArray</code> as appropriate.</p>
+
+<p>When the array can or should be modified, then use nsIMutableArray:</p>
+
+<pre class="eval">// array is read-only because it uses nsIArray
+void PrintSize(nsIArray* elements) {
+  PRUint32 count;
+  elements-&gt;GetLength(&amp;count);
+  printf("There are %d elements.\n", count);
+}
+
+// using nsIMutableArray, so callee may modify
+void TweakArray(nsIMutableArray* elements) {
+  elements-&gt;RemoveElementAt(0);
+  elements-&gt;AppendElement(newElement, PR_FALSE);
+}
+</pre>
+
+<p>While it is usually possible to call <code>QueryInterface</code> on an <code>nsIArray</code> to get access to the <code>nsIMutableArray</code> interface, this is against convention and it should be avoided.</p>
+
+<pre class="eval">// no need for the double-pointer, and this violates XPCOM rules
+// which expect acess to a new object
+void TweakArray(nsIMutableArray** elements) {
+  // ugh, extra indirection!
+  *elements-&gt;RemoveElementAt(0);
+  *elements-&gt;AppendElement(newElement, PR_FALSE);
+}
+</pre>
+
+<h4 id="In-place_enumeration" name="In-place_enumeration">In-place enumeration</h4>
+
+<p>When accessing all members of an <code>nsIArray</code>, in-place enumeration is preferred over indexed access. However, I seem to have forgotten to implement that. Good thing the interface is under review. Sorry!</p>
+
+<h4 id="Enumerators" name="Enumerators">Enumerators</h4>
+
+<p>Creating an enumerator from an <code>nsIArray</code> is easy. The method <code>Enumerate()</code> returns a <code>nsISimpleEnumerator</code> which accesses all the elements in the array. Often, simply accessing an array by index, using <code>QueryElementAt</code> is faster. See the section on Enumerators to learn when to properly use enumerators.</p>
+
+<p>For example, if you need to iterate an array returned from another object, you might use <code>Enumerate()</code>.</p>
+
+<pre class="eval">...
+// get the array
+nsCOMPtr&lt;nsIArray&gt; array;
+foo-&gt;GetElements(getter_AddRefs(array));
+
+// make an enumerator
+nsCOMPtr&lt;nsISimpleEnumerator&gt; enumerator;
+array-&gt;Enumerate(getter_AddRefs(enumerator));
+
+// now enumerate the elements
+...
+</pre>
+
+<h2 id="Typesafe_Arrays" name="Typesafe_Arrays">Typesafe Arrays</h2>
+
+<h3 id="nsCOMArray.3CT.3E" name="nsCOMArray.3CT.3E">nsCOMArray&lt;T&gt;</h3>
+
+<p><code>nsCOMArray&lt;T&gt;</code> is a wrapper around nsTArray&lt;T&gt;, so it has a similar API. It enforces both typesafety and XPCOM reference counting by keeping an owning reference to each element in the array.</p>
+
+<h4 id="Usage" name="Usage">Usage</h4>
+
+<p>It is most often used as a member of a C++ class to store a list of well-typed XPCOM objects. It is also usually declared as an inline member rather than a pointer. As a class member, <code>nsCOMArray&lt;T&gt;</code> is preferred over <code>nsIArray</code> when access to the array is confined to the class itself.</p>
+
+<p>For example, here is its use in a class:</p>
+
+<pre class="eval">class NodeContainer {
+public:
+  void AddNode(nsINode* node);
+
+private:
+  nsCOMArray&lt;nsINode&gt; mNodes;
+};
+
+// typesafety of mNodes ensures that we only append an nsINode*
+void NodeContainer::AddNode(nsINode* node) {
+  mNodes.AppendObject(node);
+}
+
+</pre>
+
+<p><code>nsCOMArray&lt;T&gt;</code> can also be declared on the stack to collect a temporary list of objects and manipulate them. When the object goes out of scope, all its members are released.</p>
+
+<pre class="eval">void ProcessVisibleItems()
+{
+  // temporary stack-based nsCOMArray
+  nsCOMArray&lt;nsIFoo&gt; fooItems;
+  GetCompleteList(fooItems);
+
+  // now filter out non visible objects
+  // doing this backwards
+  PRUint32 i = fooItems.Count();
+  while (i &gt; 0) {
+    --i;
+    PRBool isVisible;
+    fooItems[i]-&gt;GetIsVisible(&amp;isVisible);
+    if (!isVisible) {
+      fooItems.RemoveObjectAt(i);
+    }
+  }
+
+  // now deal with the processed list
+  ProcessList(fooItems);
+
+  // fooItems will release all its members
+  // when it goes out of scope
+}
+</pre>
+
+<h4 id="Access_to_elements" name="Access_to_elements">Access to elements</h4>
+
+<p><code>nsCOMArray&lt;T&gt;</code> is a concrete C++ class, and so the [] operator is used to access its members. When using the [] operator, the reference count is unchanged. This allows direct processing of array elements without worrying about calling <code>Release()</code>.</p>
+
+<p>For example, this code calls the same method on each member:</p>
+
+<pre class="eval">void NotifyObservers(const nsCOMArray&lt;nsIMyObserver&gt;&amp; observers) {
+  // Using [] doesn't leak!
+  for (PRInt32 i = observers.Count() - 1; i &gt;= 0 ; i--)
+    observers[i]-&gt;Observe();
+}
+</pre>
+
+<p>Be careful with this though, you could end up with a weak pointer if you're converting from non-nsCOMArray code.</p>
+
+<pre class="eval">// old version, relied on automatic addref
+// mElements is an nsISupportsArray*
+void GetFirstObject(nsIElement** aResult) {
+  // no need to call NS_ADDREF - this does it for you
+  mElements-&gt;QueryElementAt(0, NS_GET_IID(nsIElement), (void**)aResult);
+}
+
+// new version, make sure to call NS_ADDREF()
+// mElements is now a nsCOMArray&lt;nsIElement&gt;
+void GetFirstObject(nsIElement** aResult) {
+  *aResult = mElements[0];
+  NS_ADDREF(*aResult);
+}
+</pre>
+
+<h4 id="Passing_as_a_parameter" name="Passing_as_a_parameter">Passing as a parameter</h4>
+
+<p>When passing <code>nsCOMArray&lt;T&gt;</code> among functions, the convention is to pass by reference. Also be sure to use const if you want to enforce that the array is read-only.</p>
+
+<p>Here is an example with a read-only and a writable array:</p>
+
+<pre class="eval">// array is read-only because of const
+void PrintSize(const nsCOMArray&lt;nsIElements&gt;&amp; elements) {
+ printf("There are %d elements.\n", elements.Count());
+}
+
+// no const, so we can modify the array
+void TweakArray(nsCOMArray&lt;nsIElement&gt;&amp; elements, nsIElement* newElement) {
+  elements.RemoveObjectAt(0);
+  elements.AppendObject(newElement);
+}
+</pre>
+
+<h4 id="In-place_enumeration" name="In-place_enumeration">In-place enumeration</h4>
+
+<p>The callback-based enumeration in <code>nsCOMArray&lt;T&gt;</code> is about as fast as, if not faster than, standard loop-based iteration. The callback mechanism can be useful when integrating with existing callback-style code however.</p>
+
+<p>One particularly nice thing about the callback mechanism is that it is typesafe. For instance:</p>
+
+<pre class="eval">PR_CALLBACK PRBool getFirstVisible(nsIElement* element, void* closure) {
+ PRBool isVisible;
+ element-&gt;IsVisible(&amp;isVisible);
+
+ // stop at first object
+ if (isVisible) {
+   NS_STATIC_CAST(ClosureObject*,closure)-&gt;element = element;
+   return PR_FALSE;
+ }
+ return PR_TRUE;
+}
+
+...
+// enumerate to find the object
+ClosureObject closureObject = { 0 };
+if (!mElements.EnumerateForwards(getFirstVisible, closureObject))
+  processElement(closureObject-&gt;element);
+...
+</pre>
+
+<h4 id="Enumerators" name="Enumerators">Enumerators</h4>
+
+<p>A <code>nsISimpleEnumerator</code> can be created to provide access to a <code>nsCOMArray&lt;T&gt;</code>. When the enumerator is created, it takes a snapshot of the elements in the array, so that the enumerator can outlive the array.</p>
+
+<p>To create the enumerator, use <code>NS_NewArrayEnumerator(nsISimpleEnumerator**, const nsCOMArray&lt;T&gt;&amp;)</code>.  For example:</p>
+
+<pre class="eval">// mElements is an nsCOMArray&lt;nsIElement&gt;
+nsFoo::GetElements(nsISimpleEnumerator** aResult) {
+  return NS_NewArrayEnumerator(aResult, mElements);
+}
+</pre>
+
+
+
+<div class="headingWithIndicator">
+<h3 id="Deleting_objects">Deleting objects</h3>
+<span class="geckoMinVerMethod indicatorInHeadline minVer">Requires Gecko 6.0(Firefox 6.0 / Thunderbird 6.0 / SeaMonkey 2.3)</span></div>
+
+
+
+<p>Gecko 6.0 (Firefox 6.0 / Thunderbird 6.0 / SeaMonkey 2.3) introduces the <code>RemoveObjectsAt()</code> method to <code>nsCOMArray&lt;T&gt;</code>. This lets you delete multiple objects from the array at once by specifying the index to the first item to delete as well as the number of items to delete.</p>
+
+<p>For example, to remove three objects, starting at the third object in the array (that is, the object with index value 2):</p>
+
+<pre>myArray.RemoveObjectsAt(2, 3);
+</pre>
+
+<h3 id="nsTArray.3CT.3E" name="nsTArray.3CT.3E">nsTArray&lt;T&gt;</h3>
+
+<p><code>nsTArray&lt;T&gt;</code> is a typesafe array for holding various objects. It can be used to hold objects directly, not just pointers to objects.</p>
+
+<h4 id="Usage" name="Usage">Usage</h4>
+
+<p>It is most often used as a member of a C++ class to store a list of well-typed objects. It is also usually declared as an inline member rather than a pointer.</p>
+
+<p>For example, here is its use in a class:</p>
+
+<pre class="eval">class MediaList {
+public:
+  void AddMedium(const nsString&amp; aMedium);
+
+private:
+  nsTArray&lt;nsString&gt; mMedia;
+};
+
+// typesafety of mMedia ensures that we only append an nsString
+void NodeContainer::AddMedium(const nsString&amp; aMedium) {
+  mMedia.AppendElement(aMedium);
+}
+
+</pre>
+
+<p><code>nsTArray&lt;T&gt;</code> can also be declared on the stack to collect a temporary list of objects and manipulate them. When the object goes out of scope, all its members have their destructors called. Note that if the <code>nsTArray&lt;T&gt;</code> holds pointers to objects, the objects will not be deleted (and hence not have their destructors called). You can work around this by using <code>nsTArray&lt;UniquePtr&lt;T&gt;&gt;</code> instead.</p>
+
+<pre class="eval">void ProcessVisibleItems()
+{
+  // temporary stack-based nsTArray
+  nsTArray&lt;FooStruct&gt; fooItems;
+  GetCompleteList(fooItems);
+
+  // now filter out non visible objects
+  // doing this backwards
+  PRUint32 i = fooItems.Length();
+  while (i &gt; 0) {
+    --i;
+    PRBool isVisible;
+    fooItems[i]-&gt;GetIsVisible(&amp;isVisible);
+    if (!isVisible) {
+      fooItems.RemoveElementAt(i);
+    }
+  }
+
+  // now deal with the processed list
+  ProcessList(fooItems);
+
+  // fooItems will call the destructors of all the FooStruct objects
+  // when it goes out of scope
+}
+</pre>
+
+<h4 id="Access_to_elements" name="Access_to_elements">Access to elements</h4>
+
+<p><code>nsTArray&lt;T&gt;</code> is a concrete C++ class, and so the [] operator is used to access its members.</p>
+
+<p>For example, this code calls the same method on each member:</p>
+
+<pre class="eval">void NotifyObservers(const nsTArray&lt;ObserverClass*&gt;&amp; observers) {
+  for (PRUint32 i = observers.Length(); i &gt; 0 ; ) {
+    --i;
+    observers[i]-&gt;Observe();
+  }
+}
+</pre>
+
+<h4 id="Bounds-safe_access_to_elements">Bounds-safe access to elements</h4>
+
+<p>You can also access elements in an <code>nsTArray&lt;T&gt;</code> using the <code>SafeElementAt()</code> method. This method is bounds-safe; that is, if you attempt to access an element outside the range of the array, a specified "safe" value is returned. For example:</p>
+
+<pre class="brush: js">var value = myArray.SafeElementAt(idx, defaultValue);
+
+if (value == defaultValue) {
+  /* the index idx was out of bounds, or the value at that index was the default value */
+}
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> As of <span title="(Firefox 8.0 / Thunderbird 8.0 / SeaMonkey 2.5)">Gecko 8.0</span>, if the element type is a pointer type, you can use the <code>SafeElementAt()</code> method without providing a default value. It returns a <code>null</code> pointer if the index is out of bounds.</p>
+</div>
+
+<div class="note">
+<p><strong>Note:</strong> As of <span title="(Firefox 10.0 / Thunderbird 10.0 / SeaMonkey 2.7)">Gecko 10.0</span>, if the element type is a smart pointer type, you can use the <code>SafeElementAt()</code> method without providing a default value. It returns the underlying pointer type or the <code>null</code> pointer if the index is out of bounds.</p>
+</div>
+
+<h4 id="Passing_as_a_parameter" name="Passing_as_a_parameter">Passing as a parameter</h4>
+
+<p>When passing <code>nsTArray&lt;T&gt;</code> among functions, the convention is to pass by reference. Also be sure to use <code>const</code> if you want to enforce that the array is read-only.</p>
+
+<p>Here is an example with a read-only and a writable array:</p>
+
+<pre class="eval">// array is read-only because of const
+void PrintSize(const nsTArray&lt;nsElement&gt;&amp; elements) {
+ printf("There are %d elements.\n", elements.Length());
+}
+
+// no const, so we can modify the array
+void TweakArray(nsTArray&lt;nsElement&gt;&amp; elements,
+                const nsElement&amp; newElement) {
+  elements.RemoveElementAt(0);
+  elements.AppendElement(newElement);
+}
+</pre>
+
+<h4 id="In-place_enumeration" name="In-place_enumeration">In-place enumeration</h4>
+
+<p>There are no enumerator objects that work on an <code>nsTArray&lt;T&gt;</code>.</p>
+
+<h2 id="Enumerators" name="Enumerators">Enumerators</h2>
+
+<p>Enumerators are very simple, structure-free objects for visiting each member of a set of objects. The enumerators are used as a generic interface for arrays, hashtables, and other constructs which contain one or more objects. When designing public interfaces, enumerators are the preferred mechanism for accessing these structures because they hide the details of the implementation behind the interface.</p>
+
+<h3 id="nsISimpleEnumerator" name="nsISimpleEnumerator">nsISimpleEnumerator</h3>
+
+<p><code>nsISimpleEnumerator</code> is a generic enumerator for enumerating a list of any XPCOM object. There are many implementations of <code>nsISimpleEnumerator</code>, including one that enumerates <code>nsIArray</code> objects, and another one for <code>nsCOMArray</code>. It is very common for other interfaces which support <code>nsISimpleEnumerator</code> to make their own implementations.</p>
+
+<h3 id="nsIStringEnumerator" name="nsIStringEnumerator">nsIStringEnumerator</h3>
+
+<p>String enumerators provide an easy way to pass a list of strings around with minimal copying. Both unicode strings and UTF8-encoded strings are supported. For more information about the different types of strings, see the String Guide.</p>
+
+<p>String enumerators can be created from <code>nsTArray&lt;nsString&gt;</code> or <code>nsTArray&lt;nsCString&gt;</code> objects. The implementation of the string enumerator interfaces for <code>nsTArray&lt;nsString&gt;</code> and <code>nsTArray&lt;nsCString&gt;</code> supports conversion between UTF8 and Unicode, and can be QueryInterface'd back and forth between <code>nsIStringEnumerator</code> and <code>nsIUTF8StringEnumerator</code>.</p>
+
+<p>To create an nsIStringEnumerator for an <code>nsTArray&lt;nsString&gt;</code>, you can use one of the variations of <code>NS_NewStringEnumerator</code>. There are also corresponding enumerators and helpers for UTF8 strings. In the examples below, <code>NS_NewUTF8StringEnumerator</code> can be used along with <code>nsIUTF8StringEnumerator</code> and <code>nsTArray&lt;nsCString&gt;</code>.</p>
+
+<p>This first example demonstrates the case where a class which owns an <code>nsTArray&lt;nsString&gt;</code>, and are returns an <code>nsIStringEnumerator</code> to a caller. You can use the variation of <code>NS_NewStringEnumerator</code> that ensures the owner of the array outlives the enumerator. This is necessary because nsStringArray is not reference counted. Without holding a reference to the owner, the enumerator could be left with a dangling pointer to a deleted <code>nsTArray&lt;nsString&gt;</code>.</p>
+
+<pre class="eval">class nsFoo : nsIFoo {
+...
+private:
+  nsTArray&lt;nsString&gt; mElementNames;
+};
+
+nsFoo::GetElementNames(nsIStringEnumerator** aResult)
+{
+  // pass in "this" to make sure the enumerator
+  // holds a reference to "this"
+  return NS_NewStringEnumerator(aResult, mElementNames, this);
+}
+</pre>
+
+<p>One variant of <code>NS_NewStringEnumerator</code> does not require an owner, but should only be used when the lifetime of the enumerator is known to be shorter than that of the array. Often this is used when a method must take a <code>nsIStringEnumerator</code> rather than an <code>nsStringArray</code>, due to some sort of interface constraint.</p>
+
+<pre class="eval">class nsFoo : nsIFoo {
+ ...
+ // when ProcessElements returns, the enumerator is at the
+ // end of the list, and can be released.
+ NS_IMETHODIMP ProcessNames(nsIStringEnumerator*);
+ private:
+
+ nsTArray&lt;nsString&gt; mElementNames;
+};
+
+...
+nsCOMPtr&lt;nsIStringEnumerator&gt; enumerator;
+NS_NewStringEnumerator(getter_AddRefs(enumerator), mElementNames);
+
+// now call a method on "this" that has a known behavior
+ProcessNames(enumerator);
+// now enumerator is used up, and can be released
+...
+</pre>
+
+<p>The last version of <code>nsIStringEnumerator</code> takes ownership of an <code>nsStringArray</code> and is responsible for freeing the array when the enumerator is used up.</p>
+
+<pre class="eval">void GetNames(nsIStringEnumerator** aResult)
+{
+ nsTArray&lt;nsString&gt; *resultArray = new nsTArray&lt;nsString&gt;;
+ resultArray-&gt;AppendString(str1);
+ resultArray-&gt;AppendString(str2);
+
+ // enumerator will free resultArray
+ return NS_NewAdoptingStringEnumerator(aResult, resultArray);
+}
+</pre>
+
+<p>As noted above, these implementations of <code>nsIStringEnumerator</code> can also be QueryInterface'd between <code>nsIStringEnumerator</code> and <code>nsIUTF8StringEnumerator</code>. The implementations will properly convert back and forth between UTF8 and Unicode. To ensure that you get the right implementation and the conversion is done in the right direction, make sure that you call the version of <code>NS_NewStringEnumerator</code> or <code>NS_NewUTF8StringEnumerator</code> that corresponds to the array type, not the enumerator type.</p>
+
+<p>For example, if a class has an internal <code>nsTArray&lt;nsCString&gt;</code> of UTF8 strings, but needs to implement an interface which returns an <code>nsIStringEnumerator</code>, it should use <code>NS_NewUTF8StringEnumerator</code>:</p>
+
+<pre class="eval">class nsFoo : nsIFoo {
+  ...
+  NS_IMETHOD GetStrings(nsIStringEnumerator** aResult);
+</pre>
+
+<pre class="eval">  private:
+  nsCStringArray mElementNames;
+};
+
+NS_IMETHODIMP
+nsFoo::GetStrings(nsIStringEnumerator** aResult) {
+  nsCOMPtr&lt;nsIUTF8StringEnumerator&gt; enumerator;
+  nsresult rv = NS_NewUTF8StringEnumerator(getter_AddRefs(enumerator),
+                                           mElementNames, this);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return CallQueryInterface(enumerator, aResult);
+}
+</pre>
+
+<h2 id="Obsolete_Arrays_and_Enumerators" name="Obsolete_Arrays_and_Enumerators">Obsolete Arrays and Enumerators</h2>
+
+<h3 id="nsISupportsArray" name="nsISupportsArray">nsISupportsArray</h3>
+
+<h3 id="nsIEnumerator_.28includes_nsIBidirectionalEnumerator.29" name="nsIEnumerator_.28includes_nsIBidirectionalEnumerator.29">nsIEnumerator (includes nsIBidirectionalEnumerator)</h3>

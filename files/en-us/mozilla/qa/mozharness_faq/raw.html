@@ -1,0 +1,424 @@
+<h3 id="Design_and_Architecture">Design and Architecture</h3>
+
+<h4 id="Q._Where_can_I_find_information_on_how_to_write_a_script">Q. Where can I find information on how to write a script?</h4>
+
+<p>A. Some of it is in this page but the most up-to-date information is in <a href="http://moz-releng-docs.readthedocs.org/en/latest/software.html#mozharness">Mozilla Releng readthedocs page</a>.</p>
+
+<h4 id="Q._What_does_mozharness_do_What_problems_does_it_solve_for_me"><strong><span class="author-g-jti5gfjw5bf4o4x2">Q.</span><span class="author-g-gmeqsyoivrkikiba"> What does mozharness do?  What problems does it solve for me?</span></strong></h4>
+
+<div id="magicdomid12"><span class="author-g-ijx5rjfb8o6e7gv5 i">A.<em>"Mozharness is a configuration-driven python script harness with full logging that allows production infrastructure and individual developers to use the same scripts."</em> </span></div>
+
+<div> </div>
+
+<dl>
+ <dt><span class="author-g-ijx5rjfb8o6e7gv5">designed to be able to run in multiple environments/platforms/configurations</span></dt>
+ <dd><span class="author-g-ijx5rjfb8o6e7gv5">Since mozharness allows for complex configuration, scripts don't need to hardcode as much behavior, and running a script on a different-but-similar system has a better chance of running (with a new configuration file).</span></dd>
+</dl>
+
+<dl>
+ <dt id="magicdomid18"><span class="author-g-ijx5rjfb8o6e7gv5">designed to be easier to debug or replicate problems</span></dt>
+ <dd>
+ <div id="magicdomid20"><span class="author-g-ijx5rjfb8o6e7gv5">The logs are often comprehensive enough to debug problems without running.</span></div>
+
+ <div id="magicdomid21"><span class="author-g-ijx5rjfb8o6e7gv5">When they're not enough, mozharness is designed to be able to run scripts standalone, without a full buildbot setup.</span></div>
+ </dd>
+</dl>
+
+<dl>
+ <dt id="magicdomid23"><span class="author-g-ijx5rjfb8o6e7gv5">designed to be able to iterate over small sections of code more easily</span></dt>
+ <dd>
+ <div id="magicdomid25"><span class="author-g-ijx5rjfb8o6e7gv5">When writing or debugging large pieces of automation, it can be time consuming to run through the entire thing over and over, when you really want to test and iterate on a section. Mozharness's actions allow you to run each action individually, or skip specific actions, or run a subset of the actions easily.</span></div>
+ </dd>
+</dl>
+
+<div id="magicdomid24">
+<h4 id="Q._What_are_the_parts_of_mozharness_and_how_do_they_all_fit_together"><span class="author-g-jti5gfjw5bf4o4x2">Q.</span><span class="author-g-gmeqsyoivrkikiba"> What are the parts of mozharness and how do they all fit together?</span></h4>
+
+<div id="magicdomid31"><span class="author-g-ijx5rjfb8o6e7gv5">A. Mozharness lives at </span><a href="http://hg.mozilla.org/build/mozharness/" title="/en-US/docs/">http://hg.mozilla.org/build/mozharness/</a>; its primary parts are as follows:</div>
+
+<div> </div>
+
+<ul>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.* contains generic script harness code: configuration, logging, vcs support, and the like. These libraries could be used anywhere.</span></li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.* contains mozilla-specific code. Talos support, Firefox unittest support, Firefox localization, code to interface with the existing Mozilla buildbot infrastructure.</span></li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">scripts/ contains the mozharness scripts.</span></li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">configs/ contains configuration files to run mozharness scripts on different platforms/branches/environments.</span></li>
+</ul>
+
+<div id="magicdomid39"><span class="author-g-ijx5rjfb8o6e7gv5">There are three core classes:</span></div>
+
+<div> </div>
+
+<dl>
+ <dt id="magicdomid41"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.script.BaseScript</span></dt>
+ <dd>
+ <div id="magicdomid43"><span class="author-g-ijx5rjfb8o6e7gv5">All scripts derive from this class. It provides the logic for actions, creates a self.log_obj and self.config (from MultiFileLogger and BaseConfig+ReadOnlyDict), as well as methods to do basic scripting with logging.</span></div>
+
+ <div id="magicdomid44"> </div>
+
+ <div id="magicdomid45"><span class="author-g-ijx5rjfb8o6e7gv5">For instance, self.mkdir_p(path) will basically os.makedirs(path), but will also log that we're doing so (via self.log_obj).  self.run_command() and self.get_output_from_command() allow the script to call other executables easily, while keeping information in the logs.</span></div>
+
+ <div id="magicdomid46"> </div>
+
+ <div id="magicdomid47"><span class="author-g-ijx5rjfb8o6e7gv5">BaseScript.run() makes the script go.</span></div>
+ </dd>
+</dl>
+
+<dl>
+ <dt id="magicdomid49"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.config.BaseConfig</span></dt>
+ <dd><span class="author-g-ijx5rjfb8o6e7gv5">This combines the initial script config, the config file, and the command line options into a single config, which becomes the BaseScript self.config. This config is locked (via ReadOnlyDict) at the end of BaseScript.__init__() and dumped to the logs for ease of debugging and more predictable behavior.</span></dd>
+</dl>
+
+<dl>
+ <dt id="magicdomid53"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.log.LogMixin</span></dt>
+ <dd>
+ <div id="magicdomid55"><span class="author-g-ijx5rjfb8o6e7gv5">Almost every mozharness object inherits this mixin at some level, to allow for the various log-level methods.</span></div>
+
+ <div id="magicdomid56"> </div>
+
+ <div id="magicdomid57"><span class="author-g-ijx5rjfb8o6e7gv5">If self.log_obj isn't set, we fall back to print's. If it is set to a subclass of BaseLogger (or otherwise compatible logging object that has a log_message() method), then we log through that object.</span></div>
+
+ <div id="magicdomid58"> </div>
+
+ <div id="magicdomid59"><span class="author-g-ijx5rjfb8o6e7gv5">By default, BaseScript uses MultiFileLogger as its log_obj, which creates a file per logging level.</span></div>
+ </dd>
+</dl>
+
+<div id="magicdomid61"><span class="author-g-ijx5rjfb8o6e7gv5">There are also a number of other classes and mixins that provide useful functionality but aren't required for all script/job types. This semi-complete list will most likely fall out of date at some point:</span></div>
+
+<div> </div>
+
+<ul>
+ <li id="magicdomid63"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.log.OutputParser - parses for errors from BaseScript.run_command()</span></li>
+ <li id="magicdomid64"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.parallel.ChunkingMixin - split a long list of items up into separate jobs.</span></li>
+ <li id="magicdomid65"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.signing.AndroidSigningMixin - Android signing</span></li>
+ <li id="magicdomid66"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.transfer.TransferMixin - uploading/downloading directories</span></li>
+ <li id="magicdomid67"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.base.vcs.vcsbase.VCSScript - provides mercurial functionality. More VCS support as they're added.</span></li>
+ <li id="magicdomid68"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.buildbot.BuildbotMixin - interface with buildbot and mozilla-specific buildbot setup</span></li>
+ <li id="magicdomid69"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.l10n.locales.LocalesMixin - localization support</span></li>
+ <li id="magicdomid70"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.l10n.multi_locale_build.MultiLocaleBuild</span></li>
+ <li id="magicdomid71"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.mock.MockMixin - mock_mozilla support</span></li>
+ <li id="magicdomid72"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.release.ReleaseMixin and SigningMixin - release automation support</span></li>
+ <li id="magicdomid73"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.testing.device.DeviceMixin - Android adb + sut device controlling support</span></li>
+ <li id="magicdomid74"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.testing.talos.Talos - talos support</span></li>
+ <li id="magicdomid75"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.testing.testbase.TestingMixin - unittest and talos support</span></li>
+ <li id="magicdomid76"><span class="author-g-ijx5rjfb8o6e7gv5">mozharness.mozilla.tooltool.TooltoolMixin - tooltool support</span></li>
+</ul>
+</div>
+
+<h4 id="Q._What_classes_of_mozharness_scripts_are_there_(or_should_there_be)_Tests_tools_etc."><span class="author-g-gmeqsyoivrkikiba">Q. What classes of mozharness scripts are there (or should there be)?  Tests, tools, etc.?</span></h4>
+
+<p><span class="author-g-gmeqsyoivrkikiba">A. </span><span class="author-g-ijx5rjfb8o6e7gv5">Right now mozharness is slated to replace buildbotcustom as MoCo releng's source of automation logic.</span></p>
+
+<div id="magicdomid83"><span class="author-g-ijx5rjfb8o6e7gv5">There are/will be scripts in mozharness for builds, tests, repacks, releases. We may also put machine maintenance type scripts here; anything we want run on releng build+test farms. At some point we will just be able to consider these compute farms, and mozharness will be what runs on that compute farm.</span></div>
+
+<div id="magicdomid84"> </div>
+
+<div id="magicdomid85"><span class="author-g-ijx5rjfb8o6e7gv5">Since mozharness is just a python harness, almost anything that can be written in Python could potentially be added to mozharness.</span></div>
+
+<h4 id="Q._I_want_to_write_a_mozharness_script_for_a_new_automation_problem._How_do_I_do_this">Q. <span class="author-g-gmeqsyoivrkikiba">I want to write a mozharness script for a new automation problem. </span>How do I do this?</h4>
+
+<div id="magicdomid90"><span class="author-g-ijx5rjfb8o6e7gv5">For your first mozharness script, it's probably easiest to use existing, similar scripts as examples; that's definitely easier than writing an entirely new type of script.</span></div>
+
+<div id="magicdomid91">
+<p><span class="author-g-ijx5rjfb8o6e7gv5">Split your script into logical chunks, or actions:</span></p>
+</div>
+
+<ul>
+ <li id="magicdomid93"><span class="author-g-ijx5rjfb8o6e7gv5">What actions are needed by some people or jobs, but not others?</span></li>
+ <li id="magicdomid94"><span class="author-g-ijx5rjfb8o6e7gv5">What actions could potentially be independent of others? For example, installing Firefox to run tests. You don't necessarily have to do this if you point to a pre-installed Firefox to run those tests. Or packaging after building. Or uploading the logs somewhere.</span></li>
+ <li id="magicdomid95"><span class="author-g-ijx5rjfb8o6e7gv5">Since actions can be run by themselves, or skipped, they're a logical place to split up a script's behavior.</span></li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">These will be listed in the script's all_actions. A default set of actions, if different from all_actions, is defined in default_actions. But the user can turn any or all actions on or off via command line options or config file.</span></li>
+ <li id="magicdomid97"><span class="author-g-ijx5rjfb8o6e7gv5">You need to have a method per action. This method will be named the same as the action, with underscores replacing dashes.</span></li>
+ <li id="magicdomid98"><span class="author-g-ijx5rjfb8o6e7gv5">If you want to define pre-action or post-action behavior, you can write optional preflight_actionname() and/or postflight_actionname() methods, again with underscores instead of dashes.</span></li>
+</ul>
+
+<div id="magicdomid100"><span class="author-g-ijx5rjfb8o6e7gv5">Figure out the different configurations that might be in play; these should be pre-defineable in either command line options or config files. (Complex data structures are best suited in config files; commonly overridden options should be available via command line.)</span></div>
+
+<h3 id="Coding">Coding</h3>
+
+<h4 id="Q._What_are_all_the_possible_mozharness_actions_and_what_dependencies_exist_between_them">Q. <span class="author-g-gmeqsyoivrkikiba">What are all the possible mozharness actions, and what dependencies exist between them?</span></h4>
+
+<p>A. <span class="author-g-ijx5rjfb8o6e7gv5">This is very much script- or script-family-specific. Any mozharness script can define any arbitrary list of all_actions. Each action has a matching method of the same name (after substituting underscores for dashes).</span></p>
+
+<div id="magicdomid108"><span class="author-g-ijx5rjfb8o6e7gv5">We attempt to make the actions standalone, so you could potentially run action #4 over and over without having to run actions 1-3 over and over as well. However, action #4 probably needs actions 1-3 to have run at some point (clone repos, download installers, etc.), or for the user to have manually done those steps beforehand.</span></div>
+
+<div id="magicdomid109"> </div>
+
+<div id="magicdomid110"><span class="author-g-ijx5rjfb8o6e7gv5">If you're asking what actions have been defined in existing scripts, a </span></div>
+
+<div id="magicdomid111"><span class="author-g-ijx5rjfb8o6e7gv5 b"><strong>    grep -r 'all_actions\s*=' .</strong></span></div>
+
+<div id="magicdomid112"><span class="author-g-ijx5rjfb8o6e7gv5">might be a good start. This will change, so a static list here will be obsoleted.</span></div>
+
+<div id="magicdomid113"> </div>
+
+<div id="magicdomid114"><span class="author-g-ijx5rjfb8o6e7gv5">Some actions with pre-written methods inside of mozharness.base.* or mozharness.mozilla.* include:</span></div>
+
+<div id="magicdomid115"> </div>
+
+<div id="magicdomid116"><span class="author-g-ijx5rjfb8o6e7gv5"># clobber</span></div>
+
+<div id="magicdomid117"><span class="author-g-ijx5rjfb8o6e7gv5"># pull</span></div>
+
+<div id="magicdomid118"><span class="author-g-ijx5rjfb8o6e7gv5"># list-locales (l10n)</span></div>
+
+<div id="magicdomid119"><span class="author-g-ijx5rjfb8o6e7gv5"># pull-locale-source (l10n)</span></div>
+
+<div id="magicdomid120"><span class="author-g-ijx5rjfb8o6e7gv5"># passphrase (android signing)</span></div>
+
+<div id="magicdomid121"><span class="author-g-ijx5rjfb8o6e7gv5"># create-virtualenv (python)</span></div>
+
+<div id="magicdomid122"><span class="author-g-ijx5rjfb8o6e7gv5"># read-buildbot-config (buildbot interface)</span></div>
+
+<div id="magicdomid123"><span class="author-g-ijx5rjfb8o6e7gv5"># download-and-extract (tests)</span></div>
+
+<div id="magicdomid124"><span class="author-g-ijx5rjfb8o6e7gv5"># install (tests)</span></div>
+
+<div id="magicdomid125"> </div>
+
+<div id="magicdomid126"><span class="author-g-ijx5rjfb8o6e7gv5">Perhaps a mozharness-level document like this won't be as useful for questions like this, as much as script-family level documentation. For instance, "What actions do TestMixin- (or LocalesMixin-, or ...?) based mozharness scripts have defined already and what do they do?"</span></div>
+
+<h4 id="Q._I_want_to_use_a_python_library_in_a_mozharness_script._How_can_I_do_that">Q. <span class="author-g-gmeqsyoivrkikiba">I want to use a python library in a mozharness script.  How can I do that? </span></h4>
+
+<div id="magicdomid130"><span class="author-g-ijx5rjfb8o6e7gv5">If it's a python built-in, you can import as normal. We currently support python 2.5.1 -&gt; 2.7.x, but we're moving towards having python 2.7.3 everywhere.</span></div>
+
+<div id="magicdomid131"> </div>
+
+<div id="magicdomid132"><span class="author-g-ijx5rjfb8o6e7gv5">If it's an external package, you most likely need mozharness to install it into your virtualenv (see PythonMixin.create_virtualenv()).</span></div>
+
+<div id="magicdomid133"> </div>
+
+<div id="magicdomid134"><span class="author-g-ijx5rjfb8o6e7gv5">If there's a commandline tool that's also installed (say, mozinstall), you can call it from self.run_command(). For instance, TestMixin.install() calls mozinstall like this: </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/3334bfde4eed/mozharness/mozilla/testing/testbase.py#l229">http://hg.mozilla.org/build/mozharness/file/3334bfde4eed/mozharness/mozilla/testing/testbase.py#l229</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> with a preflight check to make sure mozinstall is in the virtualenv, first: </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/3334bfde4eed/mozharness/mozilla/testing/testbase.py#l213">http://hg.mozilla.org/build/mozharness/file/3334bfde4eed/mozharness/mozilla/testing/testbase.py#l213</a></span>.</div>
+
+<div id="magicdomid135"> </div>
+
+<div id="magicdomid136"><span class="author-g-ijx5rjfb8o6e7gv5">If the external package doesn't have a commandline tool, you need to import it. However, since the module won't be available at the beginning of the script run, a bare |import module| will throw an exception before you create the virtualenv.</span></div>
+
+<div> </div>
+
+<div>
+<div id="magicdomid140"><span class="author-g-ijx5rjfb8o6e7gv5">I solved this in SUTDeviceHandler by importing the module in a method that isn't called until after the virtualenv is created.  </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/b8104340b600/mozharness/mozilla/testing/device.py#l444">http://hg.mozilla.org/build/mozharness/file/b8104340b600/mozharness/mozilla/testing/device.py#l444</a></span></div>
+</div>
+
+<h4 id="Q._I_want_to_use_a_python_library_in_a_patch_I'd_like_to_contribute_to_the_core_mozharness_classes._How_can_I_do_that">Q. <span class="author-g-gmeqsyoivrkikiba">I want to use a python library in a patch I'd like to contribute to the core mozharness classes. How can I do that?</span></h4>
+
+<p>A. <span class="author-g-ijx5rjfb8o6e7gv5">Same as above. A core mozharness class will usually need to handle things in a more generic way than standalone scripts, but that's true of most core classes.</span></p>
+
+<h4 id="Q._I've_just_finished_my_mozharness_script_and_think_it_should_live_inside_mozilla-central._Is_this_possible">Q. <span class="author-g-gmeqsyoivrkikiba">I've just finished my mozharness script, and think it should live inside mozilla-central. Is this possible?</span></h4>
+
+<p>A. <span class="author-g-ijx5rjfb8o6e7gv5">It's certainly possible, with the following caveats:</span></p>
+
+<ul>
+ <li id="magicdomid151"><span class="author-g-ijx5rjfb8o6e7gv5">if the script lives in mozilla-central, it still (probably) depends on mozharness.base.* and mozharness.mozilla.*. There needs to be some way to support that, whether it's cloning mozharness or checking a copy into m-c and maintaining that, pushing up to pypi, or some other approach.</span></li>
+ <li id="magicdomid152"><span class="author-g-ijx5rjfb8o6e7gv5">as of this writing, mozharness is undergoing constant change. Anything checked into mozilla-central or pushed to pypi would probably go out-of-date fairly quickly, and would need regular code drops.</span></li>
+ <li id="magicdomid153"><span class="author-g-ijx5rjfb8o6e7gv5">as described below, production mozharness jobs clone hg.m.o/build/mozharness, then run the script. If the script doesn't live in mozharness, we would have to alter this process. There would need to be a strong reason to do this.</span></li>
+</ul>
+
+<div id="magicdomid154"><span class="author-g-ijx5rjfb8o6e7gv5">This is complicated by the fact that only a subset of mozharness jobs require the tree, and most of those require a specific branch or revision in production. If the scripts and logic to do this lived in the tree, we would either need external logic to do this, or have the script update itself to a potentially conflicting version, and reload itself mid-script.</span></div>
+
+<h3 id="Configuration">Configuration</h3>
+
+<h4 id="Q._What_shouldcan_I_put_in_a_production_configuration_file_A_test_configuration_file">Q. <span class="author-g-gmeqsyoivrkikiba">What should/can I put in a production configuration file? A </span><span class="author-g-gmeqsyoivrkikiba">test configuration file?</span></h4>
+
+<p>A. <span class="author-g-ijx5rjfb8o6e7gv5">This actually is fairly script-dependent.</span></p>
+
+<div id="magicdomid167"><span class="author-g-ijx5rjfb8o6e7gv5">If we were to run, say, </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/scripts/configtest.py">http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/scripts/configtest.py</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> configtest.py in production, we wouldn't necessarily need a config file at all. We'd just need a python2 &gt;=2.5 with json or simplejson support.</span></div>
+
+<div id="magicdomid168"> </div>
+
+<div id="magicdomid169"><span class="author-g-ijx5rjfb8o6e7gv5">As you add functionality, the requirements grow.</span></div>
+
+<div id="magicdomid170"> </div>
+
+<div id="magicdomid171"><span class="author-g-ijx5rjfb8o6e7gv5">If you need to upload:</span></div>
+
+<ul>
+ <li id="magicdomid172"><span class="author-g-ijx5rjfb8o6e7gv5">Currently this is only doable on the build pool.</span></li>
+ <li id="magicdomid173"><span class="author-g-ijx5rjfb8o6e7gv5">The settings needed vary depending on try/non-try, project, etc.; this is probably best for questions or a longer external document.</span></li>
+</ul>
+
+<div id="magicdomid175"><span class="author-g-ijx5rjfb8o6e7gv5">If you need to create a virtualenv:</span></div>
+
+<ul>
+ <li id="magicdomid176"><span class="author-g-ijx5rjfb8o6e7gv5">You need to specify virtualenv_modules.</span></li>
+ <li id="magicdomid177"><span class="author-g-ijx5rjfb8o6e7gv5">We can't rely on pypi being up, and will be blocking access to the internet from the production pool, so specify a find_links list of internal servers like this: </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/linux_config.py#l13">http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/linux_config.py#l13</a></span>
+  <ul>
+   <li id="magicdomid178"><span class="author-g-ijx5rjfb8o6e7gv5">Currently also specify the pypi_url to an internal url, until </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="https://bugzil.la/795153">https://bugzil.la/795153</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> is fixed.</span></li>
+  </ul>
+ </li>
+ <li id="magicdomid179"><span class="author-g-ijx5rjfb8o6e7gv5">Python and virtualenv aren't in PATH for the test pool. You can specify these in your 'exes' definition in your config files.</span>
+  <ul>
+   <li id="magicdomid180"><span class="author-g-ijx5rjfb8o6e7gv5">For the mac and linux test pools, python is /tools/buildbot/bin/python; virtualenv is </span><span class="author-g-ijx5rjfb8o6e7gv5">['/tools/buildbot/bin/python', '/tools/misc-python/virtualenv.py']</span></li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">For the windows test pool, python is c:/mozilla-build/python27/python and virtualenv is [''c:/mozilla-build/python27/python', 'c:/mozilla-build/buildbotve/virtualenv.py']</span></li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">You also need to specify virtualenv_python_dll as 'c:/mozilla-build/python27/python27.dll' due to </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=700415#c50">https://bugzilla.mozilla.org/show_bug.cgi?id=700415#c50</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> and </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="https://bugs.launchpad.net/virtualenv/+bug/352844/comments/3">https://bugs.launchpad.net/virtualenv/+bug/352844/comments/3</a></span></li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">We probably want to have a fixed python install everywhere, but this works around this issue.</span></li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">you may need to specify the distribute_url and pip_url:</span>
+    <ul>
+     <li><span class="author-g-ijx5rjfb8o6e7gv5">"distribute_url": "</span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://puppetagain.pub.build.mozilla.org/data/python/packages/distribute-0.6.26.tar.gz">http://puppetagain.pub.build.mozilla.org/data/python/packages/distribute-0.6.26.tar.gz</a></span><span class="author-g-ijx5rjfb8o6e7gv5">"</span></li>
+     <li><span class="author-g-ijx5rjfb8o6e7gv5">"pip_url": "</span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://puppetagain.pub.build.mozilla.org/data/python/packages/pip-0.8.2.tar.gz">http://puppetagain.pub.build.mozilla.org/data/python/packages/pip-0.8.2.tar.gz</a></span><span class="author-g-ijx5rjfb8o6e7gv5">"</span></li>
+    </ul>
+   </li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">If you require pywin32, you need to add it to your virtualenv_modules (for windows only), and define easy_install like here: </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/windows_config.py#l24">http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/windows_config.py#l24</a></span></li>
+   <li><span class="author-g-ijx5rjfb8o6e7gv5">If you're using mozinstall to install Firefox, you need to define mozinstall like here: </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/windows_config.py#l26">http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/talos/windows_config.py#l26</a></span>
+    <ul>
+     <li><span class="author-g-ijx5rjfb8o6e7gv5">Essentially, windows security frowns on running anything with 'install' in the name. Calling 'python' with mozinstall or easy_install as an argument works around this issue.</span></li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">The build pool is probably somewhat different; we should update this list when we solve virtualenv on the build pool.</span></li>
+</ul>
+
+<div id="magicdomid193"><span class="author-g-ijx5rjfb8o6e7gv5">If your production script will be running a different set of actions than developers:</span></div>
+
+<ul>
+ <li id="magicdomid194"><span class="author-g-ijx5rjfb8o6e7gv5">Define a superset of all_actions.</span></li>
+ <li id="magicdomid195"><span class="author-g-ijx5rjfb8o6e7gv5">Define your in-script default_actions as the set that someone would use on the command line (developer centric).</span></li>
+ <li id="magicdomid196"><span class="author-g-ijx5rjfb8o6e7gv5">Define a set of production config files that overrides default_actions for the set of actions pertinent to production.</span></li>
+</ul>
+
+<div id="magicdomid198"><span class="author-g-ijx5rjfb8o6e7gv5">If you're running on the test pool or build pool:</span></div>
+
+<ul>
+ <li id="magicdomid199"><span class="author-g-ijx5rjfb8o6e7gv5">There are large differences between the test pool and build pool (and try pool), as the machines are configured differently.</span></li>
+ <li id="magicdomid200"><span class="author-g-ijx5rjfb8o6e7gv5">We need to document these changes more to allow for easier usage.</span></li>
+</ul>
+
+<div id="magicdomid202"><span class="author-g-ijx5rjfb8o6e7gv5">If the script needs mercurial:</span></div>
+
+<ul>
+ <li id="magicdomid203"><span class="author-g-ijx5rjfb8o6e7gv5">It needs to inherit MercurialScript.</span></li>
+ <li id="magicdomid204"><span class="author-g-ijx5rjfb8o6e7gv5">You can define a list of 'repos' like </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/multi_locale/mozilla-central_android.json#l8">http://hg.mozilla.org/build/mozharness/file/bb6851655e8d/configs/multi_locale/mozilla-central_android.json#l8</a></span><span class="author-g-ijx5rjfb8o6e7gv5">, which will get pulled when VCSScript.pull() is called (usually as an action).</span></li>
+ <li id="magicdomid205"><span class="author-g-ijx5rjfb8o6e7gv5">If it needs to run on Windows, set your exes['hg'] to 'c:/mozilla-build/hg/hg' for windows. This is because hg isn't in the default path in the build and test pools.</span></li>
+</ul>
+
+<div id="magicdomid207"><span class="author-g-ijx5rjfb8o6e7gv5">If your script will be run in ScriptFactory:</span></div>
+
+<ul>
+ <li id="magicdomid209"><span class="author-g-ijx5rjfb8o6e7gv5">It needs to inherit BuildbotMixin</span></li>
+ <li><span class="author-g-ijx5rjfb8o6e7gv5">It needs to run self.read_buildbot_config() at some point before referring to revision, branch, installer_url, or test_url. We've been doing this by adding a non-default read-buildbot-config action.</span>
+  <ul>
+   <li id="magicdomid210"><span class="author-g-ijx5rjfb8o6e7gv5">This will populate self.buildbot_config, which you can refer to.</span></li>
+  </ul>
+ </li>
+ <li id="magicdomid211"><span class="author-g-ijx5rjfb8o6e7gv5">The buildbot_json_path needs to be set to "buildprops.json".</span></li>
+</ul>
+
+<div id="magicdomid213"><span class="author-g-ijx5rjfb8o6e7gv5">These lists may not be complete and may change, but we can update this documentation over time.</span></div>
+
+<h4 id="Q._How_do_I_inherit_from_one_configuration_file_in_another_one">Q. <span class="author-g-gmeqsyoivrkikiba">How do I inherit from one configuration file in another one?</span></h4>
+
+<p><span class="author-g-gmeqsyoivrkikiba">A. </span><span class="author-g-ijx5rjfb8o6e7gv5">Currently you can't, and I'd like to discourage that approach.</span></p>
+
+<div id="magicdomid219"><span class="author-g-ijx5rjfb8o6e7gv5">The upside of flat config files is it's easy to annotate/blame/diff to see exactly who changed what, when. This is highly useful. The downside is there are more files to update when changing something that's shared amongst multiple config files.</span></div>
+
+<div id="magicdomid220"> </div>
+
+<div id="magicdomid221"><span class="author-g-ijx5rjfb8o6e7gv5">Inheriting/including/programmatically creating config has the reverse upside/downside. However, RelEng has gone so far down this route that we're forever trying to figure out what will change if we pull *this* string or who changed what, when, that affected this seemingly unrelated thing. We're moving towards dynamically creating flat configs (and checking those flat configs into revision control), which should hopefully give us a combination of upsides with fewer downsides.</span></div>
+
+<div id="magicdomid222"> </div>
+
+<div id="magicdomid223"><span class="author-g-ijx5rjfb8o6e7gv5">If we have to choose one upside/downside combination, it's my (Aki's) strong belief that optimizing for debugging + reading (read:  diff/blame/annotate) is more important than optimizing for writing, since we're going to read these configs a lot more than we're going to write them.</span></div>
+
+<div id="magicdomid224"> </div>
+
+<div id="magicdomid225"><span class="author-g-ijx5rjfb8o6e7gv5">However, when </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=779294">https://bugzilla.mozilla.org/show_bug.cgi?id=779294</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> is resolved, you should be able to specify multiple config files on the command line, and there will be rules as to what to do with conflicting config entries. Hopefully this will allow us to easily override things in certain cases, without potentially duplicating large swaths of configs in dozens of files.</span></div>
+
+<div id="magicdomid226"> </div>
+
+<div id="magicdomid227"><span class="author-g-ijx5rjfb8o6e7gv5">Also, I don't mind having tools to easily compare config files, or build new ones programmatically, as long as the final flat configs are checked in for easy reading, diff, annotate, blame, etc.</span></div>
+
+<h4 id="Q._Is_there_a_'master'_production_configuration_file_that_I_can_use">Q. <span class="author-g-gmeqsyoivrkikiba">Is there a 'master' production configuration file that I can use?</span></h4>
+
+<p><span class="author-g-gmeqsyoivrkikiba">A</span>. <span class="author-g-ijx5rjfb8o6e7gv5">No, and this doesn't necessarily make sense when you consider that "production configuration file" could refer to an Android multilocale build, Android signing, an l10n repack, a b2g build, a Firefox windows desktop unittest, or any other of a number of wildly disparate tasks.</span></p>
+
+<div id="magicdomid233"><span class="author-g-ijx5rjfb8o6e7gv5">There isn't a lot in common between </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/b8104340b600/configs/marionette/windows_config.py">http://hg.mozilla.org/build/mozharness/file/b8104340b600/configs/marionette/windows_config.py</a></span><span class="author-g-ijx5rjfb8o6e7gv5"> and </span><span class="author-g-ijx5rjfb8o6e7gv5 url"><a href="http://hg.mozilla.org/build/mozharness/file/b8104340b600/configs/multi_locale/release_mozilla-release_android.json">http://hg.mozilla.org/build/mozharness/file/b8104340b600/configs/multi_locale/release_mozilla-release_android.json</a></span><span class="author-g-ijx5rjfb8o6e7gv5">, for example.</span></div>
+
+<div id="magicdomid234"> </div>
+
+<div id="magicdomid235"><span class="author-g-ijx5rjfb8o6e7gv5">We are starting to see "families" of scripts forming that do have a significant amount of overlap, however. We can consolidate, or share, or logically split these up to take advantage of the multiple-config-files in bug 779294 when that's done. We haven't tried to do this at the outset until obvious patterns and use cases emerged, but once those are apparent people can spend time to make this easier or more logical.</span></div>
+
+<h4 id="Q._What_is_httphg.mozilla.orgbuildmozharnessfiletipconfigsusers_for">Q. What is <a href="http://hg.mozilla.org/build/mozharness/file/tip/configs/users">http://hg.mozilla.org/build/mozharness/file/tip/configs/users</a> for?</h4>
+
+<p>A. In theory people could check in their configuration files here without affecting production configs. This might not be the best place, and we may very well just remove this location. But if this is useful for people to keep their configs in a shareable, easy-to-access-from-mozharness location, we can keep it.<br>
+ One benefit of keeping development configs here is if someone makes changes (e.g., obsoletes a config variable, changes a config variable, adds a new required config variable, etc.), it's easy to search for config files that need to be updated and either do so or contact the owner.</p>
+
+<h4 id="Q._Where_should_production_configuration_go_Can_it_go_in_say_mozilla-central">Q. Where should production configuration go? Can it go in, say, mozilla-central?</h4>
+
+<p>A. It should go in mozharness/configs.</p>
+
+<p>The problem with putting a production configuration file in mozilla-central is that mozharness needs the config file at the beginning of the script run.<br>
+ So to run the mozharness script, you need something that knows how to check out mozilla-central (or is it another branch? what branch?) and gets it to the right revision (what revision?) and then calls the mozharness script.</p>
+
+<p>Mozharness scripts currently run under ScriptFactory in buildbot, which essentially clones a repo (hg.m.o/build/mozharness in this case), then runs a command line. If the config file isn't on the slave at this point, we've got problems.</p>
+
+<p>Could we allow for this? Possibly. Unless we have a strong set of reasons to change this, however, production configs should go in mozharness/configs.<br>
+ (The config file can, however, point at external files for additional configuration. See: buildprops.json, talos.json, etc. But the config file itself should live in mozharness/configs/.)</p>
+
+<p>Non-production configs can live wherever.</p>
+
+<h3 id="Interaction_with_Other_Components">Interaction with Other Components</h3>
+
+<h4 id="Q._How_do_mozharness_and_buildbot_interact_What_do_I_need_to_know_about_buildbot_to_write_a_good_mozharness_script_or_config_What_do_I_need_to_know_about_build_or_test_slaves">Q. How do mozharness and buildbot interact? What do I need to know about buildbot to write a good mozharness script or config? What do I need to know about build or test slaves?</h4>
+
+<p>A.  As a caveat, we see mozharness as an easier way to contribute than anything touching buildbot, for those unfamiliar with our infrastructure. However, we also want to avoid having multiple projects bottleneck on having one or two release engineers staging everything.</p>
+
+<p>We have hooks in buildbotcustom for easier definitions of mozharness tests, at least.</p>
+
+<p>The marionette configs are a good example of how to define additional mozharness tests:<br>
+ <a href="http://hg.mozilla.org/build/buildbot-configs/file/cdde16c17256/mozilla-tests/config.py#l1075" title="http://hg.mozilla.org/build/buildbot-configs/file/cdde16c17256/mozilla-tests/config.py#l1075">http://hg.mozilla.org/build/buildbot-configs/file/cdde16c17256/mozilla-tests/config.py#l1075</a></p>
+
+<p>When mozharness unittests and talos merge into mozilla-central ( <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=713055" title="https://bugzilla.mozilla.org/show_bug.cgi?id=713055">https://bugzilla.mozilla.org/show_bug.cgi?id=713055</a> and <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=793022" title="https://bugzilla.mozilla.org/show_bug.cgi?id=793022">https://bugzilla.mozilla.org/show_bug.cgi?id=793022</a> ), the layout of mozilla-tests/config.py may change considerably.</p>
+
+<p>For other non-test automation, you will probably also have to add hooks in buildbotcustom/misc.py. This will probably be a lot more involved, and probably would best involve a discussion with releng first.</p>
+
+<h4 id="Q._How_do_mozharness_scripts_and_Treeherder_interact_How_do_I_get_the_output_of_my_test_run_to_show_up_correctly_in_Treeherder">Q. How do mozharness scripts and Treeherder interact? How do I get the output of my test run to show up correctly in Treeherder?</h4>
+
+<p>A.  Currently, Treeherder gets its Buildbot data from <a href="http://builddata.pub.build.mozilla.org/buildjson/builds-4hr.js.gz" title="http://builddata.pub.build.mozilla.org/buildjson/builds-4hr.js.gz">http://builddata.pub.build.mozilla.org/buildjson/builds-4hr.js.gz</a>. That json file is generated from buildbot. There is currently no way to inject any additional or different data into that file, however you can use treeherder-client to submit data directly to Treeherder.</p>
+
+<p>In general, when adding a new test, you can add it to Treeherder via something like this:<br>
+ <a href="https://github.com/mozilla/treeherder-service/commit/f976b93b1bdee5d89a7b355f2ab74d93ca6eb9a6" title="https://github.com/mozilla/treeherder-service/commit/f976b93b1bdee5d89a7b355f2ab74d93ca6eb9a6">https://github.com/mozilla/treeherder-service/commit/f976b93b1bdee5d89a7b355f2ab74d93ca6eb9a6</a></p>
+
+<p>A new build platform:<br>
+ <a href="https://github.com/mozilla/treeherder-service/commit/c370f477e2fa77d1c9efbb772fbe000a19106543" title="https://github.com/mozilla/treeherder-service/commit/c370f477e2fa77d1c9efbb772fbe000a19106543">https://github.com/mozilla/treeherder-service/commit/c370f477e2fa77d1c9efbb772fbe000a19106543</a></p>
+
+<h3 id="Testing">Testing</h3>
+
+<h4 id="Q._How_can_test_my_mozharness_code_changes_in_treeherder">Q. How can test my mozharness code changes in treeherder?</h4>
+
+<p>A. You can modify testing/mozharness/mozharness.json, point to your own user repository and push it to try. Read more in <a href="http://armenzg.blogspot.ca/2014/11/pinning-mozharness-from-in-tree-aka.html">here</a>.</p>
+
+<p>NOTE: Use hg branch names instead of bookmarks with mozharness.json</p>
+
+<h4 id="Q._I_want_to_run_a_mozharness_script_in_a_manner_with_parity_to_production._How_do_I_do_this">Q. I want to run a mozharness script in a manner with parity to production. How do I do this?</h4>
+
+<p>A. This depends on what you mean by "in a matter with parity to production".</p>
+
+<p>As we add more mozharness scripts and script families to production, we'll have better answers for these questions, but as we're adding swaths of new automation, we're having some growing pains.</p>
+
+<p>You can test locally, which I encourage. But this isn't necessarily going to test all production platforms, and especially not all production platform configurations.<br>
+ You can have buildduty loan you a machine, which would definitely make sure the script could run on production platform configurations. If this covered all production platforms, there would be a strong likelihood of things working when rolling out, but it wouldn't necessarily cover the buildbot &lt;-&gt; script interaction.<br>
+ We also are going to be helping some people set up their own staging environments which would help test the buildbot portion of the automation as well.<br>
+ <a href="https://wiki.mozilla.org/ReleaseEngineering/How_To/Setup_Personal_Development_Master" title="https://wiki.mozilla.org/ReleaseEngineering/How_To/Setup_Personal_Development_Master">https://wiki.mozilla.org/ReleaseEngineering/How_To/Setup_Personal_Development_Master</a></p>
+
+<p>A project that may help at some point in the future is mozharness try, which would allow for running scripts in an environment similar to production:<br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=791924" title="https://bugzilla.mozilla.org/show_bug.cgi?id=791924">https://bugzilla.mozilla.org/show_bug.cgi?id=791924</a></p>
+
+<p>A lot of testing can be done without having these full environments set up, but not all of it. It depends on the scope and level of risk in the change.<br>
+ (A dirty not-so-secret: our best attempts at staging everything outside production have still missed some testing for large scale projects.<br>
+ We try to have full staging runs that are "with parity" by doing the same things, but in ways that only affect staging reporting, or staging uploads. This requires having a setup like production but separate. In practice, this tends to miss small testing elements: for instance, whilst we have a staging Treeherder instance, its only for testing Treeherder changes since it still uses production buildbot data. And since our staging pool of machines is so much smaller, we don't always get full end-to-end testing on all platforms and branches on all affected builders/testers.</p>
+
+<p>For full, 100% parity, the job would likely need to be in production itself, with everything that applies. However, this would most likely negatively affect other people. Usually when testing, you want to avoid affecting production in any way.)</p>
+
+<h4 id="Q._How_can_I_test_my_mozharness_scriptsconfigs">Q. How can I test my mozharness scripts/configs?</h4>
+
+<p>A. Absent the above, you can also test locally.</p>
+
+<p>unit.sh runs python nosetests on mozharness. Best practice says we should add tests for whatever new code we write. In practice, this hasn't been the case, but this will become more important as the code base grows and more changes from multiple developers come in.</p>
+
+<p>(It's not always possible to write tests that can be run locally for all tests: if they require a platform or environment you don't have locally, for example. Someone had a suggestion for how to return pre-cooked output from "fake" external scripts or tools for testing; we need to investigate this.)</p>
+
+<p>As you write a script, if you're splitting actions up to be individual chunks as you should, you can test them individually and make sure they do what you expect before moving on to the next one: does this action clobber the directory as expected? Does this one populate the directory tree as expected? Does this one build or package or install or whatever it is, the way it should?</p>
+
+<p>(You can call an action individually by --ACTIONNAME. You can skip an action by --no-ACTIONNAME. You can add an action to the list of default actions by --add-action ACTIONNAME. You can run two or more actions by --ACTIONNAME1 --ACTIONNAME2.)</p>

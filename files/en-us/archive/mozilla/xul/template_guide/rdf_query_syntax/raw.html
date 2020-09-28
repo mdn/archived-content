@@ -1,0 +1,51 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Result_Generation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/Actions">Next  »</a></p>
+</div>
+<p>Let's look at a simple query with two statements. Each statement is placed as a direct child of the &lt;query&gt; element within the template.</p>
+<pre>&lt;vbox datasources="http://www.xulplanet.com/ds/sample.rdf"
+         ref="http://www.xulplanet.com/rdf/A"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;triple subject="?start"
+              predicate="http://www.xulplanet.com/rdf/relatedItem"
+              object="?relateditem"/&gt;
+    &lt;/query&gt;
+    &lt;rule&gt;
+      ...
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p>This query has two statements, each specified with a different tag. The template won't generate anything yet since we still need to fill in the content to be generated which goes in the missing part inside the rule. However, the template builder will be able to compile the rules and examine them as described earlier.</p>
+<p>The builder needs to start with a single result as the seed result. This is done with the <code><a href="/en-US/docs/Mozilla/Tech/XUL/content" title="content">content</a></code> tag. It indicates that we are going to use a starting point when navigating the graph. Obviously, since you need to start somewhere, you will have to use a <code>content</code> tag and it should be the first statement. Also, because we can only have one starting point, only one <code>content</code> tag can be used. The seed result will be created like this:</p>
+<pre>(?start = http://www.xulplanet.com/rdf/A)
+</pre>
+<p>The variable ?start is determined from the tag's 'uri' attribute. You can use any variable you want; it's common to use the variable ?uri. <strong>However, all rules must use the same starting point variable</strong>. So if a second rule were used, it would also need to use the ?start variable. The value of ?start is set to '<span class="nowiki">http://www.xulplanet.com/rdf/A</span>'. You'll notice that this is the value of the ref attribute which is the desired starting node in the RDF graph. Thus, the ?start variable becomes the container or reference variable.</p>
+<p>Actually, in the current template implementation, the above description isn't quite correct. The seed is actually an internal variable set to the container, in this case, the <code><a href="/en-US/docs/Mozilla/Tech/XUL/vbox" title="vbox">vbox</a></code>, and the ?start variable is set to the ref later, but that is a minor detail that doesn't make templates more understandable. For this discussion, assume that so far we have a single potential result as above.</p>
+<p>The <code>content</code> tag doesn't do anything else at this point, meaning it doesn't add anything else to the network of potential results, so processing continues on to the next statement, the <code><a href="/en-US/docs/Mozilla/Tech/XUL/triple" title="triple">triple</a></code>, which looks like this:</p>
+<pre>&lt;triple subject="?start"
+        predicate="http://www.xulplanet.com/rdf/relatedItem"
+        object="?relateditem"/&gt;
+</pre>
+<p>The <code>triple</code> statement is used to follow arcs or arrows in the RDF graph. The predicate attribute specifies the labels of the arrows to follow. In the triple used here, the predicate is '<span class="nowiki">http://www.xulplanet.com/rdf/relatedItem</span>', so we know that the builder will look for arrows with that label. The builder can either follow the arrows in a forward or backward direction, but only one direction per statement. It determines which direction to use by examining which data is known and which data is not known yet. Recall the data in the potential results set:</p>
+<pre>(?start = http://www.xulplanet.com/rdf/A)
+</pre>
+<p>This was the seed data created by the <code>content</code> statement. You might be able to guess that the builder fills in the value of the ?start variable as the triple's subject, giving something like this:</p>
+<pre>&lt;triple subject="http://www.xulplanet.com/rdf/A"
+        predicate="http://www.xulplanet.com/rdf/relatedItem"
+        object="?relateditem"/&gt;
+</pre>
+<p>The builder doesn't actually change the triple, but this might clarify how the builder is working. The builder looks at both the subject and object of the triple and tries to resolve any of the variables using the known data. The ?start variable has a value '<span class="nowiki">http://www.xulplanet.com/rdf/A</span>', so that is filled in. The ?relateditem variable doesn't have any known value, so it will be left as is. Once the variables are filled in, the builder can query the RDF graph.</p>
+<p>The query will look for all arrows that start at the node '<span class="nowiki">http://www.xulplanet.com/rdf/A</span>' with the predicate (or arrow label) '<span class="nowiki">http://www.xulplanet.com/rdf/relatedItem</span>'. Since ?relateditem isn't known, the builder will allow any value for the node the arrow points to, and will look in the datasource for all possible values. In a <code>triple</code> statement, the subject is always the start of an arc, while the object is what it points to. For this triple, the builder will follow the arrows in the forward direction. Here is the RDF graph again:</p>
+<p><img alt="Image:Template-guide-p2.png" class="internal" src="/@api/deki/files/394/=Template-guide-p2.png"></p>
+<p>Starting at node A and following the relatedItem arcs, we can see that there are three possible values for the ?relateditem variable, B, C and D. This is new data, so the builder adds it to the graph. Since three values have been found, the network will now have three potential results:</p>
+<pre>(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/B)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/C)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/D)
+</pre>
+<p>You may note that the ?start variable is repeated for each result. This is because the builder copies the existing data for each new potential result and adds the new data. Internally, this isn't quite true; the builder actually maintains only one copy of the similar data but uses data structures in such a way which make it appear as if it were duplicated.</p>
+<p>You may find this a bit confusing, but this should become clearer later with more specific and practical examples. Since the <code>triple</code> was the last statement, the builder moves on to the content generation phase, creating matches out of the three potential results.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Result_Generation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/Actions">Next  »</a></p>
+</div>

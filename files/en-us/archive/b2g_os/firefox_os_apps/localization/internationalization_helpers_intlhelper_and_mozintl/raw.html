@@ -1,0 +1,192 @@
+<div class="hidden">{{IncludeSubnav("/en-US/docs/Archive/B2G_OS")}}</div>
+
+<div class="blockIndicator draft">
+<p><strong>Draft</strong><br>
+ This page is not complete.</p>
+</div>
+
+<p>This article looks at how Firefox OS handles localization of dates, times, numbers and collators from version 2.5 onwards, using the <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl">Internationalization API</a> and Gaia's built in helpers, <a class="external external-icon" href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/intl_helper.js">IntlHelper</a> and <a class="external external-icon" href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/moz_intl.js">mozIntl</a>.</p>
+
+<h2 id="The_Internationalization_API">The Internationalization API</h2>
+
+<p>The <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl">Internationalization API</a> (Intl API) is a built-in JavaScript feature that has been supported in modern browsers for some time now. It provides a standard approach for implementing locale-aware dates, times, etc. Let's look at a simple example to show typical usage — here we use the <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toLocaleString">toLocaleString() method</a> on the <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date">Date</a> object to return a locale dependant day and month:</p>
+
+<pre class="brush: js;">var date = new Date();
+date.toLocaleString(navigator.languages, {
+  day: 'numeric',
+  month: 'numeric'
+});</pre>
+
+<p>And here we use <code>mozHour12</code> to return locale-dependant 12 hours times (this currently requires adding <a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/date_time_helper.js">date_time_helper.js</a> to your page — we'll move this functionality into Gecko soon):</p>
+
+<pre class="brush: js;">date.toLocaleString(navigator.languages, {
+  hour12: navigator.mozHour12,
+  hour: 'numeric',
+  minute: 'numeric'
+});</pre>
+
+<p>The final example shows how to create a more general localizable 2 decimal place value:</p>
+
+<pre class="brush: js;">value.toLocaleString(navigator.languages, {
+  style: 'decimal',
+  useGrouping: false,
+  minimumIntegerDigits: 2
+});</pre>
+
+<p>We are using some common patterns across all our future localization code in Gaia — these can be considered best practices to use in third party apps too:</p>
+
+<ul>
+ <li>Using <a href="/en-US/docs/Web/API/NavigatorLanguage/languages">navigator.languages</a> for the first argument.</li>
+ <li>Taking <code>hour12</code> from <code>navigator.mozHour12</code>.</li>
+ <li>Putting every number displayed in the UI through <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/NumberFormat">NumberFormat</a>.</li>
+ <li>Putting every date and time displayed in the UI through <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/DateTimeFormat">DateTimeFormat</a>.</li>
+ <li>Putting every sorting and text searching operation performed in an app through <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Collator">Collator</a>.</li>
+</ul>
+
+<h3 id="Issues_with_the_vanilla_Intl_API">Issues with the vanilla Intl API</h3>
+
+<p>This API is fine, but there are some problems to consider. First, it's not very fast — this method creates a new formatter on every call, which is not good for performance-sensitive code.</p>
+
+<p>To mitigate this, the Intl API provides a way to offload the costly part and create a formatter that you can then use in your calculations:</p>
+
+<pre class="brush: js;">var formatter = Intl.DateTimeFormat(navigator.languages, {
+  day: 'numeric',
+  month: 'numeric'
+});
+
+for (var i = 0; i &lt; messages.length; i++) {
+  messages[i].dateElement.textContent = formatter.format(messages[i].date);
+}</pre>
+
+<p>Second, it doesn't work well with language changes and time format (12/24h clock) changes on fly. This is where our IntlHelper Gaia library comes in.</p>
+
+<h2 id="IntlHelper">IntlHelper</h2>
+
+<p><a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/intl_helper.js">IntlHelper</a> allows you to define and name your internationalization formatters and collators up front — and cache and reuse them; it also enables you to refire formatting/sorting/searching functions whenever your Intl object is affected by some change. The main goal of it is to help developers cache patterns and update when the formatter gets updated (on <code>timeformatchange</code> for time formatters, on <code>languagechange</code> for all formatters, probably others in the future.)</p>
+
+<p>To use it, you can follow a pattern similar to this:</p>
+
+<pre class="brush: js;">IntlHelper.define('shortDate', 'datetime', {
+  day: 'numeric',
+  month: 'numeric'
+});
+
+function setValue() {
+  const formatter = IntlHelper.get('shortDate');
+  element.textContent = formatter.format(currentDate);
+}
+
+setValue();
+
+IntlHelper.observe('shortDate', setValue); // first argument may be an array of multiple names if setValue reformats multiple</pre>
+
+<p>Including the observer means that any time the formatter has to be recreated, <code>setValue()</code> will be fired, recreating it automatically.</p>
+
+<p>Here's another, slightly more involved example:</p>
+
+<pre class="brush: js;">IntlHelper.define('digit-padding', 'number', {
+  style: 'decimal',
+  useGrouping: false,
+  minimumIntegerDigits: 2
+});
+
+IntlHelper.define('shorttime', 'datetime', {
+  hour: 'numeric',
+  minute: 'numeric'
+});
+
+function setIntlValues() {
+  var numFormatter = IntlHelper.get('digit-padding');
+  var value = minElem.getAttribute('data-value');
+
+  minElem.setAttribute('data-l10n-args', JSON.stringify({minutes: numFormatter.format(value)}));
+
+  var timeFormatter = IntlHelper.get('shorttime');
+
+  timeElem.textContent = timeFormatter.format(alarm.startTime);
+}
+
+IntlHelper.observe(['shorttime', 'digit-padding'], setIntlValues);</pre>
+
+<p>IntlHelper can also handle time formatting automatically, for example:</p>
+
+<pre class="brush: js;">IntlHelper.define('shortTime', 'datetime', {
+  hour: 'numeric',
+});
+
+function setValue() {
+  const formatter = IntlHelper.get('shortTime');
+  element.textContent = formatter.format(currentTime);
+}
+
+setValue();
+
+IntlHelper.observe('shortTime', setValue);
+</pre>
+
+<p>In this case Gaia will recognize that the formatter uses <code>hour</code> and fire the <code>setValue()</code> callback when the time format changes and add it to the <code>DateTimeFormat()</code> options for you.</p>
+
+<div class="note">
+<p><strong>Note</strong>: In the future we'll also handle pseudo-locales in IntlHelper.</p>
+</div>
+
+<h2 id="mozIntl">mozIntl</h2>
+
+<p><a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/moz_intl.js">mozIntl</a> is an extension of the Intl API — it provides features that are under consideration for adding to the Intl API, but that we want to centralize and use ahead of time.</p>
+
+<p>Bear in mind that for successful localization, properties will need to be defined as expected (see <a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/locales/date/date.en-US.properties">shared/locales/date/date.en-US.properties</a> for an example) to work, but mozIntl does provide extended features for date, time, duration and list formatting.</p>
+
+<p>This library currently includes five helper methods, documented below.</p>
+
+<h3 id="mozIntl.formatList()">mozIntl.formatList()</h3>
+
+<p>Allows you to format lists according to locale, for example <code>John, Mary, Nick</code>.</p>
+
+<p>In the future we will allow for more informal list formatting such as <code>John, Mary and Nick</code>.</p>
+
+<h3 id="mozIntl.DateTimeFormat()">mozIntl.DateTimeFormat()</h3>
+
+<p>Extends <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/DateTimeFormat">Intl.DateTimeFormat</a> with two new features:</p>
+
+<h4 id="Dayperiod_token_removal">Dayperiod token removal</h4>
+
+<pre class="brush: js;">mozIntl.DateTimeFormat(navigator.languages, {
+  hour12: navigator.mozHour12,
+  hour: 'numeric',
+  minute: 'numeric',
+  dayperiod: false
+});</pre>
+
+<p>This will advance time without the dayperiod token. This was needed for a number of apps such as Lockscreen and Systemm, but it is not recommended for most code.</p>
+
+<h4 id="Token_formatting">Token formatting</h4>
+
+<pre class="brush: js;">var formatter = mozIntl.DateTimeFormat(navigator.languages, {
+  hour12: navigator.mozHour12,
+  hour: 'numeric',
+  minute: 'numeric',
+});
+
+formatter.format(date, {
+  dayperiod: "&lt;small&gt;$&amp;&lt;/small&gt;"
+});</pre>
+
+<p>This will produce <code>10:12 &lt;small&gt;am&lt;/small&gt;</code>.</p>
+
+<p>It could also be used to create <code>Saturday, July &lt;strong&gt;23&lt;/strong&gt;</code>, for example.</p>
+
+<h3 id="mozIntl.calendarInfo()">mozIntl.calendarInfo()</h3>
+
+<p>Returns the <code>firstDayOfTheWeek</code> token. In the future we will add more options such as <code>weekendStarts</code>, <code>weekendEnds</code> and other calendaring information for a given locale.</p>
+
+<h3 id="mozIntl.DurationFormat()">mozIntl.DurationFormat()</h3>
+
+<p>Allows you to format integers with milliseconds into a duration format (like the one the Timer app uses) — <code>hh:mm:ss</code> or <code>mm:ss.SS</code>.</p>
+
+<h3 id="mozIntl.RelativeTimeFormat()">mozIntl.RelativeTimeFormat()</h3>
+
+<p>Allows the creation of relative time formats like "5 minutes ago", "in 5 minutes", etc.</p>
+
+<div class="note">
+<p><strong>Note</strong>: The different features are also documented in the source code (linked above), including some useful examples.</p>
+</div>

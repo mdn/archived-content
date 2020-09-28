@@ -1,0 +1,126 @@
+<p><strong>Web UI:</strong> <a href="https://screenshots.mattn.ca/compare/">screenshots.mattn.ca/compare/</a><br>
+ <strong>Capture source: </strong>{{ source("browser/tools/mozscreenshots/") }} (requires full `./mach build` if you change files under extension/)<br>
+ <strong>Chat channel:</strong> <a href="https://matrix.to/#/!TbPWpVdPIiwHphiwux:mozilla.org?via=mozilla.org">#mozscreenshots</a><br>
+ <strong>Alert mailing list:</strong> <a href="https://www.mozilla.org/en-US/about/forums/#dev-ui-alerts">mozilla.dev.ui-alerts</a><br>
+ <strong>Code and issues for web, fetch and compare:</strong> <a href="https://github.com/mnoorenberghe/mozscreenshots">github.com/mnoorenberghe/mozscreenshots</a><br>
+ <strong>Component for mozscreenshots harness bugs: </strong><a href="https://bugzilla.mozilla.org/buglist.cgi?product=Testing&amp;component=mozscreenshots&amp;resolution=---&amp;list_id=13673265">Testing::mozscreenshots</a> (<a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Testing&amp;component=mozscreenshots">file a bug</a>)<br>
+ <strong>Meta Bug for issues in configurations:</strong>  <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=mozscreenshots">bugzil.la/mozscreenshots</a></p>
+
+<dl>
+ <dt>Mach try example (additional quotes required):</dt>
+ <dd><code>mach try fuzzy -q "browser-screenshots"</code></dd>
+</dl>
+
+<h2 id="Simple_steps_to_using_mozscreenshots_on_Try">Simple steps to using mozscreenshots on Try</h2>
+
+<ol>
+ <li>Apply your changes locally to your source control repository.</li>
+ <li>With one of the syntax examples above, either:
+  <ol>
+   <li>Use <code>mach try</code>, or</li>
+   <li>create a new changeset on top of your changes and push your changes to tryserver.</li>
+  </ol>
+ </li>
+ <li>Wait a while, then visit the treeherder results page. On the page, look for the Tiers button on the second row of the menu. Select "Tier 3" and in the search box type "screenshot" and hit enter. Make sure that the "ss" jobs are green.</li>
+ <li>Visit the web UI: <a href="https://screenshots.mattn.ca/compare/">https://screenshots.mattn.ca/compare/</a>
+  <ol>
+   <li>Write "mozilla-central" in as the project for the base. Put focus in the revision field and press down to get the form autocomplete to show. Select one of the recent mozilla-central build dates to use as a base revision.</li>
+   <li>Write "try" in as the project for the new revision. Paste in the longform of the try revision changeset hash.</li>
+   <li>Click on Compare Revisions
+    <ul>
+     <li>An indeterminate progress will appear while results are loading. You can uncheck "Hide similar" to show rows where there were no differences. This helps to confirm that the diffs are taking place.</li>
+    </ul>
+   </li>
+  </ol>
+ </li>
+</ol>
+
+<h2 id="Capturing">Capturing</h2>
+
+<h3 id="mozilla-central">mozilla-central</h3>
+
+<p>On mozilla-central opt builds there are <a href="https://dxr.mozilla.org/mozilla-central/search?q=path%3Abrowser%2Ftools%2Fmozscreenshots+path%3Abrowser.ini+-path%3Abrowser%2Ftools%2Fmozscreenshots%2Fbrowser.ini&amp;redirect=false">many configurations captured</a> and comparison results are reported to the <a href="https://www.mozilla.org/en-US/about/forums/#dev-ui-alerts">mozilla.dev.ui-alerts</a> list.</p>
+
+<h3 id="Try_pushes">Try pushes</h3>
+
+<p>You can request screenshots be captured on a Try push for UI review or comparison to a known-good base by requesting the “browser-screenshots-e10s” test job on <strong>opt</strong> builds. By default, Try pushes capture the same images as mozilla-central builds but you can override what you would like captured by setting the <code>MOZSCREENSHOTS_SETS</code> environment variable with a comma-separated list of configurations like so in legacy try syntax:</p>
+
+<pre>--<strong>set</strong>env MOZSCREENSHOTS_SETS=DevEdition,TabsInTitlebar,Tabs,WindowSize,Toolbars</pre>
+
+<p>(Use --env (no "set") for <code>mach try fuzzy</code>)<br>
+ Note that the job is currently Tier 3 on TreeHerder so you will need to toggle it on to see the jobs there with the symbol: <strong>M(ss)</strong>. The capture job won't run for try syntax of "-u all" or "-u mochitests" in order to save resources by not capturing images unless specifically requested. When using legacy try syntax, you must also specify the test platforms in square brackets after the job name.</p>
+
+<div class="note">
+<p>{{ bug(1416538) }} causes the branding for artifact builds to differ from non-artifact builds and cause false-positives in comparisons. Forcing a non-artifact try push with <code>--no-artifact</code> will avoid the issue.</p>
+</div>
+
+<h3 id="Other_trees">Other trees</h3>
+
+<p>You can run mozscreenshots on any other mozilla-central-based tree using the "Add New Jobs" menu in TreeHerder for a push. By default it will capture the same images as a mozilla-central build but in theory you can use the experimental "Custom Push Action" menu to override the <code>MOZSCREENSHOTS_SETS</code> environment variable.</p>
+
+<h3 id="mach">mach</h3>
+
+<pre>mach mochitest --subsuite screenshots --setenv MOZSCREENSHOTS_SETS=DevEdition,TabsInTitlebar,Tabs,WindowSize,Toolbars</pre>
+
+<p>The screenshots can be found in the following directories:</p>
+
+<ul>
+ <li>In <code>MOZ_UPLOAD_DIR</code> if the environment variables is defined</li>
+ <li><code>/%TmpD%/mozscreenshots/</code> (a temporary directory which is output at the before capturing begins)</li>
+</ul>
+
+<h2 id="Fetching_from_automation">Fetching from automation</h2>
+
+<p>If you simply want to compare images from the Web UI, you can skip this section. If you want to download the images for analysis or review locally, you can use <code>fetch_screenshots</code>.</p>
+
+<p>The simplest way to download all captured images for a push is to use the fetch_screenshots[8] command (which I hope to add to mach):</p>
+
+<pre><code>pip install -U mozscreenshots
+fetch_screenshots -r &lt;my_try_revision&gt;</code></pre>
+
+<p>or</p>
+
+<pre><code>fetch_screenshots --nightly 2016-02-10</code></pre>
+
+<p>The captured screenshots also show up in the<strong> Job details</strong> as artifacts on TreeHerder, if you want to manually inspect them.</p>
+
+<h2 id="Comparing">Comparing</h2>
+
+<h3 id="Web_UI">Web UI</h3>
+
+<p>The simplest way to compare images is via the web UI at <a href="http://screenshots.mattn.ca/compare/">http://screenshots.mattn.ca/compare/</a>.</p>
+
+<p>When you visit the above URL, you will have to fill in a base (e.g. the Nightly revision from about:buildconfig) and new revision (e.g. a try push with some patches to review).</p>
+
+<ul>
+ <li>If you are comparing against a recent mozilla-centra/Nightly build, just enter "mozilla-central" (no quotes) in to the Project field, and then put focus in the related Revision field and press the Down key on your keyboard. In the form autocomplete you will see references to recent mozilla-central builds, which when selected will populate the field with the m-c build's revision changeset.</li>
+</ul>
+
+<p>In the background the images are fetched from automation via <code>fetch_screenshots</code> and then compared using <code>compare_screenshots</code> with the output displayed on the page. The first comparison for a pair of revisions can take several minutes as around one thousand (5 platforms × 2 revisions × 100 screenshots) images need to be downloaded and compared for the default set of screenshots. Subsequent comparisons for the same revision are much faster as the results are cached.</p>
+
+<h3 id="Command_line">Command line</h3>
+
+<p>Use <code>compare_screenshots</code> to compare image files or directories (recursively) using ImageMagick. System UI (e.g. the clock and taskbar) is cropped out of the images when necessary so they aren't included in image comparisons and generate false positives.</p>
+
+<pre><code>pip install -U mozscreenshots
+compare_screenshots mozilla-central/08138045c38c/ try/5f6ca9194dd9/
+</code></pre>
+
+<ul>
+</ul>
+
+<h2 id="FAQ">FAQ</h2>
+
+<h3 id="Why_dont_I_see_the_jobresults_on_TreeHerder">Why don't I see the job/results on TreeHerder?</h3>
+
+<p>The browser-screenshots-e10s jobs are currently Tier 3 so you will need to toggle the filters to make the jobs visible.</p>
+
+<p>If <code>--setenv MOZSCREENSHOTS_SETS=…</code> isn't specified, no screenshots will be captured on Try server.</p>
+
+<h3 id="How_is_this_different_than_reftests">How is this different than reftests?</h3>
+
+<p><code>browser-screenshots-e10s</code> is unlike <a href="/en-US/docs/Creating_reftest-based_unit_tests">reftests</a> in that no comparison to a reference image is done on test machines, only capturing. Eventually we may move to a model more like reftests if this is successful but that would also imply capturing on every integration push in order to identify the regressing push which uses more resources. We’ll also see how often the reference images would have needed an update using the current workflow to inform the decision.</p>
+
+<h3 id="How_do_I_capture_screenshots_of_something_not_supported_by_mozscreenshots">How do I capture screenshots of something not supported by mozscreenshots?</h3>
+
+<p>Simply add a JSM at {{ source("browser/tools/mozscreenshots/mozscreenshots/extension/configurations/") }} and then select it with the base name of the JSM.</p>

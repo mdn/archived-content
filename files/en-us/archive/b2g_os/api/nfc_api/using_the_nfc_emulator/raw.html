@@ -1,0 +1,240 @@
+<p></p><div class="warning">
+    <p style="text-align: center;">This API is available on <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a> for <a href="/en-US/docs/Mozilla/Firefox_OS/Security/Application_security#App_Types">privileged or certified applications</a> only.</p>
+</div><p></p>
+
+<div class="summary">
+<p><span class="seoSummary">For testing of the <a href="/en-US/docs/Web/API/NFC_API" title="The documentation about this has not yet been written; please consider contributing!"><code>NFC API</code></a>, there is an NFC emulator available. This article details how to set up and use the emulator, and perform some simple tests.</span></p>
+</div>
+
+<h2 id="NFC_emulator_prerequisities"><span style="font-size: 2.142857142857143rem;">NFC emulator prerequisities</span></h2>
+
+<p><span style="line-height: 1.5;">In order to use the NFC emulator, you need the following prerequisites in place:</span></p>
+
+<ul>
+ <li><span style="line-height: 1.5;"><strong>A B2G emulator</strong>. You need to have a B2G emulator running a recent B2G build. See </span><a style="line-height: 1.5;" href="/en-US/Firefox_OS/Preparing_for_your_first_B2G_build">Preparing for your first B2G build</a><span style="line-height: 1.5;"> for more details on how to build Firefox OS, and <a href="/en-US/Firefox_OS/Using_the_B2G_emulators">Using the B2G emulators</a> </span>for emulator reference.</li>
+ <li><strong><span style="line-height: 1.5;">A <a href="http://en.wikipedia.org/wiki/Telnet">Telnet</a></span></strong><span style="line-height: 1.5;"><strong> client</strong>. On Mac OS X Telnet is installed by default; on Ubuntu, you can easily find and install the "telnet" package. </span></li>
+ <li><span style="line-height: 1.5;">For debugging purposes, it is convienient to have the </span><a style="line-height: 1.5;" href="/en-US/Firefox_OS/Debugging/Installing_ADB">ADB toolchain</a><span style="line-height: 1.5;"> installed as well.</span></li>
+</ul>
+
+<div class="note">
+<p><span style="line-height: 1.5;"><strong>Note</strong>: Currently NFC can be used on "emulator-jb" only. When, <a href="/en-US/Firefox_OS/Preparing_for_your_first_B2G_build#Configuring_the_B2G_build_for_an_emulator">during build process you invoke ./config.sh</a>, make sure to use one of that as a build target.</span></p>
+</div>
+
+<h2 id="Launching_the_emulator">Launching the emulator</h2>
+
+<ol>
+ <li>First, start off by launching the emulator:
+  <pre class="brush: bash">$ cd B2G
+$ ./run-emulator.sh</pre>
+ </li>
+ <li>Once it's booted, unlock the screen and enable NFC (<em>Settings app &gt; NFC</em>).</li>
+ <li>The NFC module is switched off whenever the screen is turned off; to work around that, change the screen timeout to never (<em>Settings app &gt; Display &gt; Screen timeout &gt; Never</em>).</li>
+ <li>Now it's time to connect to emulator's telnet console. By default, the emulator listens on port 5554 (the port number is shown on titlebar of emulator's window):
+  <pre class="brush: bash">$ telnet localhost 5554
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Android Console: type 'help' for a list of commands
+OK</pre>
+ </li>
+</ol>
+
+<p>The emulator is now ready to accept your commands — now let's look at what we can do with this.</p>
+
+<h2 id="Telnet_command_line_interface">Telnet command line interface</h2>
+
+<p>The general syntax for NFC Telnet command is:</p>
+
+<pre><em>nfc &lt;protocol&gt; &lt;command&gt; &lt;arguments&gt;</em></pre>
+
+<p>Too see which protocols are supported, use the <code>nfc</code> command on its own:</p>
+
+<pre class="brush: bash">nfc
+allows you to modify/retrieve NFC states and send notifications
+
+available sub-commands:
+    nci              send NCI notification
+    snep             put and read NDEF messages
+    llcp             internal LLCP handling
+    tag              data handling
+
+KO: missing sub-command</pre>
+
+<p>The sub-commands listed above are explained in more detail below, but in general you'll want to use them in the following order:</p>
+
+<ol>
+ <li><code>nci</code> (active an NFC endpoint)</li>
+ <li><code>llcp</code> (set up an emulated LLCP link)</li>
+ <li><code>snep</code> (message handling) or <code>tag</code> (data handling)</li>
+</ol>
+
+<div class="note">
+<p><strong>Note</strong>: For every command you issue on a telnet interface, you will get either an "OK" or "KO" status. The first one is self-explanatory, whereas the latter means a failure and will usually provide an error message.</p>
+</div>
+
+<h2 id="Testing_peer_to_peer_content_sharing">Testing peer to peer content sharing</h2>
+
+<p>One of the major use cases for NFC is the sharing of web pages, contacts, etc., with the information being transmitted as NDEF (<em>NFC Data Exchange Format</em>) records, which are themselves encapsulated inside SNEP (<em>Simple NDEF Exchange Protocol</em>) messages.</p>
+
+<h3 id="Initial_connection_setup">Initial connection setup</h3>
+
+<p>In order for sharing to work, you first have to activate an NFC endpoint:</p>
+
+<pre>nfc nci rf_intf_activated_ntf 0
+OK
+</pre>
+
+<p>Then set up an emulated LLCP link:</p>
+
+<pre>nfc llcp connect 4 4
+OK</pre>
+
+<div class="note">
+<p><strong>Note</strong>: The general syntax for the <code>llcp</code> command is: <span style="line-height: 1.5;"><code>nfc llcp connect &lt;DSAP&gt; &lt;SSAP&gt;</code>. Use a value of <code>4</code> for each of these (as in the command above), for SNEP transfers.</span></p>
+</div>
+
+<h3 id="Sending_messages">Sending messages</h3>
+
+<p>Now you are able to send various NDEF messages; Firefox OS will inspect received NDEF messages and fire appropriate apps to handle them. Built-in applications such as Browser, Contacts or Dialer will handle most common URIs.</p>
+
+<p>The most basic example is web page sharing. If you enter the following command, for example, the Browser app should open with <code>http://www.mozilla.org</code> loaded:</p>
+
+<pre>nfc snep put -1 -1 [208,1,VQ,AW1vemlsbGEub3Jn,]
+OK</pre>
+
+<div class="note">
+<p><strong>Note</strong>: Be careful not to include any extra spaces between the square brackets, otherwise the command will fail. This is a known limitation and it's being worked on as part of <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1015127">Bug 1015127</a>. Also, i<span style="line-height: 1.5;">n the command above the trailing comma is mandatory.</span></p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: In the command above, we have used a value of -1 for both DSAP and SSAP. This is a convienience feature: -1 indicates that the previously used value should be used (4 and 4 in this case, as set in the <code>llcp</code> command).</p>
+</div>
+
+<h3 id="NDEF_message_syntax">NDEF message syntax</h3>
+
+<p>In between the square brackets there is an NDEF message encoded, containing five fields. The general syntax is as follows:</p>
+
+<pre>nfc snep put -1 -1 [flags,tnf,type,payload,id]</pre>
+
+<h4 id="Flags">Flags</h4>
+
+<p>NDEF message flags, such as MB (message beginning), ME (message end) or SR (short record). These are described in detail in section 3.2 of <a href="http://www.eet-china.com/ARTICLES/2006AUG/PDF/NFCForum-TS-NDEF.pdf">NFCForum-TS-NDEF_1.0</a> (PDF), published by the NFC Forum. There are five flags defined:</p>
+
+<ul>
+ <li><strong>MB (128)</strong>: Indicates that this record is first in message.</li>
+ <li><strong>ME (64)</strong>: Indicates that  this record is last in message.</li>
+ <li><strong>CF (32)</strong>: Used in chunked records.</li>
+ <li><strong>SR (16)</strong>: Short record, meaning that payload length is encoded on a single octet (instead of the default four.)</li>
+ <li><strong>IL (8)</strong>: Indicates that ID length is present.</li>
+</ul>
+
+<p>In our example above, flags has a value of 208, which is the sum of 128 + 64 + 16: this therefore means that the MB, ME and SR flags are set. The Emulator attempts to set flags automatically, whenever possible, meaning that the following two commands are equivalent:</p>
+
+<pre class="brush: bash">nfc snep put -1 -1 [208,1,VQ,BmthbWl0dWVsQGdtYWlsLmNvbQ,]
+OK
+nfc snep put -1 -1 [0,1,VQ,BmthbWl0dWVsQGdtYWlsLmNvbQ,]
+OK</pre>
+
+<h4 id="TNF_(Type_Name_Format)">TNF (Type Name Format)</h4>
+
+<p><strong>I</strong>ndicates what structure the "type" field has. The most common types are "well known" (TNF = <code>1</code>) and "media type" (TNF = <code>2</code>). Well-known records are records whose structure is defined by NFC Forum, such as URI or text records. Media type records can carry any arbitrary information whose type is identified by it's MIME type.</p>
+
+<h4 id="Record_type">Record type</h4>
+
+<p>Describes the type of the payload. For well known records (those with TNF = 1) it's a code defined by the NFC Forum (<code>U</code> for URIs, <code>T</code> for text records). For media type records, it's the MIME type of the payload (e.g. <code>image/jpeg</code>.)</p>
+
+<div class="note">
+<p><strong>Note</strong>: The emulator telnet interface accepts this field in Base64 encoded format. This means that for URI well-known records, you should use <code>VQ</code> instead of <code>U</code>; for text well-known records, use <code>VA</code> instead of <code>T</code>. Similarly, you should Base64 encode MIME types for media type records.</p>
+</div>
+
+<h4 id="Payload">Payload</h4>
+
+<p>The contents of the message, as a Base64 encoded array of bytes. In the example shown above, we have used the value <code>AW1vemlsbGEub3Jn</code>, which is equal to a <code>[1,109,111,122,105,108,108,97,46,111,114,103]</code> array (Base64 encoded.)</p>
+
+<h4 id="Record_ID">Record ID</h4>
+
+<p>Allows you to include an ID value to identify the record in the whole message. This field is optional, but if you omit it you have to leave in the trailing comma (as in the example above.) This also has to be Base64 encoded.</p>
+
+<h2 id="Example_SNEP_commands"><span style="font-size: 1.7142857142857142rem;">Example SNEP commands</span></h2>
+
+<p>This section provides some common <code>snep</code> commands that should satisy most of your testing needs.</p>
+
+<div class="note">
+<p><strong>Note</strong>: If you use the <code>snep</code> command without the NDEF message argument:</p>
+
+<pre class="brush: bash">ndef snep put -1 -1</pre>
+
+<p>it will print out the previous message received from the LLCP connection.</p>
+</div>
+
+<h3 id="URLs">URLs</h3>
+
+<pre class="brush: bash"># Flags: MB,ME,SR
+# TNF: 1 (well known)
+# Type: 'U'
+# Payload: 'http://www.google.com'
+# ID: 'A'
+nfc snep put -1 -1 [208,1,VQ,AWdvb2dsZS5jb20=,A]
+
+# Flags: MB,ME,SR
+# TNF: 1 (well known)
+# Type: 'U'
+# Payload: 'https://www.google.com'
+nfc snep put -1 -1 [208,1,VQ,Amdvb2dsZS5jb20=,]
+
+# Same as above, but with no URI abbrevation.
+<span style="font-size: 1rem;"># Flags: MB,ME,SR
+</span><span style="font-size: 1rem;"># TNF: 1 (well known)
+</span><span style="font-size: 1rem;"># Type: 'U'
+</span><span style="font-size: 1rem;"># Payload: 'https://www.google.com'</span>
+nfc snep put -1 -1 [208,1,VQ,AGh0dHA6Ly9tb3ppbGxhLmNvbQ,]</pre>
+
+<div class="note">
+<p><strong>Note</strong>: The prefix of the URI is often abbreviated with an abbreviation code of <code>1</code>, e.g. <code>http://www.mozilla.com</code> could be represented both as <code>[104,116,116,112,58,47,47,119,119,119,46,109,111,122,105,108,108,97,47,99,111,109]</code> and <code>[1,109,111,122,105,108,108,97,47,99,111,109]</code>. The latter form is much shorter, because the prefix <code>http://www.</code> has been replaced with 1. See <a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/nfc_utils.js#L74">nfc_utils.js</a> for a full table of abbreviations, as defined in <a href="https://github.com/haldean/ndef/blob/master/docs/NFCForum-TS-RTD_URI_1.0.pdf">NFCForum-TS-RTD_URI_1.0</a>.</p>
+</div>
+
+<h3 id="Mailto_URI">Mailto: URI</h3>
+
+<pre style="font-size: 14px;" class="brush: bash"># Mailto: URI
+# Flags: MB,ME,SR
+# TNF: 1 (well known)
+# Payload: 'mailto:kamituel@gmail.com'
+nfc snep put -1 -1 [208,1,VQ,BmthbWl0dWVsQGdtYWlsLmNvbQ,]</pre>
+
+<h3 id="Tel_URI">Tel: URI</h3>
+
+<pre class="brush: bash"><span style="font-size: 1rem;" class="bash brush:"># Flags: MB,ME,SR
+</span><span style="font-size: 1rem;"># TNF: 1 (well known)
+</span><span style="font-size: 1rem;"># Type='U'
+</span><span style="font-size: 1rem;"># Payload: 'tel:0048123456789'
+</span>nfc snep put -1 -1 [208,1,VQ,BTAwNDgxMjM0NTY3ODk=,]</pre>
+
+<h3 id="VCards">VCards</h3>
+
+<pre class="brush: bash"># Flags: MB,ME
+# TNF: 2 (media type)
+# Type='text/vcard'
+# Payload: '<span style="color: rgb(51, 51, 51); font-size: 1rem;">BEGIN:VCARD\nVERSION:2.1\nFN:Fire Fox\nTEL:0048123456789\nEMAIL:fire.fox@mozilla.org\nEND:VCARD</span><span style="font-size: 1rem;">'</span>
+nfc snep put -1 -1 [192,2,dGV4dC92Y2FyZA,QkVHSU46VkNBUkQNC1ZFUlNJT046Mi4xDQpGTjpGaXJlIEZveA0KVEVMOjAwNDgxMjM0NTY3ODkNCkVNQUlMOmZpcmUuZm94QG1vemlsbGEub3JnDQpFTkQ6VkNBUkQ,]</pre>
+
+<h3 id="Smart_posters">Smart posters</h3>
+
+<pre class="brush: bash"># <span style="font-size: 1rem;">Simple smart poster with singe record (URI) pointing to http://www.kamituel.com (with abbreviation).</span>
+# Flags: MB,ME,SR
+# TNF: 1 (well known)
+# Type: 'Sp'
+nfc snep put -1 -1 [208,1,U3A,0AENVQFrYW1pdHVlbC5jb20,]
+
+# Smart poster from:
+# https://android.googlesource.com/platform/development/+/85122d2605a22c8e7bcde868c2b7a7d8d744e613/apps/Tag/src/com/android/apps/tag/MockNdefMessages.java
+nfc snep put -1 -1 [208,1,U3A,kQEXVAJlbk5GQyBGb3J1bSBUeXBlIDQgVGFnUQEMVQFueHAuY29tL25mYw,]
+
+# Ultimate smart poster, with:
+# - action record (0)
+# - URI ('youtube.com')
+# - text record for english ('Best page ever! q#@')
+# - text record for polish ('ąćńó')
+# - small PNG icon
+nfc snep put -1 -1 [208,1,U3A,kQEMVQF5b3V0dWJlLmNvbREBF1QCZW5CZXN0IHBhZ2UgZXZlciEgIHEjQBEBC1QCcGzEhcSHxYTDsxEDAWFjdABSCVRpbWFnZS9wbmeJUE5HDQoaCgAAAA1JSERSAAAABAAAAAQIAgAAACaTCSkAAAAbSURBVAjXY/j//z8DDDDCOYyMjEwQCiqFrAwAJgsJAcPRmnsAAAAASUVORK5CYII,]</pre>
+
+<div> </div>

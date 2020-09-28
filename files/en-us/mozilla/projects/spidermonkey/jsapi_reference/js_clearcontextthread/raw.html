@@ -1,0 +1,63 @@
+<p>{{ obsolete_header("jsapi8") }}</p>
+
+<p>Transfer a <code>JSContext</code> from one thread to another.</p>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="eval"><a href="/en/SpiderMonkey/JSAPI_Reference/jsint" title="en/jsint">jsword</a> <strong>JS_ClearContextThread</strong>(<a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/JSRuntime">JSContext</a> *cx);
+
+<a href="/en/SpiderMonkey/JSAPI_Reference/jsint" title="en/jsint">jsword</a> <strong>JS_SetContextThread</strong>(<a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/JSRuntime">JSContext</a> *cx);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSRuntime" title="en/JSRuntime">JSContext</a> *</code></td>
+   <td>The context to transfer from one thread to another. There must not be any active or suspended requests using this context.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>An application that creates or uses a <code>JSContext</code> in one thread, then uses or destroys it in another thread, must use <strong><code>JS_ClearContextThread</code></strong> and <strong><code>JS_SetContextThread</code></strong> to transfer the <code>JSContext</code> safely from one thread to the other.</p>
+
+<p>The rules for using <code>JSContext</code>s in multiple threads are:</p>
+
+<ul>
+ <li>Each <code>JSContext</code> may only be used by one thread at a time.</li>
+ <li>Each <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/JS_BeginRequest">request</a> runs from start to finish on a single thread.</li>
+ <li>Before transferring a <code>JSContext</code> from thread A to thread B, thread A must call <code>JS_ClearContextThread</code>. This is the last thing thread A does with the context.</li>
+ <li>Before thread B uses the <code>JSContext</code>, it must call <code>JS_SetContextThread</code>. This is the first thing thread B does with the context, <em>before</em> beginning a request.</li>
+</ul>
+
+<p>So the usual code for using a <code>JSContext</code> on a thread other than the one where it was created looks like this:</p>
+
+<pre class="eval">void myThread(JSContext *cx)
+{
+    <strong>JS_SetContextThread</strong>(cx);  /* Note: outside the request */
+    <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/JS_BeginRequest">JS_BeginRequest</a>(cx);
+    ...
+    <a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="en/JS_BeginRequest">JS_EndRequest</a>(cx);
+    <strong>JS_ClearContextThread</strong>(cx);  /* Note: outside the request */
+}
+</pre>
+
+<p><code>JS_SetContextThread</code> ties <code>cx</code> to the current thread for exclusive use. No other thread may use <code>cx</code> until the current thread removes this association by calling <code>JS_ClearContextThread</code>. <code>JS_SetContextThread</code> returns the thread ID of the thread previously associated with this context. When the function is used properly, the return value is always zero, indicating that no thread was previously associated with the context.</p>
+
+<p><code>JS_ClearContextThread</code> relinquishes the calling thread's right to use <code>cx</code>. It returns the thread ID of the last thread to be associated with this context. (This is always the current thread ID when the function is used properly.)</p>
+
+<p><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewContext" title="en/JS_NewContext">JS_NewContext</a></code> automatically associates the new context with the calling thread.</p>
+
+<p>Use <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetContextThread" title="en/JS_GetContextThread">JS_GetContextThread</a></code> to determine whether a context is associated with a thread.</p>
+
+<p><code>JS_SetContextThread</code> and <code>JS_ClearContextThread</code> are available only in <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="en/JS_THREADSAFE">JS_THREADSAFE</a></code> builds.</p>
+
+<p>{{ LXRSearch("ident", "i", "JS_SetContextThread") }}<br>
+ {{ LXRSearch("ident", "i", "JS_ClearContextThread") }}</p>

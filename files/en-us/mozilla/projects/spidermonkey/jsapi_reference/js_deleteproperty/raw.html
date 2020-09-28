@@ -1,0 +1,96 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Removes a specified property from an object.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">bool
+JS_DeleteProperty(JSContext *cx, JS::HandleObject obj, const char *name);
+
+bool
+JS_DeletePropertyById(JSContext *cx, JS::HandleObject obj, jsid id); // Added in SpiderMonkey 1.8.1
+
+// Added in SpiderMonkey 45
+
+bool
+JS_DeleteProperty(JSContext *cx, JS::HandleObject obj, const char *name,
+                  JS::ObjectOpResult &amp;result);
+
+bool
+JS_DeletePropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                      JS::ObjectOpResult &amp;result);
+
+bool
+JS_DeleteUCProperty(JSContext *cx, JS::HandleObject obj, const char16_t *name, size_t namelen,
+                    JS::ObjectOpResult &amp;result);
+
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to a JS context from which to derive runtime information. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>Object from which to delete a property.</td>
+  </tr>
+  <tr>
+   <td><code>name</code> <em>or<em> <code>id</code></em></em></td>
+   <td><code>const char *</code> <em>or</em> {{jsapixref("jsid")}} <em>or</em> <code>const char16_t *</code></td>
+   <td>Name of the property to delete.</td>
+  </tr>
+  <tr>
+   <td><code>namelen</code></td>
+   <td><code>size_t</code></td>
+   <td><em>(only in <code>JS_DeleteUCProperty</code>)</em> The length of <code>name</code> in characters; or <code>-1</code> to indicate that <code>name</code> is null-terminated.</td>
+  </tr>
+  <tr>
+   <td><code>result</code></td>
+   <td>{{jsapixref("JS::ObjectOpResult", "JS::ObjectOpResult &amp;")}}</td>
+   <td>(out parameter) Receives the result of the operation.</td>
+  </tr>
+
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS_DeleteProperty</code></strong> removes a specified property, <code>name</code>, from an object, <code>obj</code>. <strong><code>JS_DeletePropertyById</code></strong> is the same but takes a {{jsapixref("jsid")}} for the property name. These functions are identical to {{jsapixref("JS_DeleteProperty2")}} and {{jsapixref("JS_DeleteProperty2", "JS_DeletePropertyById2")}} except that they do not have an out parameter.</p>
+
+<p>First, a property lookup is performed. Then one of the following cases applies:</p>
+
+<ul>
+ <li>If <code>obj</code> has no property with the given <code>name</code> or <code>id</code>, or if <code>obj</code> inherits the specified property from its prototype, then <code>obj</code>'s <code>JSClass.delProperty</code> hook is called. No property is deleted, but this is not an error.</li>
+ <li>If <code>obj</code> has the specified property but it is {{jsapixref("JS_GetPropertyAttributes", "permanent", "", 1)}}, nothing happens. No property is deleted, but this is not an error.</li>
+ <li>Otherwise <code>obj</code> has a non-permanent own property with the given <code>name</code> or <code>id</code>. In this case, <code>obj</code>'s {{jsapixref("JSPropertyOp", "JSClass.delProperty")}} hook is called. If the hook returns <code>false</code>, the error is propagated. Otherwise, if <code>obj</code> is not configurable, an error is raised. Otherwise, the property is removed.</li>
+</ul>
+
+<p>These functions return <code>true</code> on success, regardless of whether a property was actually deleted, and <code>false</code> on error or exception.</p>
+
+<p>(In JavaScript 1.2 and earlier, attempting to delete a permanent property caused an error. There is no longer any way to get this behavior.)</p>
+
+<p>Internally, property deletion is implemented by the {{jsapixref("JSObjectOps.getProperty", "JSObjectOps.deleteProperty")}} callback.</p>
+
+<p>To remove all properties from an object, call {{jsapixref("JS_ClearScope")}}.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_DeleteProperty") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_DeletePropertyById") }}</li>
+ <li>{{jsapixref("JS_DeleteProperty2")}}</li>
+ <li>{{jsapixref("JS_DeleteProperty2", "JS_DeletePropertyById2")}}</li>
+ <li>{{bug(461163)}}</li>
+ <li>{{bug(1113369)}} -- added <code>result</code> parameter and <code>JS_DeleteUCProperty</code></li>
+</ul>

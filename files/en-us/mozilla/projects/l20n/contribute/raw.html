@@ -1,0 +1,211 @@
+<p>L20n uses Bugzilla to track bugs and feature requests. All code discussion lives in Bugzilla comments. It helps us keep everything in a single place. That's why we prefer patches attached to bugs over pull requests in Github.</p>
+
+<p>This guide explains how to submit a patch.</p>
+
+<p>You can <a href="https://bugzilla.mozilla.org/describecomponents.cgi?product=L20n">browse the open bugs</a> on Bugzilla or <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=L20n">file a new one</a>.</p>
+
+<h2 id="Abstract">Abstract</h2>
+
+<ul>
+ <li>Work in feature branches.</li>
+ <li>Track <code>upstream/master</code> in <code>master</code>.</li>
+ <li>Rebase local branches ontop of master to work with the up-to-date codebase.</li>
+ <li>Discuss code in Bugzilla by attaching patches to bugs.</li>
+ <li>Keep history clean with <code>git rebase -i</code>.</li>
+ <li>Amend commit message to mention the bug number and the reviewer.</li>
+ <li>Push the branch to your fork and let us pull from it and merge it into <code>master</code>.</li>
+</ul>
+
+<h2 id="Getting_Started">Getting Started</h2>
+
+<p>To get started, fork the l20n.js repository, and with your own fork,</p>
+
+<div class="highlight">
+<pre>git clone git://git@github.com/YOU/l20n.js.git
+<span class="nb">cd </span>l20n.js
+git remote add upstream git@github.com:l20n/l20n.js.git
+</pre>
+</div>
+
+<p>If you're new to git, check out the <a href="http://cheat.errtheblog.com/s/git/">git cheatsheat</a>.</p>
+
+<h2 id="Running_tests">Running tests</h2>
+
+<p>Before you start writing any code, install the dev dependencies with:</p>
+
+<pre>npm install</pre>
+
+<p>Run the linter and the tests to make sure everything works fine:</p>
+
+<pre>grunt</pre>
+
+<p>This will also build production files in the <code>dist</code> folder.</p>
+
+<h2 id="Starting_a_new_feature_branch">Starting a new feature branch</h2>
+
+<p>Let's assume you're working on bug 800000 that is about adding installation docs to the codebase.</p>
+
+<div class="highlight">
+<pre>git checkout -b 800000-install-docs
+<span class="c"># ...work...</span>
+git add INSTALL
+git commit -m <span class="s2">"Add the INSTALL file"</span>
+<span class="c"># ...work...</span>
+git add INSTALL
+git commit -m <span class="s2">"Add the pip/virtualenv step"</span>
+git diff master... &gt; patch.diff
+<span class="c"># ...attach the patch on bugzilla and get review...</span>
+
+<span class="c"># ...address reviewer's comments...</span>
+git add INSTALL
+git commit -m <span class="s2">"Specify Python version, as per Joe's review"</span>
+git diff master... &gt; patch.diff
+<span class="c"># ...rinse and repeat...</span>
+</pre>
+</div>
+
+<p><code>git diff master...</code> is a shorthand diff command that lets you see what a merge to the <code>master</code> branch would introduce given the current HEAD.<br>
+ <a href="http://learn.github.com/p/diff.html#what_a_merge_would_introduce">GitHub's help</a> has a good explanation of this syntax.</p>
+
+<blockquote>
+<p><strong>Note:</strong> If your changes include file renaming, generate the diff by running <code>git diff -M master...</code> (which stands for <code>git diff --find-renames master...</code>). You can specify a similarity threshold if the default doesn't give you satisfying results, e.g. <code>git diff -M70% master...</code>. Find out more about this option in <a href="http://www.kernel.org/pub/software/scm/git/docs/git-diff.html">git documentation</a>.</p>
+</blockquote>
+
+<h2 id="Keeping_up_with_the_upstream">Keeping up with the upstream</h2>
+
+<p>As long as you work locally in your branch, you're encouraged to use <code>git rebase</code> to stay on the most recent codebase. Don't merge <code>master</code> into your branch, unless it has been previously published and you know people have pulled from it.</p>
+
+<div class="highlight">
+<pre>git checkout master
+git pull upstream master
+git checkout 800000-install-docs
+git rebase master
+</pre>
+</div>
+
+<p>A good rule of thumb is:</p>
+
+<ul>
+ <li>if the branch is local or private, use <code>git rebase</code>,</li>
+ <li>if the branch has been published, use <code>git merge</code>.</li>
+</ul>
+
+<p>Linus Torvalds <a href="http://lwn.net/Articles/328438/">explains it best</a>.</p>
+
+<h2 id="Pushing_your_feature_branch_after_an_r">Pushing your feature branch after an r+</h2>
+
+<p>Once you get r+, you will want to:</p>
+
+<ul>
+ <li>rebase to avoid bitrot (use <code>-i</code> and squash/fixup unneeded commits),</li>
+ <li>adjust the commit message,</li>
+ <li>push to your origin,</li>
+ <li>let us know about it.</li>
+</ul>
+
+<h3 id="Rebase">Rebase</h3>
+
+<div class="highlight">
+<pre><span class="c"># make sure you're on the feature branch</span>
+git checkout 8000000-install-docs
+<span class="c"># rebase and clean the log</span>
+git rebase -i master
+</pre>
+</div>
+
+<p>Your editor will open. Leave the first commit as <code>pick</code> and <code>squash</code> all others. (In rare and justified cases, you might want to leave more than one commit.)</p>
+
+<pre lang="git"><code>pick dd9511f Add the INSTALL file
+squash bb0fc6e Add the pip/virtualenv step
+squash c9781ef Fix a typo
+squash 64a4f42 Add the third installation step, as per Bob's suggestion
+squash 84d7d82 Specify Python version, as per Joe's review
+squash b377ca6 Add the env creation step
+</code></pre>
+
+<h3 id="Adjust_the_commit_message">Adjust the commit message</h3>
+
+<p>If you have at least one <code>reword</code> or <code>squash</code> when rebasing, your editor will open again. Adjust the commit message. The final commit message should include:</p>
+
+<ul>
+ <li>the bug number,</li>
+ <li>short summary of the changes made on the feature branch,</li>
+ <li>reviews (e.g. r=joe),</li>
+ <li>(optional) longer description separated by a blank line.</li>
+</ul>
+
+<p>Example:</p>
+
+<blockquote>
+<p>Bug 800000 - Add installation instructions, r=joe</p>
+
+<p>The installation instructions are in the INSTALL file.</p>
+</blockquote>
+
+<p>The final history of your branch should look something like this:</p>
+
+<pre lang="git"><code>dd9511f Add the INSTALL file
+64a4f42 Bug 800000 - Add installation instructions, r=joe
+</code></pre>
+
+<blockquote>
+<p><strong>Note:</strong> If the commit message after the rebase still requires changes, you can fix it like so:</p>
+
+<pre><code># ...change the commit message if needed...
+git commit --amend
+</code></pre>
+</blockquote>
+
+<h3 id="Push">Push</h3>
+
+<p>You are now ready to push your branch.</p>
+
+<div class="highlight">
+<pre><span class="c"># make sure you're on the feature branch</span>
+git checkout 8000000-install-docs
+<span class="c"># push the branch to the origin</span>
+git push origin 800000-install-docs
+</pre>
+</div>
+
+<h3 id="Comment_in_the_bug">Comment in the bug</h3>
+
+<p>Comment in the bug with the URL of your branch so that we can pull and merge from it.</p>
+
+<p></p><h2 id="Subnav">Subnav</h2>
+
+<section id="Quick_Links">
+<ol>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for developers wanting to implement localization functionality on their web apps using L20n">For Developers</span></summary>
+
+  <ol>
+   <li><a href="#" title="First read for developers looking to use the L20n infrastructure">Internationalization for your web app</a></li>
+   <li><a href="/en-US/docs/Mozilla/Projects/L20n/HTML_Bindings" title="Tutorial on implementing L20n in your HTML code">L20n's HTML bindings</a></li>
+   <li><a href="#" title="A complete description of the use, function, and role of L20n's .lol format.">.lol file format</a></li>
+   <li><a href="#" title="A simple cheatsheet to help developers as they add L20n to their localization infrastructure.">L20n syntax cheatsheet for developers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Documentation for Localizers creating localized content for a project that uses L20n.">For Localizers</span></summary>
+  <ol>
+   <li><a href="#" title="How to naturally localize applications using L20n. Complete with use cases and examples of L20n in action.">Learn the L20n syntax</a></li>
+   <li><a href="/en-US/docs/L20n/Localization_Use_Cases">Localization use cases</a></li>
+   <li><a href="#" title="How L20n impacts the Translation Memory eXchange standard for translation memory data.">L20n and Translation Memory eXchange (TMX)</a></li>
+   <li><a href="#" title="A simple cheatsheet to help localizers as they localize projects with L20n.">L20n syntax cheatsheet for localizers</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary><span title="Some additional resources for developers and localizers involved with L20n.">Additional resources</span></summary>
+  <ol>
+   <li><a href="http://www.l20n.org" title="You can try L20n live in your browser on the project page">L20n.org</a></li>
+   <li><a href="http://l20n.github.io/tinker/" title="Test out your own L20n code in L20n Tinker">L20n Tinker</a></li>
+   <li><a href="https://github.com/l20n/l20n.js" title="Where the main code for the L20n infrastructure and language lives">L20n GitHub repo</a></li>
+   <li><a href="https://wiki.mozilla.org/L20n" title="Info about the project to develop L20n">Mozilla Wiki</a></li>
+  </ol>
+  </details>
+ </li>
+</ol>
+</section><p></p>

@@ -1,0 +1,31 @@
+<p>{{ gecko_minversion_header("5.0") }}</p>
+
+<p>A common, but ugly, pattern in Gecko's C++ code is:</p>
+
+<pre class="brush: cpp">#ifdef DEBUG
+  bool ok =
+#endif
+    FunctionWithReturnValueThatShouldAlwaysBeTrue();
+    ASSERT(ok);
+</pre>
+
+<p>Why do this? Assertions are (usually) only checked in <a href="/en/Configuring_Build_Options#Firefox.2c_Debugging_Build" title="en/Configuring Build Options#Firefox.2c Debugging Build"><code>DEBUG</code> builds</a>. In release builds, there's no point in declaring the <code>ok</code> variable, because it's not going to be used. Worse, declaring a variable but not using it generates a compiler warning, and unused variables can additionally incur a small cost from being allocated a stack slot and/or register (depending on how the compiler optimizes the code). So, we write these ugly little warts to avoid compiler warnings and small runtime overhead from unused variables.</p>
+
+<h2 id="Using_DebugOnly&lt;T>">Using DebugOnly&lt;T&gt;</h2>
+
+<p>The <code>DebugOnly&lt;T&gt;</code> helper provides a cleaner way to avoid these compiler warnings and the runtime overhead mentioned above. With <code>DebugOnly</code>, the example above could be rewritten as:</p>
+
+<pre class="brush: cpp">    DebugOnly&lt;bool&gt; ok = FunctionWithReturnValueThatShouldAlwaysBeTrue();
+    ASSERT(ok);
+</pre>
+
+<p>In <code>DEBUG</code> builds, the <code>ok</code> variable behaves as if it had been declared <code>bool ok</code>, so it can be used in assertions etc. as in the example above. And in release builds, the <code>ok</code> variable doesn't occupy storage space or incur a runtime overhead. In fact, any attempt to use the value of <code>ok</code> in a release build generates a compiler error.</p>
+
+<div class="warning"><strong>Warning: </strong><code>DebugOnly&lt;T&gt;</code> is a "stack class", variables of which are only intended to be declared on the stack.  If you declare one as a member variable of a class, for example, it will behave differently than described above.  Don't do that!</div>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/En/Debugging" title="en/Debugging">Debugging</a></li>
+ <li><a href="/en/Configuring_Build_Options" title="en/Configuring Build Options">Configuring Build Options</a></li>
+</ul>

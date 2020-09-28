@@ -1,0 +1,289 @@
+<div>{{FirefoxSidebar}}</div>
+
+<p>This highlights some performance pitfalls related to frame scripts/message manager usage and alternative approaches to avoid them.</p>
+
+<p>Key points to keep in mind</p>
+
+<ul>
+ <li>Scripts registered during addon startup get executed during session restore. The more expensive they are to execute the longer it will take for the browser to become responsive after startup.</li>
+ <li>Frame scripts also get executed on non-restored tabs. All their overhead is thus not just incurred by active tabs but by the total number of tabs in a session.</li>
+</ul>
+
+<div class="note">
+<p>The following examples omit some boilerplate code for the sake of brevity</p>
+
+<p>The "better" examples also omit some best practices and only demonstrate how to fix the problem described in their respective subtopics.</p>
+</div>
+
+<h2 id="Performance_best_practices">Performance best practices</h2>
+
+<h3 id="Declaring_stateless_functions_once_per_process">Declaring stateless functions once per process</h3>
+
+<p>BAD:</p>
+
+<pre class="brush: js">// addon.js
+<code>Services.mm.loadFrameScript</code>("framescript.js", true)
+</pre>
+
+<pre class="brush: js">// framescript.js
+
+const precomputedConstants = // ...
+
+function helper(window, action) {
+  // ...  do some work on the window
+}
+
+function doSomething(message) {
+  result = helper(content, message.data)
+  sendAsyncMessage("my-addon:response-from-child", {something: result})
+}
+
+addMessageListener("my-addon:request-from-parent", doSomething)
+</pre>
+
+<p> </p>
+
+<p>Why is this bad? Because declared functions are also objects. And since frame scripts get evaluated for each tab this means new function objects get instantiated, new constants get computed, block scopes must be set up etc.</p>
+
+<p>While it may seem fairly innocencous in this toy example, real scripts often have a lot more functions and initialize some fairly heavyweight objects.</p>
+
+<p>BETTER:</p>
+
+<p><em>addon.js as above</em></p>
+
+<pre class="brush: js">// framescript.js
+Components.utils.import("resource://my-addon/processModule.jsm", {}).addFrame(this)
+</pre>
+
+<pre class="brush: js">// processModule.jsm
+
+const EXPORTED_SYMBOLS = ['addFrame'];
+
+const precomputedConstants = // ...
+
+function helper(window, action) {
+  // ... do some work on the window
+}
+
+function doSomething(message) {
+  frameGlobal = message.target
+  result = helper(frameGlobal.content, message.data)
+  frameGlobal.sendAsyncMessage("my-addon:response-from-child", {something: result})
+}
+
+function addFrame(frameGlobal) {
+  frameGlobal.addMessageListener("my-addon:request-from-parent", doSomething)
+}
+</pre>
+
+<p><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Using">Javascript modules</a> are per-process singletons and thus all their objects are only initialized once, which makes them suitable for stateless callbacks.<br>
+ <br>
+ But care must be taken to not leak references to the frame script global when it is passed into a JSM. Alternatively the frame's <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Frame_script_environment">unload event</a> or <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap">weak maps</a> can be used to ensure that frames can be cleaned up when their respective tab is closed.</p>
+
+<h3 id="Store_heavyweight_state_once_per_process"><a name="per-process-state">Store heavyweight state once per process</a></h3>
+
+<p>BAD:</p>
+
+<pre class="brush: js">// addon.js
+var main = new MyAddonService();
+
+main.onChange(stateChange);
+
+function stateChange() {
+  Services.mm.<code>broadcastAsyncMessage("my-addon:update-configuration", {newConfig: </code>main<code>.serialize()})</code>
+}
+</pre>
+
+<pre class="brush: js">// framescript.js
+var mainCopy;
+
+function onUpdate(message) {
+   mainCopy = MyAddonService.deserialize(message.data.newConfig);
+}
+
+addMessageListener("my-addon:update-configuration", onUpdate)
+
+
+// mainCopy used by other functions
+</pre>
+
+<p>The main issue here is that a separate object is kept for each tab. Not only does that increase memory footprint but the deserialization also has to be executed seperately for each tab, thus requiring more CPU time.</p>
+
+<p>BETTER:</p>
+
+<pre class="brush: js">// addon.js
+var main = new MyAddonService();
+
+main.onChange(stateChange);
+
+function stateChange() {
+  Services.ppmm.<code>broadcastAsyncMessage("my-addon:update-configuration", {newConfig: </code>main<code>.serialize()})</code>
+}</pre>
+
+<pre class="brush: js">// processModule.jsm
+const EXPORTED_SYMBOLS = ['getMainCopy'];
+
+var mainCopy;
+
+Services.cpmm.addMessageListener(<code>"my-addon:update-configuration"</code>, function(message) {
+  mainCopy = message.data.newConfig;
+})
+
+funtion getMainCopy() {
+  return mainCopy;
+}
+
+</pre>
+
+<pre class="brush: js">// framescript.js
+Components.utils.import("resource://my-addon/processModule.jsm")
+
+// getMainCopy() used by other functions
+</pre>
+
+<p> </p>
+
+<h3 id="Don't_register_observers_(and_other_callbacks_to_global_services)_in_a_frame_script">Don't register observers (and other callbacks to global services) in a frame script</h3>
+
+<p>BAD:</p>
+
+<pre class="brush: js">//framescript.js
+Services.obs.addObserver("document-element-inserted", {
+  observe: function(doc, topic, data) {
+     if(doc.ownerGlobal.top != content)
+        return; // bail out if  this is for another tab
+     decorateDocument(doc);
+  }
+})</pre>
+
+<p>Observer notifications get fired for events that happen <em>anywhere</em> in the browser, they are not scoped to the current tab. If each framescript registers a seperate listener then the observed action will trigger the callbacks in all tabs.</p>
+
+<p>Additionally the example above does not clean unregister itself, thus leaking objects each time a tab is closed. Frame message manager  message and event listeners are limited in their lifetime to that of the frame itself, this does not apply  to observer registrations.</p>
+
+<p>BETTER:</p>
+
+<p><span style="display: none;"> </span><span style="display: none;"> </span><span style="display: none;"> </span><span style="display: none;"> </span> </p>
+
+<dl>
+ <dt>content-document-global-created notifications</dt>
+ <dd>can be substituted with <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Frame_script_environment">DOMWindowCreated</a> events</dd>
+ <dt>other observers and services</dt>
+ <dd>should be registered in a <a href="/en-US/docs/Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/Process_scripts">process script</a> or JSM instead</dd>
+</dl>
+
+<p> </p>
+
+<h3 id="Load_frame_scripts_on_demand">Load frame scripts on demand</h3>
+
+<p>BAD:</p>
+
+<pre class="brush: js">// addon.js
+<code>Services.mm.loadFrameScript</code>("framescript.js", /*delayed:*/ true)
+
+// stuff communicating with the framescript
+</pre>
+
+<pre class="brush: js">// framescript.js
+function onlyOnceInABlueMoon() {
+   // we only need this during a total solar eclipse while goat blood rains from the sky
+   sendAsyncMessage('my-addon:paragraph-count', {num: content.document.querySelectorAll('p').length})
+}
+addMessageListener("my-addon:request-from-parent", onlyOnceInABlueMoon)
+</pre>
+
+<p>BETTER:</p>
+
+<pre class="brush: js">// addon.js
+function onToolbarButton(event) {
+  let tabMM = gBrowser.mCurrentBrowser.frameLoader.messageManager;
+  let button = event.target;
+  let callback = (message) =&gt; {
+    tabMM.removeMessageListener("my-addon:paragraph-count", callback)
+    decorateButton(button, message.data.num)
+  }
+  tabMM.addMessageListener("my-addon:paragraph-count", callback);
+  tabMM.loadFrameScript("data:,sendAsyncMessage('my-addon:paragraph-count', {num: content.document.querySelectorAll('p').length})", false)
+}
+
+function decorateButton(button, count) {
+  // do stuff with result
+}
+</pre>
+
+<p>This executes the script only when it is needed and only in one tab and allows it to be garbage-collected immediately after execution.  As long as it the action does not happen frequently the memory and startup savings should outstrip the added cost of script evaluation.</p>
+
+<p>Delaying the script registration <a href="/en-US/docs/Observer_Notifications#Application_startup">until the session is restored</a> my provide some middle ground for some addons. It does not provide the same memory footprint reductions but it improves application startup.</p>
+
+<p> </p>
+
+<h3 id="Beam_down_information_in_advance_to_avoid_synchronous_calls_to_the_parent">Beam down information in advance to avoid synchronous calls to the parent</h3>
+
+<p>BAD:</p>
+
+<pre>// processscript.js
+
+function ContentPolicy() {
+  // ...
+}
+
+Object.assign(ContentyPolicy.prototype, {
+    classDescription: ..., classID: ..., contractID: ...,
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPolicy]),
+
+    shouldLoad: function(type, location, origin, context) {
+
+       let resultList = Services.cpmm.sendSyncMessage("my-addon:check-load", {destination: location, source: origin}) // &lt;=== SYNC MESSAGE!
+
+       if(resultList.every((r) =&gt; r == true))
+           return Ci.nsIContentPolicy.<code>ACCEPT;
+
+       return Ci.nsIContentPolicy.REJECT_REQUEST;</code>
+    }
+});
+
+// more boilerplate code here
+</pre>
+
+<p>This example is a (somewhat condensed) <a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContentPolicy">content policy</a> which gets triggered for every network request in a child process to either allow or deny the request. Since the code calls to the parent process to check whether a specific request can be allowed it would slow down all page loads, as web pages generally issue dozens of requests.</p>
+
+<p>BETTER:</p>
+
+<p>Instead of only keeping the state in the parent an addon can employ a master-slave architecture where the parent has the authoritative state and replicates it to the child processes in advance so they can act based on their local copy.</p>
+
+<p>See the <a href="#per-process-state">previous chapter</a> on how to efficiently replicate addon state to each process.</p>
+
+<p> </p>
+
+<p> </p>
+
+<h3 id="Clean_up_on_addon_unload">Clean up on addon unload</h3>
+
+<p> </p>
+
+<p>BAD:</p>
+
+<p>All the previous examples, *even the "better" ones*</p>
+
+<p>If your addon is restartless or uses the SDK then updates or the user turning it off and on will load to unload/reload events. Not handling those properly can lead to duplicate or conflicting code execution, especially when messages are sent. It can also lead to conflicts between the old and new code. Under some circumstances it may even cause exceptions when attempting to register something twice under the same ID.</p>
+
+<p>BETTER:</p>
+
+<pre class="brush: js">// addon.js
+function onUnload() {
+  Services.mm.removeDelayedFrameScript("resources://my-addon/framescript.js");
+  Services.ppmm.removeDelayedProcessScript("resources://my-addon/processcript.js");
+  Services.mm.broadcastAsyncMessage("my-addon:unload");
+  Services.ppmm.broadcastAsyncMessage("my-addon:unload");
+}
+</pre>
+
+<p>In the frame/process scripts:</p>
+
+<ul>
+ <li>remove all kinds of listeners</li>
+ <li>remove observer notifications</li>
+ <li>remove custom categories and services</li>
+ <li><a href="/en-US/docs/Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.Sandbox#Freeing_the_sandbox">nuke sandboxes</a></li>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Using#Unloading_code_modules">unload JSMs</a></li>
+ <li>restore content DOM states where necessary, e.g. remove interactive UI elements that would be inert with the addon</li>
+</ul>

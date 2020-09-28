@@ -1,0 +1,99 @@
+<p><span class="seoSummary">This article provides details on how to go about localizing the descriptions of Mozilla add-ons, as well as for other metadata about your add-on.</span> Because a new method for doing so was implemented in Gecko 1.9 {{geckoRelease(1.9)}}, there are two sets of instructions below.</p>
+
+<h2 id="Localizing_in_Gecko_1.9" name="Localizing_in_Gecko_1.9">Localizing in Gecko 1.9</h2>
+
+<p>Gecko 1.9 includes a new, more robust method for localizing add-on descriptions and other metadata. All of the different descriptions now appear in the <a href="/en-US/Add-ons/Install_Manifests">install.rdf</a> file using <code>em:localized</code> properties. Each has at least one <code>em:locale</code> property marking the locale that the information should be used for and then all the various strings for the locale. The following example demonstrates this (most normal manifest properties have been removed for brevity):</p>
+
+<pre>&lt;?xml version="1.0"?&gt;
+
+&lt;RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:em="http://www.mozilla.org/2004/em-rdf#"&gt;
+  &lt;Description about="urn:mozilla:install-manifest"&gt;
+    &lt;em:id&gt;TabSidebar@blueprintit.co.uk&lt;/em:id&gt;
+    &lt;em:localized&gt;
+      &lt;Description&gt;
+        &lt;em:locale&gt;de-DE&lt;/em:locale&gt;
+        &lt;em:name&gt;Tab Sidebar&lt;/em:name&gt;
+        &lt;em:description&gt;Zeigt in einer Sidebar Vorschaubilder der Inhalte aller offenen Tabs an.&lt;/em:description&gt;
+      &lt;/Description&gt;
+    &lt;/em:localized&gt;
+    &lt;em:localized&gt;
+      &lt;Description&gt;
+        &lt;em:locale&gt;es-ES&lt;/em:locale&gt;
+        &lt;em:name&gt;Tab Sidebar&lt;/em:name&gt;
+        &lt;em:description&gt;Muestra una vista previa de sus pestañas en su panel lateral.&lt;/em:description&gt;
+      &lt;/Description&gt;
+    &lt;/em:localized&gt;
+    &lt;em:localized&gt;
+      &lt;Description&gt;
+        &lt;em:locale&gt;nl-NL&lt;/em:locale&gt;
+        &lt;em:name&gt;Tab Sidebar&lt;/em:name&gt;
+        &lt;em:description&gt;Laat voorbeeldweergaven van uw tabbladen in de zijbalk zien.&lt;/em:description&gt;
+      &lt;/Description&gt;
+    &lt;/em:localized&gt;
+    &lt;em:name&gt;Tab Sidebar&lt;/em:name&gt;
+    &lt;em:description&gt;Displays previews of your tabs in your sidebar.&lt;/em:description&gt;
+  &lt;/Description&gt;
+&lt;/RDF&gt;
+</pre>
+
+<p>All of the metadata mentioned below can be localized in this way. The localization information provided by the <code>em:localized</code> property can be overriden using a set of localized preferences as detailed below.</p>
+
+<p>The process for selecting the <code>em:localized</code> property to use for a given locale is as follows:</p>
+
+<ol>
+ <li>If a property exists with an <code>em:locale</code> that matches the locale exactly, then use that.</li>
+ <li>If we have inexact matches then use the one with the most matching parts, parts being separated by a dash (e.g., es would match for es-ES and vice versa).</li>
+ <li>If there is more than one locale with the same number of matching parts, then use the most general one (e.g., en in preference to en-GB when searching for en-US).</li>
+</ol>
+
+<p>The current app locale will be searched for and then there will be a fallback search for en-US.</p>
+
+<p>If a preference isn't set and there isn't a matching <code>em:localized</code> property for the current locale or en-US, then the properties specified directly on the install manifest are used as a last resort, as they were always used before Gecko 1.9.</p>
+
+<h2 id="Localizing_before_Gecko_1.9" name="Localizing_before_Gecko_1.9">Localizing before Gecko 1.9</h2>
+
+<p>Before Gecko 1.9, add-on developers must go through a special process to define localized add-on descriptions for add-ons targeting toolkit-based apps (such as Firefox or Thunderbird).</p>
+
+<ul>
+ <li>If you do not currently have them, create <a href="/en-US/docs/Mozilla/Localization/Localizing_an_extension#Localizing_strings_in_JavaScript_code"> localized properties files</a>. Make sure to use UTF-8 encoding (without BOM) to ensure foreign characters display correctly.</li>
+ <li>Add the following line to each of your localization properties files (where <var>EXTENSION_ID</var> matches your extension ID (<code>&lt;em:id&gt;</code> from <a href="en/Install.rdf">install.rdf</a>) and <var>LOCALIZED_DESCRIPTION</var> is the description of your extension that you want to appear in the given language):
+  <pre>extensions.EXTENSION_ID.description=LOCALIZED_DESCRIPTION</pre>
+ </li>
+ <li>If you do not currently have one, create <a href="en/Building_an_Extension#Defaults_Files"> a default preferences file</a>.</li>
+ <li>Add the following line to it (where <var>EXTENSION_ID</var> matches your application ID from <a href="en/Install_Manifests">install.rdf</a> and <var>PATH_TO_LOCALIZATION_FILE</var> is the chrome path to the localization file you added to earlier):
+  <pre>pref("extensions.EXTENSION_ID.description", "PATH_TO_LOCALIZATION_FILE");</pre>
+ </li>
+</ul>
+
+<h3 id="Localizable_Strings" name="Localizable_Strings">Localizable strings</h3>
+
+<p>The following add-on metadata can be localized using this process:</p>
+
+<ul>
+ <li>name</li>
+ <li>description</li>
+ <li>creator</li>
+ <li>homepageURL</li>
+</ul>
+
+<h3 id="Localizable_Lists" name="Localizable_Lists">Localizable lists</h3>
+
+<p>In cases where multiple values can exist, a numeric index is appended to the end of the preference name:</p>
+
+<pre>extensions.EXTENSION_ID.contributor.1=FIRST_LOCALIZED_CONTRIBUTOR_NAME
+extensions.EXTENSION_ID.contributor.2=SECOND_LOCALIZED_CONTRIBUTOR_NAME
+extensions.EXTENSION_ID.contributor.3=THRID_LOCALIZED_CONTRIBUTOR_NAME
+
+pref("extensions.EXTENSION_ID.contributor.1", "PATH_TO_LOCALIZATION_FILE");
+pref("extensions.EXTENSION_ID.contributor.2", "PATH_TO_LOCALIZATION_FILE");
+pref("extensions.EXTENSION_ID.contributor.3", "PATH_TO_LOCALIZATION_FILE");
+</pre>
+
+<p>The following add-on metadata can be localized using this process:</p>
+
+<ul>
+ <li>developer</li>
+ <li>translator</li>
+ <li>contributor</li>
+</ul>

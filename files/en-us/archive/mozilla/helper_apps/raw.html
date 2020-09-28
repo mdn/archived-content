@@ -1,0 +1,93 @@
+<p></p><div class="warning warningHeader">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It was last updated in 2002.</p>
+</div>
+<p></p>
+<h3 id="Bird's_Eye_View"> Bird's Eye View </h3>
+<p><img alt="Image:overview.png">
+</p>
+<h3 id="Flow_of_control"> Flow of control </h3>
+<ol><li> <code>URILoader</code> tries to find a content listener for the MIME type in question.
+</li><li> When this fails, <code>URILoader</code> asks an <code>nsIExternalHelperAppService</code> to handle the load.
+</li><li> The <code>nsExternalHelperAppService</code> looks up the <code>nsIMIMEInfo</code> for the load and creates an <code>nsIHelperAppLauncher</code> to manage the load.
+</li><li> The <code>nsExternalAppHandler</code> (which implements <code>nsIHelperAppLauncher</code>) uses the <code>nsIMIMEInfo</code> and an <code>nsIHelperAppLauncherDialog</code> to decide what to do with the data.
+</li><li> The <code>nsExternalAppHandler</code> does whatever it decided to do.
+</li></ol>
+<h3 id="nsIMIMEInfo_lookup"> <code>nsIMIMEInfo</code> lookup </h3>
+<ol><li> Look in built-in list which the user cannot override (types we handle internally). </li><li> Look in user preferences.
+</li><li> Ask the OS:
+<ul><li> Registry on Windows.
+</li><li> Internet Config on the Mac.
+</li><li> <code>mailcap</code>/<code>mime.types</code> on Linux.
+</li></ul>
+</li><li> Look in second built-in list, which the user can override.
+</li></ol>
+<h3 id="nsExternalAppHandler_details"> <code>nsExternalAppHandler</code> details </h3>
+<ul><li> Implements <code>nsIStreamListener</code>.
+</li><li> Gets notifications from Necko as the data comes in.
+</li><li> Four primary tasks:
+<ol><li> Sets up temporary file and instantiate the <code>nsIHelperAppLauncherDialog</code> in <code>OnStartRequest</code>.
+</li><li> Puts the data in the file as <code>OnDataAvailable</code> notifications come in.
+</li><li> Knows how to launch a helper application on the data based on the <code>nsIMIMEInfo</code>.
+</li><li> Knows how to save the data to disk at a given location if the user decides to do so.
+</li></ol>
+</li></ul>
+<h3 id="nsExternalAppHandlerOnStartRequest"> <code>nsExternalAppHandler::OnStartRequest</code> </h3>
+<ol><li> Creates a temporary file with a salted name to hold the data.
+</li><li> Decides on a suggested filename for the data in case it will be saved.
+</li><li> Decides whether the data should be content-decoded (based on some not-so-great heuristics).
+</li><li> Decides whether the user should be prompted (based on a preference).
+</li><li> Calls <code>Show()</code> on the <code>nsIHelperAppLauncherDialog</code>, which asynchronously puts up the helper app dialog.
+</li></ol>
+<h3 id="nsExternalAppHandlerOnDataAvailable"> <code>nsExternalAppHandler::OnDataAvailable</code> </h3>
+<ul><li> Here we just copy the newly arrived data over into our temporary file.
+</li><li> If any read or write errors occur, abort the whole process:
+<ol><li> Cancel the channel.
+</li><li> Pull down the helper app dialog (if any).
+</li><li> Remove the temp file.
+</li></ol>
+</li></ul>
+<h3 id="nsExternalAppHandlerOnStopRequest"> <code>nsExternalAppHandler::OnStopRequest</code> </h3>
+<p>Set a flag that we're done, then do whatever the user wants if the user has decided (save to disk and open in helper are the current options the user has).
+</p>
+<h3 id="Helper_App_dialog"> Helper App dialog </h3>
+<p>This is our implementation of <code>nsIHelperAppLauncherDialog</code>
+</p><p><img alt="Image:helper-app-dialog.png">
+</p><p>It calls back to the <code>nsExternalAppHandler</code> to let it know what the user picked
+</p>
+<h3 id="Saving_to_disk"> Saving to disk </h3>
+<p>If a user decides to "save to disk", we just move/copy the temporary file over to the chosen location once the download completes. If an error occurs while we do this we delete the temp file and put up an error dialog.
+</p>
+<h3 id="Launching_a_helper_application"> Launching a helper application </h3>
+<p>This is delegated to the <code>nsPIExternalAppLauncher</code> (also implemented by the <code>nsExternalHelperAppHandler</code>):
+</p>
+<ul><li> Windows: launch either directly via <code>nsIProcess</code> or via the <code>::ShellExecute()</code> method depending on where the MIMEInfo came from. Last-ditch check for executable files here.
+</li><li> Mac: use the <code>LaunchWithDoc()</code> method on <code>nsILocalFileMac</code>.
+</li><li> Unix: launch directly via <code>nsIProcess</code>.
+</li></ul>
+<h3 id="Security_considerations"> Security considerations </h3>
+<p>Multiple checks for whether a file is executable (on Windows) to keep from launching such files via <code>::ShellExecute()</code>. Checks happen in <code>OnStartRequest</code>, in the helper app dialog, and as a last ditch in the launching code.
+</p>
+<h3 id="Limitations_of_nsIMIMEInfo"> Limitations of <code>nsIMIMEInfo</code> </h3>
+<ul><li> No way to say "do whatever the OS default is."
+</li><li> No support for command-line arguments.
+</li><li> No support for multiple commands connected by pipes (mostly useful on Unix).
+</li></ul>
+<h3 id="Ongoing_work"> Ongoing work </h3>
+<ul><li> Support synchronous dialogs, not just asynchronous ones (fixes many issues related to pre-downloading, content-decoding, etc).
+</li><li> Reworking the <code>nsIMIMEService</code> API to improve the quality of the MIMEInfo we get.
+</li><li> Reworking the helper app dialog to save user choices better.
+</li><li> GNOME integration for Unix.
+</li></ul>
+<h3 id="Future_work"> Future work </h3>
+<ul><li> Fix the deficiencies in <code>nsIMIMEInfo</code>.
+</li><li> Better support for <code>mailcap</code> syntax.
+</li><li> Possible KDE integration.
+</li><li> Possibly reflecting the OS settings in our helper app preferences (readonly? writable?).
+</li><li> Have a way for users to override things in the "not overridable" built-in list. </li></ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author(s): Boris Zbarsky
+</li><li> Last Updated Date: September 12, 2002
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

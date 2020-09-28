@@ -1,0 +1,213 @@
+<p><code>nsDocShell</code> as an example client of the <code>nsIHttpChannel</code> API</p>
+<ol>
+ <li><strong><code>nsDocShell::LoadURI(string)</code></strong>
+  <ul>
+   <li>create <code>nsIURI</code> from string</li>
+  </ul>
+ </li>
+ <li><strong><code>nsDocShell::LoadURI(nsIURI)</code></strong>
+  <ul>
+   <li>creates 2 <code>nsIInputStream</code> for read response from; passes them with URI to ...</li>
+  </ul>
+ </li>
+ <li><strong><code>nsDocShell::InternalLoad</code></strong></li>
+ <li><strong><code>nsDocShell::DoURILoad</code></strong>
+  <ul>
+   <li>opens the <code>nsIChannel</code> for the URI (<code>NS_NewChannel</code>)</li>
+   <li>if "http:", it will be an <code>nsIHttpChannel</code></li>
+  </ul>
+ </li>
+ <li><strong><code>nsDocShell::DoChannelLoad</code></strong></li>
+ <li><strong><code>nsURILoader::OpenURI</code></strong>
+  <ul>
+   <li>passes an <code>nsIStreamListener</code> pointer, 'loader' to <code>nsURILoader::OpenChannel</code> - it creates an <code>nsDocumentOpenInfo</code> object, which implements <code>nsIStreamListener</code>, i.e. has <code>OnStartRequest</code>, <code>OnStopRequest</code>, <code>OnDataAvailable</code>, the three functions in which channel responses are received asynchronously.</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpChannel::AsyncOpen</code></strong>
+  <ul>
+   <li>called from <code>OpenURI</code>; <code>OpenChannel</code> isn't named the best, since the opening happens in the context of <code>OpenURI</code>, its calling function.</li>
+  </ul>
+ </li>
+</ol>
+<p>This is where it hits Necko code. But the interface for clients of Necko is important to consider:</p>
+<ul>
+ <li><strong>SEND REQUEST</strong>
+  <ul>
+   <li>URI helps creates channel</li>
+   <li>setup channel (headers, request data, response callback...)</li>
+   <li><code>channel-&gt;AsyncOpen</code>.</li>
+  </ul>
+ </li>
+ <li><strong>RECEIVE RESPONSE</strong>
+  <ul>
+   <li>get a callback to each of these:
+    <ul>
+     <li><code>nsIStreamListener::OnStartRequest</code> (header info)</li>
+     <li><code>nsIStreamListener::OnDataAvailable</code> (data in single or multiple chunks)</li>
+     <li><code>nsIStreamListener::OnStopRequest</code> (no more data from http)</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+<p>This all happens on the <strong>main thread</strong>, in a non-blocking fashion: make your request on the main thread, then carry on and get the async response later, also on the main thread.  There is an option to receive OnDataAvailable specifically on a non-main thread, but all other calls happen on the main thread.</p>
+<p>Then in Necko Http code (still on the <strong>main thread</strong> for now):</p>
+<ol>
+ <li><strong><code>nsHttpChannel::AsyncOpen</code></strong></li>
+ <li><strong><code>nsHttpChannel::BeginConnect()</code></strong>
+  <ul>
+   <li>creates <code>nsHttpConnectionInfo</code> object for the channel</li>
+   <li>checks if we're proxying or not</li>
+   <li>fires off the DNS prefetch request (dispatched to DNS thread pool)</li>
+   <li>some other things</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpChannel::Connect</code></strong>
+  <ul>
+   <li>might to a SpeculativeConnect (pre open TCP socket)</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpChannel::ContinueConnect</code></strong>
+  <ul>
+   <li>some cache stuff</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpChannel::SetupTransaction</code></strong>
+  <ul>
+   <li>creates new <code>nsHttpTransaction</code>, and <code>Init</code>s it with <code>mRequestHead</code> (the request headers) and <code>mUploadStream</code> (which was created from the request data in channel setup)</li>
+   <li>gets an <code>nsIAsyncInputStream</code> (for the response; corresponds to the <code>nsPipeInputStream</code> for the response stream pipe)</li>
+   <li>passes it to <code>nsInputStreamPump</code></li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpChannel::gHttpHandler-&gt;InitiateTransaction</code></strong> (called from <code>Connect</code>)
+  <ul>
+   <li>This is the global <code>nsHttpHandler</code> object, which adds the transaction to the <code>nsHttpConnectionMgr</code> (one of these per <code>nsHttpHandler</code>).</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnectionMgr::PostEvent</code></strong>
+  <ul>
+   <li>creates an <code>nsConnEvent</code> with params including the handler function, <code>nsHttpConnectionMgr::OnMsgNewTransaction</code>, and the recently created <code>nsHttpTransaction</code>.</li>
+   <li>dispatches the <code>nsConnEvent</code> to the socket thread</li>
+  </ul>
+ </li>
+</ol>
+<p>Back to the context of <code>nsHttpChannel::ContinueConnect</code>:</p>
+<ol>
+ <li><strong><code>nsInputStreamPump-&gt;AsyncRead</code></strong>
+  <ul>
+   <li>this pump calls <code>nsIAsyncInputStream::AsyncWait</code> (the input for the response stream pipe created with the <code>nsHttpTransaction</code>, i.e. <code>nsPipeInputStream::AsyncWait</code>), with target thread set to the current thread, i.e. main. So, subsequent callbacks will be dispatched to the main thread.</li>
+  </ul>
+ </li>
+ <li><strong><code>nsPipeInputStream::AsyncWait</code></strong>
+  <ul>
+   <li>sets the callback to be used later for a response</li>
+   <li>if a target is specified (in this case, the main thread), callback is proxied via an <code>nsInputStreamReadyEvent</code>, which is created now and may be called later</li>
+   <li>Otherwise, the callback would be called directly, when the socket is readable</li>
+  </ul>
+ </li>
+</ol>
+<p>Et voila, the transaction has been posted to the socket thread, and the main thread continues on, unblocked from network IO.</p>
+<p>So, on the <strong>socket thread</strong>...</p>
+<p>The event queue works around to <code>nsHttpConnectionMgr::OnMsgNewTransaction</code> (with the <code>nsHttpTransaction</code> passed as a param - Remember the event was posted earlier by <code>InitiateTransaction</code> from the main thread).</p>
+<ol>
+ <li><strong><code>nsHttpConnectionMgr::OnMsgNewTransaction</code></strong></li>
+ <li><strong><code>nsHttpConnectionMgr::ProcessNewTransaction</code></strong>
+  <ul>
+   <li>(Notice the check that we're on <code>gSocketThread</code>)</li>
+   <li>Gets conn info (i.e. hostname and port) from the transaction, and then gets or creates a connection entry from the connection table, an <code>nsClassHashtable&lt;nsCStringHashKey, nsConnectionEntry&gt;</code> called <code>mCT</code> in <code>nsHttpConnectionMgr</code>.</li>
+   <li>If a connection entry already exists matching the required conn info, then that one will be used; otherwise a new one is created (<code>MakeNewConnection</code> - creates socket etc.).</li>
+   <li>Note: <code>nsConnectionEntry</code> has a single <code>nsHttpConnectionInfo</code> object attached, a pending queue of <code>nsHttpTransactions</code>, and 3 arrays for connections:
+    <ul>
+     <li>active <code>nsHttpConnection</code>s</li>
+     <li>idle <code>nsHttpConnection</code>s</li>
+     <li><code>nsHalfOpenSocket</code>s</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnectionMgr::TryDispatchTransaction</code></strong>
+  <ul>
+   <li>There is a series of decisions about whether <code>DispatchTransaction</code> is called, along with good code comments: best to read the code for more detail.</li>
+   <li>Basically, if a connection is available...</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnectionMgr::DispatchTransaction</code></strong></li>
+ <li><strong><code>nsHttpConnectionMgr::DispatchAbstractTransaction</code></strong>
+  <ul>
+   <li>the transaction is given an indirect reference to the connection (for use later, when the socket has received data from the far end).</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnection::Activate</code></strong>
+  <ul>
+   <li>this connection is passed the transaction</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnection::OnOutputStreamReady</code></strong></li>
+ <li><strong><code>nsHttpConnection::OnSocketWritable</code></strong>
+  <ul>
+   <li>tries to write the request data from the current transaction (<code>mTransaction</code>)</li>
+   <li>tells the transaction to now wait (<code>`ResumeRecv</code>)</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnection::ResumeRecv</code></strong></li>
+ <li><strong><code>nsHttpTransaction::ReadSegments</code></strong>
+  <ul>
+   <li><code>ReadRequestSegment</code> is passed to <code>mRequestStream-&gt;ReadSegments</code> - this function pointer is called and used to read the request bytes, which in turn calls ...</li>
+  </ul>
+ </li>
+ <li><strong><code>nsHttpConnection::OnReadSegment</code></strong>
+  <ul>
+   <li>passes bytes read from request to <code>mSocketOut-&gt;Write</code></li>
+  </ul>
+ </li>
+</ol>
+<p>Back to the context of <code>OnSocketWritable</code>:</p>
+<ol>
+ <li><strong><code>nsIAsyncInputStream::AsyncWait</code></strong> (i.e. <code>mSocketIn</code>)
+  <ul>
+   <li>sets the callback and waits.</li>
+  </ul>
+ </li>
+</ol>
+<p>The HTTP request is now written to the socket, which has a callback to the <code>nsHttpConnection</code>...</p>
+<p>Note: from what I can tell, there are some cases where the transaction is queued up to be written to the socket later if it's not writable now, or in the case of pipelining or SPDY where it's done in batches. But I'm not an expert in either of these things.</p>
+<p>Once the socket is readable (more async behavior), <code>nsHttpConnection::OnInputStreamReady</code> is called on the socket thread.</p>
+<ol>
+ <li><strong><code>nsHttpConnection::OnInputStreamReady</code></strong></li>
+ <li><strong><code>nsHttpConnection::OnSocketReadable</code></strong></li>
+ <li><strong><code>nsHttpTransaction::WriteSegments</code></strong></li>
+ <li><strong><code>nsHttpConnection::OnWriteSegment</code></strong>
+  <ul>
+   <li>passes bytes from <code>mSocketIn-&gt;Read</code> to the transaction's pipe</li>
+  </ul>
+ </li>
+ <li><strong><code>nsPipeOutputStream::WriteSegments</code></strong></li>
+ <li><strong><code>nsPipe::AdvanceWriteCursor</code></strong></li>
+ <li><strong><code>nsPipeInputStream::OnInputReadable</code></strong>
+  <ul>
+   <li>so now the response is hitting the other end of the pipe, saying it has bytes to read</li>
+  </ul>
+ </li>
+ <li><strong><code>nsPipeEvents::NotifyInputReady</code></strong>
+  <ul>
+   <li>puts the callback object into an <code>nsPipeEvents</code> object. Once this object goes out of scope, <code>mCallback-&gt;OnInputStreamReady</code> is called.</li>
+   <li>Note: this callback may be a proxy object, <code>nsInputStreamReadyEvent</code>: it is a runnable that dispatches itself to a previously set target thread, and calls its internal <code>mCallback-&gt;OnInputStreamReady</code> function.</li>
+  </ul>
+ </li>
+</ol>
+<p>Remember that <code>nsPipeInputStream::AsyncWait</code> was called earlier, after the transaction was initially created and posted to the connection manager on the socket thread. And in that function it created a proxy callback because it wished to have <code>OnInputStreamReady</code> called on the main thread.</p>
+<p>Back on the <strong>main thread</strong>:</p>
+<ol>
+ <li><strong><code>nsInputStreamPump::OnInputStreamReady</code></strong>
+  <ul>
+   <li>This function in turn calls <code>nsInputStreamPump::OnStateStart</code>, <code>nsInputStreamPump::OnStateTransfer</code> and <code>nsInputStreamPump::OnStateStop</code>.</li>
+   <li>These functions call <code>nsIStreamListener::OnStartRequest</code>, <code>nsIStreamListener::OnDataAvailable</code> and <code>nsIStreamListener::OnStopRequest</code> respectively.</li>
+  </ul>
+ </li>
+</ol>
+<p>And that brings us back to the <code>nsHttpChannel</code> API and <code>nsDocShell</code> gets its data.</p>
+<h2 id="See_also">See also</h2>
+<ul>
+ <li><a href="/en-US/docs/Necko_Architecture">Necko Architecture</a></li>
+ <li><a href="/en-US/docs/Document_Loading_-_From_Load_Start_to_Finding_a_Handler">Document Loading - From Load Start to Finding a Handler</a></li>
+</ul>

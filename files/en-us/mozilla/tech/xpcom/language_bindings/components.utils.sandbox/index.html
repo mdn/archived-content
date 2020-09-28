@@ -1,0 +1,236 @@
+---
+title: Components.utils.Sandbox
+slug: Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.Sandbox
+tags:
+  - NeedsMarkupWork
+  - Reference
+  - Référence(2)
+  - 'XPCOM:Language Bindings'
+  - XPConnect
+---
+<p><code><a href="/en-US/docs/Components.utils" title="/en-US/docs/Components.utils">Components.utils</a>.Sandbox</code> is used to create a sandbox object for use with <a href="/en/Components.utils.evalInSandbox" title="en/Components.utils.evalInSandbox"><code>evalInSandbox()</code></a>.</p>
+
+<h2 id="Creating_a_sandbox">Creating a sandbox</h2>
+
+<p>To create a new sandbox, call <code>Components.utils.Sandbox</code>:</p>
+
+<pre class="brush: js">var sandbox = Components.utils.Sandbox(principal[, options]);</pre>
+
+<p>Using <code>new Components.utils.Sandbox(...)</code> to create a sandbox has the same effect as calling <code>Sandbox(...)</code> without <code>new</code>.</p>
+
+<p>The created sandbox is simply an empty JavaScript object marked as having been created by the restricted privilege principal. You can then use it with <a href="/en/Components.utils.evalInSandbox" title="en/Components.utils.evalInSandbox"><code>evalInSandbox()</code></a> to make it the global scope object for the specified script.</p>
+
+<h3 id="principal">principal</h3>
+
+<p>The security principal defined for a sandbox determines what code running in that sandbox will be allowed to do. The principal may be one of four types: the system principal, a content principal, an expanded principal, or a null principal.</p>
+
+<p>See <a href="/en-US/docs/Mozilla/Gecko/Script_security#Security_checks">Security checks</a> for more information on security principals.</p>
+
+<h4 id="System_principal">System principal</h4>
+
+<p>To specify the system principal, you can create it using code like:</p>
+
+<pre class="brush: js"> Cc["@mozilla.org/systemprincipal;1"].createInstance(Ci.nsIPrincipal);</pre>
+
+<h4 id="Content_principal">Content principal</h4>
+
+<p>You can specify a content principal for a particular <a href="/en-US/docs/Web/Security/Same-origin_policy#Definition_of_an_origin">origin</a> in one of three ways:</p>
+
+<ul>
+ <li>as an <code>nsIPrincipal</code>, for example by using the <a href="/en-US/docs/Web/API/Node.nodePrincipal"><code>nodePrincipal</code></a> property of a DOM node</li>
+ <li>as an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindow" title="">nsIDOMWindow</a></code>, such as that returned by the DOM <a href="/en-US/docs/Web/API/Window" title="The Window interface represents a window containing a DOM document; the document property points to the DOM document loaded in that window."><code>window</code></a> property</li>
+ <li>as a string URI like "http://www.example.com/" (discouraged)</li>
+</ul>
+
+<p>When possible, specify a window or an <code>nsIPrincipal</code> object instead of using a string URI. Window objects and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrincipal" title="">nsIPrincipal</a></code> carry additional information such as <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1191418">origin attributes</a> and same-origin privilege changes caused by setting <a href="/en-US/docs/Web/API/Document/domain" title="The domain property of the Document interface gets/sets the domain portion of the origin of the current document, as used by the same origin policy."><code>document.domain</code></a>.</p>
+
+<p>Example of obtaining content principal from the window:</p>
+
+<pre class="brush: js">var principal = gBrowser.selectedTab.linkedBrowser.contentPrincipal;
+var sandbox = Components.utils.Sandbox(principal);
+</pre>
+
+<h4 id="Expanded_principal">Expanded principal</h4>
+
+<p>An expanded principal is specified as an array of the principals it <a href="/en-US/docs/Mozilla/Gecko/Script_security#Subsumes">subsumes</a>. Each item in the array should be an <code>nsIPrincipal</code>, a DOM window, or a URI. So this can be simply an array with a single element. For example the content principal above can be made expanded/extended like so:</p>
+
+<pre class="brush: js">var principal = [gBrowser.selectedTab.linkedBrowser.contentPrincipal]; // this is now an expanded (aka extended) principal
+var sandbox = Components.utils.Sandbox(principal);</pre>
+
+<h4 id="Null_principal">Null principal</h4>
+
+<p>You can create a null principal using code like:</p>
+
+<pre class="brush: js">Cc["@mozilla.org/nullprincipal;1"].createInstance(Ci.nsIPrincipal);</pre>
+
+<p>From Firefox 37 onwards, you can also specify the null principal by simply passing <code>null</code> as the <code>principal</code> argument.</p>
+
+<h3 id="options">options</h3>
+
+<p>The constructor accepts an optional parameter. This parameter is an object with the following optional properties:</p>
+
+<dl>
+ <dt><code>freshZone </code></dt>
+ <dd>If true creates a new GC region separate from both the calling context's and the sandbox prototype's region. Addons creating sandboxes whose expected lifetime is tied to that of a content <code>window</code> object will want to use <code>sameZoneAs</code> instead.</dd>
+</dl>
+
+<dl>
+ <dt><code>sameZoneAs</code></dt>
+ <dd>A JavaScript object in whose garbage collection region the sandbox should be created in. This helps to improve memory usage by allowing sandboxes to be discarded when that zone goes away. Content scripts should pass the <code>window</code> they're running in as this parameter, in order to ensure that the script is cleaned up at the same time as the content itself.</dd>
+ <dt><code>sandboxName</code> </dt>
+ <dd>
+ <p>A string value which identifies the sandbox in about:memory (and possibly other places in the future). This property is optional, but very useful for tracking memory usage of add-ons and other JavaScript compartments. A recommended value for this property is an absolute path to the script responsible for creating the sandbox. As of Gecko 13 (Firefox 13.0 / Thunderbird 13.0 / SeaMonkey 2.10), if you don't specify a sandbox name it will default to the caller's filename.</p>
+ </dd>
+ <dt><code>sandboxPrototype</code></dt>
+ <dd>
+ <p>A prototype object for the sandbox. The sandbox will inherit the contents of this object if it's provided.<br>
+  Passing a content <code>window </code>object, setting <code>wantXrays:true</code> (default) and using an extended principal provides a clean, isolated execution environment in which javascript code that needs Web APIs (such as accessing the window's DOM) can be executed without interference from untrusted content code.</p>
+ </dd>
+ <dt><code>wantComponents</code> </dt>
+ <dd>
+ <p>A Boolean indicating whether the <code>Components</code> object is available or not in the sandbox. Default: <code>true</code>.<br>
+  If the sandbox interacts with untrusted content this should be set to <code>false</code> when possible to further reduce possible attack surface.</p>
+ </dd>
+ <dt><code>wantExportHelpers</code> </dt>
+ <dd>
+ <p>A Boolean: if true, then <a href="/en-US/docs/Components.utils.createObjectIn"><code>createObjectIn()</code></a>, <a href="/en-US/docs/Components.utils.evalInWindow"><code>evalInWindow()</code></a>, and <a href="/en-US/docs/Components.utils.exportFunction"><code>exportFunction()</code></a> are available in the sandbox. Default: <code>false</code>.</p>
+ </dd>
+ <dt><code>wantGlobalProperties</code> </dt>
+ <dd>An array of strings. Each string is the name of an object that you want to make available as a global to code running in the sandbox.</dd>
+ <dd>The exception is "<code>-Promise</code>": the <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise"><code>Promise</code></a> constructor is available by default for sandboxes, and you use this option to remove it from the sandbox. Note that <code>"-Promise"</code> is removed in Firefox 37.</dd>
+ <dd>The following objects are supported:</dd>
+ <dd>
+ <table class="standard-table">
+  <tbody>
+   <tr>
+    <td><code>-<a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></code> (removed in Firefox 37)</td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/CSS">CSS</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/IDBEnvironment.indexedDB">indexedDB</a> (Web Worker only)</code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/XMLHttpRequest">XMLHttpRequest</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/TextEncoder">TextEncoder</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/TextDecoder">TextDecoder</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/URL">URL</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/URLSearchParams">URLSearchParams</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/WindowBase64.atob">atob</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/WindowBase64.btoa">btoa</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/Blob">Blob</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/File">File</a></code></td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/API/Crypto">crypto</a></td>
+   </tr>
+   <tr>
+    <td><code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/webidl/RTCIdentityProvider.webidl">rtcIdentityProvider</a></code></td>
+   </tr>
+   <tr>
+    <td><code><a href="/en-US/docs/Web/API/GlobalFetch/fetch">fetch</a></code> (added in Firefox 41)</td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/API/CacheStorage">caches</a></td>
+   </tr>
+   <tr>
+    <td><a href="/en-US/docs/Web/API/FileReader">FileReader</a></td>
+   </tr>
+  </tbody>
+ </table>
+
+ <p>For example:</p>
+
+ <pre class="brush: js">var sandboxScript = 'var encoded = btoa("Hello");' +
+                    'var decoded = atob(encoded);';
+
+var options = {
+  "wantGlobalProperties": ["atob", "btoa"]
+}
+
+var sandbox = Components.utils.Sandbox("https://example.org/", options);
+Components.utils.evalInSandbox(sandboxScript, sandbox);
+
+console.log(sandbox.encoded);  // "SGVsbG8="
+console.log(sandbox.decoded);  // "Hello"</pre>
+ </dd>
+ <dt><code>wantXHRConstructor</code> </dt>
+ <dd>This option was removed in Gecko version 26. Use <code>wantGlobalProperties</code> instead.</dd>
+ <dt><code>wantXrays</code></dt>
+ <dd>
+ <p>A Boolean value indicating whether the sandbox wants <a href="/en-US/docs/Xray_vision">Xray vision</a> with respect to same-origin objects outside the sandbox. Default: <code>true</code>.</p>
+
+ <p>“Xray vision” is exactly the same Xray behavior that script always gets, by default, when working with DOM objects across origin boundaries. This is primarily visible for chrome code accessing content. However, it also occurs during cross-origin access between two content pages, since each page sees a "vanilla" view of the other. The protection is bidirectional: the caller sees the bonafide DOM objects without being confused by sneakily-redefined properties, and the target receives appropriate privacy from having its expandos inspected by untrusted callers. In situations where only unidirectional protection is needed, callers have the option to waive the X-ray behavior using <code>wrappedJSObject </code>or<code> XPCNativeWrapper.unwrap().</code></p>
+
+ <p>In general, when accessing same-origin content, script gets a Transparent wrapper rather than an Xray wrapper. However, sandboxes are often used when chrome wants to run script as another origin, possibly to interact with the page. In this case, same-origin Xrays are desirable, and <code>wantXrays </code>should be set to<code> </code><code>true</code>.</p>
+
+ <p>See <a href="/en/Safely_accessing_content_DOM_from_chrome" title="en/Safely accessing content DOM from chrome">Safely accessing content DOM from chrome</a> for more details.</p>
+ </dd>
+</dl>
+
+<h2 id="Methods_available_on_the_Sandbox_object">Methods available on the Sandbox object</h2>
+
+<p style="margin-left: 40px;"><code>dump()</code> - Similar to <a class="internal" href="/en/DOM/window.dump" title="En/DOM/Window.dump">window.dump()</a>.<br>
+ <code>debug()</code></p>
+
+<p>For more information on the built-in Sandbox functions, please consult <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/js/xpconnect/src/XPCComponents.cpp" title="http://mxr.mozilla.org/mozilla-central/source/js/xpconnect/src/XPCComponents.cpp">the source code</a>.</p>
+
+<h2 id="Importing_functions_or_objects_into_the_sandbox">Importing functions or objects into the sandbox</h2>
+
+<p>You can import functions or objects into the sandbox simply by assigning them to the sandbox object.  For example:</p>
+
+<pre>mysandbox.doSomething = function() { ... };</pre>
+
+<p>Complex objects can be cloned into the sandbox using <code><a href="/en-US/docs/Components.utils.cloneInto">Components.utils.cloneInto</a></code>:</p>
+
+<pre>mysandbox.someObject = Components.utils.cloneInto({ a: 'string', b: 21 }, mysandbox);</pre>
+
+<p>Obviously you need to consider the <a href="/en-US/docs/Mozilla/Gecko/Script_security">security implications</a> of the functions you import. This technique isn't limited to functions - it can be used to import objects or values.</p>
+
+<h2 id="Freeing_the_sandbox">Freeing the sandbox</h2>
+
+<p>When you have finished using a sandbox, it should be freed to avoid memory leaks. Generally the JavaScript garbage collector will take care of this when there are no remaining references to the sandbox or the code it contains. However, in some cases it can be difficult to remove all references. For example, the code in the sandbox might be a third-party library that sets expando properties or adds event listeners to a window. In this case, <code><a href="/en-US/docs/Components.utils.nukeSandbox">Components.utils.nukeSandbox</a></code> can be used to force the sandbox to be freed immediately.</p>
+
+<h2 id="Example">Example</h2>
+
+<h3 id="Executing_in_current_tab_scope">Executing in current tab scope</h3>
+
+<p>More ways to load scripts into a sandbox can be found on the <a href="/en-US/docs/Mozilla/Add-ons/Overlay_Extensions/XUL_School/Appendix_D:_Loading_Scripts">Loading Scripts</a> page.</p>
+
+<p>This example is to be run from scratchpad with environemnt set to browser. It alerts the dollar sign function. This code was tested on twitter.com and gets access to the jQuery $.</p>
+
+<pre class="brush: js">var sandboxScript = 'alert($)';
+var options = {
+    sandboxPrototype: content,
+    wantXrays: false // only set this to false if you need direct access to the page's javascript. true provides a safer, isolated context.
+};
+
+var sandbox = Cu.Sandbox(content, options);
+Cu.evalInSandbox(sandboxScript, sandbox);
+
+Cu.nukeSandbox(sandbox);</pre>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en/Components.utils.evalInSandbox" title="en/Components.utils.evalInSandbox"><code>Components.utils.evalInSandbox</code></a></li>
+ <li><code><a href="/en-US/docs/Components.utils.cloneInto">Components.utils.cloneInto</a></code></li>
+ <li><a href="/en-US/docs/Components.utils.nukeSandbox" title="en-US/docs/Components.utils.nukeSandbox"><code>Components.utils.nukeSandbox</code></a></li>
+</ul>

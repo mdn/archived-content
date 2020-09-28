@@ -1,0 +1,264 @@
+---
+title: Creating Sandboxed HTTP Connections
+slug: Mozilla/Creating_sandboxed_HTTP_connections
+tags:
+  - Add-ons
+  - Extensions
+  - HTTP
+  - XUL
+  - XULRunner
+---
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>Starting with <a href="/en-US/docs/Gecko" title="Gecko">Gecko</a> 1.8.1 (<a href="/en-US/docs/Firefox_2_for_developers" title="Firefox_2_for_developers">Firefox 2</a>), it is possible to create sandboxed <a href="/en-US/docs/HTTP" title="HTTP">HTTP</a> connections which don't affect the user's cookies. This article will cover the basics of doing HTTP connections from XPCOM JavaScript, and should easily translate to C++ XPCOM.</p>
+
+<h2 id="Setting_up_an_HTTP_connection" name="Setting_up_an_HTTP_connection">Setting up an HTTP connection</h2>
+<p>The first step in setting up an HTTP connection from an URL (stored in a string) is to create an <code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIURI" title="XPCOM_Interface_Reference/nsIURI">nsIURI</a></code> out of it. <code>nsIURI</code> is an XPCOM representation of an URI, with useful methods to query and manipulate the URI. To create an <code>nsIURI</code> from an string, we use the <code>newURI</code> method of <code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIIOService" title="XPCOM_Interface_Reference/nsIIOService">nsIIOService</a></code>:</p>
+
+<pre class="brush: js">// the IO service
+var ioService = Components.classes["@mozilla.org/network/io-service;1"]
+                          .getService(Components.interfaces.nsIIOService);
+
+// create an nsIURI
+var uri = ioService.newURI(myURLString, null, null);</pre>
+
+<p>Once the <code>nsIURI</code> has been created, a <code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIChannel" title="nsIChannel">nsIChannel</a></code> can be generated from it using <code>nsIIOService</code>'s <code>newChannelFromURI</code> method:</p>
+
+<pre class="brush: js">// get a channel for that nsIURI
+var channel = ioService.newChannelFromURI(uri);
+</pre>
+
+<p>To initiate the connection, the <code>asyncOpen</code> method is called. It takes two arguments: a listener and a context that is passed to the listener's methods.</p>
+
+<pre class="brush: js">channel.asyncOpen(listener, null);
+</pre>
+
+<h2 id="HTTP_notifications" name="HTTP_notifications">HTTP notifications</h2>
+
+<p>The above mentioned listener is a <code>nsIStreamListener</code>, which gets notified about events such as HTTP redirects and data availability.</p>
+
+<ul>
+  <li><code>onStartRequest</code> - gets called when a new request is initiated.</li>
+  <li><code>onDataAvailable</code> - new data is available. Since this is a stream, it could be called multiple times (depending on the size of the returned data, networking conditions, etc).</li>
+  <li><code>onStopRequest</code> - the request has finished.</li>
+  <li><code>onChannelRedirect</code> - when a redirect happens, a new <code>nsIChannel</code> is created, and both the old and new ones are passed in as arguments.</li>
+</ul>
+
+<p>Since <code>nsIStreamListener</code> does not cover cookies, the current channel being used will need to be stored as a global, since another listener will be used for cookie notifications (covered in the next section). It is usually best to use a JavaScript wrapper that implements all the required methods and calls the specified callback function when the connection has completed. Below is an example:</p>
+
+<pre class="brush: js">// global channel
+var gChannel;
+
+// init the channel
+
+// the IO service
+var ioService = Components.classes["@mozilla.org/network/io-service;1"]
+                          .getService(Components.interfaces.nsIIOService);
+
+// create an nsIURI
+var uri = ioService.newURI(myURLString, null, null);
+
+// get a channel for that nsIURI
+gChannel = ioService.newChannelFromURI(uri);
+
+// get an listener
+var listener = new StreamListener(callbackFunc);
+
+gChannel.notificationCallbacks = listener;
+gChannel.asyncOpen(listener, null);
+
+function StreamListener(aCallbackFunc) {
+  this.mCallbackFunc = aCallbackFunc;
+}
+
+StreamListener.prototype = {
+  mData: "",
+
+  // nsIStreamListener
+  onStartRequest: function (aRequest, aContext) {
+    this.mData = "";
+  },
+
+  onDataAvailable: function (aRequest, aContext, aStream, aSourceOffset, aLength) {
+    var scriptableInputStream =
+      Components.classes["@mozilla.org/scriptableinputstream;1"]
+        .createInstance(Components.interfaces.nsIScriptableInputStream);
+    scriptableInputStream.init(aStream);
+
+    this.mData += scriptableInputStream.read(aLength);
+  },
+
+  onStopRequest: function (aRequest, aContext, aStatus) {
+    if (Components.isSuccessCode(aStatus)) {
+      // request was successfull
+      this.mCallbackFunc(this.mData);
+    } else {
+      // request failed
+      this.mCallbackFunc(null);
+    }
+
+    gChannel = null;
+  },
+
+  // nsIChannelEventSink
+  onChannelRedirect: function (aOldChannel, aNewChannel, aFlags) {
+    // if redirecting, store the new channel
+    gChannel = aNewChannel;
+  },
+
+  // nsIInterfaceRequestor
+  getInterface: function (aIID) {
+    try {
+      return this.QueryInterface(aIID);
+    } catch (e) {
+      throw Components.results.NS_NOINTERFACE;
+    }
+  },
+
+  // nsIProgressEventSink (not implementing will cause annoying exceptions)
+  onProgress : function (aRequest, aContext, aProgress, aProgressMax) { },
+  onStatus : function (aRequest, aContext, aStatus, aStatusArg) { },
+
+  // nsIHttpEventSink (not implementing will cause annoying exceptions)
+  onRedirect : function (aOldChannel, aNewChannel) { },
+
+  // we are faking an XPCOM interface, so we need to implement QI
+  QueryInterface : function(aIID) {
+    if (aIID.equals(Components.interfaces.nsISupports) ||
+        aIID.equals(Components.interfaces.nsIInterfaceRequestor) ||
+        aIID.equals(Components.interfaces.nsIChannelEventSink) ||
+        aIID.equals(Components.interfaces.nsIProgressEventSink) ||
+        aIID.equals(Components.interfaces.nsIHttpEventSink) ||
+        aIID.equals(Components.interfaces.nsIStreamListener))
+      return this;
+
+    throw Components.results.NS_NOINTERFACE;
+  }
+};
+</pre>
+
+<p>Quick note: storing the channel in a global (especially in an extension) isn't a good idea, but was done to make the code easier to read. It would be better to have the entire implementation inside a class and storing the channel as a member:</p>
+
+<pre class="brush: js">function myClass() {
+  this.mChannel = null;
+  // ...
+  var listener = new this.StreamListener(callbackFunc);
+  // ...
+}
+
+myClass.prototype.StreamListener = function (aCallbackFunc) {
+  return ({
+    mData: "",
+    // ...
+  })
+}</pre>
+
+<h2 id="Handling_cookies" name="Handling_cookies">Handling cookies</h2>
+
+<p>When sending a request, cookies that apply to the URL are sent with the HTTP request. The HTTP response can also contain cookies, which the browser processes. As of Mozilla 1.8.1 (<a href="/en-US/docs/Firefox_2_for_developers" title="Firefox_2_for_developers">Firefox 2</a>), it is now possible to intercept those two cases.</p>
+
+<p>For example, this means that if the user was logged into an webmail account, another account on the same domain could be checked without changing the user's cookies.</p>
+
+<p>The observer service (<code><a href="/en-US/docs/XPCOM_Interface_Reference/nsIObserverService" title="nsIObserverService">nsIObserverService</a></code>) is used to send general notifications, including the two cookie ones. The <code>addObserver</code> method is used to add an observer for a certain topic and takes in three agruments:</p>
+<ul>
+  <li>an object than implements <code><a href="/en-US/docs/nsIObserver" title="nsIObserver">nsIObserver</a></code></li>
+  <li>the topic to listen for. For cookies, the two topics are:
+    <ul>
+      <li><code>http-on-modify-request</code> - happens after the cookie data has been loaded into the request, but before the request is sent.</li>
+      <li><code>http-on-examine-response</code> - happens after the response is received, but before the cookies are processed</li>
+    </ul>
+  </li>
+  <li>whether to hold a weak reference to the observer argument. Use <code>false</code>.</li>
+</ul>
+
+<p>In order to <strong>avoid memory leaks</strong>, the observer needs to be removed at one point. The <code>removeObserver</code> method takes in the listener object and the topic and removes it from the notification list.</p>
+
+<p>As with the above stream listener, an <code>nsIObserver</code> implementing object is needed, which only needs to implement one method, <code>observe</code>. The <code>observe</code> method gets passed in three arguments, which for the two cookie topics are:</p>
+
+<ul>
+  <li><code>aSubject</code>: the channel (<code>nsIChannel</code>) that caused this notification to happen.</li>
+  <li><code>aTopic</code>: the notification topic.</li>
+  <li><code>aData</code>: <code>null</code> for the two topics.</li>
+</ul>
+
+<p>Since the observers get notified for the registered topic for any connection, the listener needs to make sure that the notification is for the HTTP connection our code created. Since the channel that causes the notification is passed in as the first argument, comparing it to the globally stored channel (<code>gChannel</code>) in the previous section (which also gets updated each time a redirect happens).</p>
+
+<pre class="brush: js">// create an nsIObserver implementor
+var listener = {
+  observe : function(aSubject, aTopic, aData) {
+    // Make sure it is our connection first.
+    if (aSubject == gChannel) {
+      var httpChannel = aSubject.QueryInterface(Components.interfaces.nsIHttpChannel);
+      if (aTopic == "http-on-modify-request") {
+         // ...
+      } else if (aTopic == "http-on-examine-response") {
+         // ...
+      }
+    }
+  },
+
+  QueryInterface : function(aIID) {
+    if (aIID.equals(Components.interfaces.nsISupports) ||
+        aIID.equals(Components.interfaces.nsIObserver))
+      return this;
+    throw Components.results.NS_NOINTERFACE;
+  }
+};
+
+// get the observer service and register for the two coookie topics.
+var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                .getService(Components.interfaces.nsIObserverService);
+observerService.addObserver(listener, "http-on-modify-request", false);
+observerService.addObserver(listener, "http-on-examine-response", false);
+</pre>
+
+<p>The final piece is to manipulate the cookies. In order to manipulate cookies, the <code>nsIChannel</code> needs to be converted into a <code>nsIHttpChannel</code> by using <code>QueryInterface</code> (QI):</p>
+
+<pre class="brush: js">var httpChannel = aSubject.QueryInterface(Components.interfaces.nsIHttpChannel);
+</pre>
+
+<p>Cookies are actually part of the HTTP header, <code>nsIHttpChannel</code> provides four methods for working with headers: two for getting and setting request headers, and two for getting and setting response headers. The cookie header for requests is called "Cookie", while for responses it is "Set-Cookie".</p>
+
+<ul>
+  <li><code>getRequestHeader(aHeader)</code> - returns the request header value for the requested header.</li>
+  <li><code>setRequestHeader(aHeader, aValue, aMerge)</code> - sets the request header's value. If <code>aMerge</code> is <code>true</code>, the new value is appened, otherwise the old value is overwritten.</li>
+  <li><code>getResponseHeader(aHeader)</code> - returns the response header value for the requested header.</li>
+  <li><code>setResponseHeader(aHeader, aValue, aMerge)</code> - sets the response header's value. If <code>aMerge</code> is <code>true</code>, the new value is appened, otherwise the old value is overwritten.</li>
+</ul>
+
+<p>These methods provide all the required functionality needed to modify cookies before they are processed/sent, allowing for sandboxed cookie connections that don't affect the user's cookies.</p>
+
+<h2 id="HTTP_referrer" name="HTTP_referrer">HTTP referrer</h2>
+
+<p>If the HTTP request needs to have a referrer set, two additional steps are needed after the <code>nsIChannel</code> is created, but before it is opened. First, a <code>nsIURI</code> needs to be generated for the referrer URL. Like before, the <code>nsIIOService</code> is used:</p>
+
+<pre class="brush: js">var referrerURI = ioService.newURI(referrerURL, null, null);
+</pre>
+
+<p>Next, the <code>nsIChannel</code> is QIed to <code>nsIHttpChannel</code> and the <code>referrer</code> property is set to the generated <code>nsIURI</code>:</p>
+
+<pre class="brush: js">var httpChannel = channel.QueryInterface(Components.interfaces.nsIHttpChannel);
+httpChannel.referrer = referrerURI;
+</pre>
+
+<h2 id="Creating_HTTP_POSTs" name="Creating_HTTP_POSTs">Creating HTTP POSTs</h2>
+
+<p>To create an HTTP POST, a few additional steps are required after the <code>nsIChannel</code> is created.</p>
+
+<p>First, a <code>nsIInputStream</code> instance is created, after which the <code>setData</code> method is called. The first argument is the POST data as a string, while the second argument is the length of that data. In this case, the data is URL encoded, meaning that the string should look like this: <code>foo=bar&amp;baz=eek</code>.</p>
+
+<pre class="brush: js">var inputStream = Components.classes["@mozilla.org/io/string-input-stream;1"]
+                  .createInstance(Components.interfaces.nsIStringInputStream);
+inputStream.setData(postData, postData.length);
+</pre>
+
+<p>Next, the <code>nsIChannel</code> is QIed to an <code>nsIUploadChannel</code>. Its <code>setUploadStream</code> method is called, passing in the <code>nsIInputStream</code> and the type (in this case, "application/x-www-form-urlencoded"):</p>
+
+<pre class="brush: js">var uploadChannel = gChannel.QueryInterface(Components.interfaces.nsIUploadChannel);
+uploadChannel.setUploadStream(inputStream, "application/x-www-form-urlencoded", -1);</pre>
+
+<p>Due to a bug, calling <code>setUploadStream</code> will reset the <code>nsIHttpChannel</code> to be a PUT request, so now the request type is set to POST:</p>
+
+<pre class="brush: js">// order important - setUploadStream resets to PUT
+httpChannel.requestMethod = "POST";
+</pre>

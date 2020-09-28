@@ -1,0 +1,970 @@
+<p><span class="seoSummary">Most of the Mozilla code uses a C++ class hierarchy to pass string data, rather than using raw pointers. This guide documents the string classes which are visible to code within the Mozilla codebase (code which is linked into libxul).</span></p>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>The string classes are a library of C++ classes which are used to manage buffers of wide (16-bit) and narrow (8-bit) character strings. The headers and implementation are in the <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/string" rel="custom">xpcom/string</a></code> directory. All strings are stored as a single contiguous buffer of characters.</p>
+
+<p>The 8-bit and 16-bit string classes have completely separate base classes, but share the same APIs. As a result, you cannot assign a 8-bit string to a 16-bit string without some kind of conversion helper class or routine. For the purpose of this document, we will refer to the 16-bit string classes in class documentation. Every 16-bit class has an equivalent 8-bit class:</p>
+
+<table style="width: 200px;">
+ <caption>Naming convention for wide and narrow string classes</caption>
+ <tbody>
+  <tr>
+   <td>Wide</td>
+   <td>Narrow</td>
+  </tr>
+  <tr>
+   <td>nsAString</td>
+   <td>nsACString</td>
+  </tr>
+  <tr>
+   <td>nsString</td>
+   <td>nsCString</td>
+  </tr>
+  <tr>
+   <td>nsAutoString</td>
+   <td>nsAutoCString</td>
+  </tr>
+  <tr>
+   <td colspan="2">etc...</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>The string classes distinguish, as part of the type hierarchy, between strings that must have a null-terminator at the end of their buffer (<code>ns[C]String</code>) and strings that are not required to have a null-terminator (<code>nsA[C]String</code>). <code>nsA[C]String</code> is the base of the string classes (since it imposes fewer requirements) and <code>ns[C]String</code> is a class derived from it. Functions taking strings as parameters should generally take one of these four types.</p>
+
+<p>In order to avoid unnecessary copying of string data (which can have significant performance cost), the string classes support different ownership models. All string classes support the following three ownership models dynamically:</p>
+
+<ul>
+ <li>reference counted, copy-on-write, buffers (the default)</li>
+ <li>adopted buffers (a buffer that the string class owns, but is not reference counted, because it came from somewhere else)</li>
+ <li>dependent buffers, that is, an underlying buffer that the string class does not own, but that the caller that constructed the string guarantees will outlive the string instance</li>
+</ul>
+
+<p>In addition, there is a special string class, <code>ns[C]AutoString</code>, that <em>additionally</em> contains an internal 64-unit buffer (intended primarily for use on the stack), leading to a fourth ownership model:</p>
+
+<ul>
+ <li>storage within an auto string's stack buffer</li>
+</ul>
+
+<p>Auto strings will prefer reference counting an existing reference-counted buffer over their stack buffer, but will otherwise use their stack buffer for anything that will fit in it.</p>
+
+<p>There are a number of additional string classes:</p>
+
+<ul>
+ <li>Classes which exist primarily as constructors for the other types, particularly <code>nsDependent[C]String</code> and <code>nsDependent[C]Substring</code>. These types are really just convenient notation for constructing an <code>ns[C]S[ubs]tring</code> with a non-default ownership mode; they should not be thought of as different types.</li>
+ <li><code>nsLiteral[C]String</code> which should rarely be constructed explicitly but usually through the <code>""_ns</code> and <code>u""_ns</code> user-defined string literals. <code>nsLiteral[C]String</code> is trivially constructible and destructible, and therefore does not emit construction/destruction code when stored in statics, as opposed to the other string classes.</li>
+</ul>
+
+<h2 id="The_Major_String_Classes">The Major String Classes</h2>
+
+<p>The list below describes the main base classes. Once you are familiar with them, see the appendix describing What Class to Use When.</p>
+
+<ul>
+ <li><strong><code>nsAString</code>/<code>nsACString</code></strong>: the abstract base class for all strings. It provides an API for assignment, individual character access, basic manipulation of characters in the string, and string comparison. This class corresponds to the XPIDL <code>AString</code> parameter type. nsAString is not necessarily null-terminated.</li>
+ <li><strong><code>nsString</code>/<code>nsCString</code></strong>: builds on <code>nsAString</code> by guaranteeing a null-terminated storage. This allows for a method (<code>.get()</code>) to access the underlying character buffer.</li>
+</ul>
+
+<p>The remainder of the string classes inherit from either <code>nsAString</code> or <code>nsString</code>. Thus, every string class is compatible with <code>nsAString</code>.</p>
+
+<p>Since every string derives from <code>nsAString</code> (or <code>nsACString</code>), they all share a simple API. Common read-only methods:</p>
+
+<ul>
+ <li><strong><code>.Length()</code></strong> - the number of code units (bytes for 8-bit string classes and <code>char16_t</code>s for 16-bit string classes) in the string.</li>
+ <li><strong><code>.IsEmpty()</code></strong> - the fastest way of determining if the string has any value. Use this instead of testing <code>string.Length</code> == 0</li>
+ <li><strong><code>.Equals(string)</code></strong> - TRUE if the given string has the same value as the current string.</li>
+</ul>
+
+<p>Common methods that modify the string:</p>
+
+<ul>
+ <li><strong><code>.Assign(string)</code></strong> - Assigns a new value to the string.</li>
+ <li><strong><code>.Append(string)</code></strong> - Appends a value to the string.</li>
+ <li><strong><code>.Insert(string, position)</code></strong> - Inserts the given string before the code unit at position.</li>
+ <li><strong><code>.Truncate(length)</code></strong> - shortens the string to the given length.</li>
+</ul>
+
+<p>Complete documentation can be found in the <a href="#Appendix_B_-_nsAString_Reference">Appendix</a>.</p>
+
+<h3 id="Read-only_strings">Read-only strings</h3>
+
+<p>The <code>const</code> attribute on a string determines if the string is writable. If a string is defined as a <code>const nsAString</code> then the data in the string cannot be manipulated. If one tries to call a non-<code>const</code> method on a <code>const</code> string the compiler will flag this as an error at build time.</p>
+
+<p>For example:</p>
+
+<pre class="eval notranslate">void nsFoo::ReverseCharacters(nsAString&amp; str) {
+      ...
+     str.Assign(reversedStr); // modifies the string
+}
+</pre>
+
+<p>This should not compile, because you're assigning to a <code>const</code> class:</p>
+
+<pre class="eval notranslate">void nsFoo::ReverseCharacters(const nsAString&amp; str) {
+      ...
+     <strong>str.Assign(reversedStr);</strong>
+}
+</pre>
+
+<h3 id="As_function_parameters">As function parameters</h3>
+
+<p>For methods which are exposed across modules, use nsAString references to pass strings. For example:</p>
+
+<pre class="notranslate">// when passing a string to a method, use const nsAString&amp;
+nsFoo::PrintString(<strong>const nsAString &amp;str</strong>);
+
+// when getting a string from a method, use nsAString&amp;
+nsFoo::GetString(<strong>nsAString &amp;result</strong>);
+</pre>
+
+<p>The abstract classes are also sometimes used to store temporary references to objects. You can see both of these uses in <a href="#Common_Patterns">Common Patterns</a>, below.</p>
+
+<h2 id="The_Concrete_Classes_-_which_classes_to_use_when">The Concrete Classes - which classes to use when</h2>
+
+<p>The concrete classes are for use in code that actually needs to store string data. The most common uses of the concrete classes are as local variables, and members in classes or structs.</p>
+
+<p><img alt="nsAString_internal-graph.png" class="default internal" src="/@api/deki/files/2968/=nsAString_internal-graph.png" style="height: 443px; width: 732px;"></p>
+
+<p> The following is a list of the most common concrete classes. Once you are familiar with them, see the appendix describing <a href="#Appendix_A_-_What_class_to_use_when">What Class to Use When.</a></p>
+
+<p><img alt="" src="/@api/deki/pages/=en/nsAString_internal/files/=nsAString_internal-graph.png"></p>
+
+<ul>
+ <li><code><strong>nsString / nsCString</strong></code>- a null-terminated string whose buffer is allocated on the heap. Destroys its buffer when the string object goes away.</li>
+ <li><code><strong>nsAutoString / nsAutoCString</strong></code>- derived from <code>nsString</code>, a string which owns a 64 code unit buffer in the same storage space as the string itself. If a string less than 64 code units is assigned to an <code>nsAutoString</code>, then no extra storage will be allocated. For larger strings, a new buffer is allocated on the heap. If you want a number other than 64, use the templated types <code>nsAutoStringN</code> / <code>nsAutoCStringN</code>. (<code>nsAutoString</code> and <code>nsAutoCString</code> are just typedefs for <code>nsAutoStringN&lt;64&gt;</code> and <code>nsAutoCStringN&lt;64&gt;</code>, respectively.)</li>
+ <li><code><strong>nsDependentString</strong></code>- derived from <code>nsString</code>, this string does <em>not</em> own its buffer. It is useful for converting a raw string (<code>const char16_t*</code> or <code>const char*</code>) into a class of type <code>nsAString</code>. Note that you must null-terminate buffers used by to nsDependentString. If you don't want to or can't null-terminate the buffer, use nsDependentSubstring.</li>
+ <li><code><strong>nsPrintfCString</strong></code>- derived from <code>nsCString</code>, this string behaves like an <code>nsAutoCString</code>. The constructor takes parameters which allows it to construct a 8-bit string from a <code>printf</code>-style format string and parameter list.</li>
+</ul>
+
+<p>There are also a number of concrete classes that are created as a side-effect of helper routines, etc. You should avoid direct use of these classes. Let the string library create the class for you.</p>
+
+<ul>
+ <li><code><strong>nsSubstringTuple</strong></code> - created via <a href="#String_Concatenation">string concatenation</a></li>
+ <li><code><strong>nsDependentSubstring</strong></code> - created through <a href="#Substrings_.28string_fragments.29">Substring</a></li>
+ <li><code><strong>nsPromiseFlatString</strong></code> - created through <code><strong><a href="#Raw_Character_Pointers">PromiseFlatString()</a></strong></code></li>
+ <li><code><strong>nsLiteral[C]String</strong></code> - created through the <code>""_ns</code> and <code>u""_ns</code> user-defined literals</li>
+</ul>
+
+<p>Of course, there are times when it is necessary to reference these string classes in your code, but as a general rule they should be avoided.</p>
+
+<h2 id="Iterators">Iterators</h2>
+
+<p>Because Mozilla strings are always a single buffer, iteration over the characters in the string is done using raw pointers:</p>
+
+<pre class="notranslate">/**
+ * Find whether there is a tab character in `data`
+ */
+bool HasTab(const nsAString&amp; data)
+{
+  const <code>char16_t</code>* cur = data.BeginReading();
+  const <code>char16_t</code>* end = data.EndReading();
+
+  for (; cur &lt; end; ++cur) {
+    if (<code>char16_t</code>('\t') == *cur)
+      return true;
+  }
+  return false;
+}</pre>
+
+<p>Note that `end` points to the character after the end of the string buffer. It should never be dereferenced.</p>
+
+<p>Writing to a mutable string is also simple:</p>
+
+<pre class="notranslate">/**
+ * Replace every tab character in `data` with a space.
+ */
+void ReplaceTabs(nsAString&amp; data)
+{
+  <code>char16_t</code>* cur = data.BeginWriting();
+  <code>char16_t</code>* end = data.EndWriting();
+
+  for (; cur &lt; end; ++cur) {
+    if (<code>char16_t</code>('\t') == *cur)
+      *cur = <code>char16_t</code>(' ');
+  }
+}</pre>
+
+<p>You may change the length of a string via <code>SetLength()</code>.  Note that Iterators become invalid after changing the length of a string:</p>
+
+<pre class="eval notranslate">/**
+ * Replace every tab character in `data` with four spaces.
+ */
+void ReplaceTabs2(nsAString&amp; data)
+{
+  int len = data.Length();
+  <code>char16_t</code> *cur = data.BeginWriting();
+  <code>char16_t</code> *end = data.EndWriting();
+
+<span style="color: #ff0000;">  // Because `cur` may change during the loop, track the position
+  // within the string.
+  int pos = 0;</span>
+
+  while (cur &lt; end) {
+    if (<code>char16_t</code>('\t') != *cur) {
+      ++pos;
+      ++cur;
+    } else {
+      len += 3;
+      data.SetLength(len);
+
+      <span style="color: #ff0000;">// After SetLength, read `cur` and `end` again
+      cur = data.BeginWriting() + pos;
+      end = data.EndWriting();</span>
+
+      // move the remaining data over
+      if (pos &lt; len - 1)
+        memmove(cur + 4, cur + 1, (len - 1 - pos) * sizeof(<code>char16_t</code>));
+
+      // fill the tab with spaces
+      *cur = <code>char16_t</code>(' ');
+      *(cur + 1) = <code>char16_t</code>(' ');
+      *(cur + 2) = <code>char16_t</code>(' ');
+      *(cur + 3) = <code>char16_t</code>(' ');
+
+      pos += 4;
+      cur += 4;
+    }
+  }
+}
+</pre>
+
+<p>If a string buffer becomes smaller while writing it, use SetLength to inform the string class of the new size:</p>
+
+<pre class="notranslate">/**
+ * Remove every tab character from `data`
+ */
+void RemoveTabs(nsAString&amp; data)
+{
+  int len = data.Length();
+  <code>char16_t</code>* cur = data.BeginWriting();
+  <code>char16_t</code>* end = data.EndWriting();
+
+  while (cur &lt; end) {
+    if (<code>char16_t</code>('\t') == *cur) {
+      len -= 1;
+      end -= 1;
+      if (cur &lt; end)
+        memmove(cur, cur + 1, (end - cur) * sizeof(<code>char16_t</code>));
+    } else {
+      cur += 1;
+    }
+  }
+
+<span style="color: #ff0000;">  data.SetLength(len);</span>
+}
+</pre>
+
+<p>Note that using <code>BeginWriting()</code> to make a string <em>longer</em> is not OK. <code>BeginWriting()</code> must not be used to write past the logical length of the string indicated by <code>EndWriting()</code> or <code>Length()</code>. Calling <code>SetCapacity()</code> before <code>BeginWriting()</code> does not affect what the previous sentence says. To make the string longer, call <code>SetLength()</code> <em>before</em> <code>BeginWriting()</code> or use the <code>BulkWrite()</code> API described below.</p>
+
+<h2 id="Bulk_Write">Bulk Write</h2>
+
+<p><code>BulkWrite()</code> allows capacity-aware cache-friendly low-level writes to the string's buffer.</p>
+
+<p>Capacity-aware means that the caller is made aware of how the caller-requested buffer capacity was rounded up to mozjemalloc buckets. This is useful when initially requesting best-case buffer size without yet knowing the true size need. If the data that actually needs to be written is larger than the best-case estimate but still fits within the rounded-up capacity, there is no need to reallocate despite requesting the best-case capacity.</p>
+
+<p>Cache-friendly means that the zero terminator for C compatibility is written <em>after</em> the new content of the string has been written, so the result is a forward-only linear write access pattern instead of a non-linear back-and-forth sequence resulting from using <code>SetLength()</code> followed by <code>BeginWriting()</code>.</p>
+
+<p>Low-level means that writing via a raw pointer is possible as with <code>BeginWriting()</code>.</p>
+
+<p><code>BulkWrite()</code> takes four arguments: The new capacity (which may be rounded up), the number of code units at the beginning of the string to preserve (typically the old logical length), a boolean indicating whether reallocating a smaller buffer is OK if the requested capacity would fit in a buffer that's smaller than current one, and a reference to an <code>nsresult</code> for indicating failure on OOM. (Don't access the return value if the <code>nsresult</code> indicates failure. Unfortunately <code>mozilla::Result</code> is not versatile enough to be used here.)</p>
+
+<p><code>BulkWrite()</code> returns a <code>mozilla::BulkWriteHandle&lt;T&gt;</code>, where <code>T</code> is either <code>char</code> or <code>char16_t</code>. The actual writes are performed through this handle. You must not access the string except via the handle until you call <code>Finish()</code> on the handle in the success case or you let the handle go out of scope without calling <code>Finish()</code> in the failure case, in which case the destructor of the handle puts the string in a mostly harmless but consistent state (containing a single REPLACEMENT CHARACTER if a capacity greater than 0 was requested, or in the <code>char</code> case if the three-byte UTF-8 representation of the REPLACEMENT CHARACTER doesn't fit, an ASCII SUBSTITUTE).</p>
+
+<p><code>mozilla::BulkWriteHandle&lt;T&gt;</code> autoconverts to a writable <code>mozilla::Span&lt;T&gt;</code> and also provides explicit access to itself as <code>Span</code> (<code>AsSpan()</code>) or via component accessors named consistently with those on <code>Span</code>: <code>Elements()</code> and <code>Length()</code> the latter is not the logical length of the string but the writable length of the buffer. The buffer exposed via these methods includes the prefix that you may have requested to be preserved. It's up to you to skip past it so as to not overwrite it.</p>
+
+<p>If there's a need to request a different capacity before you are ready to call <code>Finish()</code>, you can call <code>RestartBulkWrite()</code> on the handle. It takes three arguments that match the first three arguments of <code>BulkWrite()</code>. It returns <code>mozilla::Result&lt;mozilla::Ok, nsresult&gt;</code> to indicate success or OOM. Calling <code>RestartBulkWrite()</code> invalidates previously-obtained span, raw pointer or length.</p>
+
+<p>Once you are done writing, call <code>Finish()</code>. It takes two arguments: the new logical length of the string (which must not exceed the capacity retuned by the <code>Length()</code> method of the handle) and a boolean indicating whether it's OK to attempt to reallocate a smaller buffer in case a smaller mozjemalloc bucket could accommodate the new logical length.</p>
+
+<h2 id="Helper_Classes_and_Functions">Helper Classes and Functions</h2>
+
+<h3 id="Converting_Cocoa_strings">Converting Cocoa strings</h3>
+
+<p>Use <code>mozilla::CopyCocoaStringToXPCOMString()</code> in <code>mozilla/MacStringHelpers.h</code> to convert Cocoa strings to XPCOM strings.</p>
+
+<h3 id="Searching_strings_-_looking_for_substrings_characters_etc.">Searching strings - looking for substrings, characters, etc.</h3>
+
+<p><code>FindInReadable()</code> is the replacement for the old <code>string.Find(..)</code>. The syntax is:</p>
+
+<pre class="eval notranslate">PRBool FindInReadable(const nsAString&amp; pattern,
+                      nsAString::const_iterator start, nsAString::const_iterator end,
+                      nsStringComparator&amp; aComparator = nsDefaultStringComparator());
+</pre>
+
+<p>To use this, <code>start</code> and <code>end</code> should point to the beginning and end of a string that you would like to search. If the search string is found, <code>start</code> and <code>end</code> will be adjusted to point to the beginning and end of the found pattern. The return value is PR_TRUE or PR_FALSE, indicating whether or not the string was found.</p>
+
+<p>An example:</p>
+
+<pre class="eval notranslate">const nsAString&amp; str = GetSomeString();
+nsAString::const_iterator start, end;
+
+str.BeginReading(start);
+str.EndReading(end);
+
+constexpr auto valuePrefix = u"value="_ns;
+
+if (FindInReadable(valuePrefix, start, end)) {
+    // end now points to the character after the pattern
+    valueStart = end;
+
+}
+</pre>
+
+<h3 id="Checking_for_Memory_Allocation_failure">Checking for Memory Allocation failure</h3>
+
+<p>The String classes now use infallible memory allocation, so you do not need to check for success when allocating/resizing "normal" strings. </p>
+
+<p>Most of the functions that modify Strings (Assign(), SetLength(), etc) also have a version that takes a "mozilla::fallible_t" parameter.  These versions return 'false' instead of aborting if allocation fails .  Use them when creating/allocating Strings which may be very large, and which the program could recover from if the allocation fails.</p>
+
+<h3 id="Getting_a_char_*_buffer_from_a_String">Getting a char * buffer from a String</h3>
+
+<p>You can access a String's internal buffer using the <a href="/en-US/docs/Mozilla/Tech/XPCOM/Guide/Internal_strings#Iterators">iterator methods</a>. The String retains ownership over the buffer at all times.</p>
+
+<p>In other words, there is no way to "grab" the internal char * from a String, i.e. have the string "forget" about it and hand off ownership to other code.  Sorry.</p>
+
+<p>If you wish to make a copy of a String into a new character buffer (<code><code>char16_t</code>*</code>/<code>char*</code>), the preferred way is to allocate it with one of the following methods:</p>
+
+<ul>
+ <li><code><strong><code>char16_t</code>* ToNewUnicode(<em>nsAString&amp;</em>)</strong></code> - Allocates a <code>char16_t</code><code>*</code>buffer from an <code>nsAString</code>.</li>
+ <li><code><strong>char *ToNewCString(<em>nsACString&amp;</em>)</strong></code> - Allocates a <code>char*</code>buffer from an <code>nsACString</code>. Note that this method will also work on nsAStrings, but it will do an implicit <a href="#Lossy_Conversion">lossy conversion</a>. This function should only be used if the input is known to be strictly ASCII. Often a conversion to UTF-8 is more appropriate. See <code><strong>ToNewUTF8String</strong></code> below.</li>
+ <li><code><strong>char* ToNewUTF8String(<em>nsAString&amp;</em>)</strong></code> - Allocates a new <code>char*</code> buffer containing the UTF-8 encoded version of the given nsAString. See <a href="#Unicode_Conversion_ns.2ACString_vs._ns.2AString">Unicode Conversion</a> for more details and for better ways that don't require you to manage the memory yourself.</li>
+</ul>
+
+<p>These methods return a buffer allocated using XPCOM's allocator instead of the traditional allocator (<code>malloc</code>, etc.). Outside of libxul you should use <code>NS_Free</code> to deallocate the result when you no longer need it, inside libxul <code>free()</code> is preferred..</p>
+
+<h3 id="Substrings_string_fragments">Substrings (string fragments)</h3>
+
+<p>It is very simple to refer to a substring of an existing string without actually allocating new space and copying the characters into that substring. <code>Substring()</code> is the preferred method to create a reference to such a string.</p>
+
+<pre class="eval notranslate">void ProcessString(const nsAString&amp; str) {
+    const nsAString&amp; firstFive = Substring(str, 0, 5); // from index 0, length 5
+    // firstFive is now a string representing the first 5 characters
+}
+</pre>
+
+<h2 id="Unicode_Conversion_ns*CString_vs._ns*String">Unicode Conversion ns*CString vs. ns*String</h2>
+
+<p>Strings can be <em>stored</em> in two basic formats: 8-bit code unit (byte/<code>char</code>) strings, or 16-bit code unit (<code>char16_t</code>) strings. Any string class with a capital "C" in the classname contains 8-bit bytes. These classes include <code>nsCString</code>, <code>nsDependentCString</code>, and so forth. Any string class <em>without</em> the "C" contains 16-bit code units.</p>
+
+<p>A 8-bit string can be in one of many character encodings while a 16-bit string is always in potentially-invalid UTF-16. (You can make a 16-bit string guaranteed-valid UTF-16 by passing it to <code>EnsureUTF16Validity()</code>.) The most common encodings are:</p>
+
+<ul>
+ <li>ASCII - 7-bit encoding for basic English-only strings. Each ASCII value is stored in exactly one byte in the array with the most-significant 8th bit set to zero.</li>
+ <li><a class="external" href="http://www.unicode.org/glossary/#UCS_2">UCS2</a> - 16-bit encoding for a <em>subset</em> of Unicode, <a class="external" href="http://www.unicode.org/glossary/#BMP">BMP</a>. The Unicode value of a character stored in UCS2 is stored in exactly one 16-bit <code>char16_t</code> in a string class.</li>
+ <li><a class="external" href="http://www.faqs.org/rfcs/rfc3629.html">UTF-8</a> - 8-bit encoding for Unicode characters. Each Unicode characters is stored in up to 4 bytes in a string class. UTF-8 is capable of representing the entire Unicode character repertoire, and it efficiently maps to <a class="external" href="http://www.unicode.org/glossary/#UTF_32">UTF-32</a>. (Gtk and Rust natively use UTF-8.)</li>
+ <li><a class="external" href="http://www.unicode.org/glossary/#UTF_16">UTF-16</a> - 16-bit encoding for Unicode storage, backwards compatible with UCS2. The Unicode value of a character stored in UTF-16 may require <em>one or two</em> 16-bit <code>char16_t</code>s in a string class. The contents of <code>nsAString</code> always has to be regarded as in this encoding instead of UCS2. UTF-16 is capable of representing the entire Unicode character repertoire, and it efficiently maps to UTF-32. (Win32 W APIs and Mac OS X natively use UTF-16.)</li>
+ <li>Latin1 - 8-bit encoding for the first 256 Unicode code points. Used for HTTP headers and for size-optimized storage in text node and SpiderMonkey strings. Latin1 converts to UTF-16 by zero-extending each byte to a 16-bit code unit. Note that this kind of "Latin1" is not available for encoding HTML, CSS, JS, etc. Specifying <code>charset=latin1</code> means the same as <code>charset=windows-1252</code>. Windows-1252 is a similar but different encoding used for interchange.</li>
+</ul>
+
+<p>In addition, there exist multiple other (legacy) encodings. The Web-relevant ones are defined in the <a href="https://encoding.spec.whatwg.org/">Encoding Standard</a>. Conversions from these encodings to UTF-8 and UTF-16 are provided by <a href="https://searchfox.org/mozilla-central/source/intl/Encoding.h#109">mozilla::Encoding</a>. Additonally, on Windows the are some rare cases (e.g. drag&amp;drop) where it's necessary to call a system API with data encoded in the Windows locale-dependent legacy encoding instead of UTF-16. In those rare cases, use <code>MultiByteToWideChar</code>/<code>WideCharToMultiByte</code> from kernel32.dll. Do not use <code>iconv</code> on *nix. We only support UTF-8-encoded file paths on *nix, non-path Gtk strings are always UTF-8 and Cocoa and Java strings are always UTF-16.</p>
+
+<p>When working with existing code, it is important to examine the current usage of the strings that you are manipulating, to determine the correct conversion mechanism.</p>
+
+<p>When writing new code, it can be confusing to know which storage class and encoding is the most appropriate. There is no single answer to this question, but the important points are:</p>
+
+<ul>
+ <li><strong>Surprisingly many strings are very often just ASCII.</strong> ASCII is a subset of UTF-8 and is, therefore, efficient to represent as UTF-8. Representing ASCII as UTF-16 bad both for memory usage and cache locality.</li>
+ <li><strong>Rust strongly prefers UTF-8.</strong> If your C++ code is interacting with Rust code, using UTF-8 in nsACString and merely validating it when converting to Rust strings is more efficient than using nsAString on the C++ side.</li>
+ <li><strong>Networking code prefers 8-bit strings.</strong> Networking code tends to use 8-bit strings: either with UTF-8 or Latin1 (byte value is the Unicode scalar value) semantics.</li>
+ <li><strong>JS and DOM prefer UTF-16.</strong> Most Gecko code uses UTF-16 for compatibility with JS strings and DOM string which are potentially-invalid UTF-16. However, both DOM text nodes and JS strings store strings that only contain code points below U+0100 as Latin1 (byte value is the Unicode scalar value).</li>
+ <li><strong>Windows and Cocoa use UTF-16.</strong> Windows system APIs take UTF-16. Cocoa NSString is UTF-16.</li>
+ <li><strong>Gtk uses UTF-8.</strong> Gtk APIs take UTF-8 for non-file paths. In the Gecko case, we support only UTF-8 file paths outside Windows, so all Gtk strings are UTF-8 for our purposes though file paths received from Gtk may not be valid UTF-8.</li>
+</ul>
+
+<p>To assist with ASCII, Latin1, UTF-8, and UTF-16 conversions, there are some helper methods and classes. Some of these classes look like functions, because they are most often used as temporary objects on the stack.</p>
+
+<h3 id="Short_zero-terminated_ASCII_strings">Short zero-terminated ASCII strings</h3>
+
+<p>If you have a short zero-terminated string that you are certain is always ASCII, use these special-case methods instead of the conversions described in the later sections.</p>
+
+<ul>
+ <li>If you are assigning an ASCII literal to an <code>nsACString</code>, use <code>AssignLiteral()</code>.</li>
+ <li>If you are assigning a literal to an <code>nsAString</code>, use <code>AssignLiteral()</code> and make the literal a <code>u""</code> literal. If the literal has to be a <code>""</code> literal (as opposed to <code>u""</code>) and is ASCII, still use <code>AppendLiteral()</code>, but be aware that this involves a run-time inflation.</li>
+ <li>If you are assigning a zero-terminated ASCII string that's not a literal from the compiler's point of view at the call site and you don't know the length of the string either (e.g. because it was looked up from an array of literals of varying lengths), use <code>AssignASCII()</code>.</li>
+</ul>
+
+<h3 id="UTF-8_UTF-16_conversion">UTF-8 / UTF-16 conversion</h3>
+
+<p><code><strong>NS_ConvertUTF8toUTF16(<em>const nsACString&amp;</em>)</strong></code> - a <code>nsAutoString</code> subclass that converts a UTF-8 encoded <code>nsACString</code> or <code>const char*</code> to a 16-bit UTF-16 string. If you need a <code>const <code>char16_t</code>*</code> buffer, you can use the <code>.get()</code> method. For example:</p>
+
+<pre class="eval notranslate">/* signature: void HandleUnicodeString(const nsAString&amp; str); */
+object-&gt;HandleUnicodeString(<strong>NS_ConvertUTF8toUTF16</strong>(utf8String));
+
+/* signature: void HandleUnicodeBuffer(const <code>char16_t</code>* str); */
+object-&gt;HandleUnicodeBuffer(<strong>NS_ConvertUTF8toUTF16</strong>(utf8String).get());
+</pre>
+
+<p><code><strong>NS_ConvertUTF16toUTF8(<em>const nsAString&amp;</em>)</strong></code> - a <code>nsAutoCString</code> which converts a 16-bit UTF-16 string (<code>nsAString</code>) to a UTF-8 encoded string. As above, you can use <code>.get()</code> to access a <code>const char*</code> buffer.</p>
+
+<pre class="eval notranslate">/* signature: void HandleUTF8String(const nsACString&amp; str); */
+object-&gt;HandleUTF8String(<strong>NS_ConvertUTF16toUTF8</strong>(utf16String));
+
+/* signature: void HandleUTF8Buffer(const char* str); */
+object-&gt;HandleUTF8Buffer(<strong>NS_ConvertUTF16toUTF8</strong>(utf16String).get());
+</pre>
+
+<p><code><strong>CopyUTF8toUTF16(<em>const nsACString&amp;, nsAString&amp;</em>)</strong></code> - converts and copies:</p>
+
+<pre class="eval notranslate">// return a UTF-16 value
+void Foo::GetUnicodeValue(nsAString&amp; result) {
+    <strong>CopyUTF8toUTF16</strong>(mLocalUTF8Value, result);
+ }
+</pre>
+
+<p><code><strong>AppendUTF8toUTF16(<em>const nsACString&amp;, nsAString&amp;</em>)</strong></code> - converts and appends:</p>
+
+<pre class="eval notranslate">// return a UTF-16 value
+void Foo::GetUnicodeValue(nsAString&amp; result) {
+    result.AssignLiteral("prefix:");
+    <strong>AppendUTF8toUTF16</strong>(mLocalUTF8Value, result);
+}
+</pre>
+
+<p><br>
+ <code><strong>UTF8ToNewUnicode(<em>const nsACString&amp;, PRUint32* aUTF16Count = nsnull</em>)</strong></code> - (avoid if possible) allocates and converts (the optional parameter will contain the number of 16-byte units upon return, if non-null):</p>
+
+<pre class="eval notranslate">void Foo::GetUTF16Value(<code>char16_t</code>** result) {
+    *result = <strong>UTF8ToNewUnicode</strong>(mLocalUTF8Value);
+}
+</pre>
+
+<p><br>
+ <code><strong>CopyUTF16toUTF8(<em>const nsAString&amp;, nsACString&amp;</em>)</strong></code> - converts and copies:</p>
+
+<pre class="eval notranslate">// return a UTF-8 value
+void Foo::GetUTF8Value(nsACString&amp; result) {
+    <strong>CopyUTF16toUTF8</strong>(mLocalUTF16Value, result);
+}
+</pre>
+
+<p><code><strong>AppendUTF16toUTF8(<em>const nsAString&amp;, nsACString&amp;</em>)</strong></code> - converts and appends:</p>
+
+<pre class="eval notranslate">// return a UTF-8 value
+void Foo::GetUnicodeValue(nsACString&amp; result) {
+    result.AssignLiteral("prefix:");
+    <strong>AppendUTF16toUTF8</strong>(mLocalUTF16Value, result);
+}
+</pre>
+
+<p><code><strong>ToNewUTF8String(<em>const nsAString&amp;</em>)</strong></code> - (avoid if possible) allocates and converts:</p>
+
+<pre class="eval notranslate">void Foo::GetUTF8Value(char** result) {
+    *result = <strong>ToNewUTF8String</strong>(mLocalUTF16Value);
+}
+</pre>
+
+<h3 id="Latin1_UTF-16_Conversion">Latin1 / UTF-16 Conversion</h3>
+
+<p>The following should only be used when you can guarantee that the original string is ASCII or Latin1 (in the sense that the byte value is the Unicode scalar value; not in the windows-1252 sense). These helpers are very similar to the UTF-8 / UTF-16 conversion helpers above.</p>
+
+<h4 id="UTF-16_to_Latin1_converters">UTF-16 to Latin1 converters</h4>
+
+<p>These converters are <em><strong>very dangerous</strong></em> because they <em><strong>lose information</strong></em> during the conversion process. You should <em><strong>avoid UTF-16 to Latin1 conversions</strong></em> unless your strings are guaranteed to be Latin1 or ASCII. (In the future, these conversions may start asserting in debug builds that their input is in the permissible range.) If the input is actually in the Latin1 range, each 16-bit code unit in narrowed to an 8-bit byte by removing the high half. Unicode code points above U+00FF result in garbage whose nature must not be relied upon. (In the future the nature of the garbage will be CPU architecture-dependent.) If you want to <code>printf()</code> something and don't care what happens to non-ASCII, please convert to UTF-8 instead.</p>
+
+<ul>
+ <li><code><strong>NS_LossyConvertUTF16toASCII(<em>nsAString</em>)</strong></code> - a <code>nsAutoCString</code> which holds a temporary buffer containing the Latin1 value of the string.</li>
+ <li><code><strong>LossyCopyUTF16toASCII(<em>nsAString, nsACString</em>)</strong></code> - does an in-place conversion from UTF-16 into an Latin1 string object.</li>
+ <li><code><strong>LossyAppendUTF16toASCII(<em>nsAString, nsACString</em>)</strong></code> - appends an UTF-16 string to an Latin1 string.</li>
+ <li><code><strong>ToNewCString(<em>nsAString</em>)</strong></code> - (avoid if ) allocates a new zero-terminated Latin1 <code>char*</code> string.</li>
+</ul>
+
+<h4 id="Latin1_to_UTF-16_converters">Latin1 to UTF-16 converters</h4>
+
+<p>These converters are <em><strong>very dangerous</strong></em> because they will <em><strong>produce wrong results for non-ASCII UTF-8 or windows-1252 input</strong></em> into a meaningless UTF-16 string. You should <em><strong>avoid ASCII to UTF-16 conversions</strong></em> unless your strings are guaranteed to be ASCII or Latin1 in the sense of the byte value being the Unicode scalar value. Every byte is zero-extended into a 16-bit code unit.</p>
+
+<p>It is correct to use these on most HTTP header values, but <em><strong>it's always wrong to use these on HTTP response bodies!</strong></em> (Use <code>mozilla::Encoding</code> to deal with response bodies.)</p>
+
+<ul>
+ <li><code><strong>NS_ConvertASCIItoUTF16(<em>nsACString</em>)</strong></code> - a <code>nsAutoString</code> which holds a temporary buffer containing the value of the Latin1 to UTF-16 conversion.</li>
+ <li><code><strong>CopyASCIItoUTF16(<em>nsACString, nsAString</em>)</strong></code> - does an in-place conversion from Latin1 to UTF-16.</li>
+ <li><code><strong>AppendASCIItoUTF16(<em>nsACString, nsAString</em>)</strong></code> - appends a Latin1 string to a UTF-16 string.</li>
+ <li><code><strong>ToNewUnicode(<em>nsACString</em>)</strong></code> - (Avoid if possible) Creates a new zero-terminated <code><code>char16_t</code>*</code> string which contains the value of the Latin1 to UTF-16 conversion.</li>
+</ul>
+
+<h3 id="Comparing_ns*Strings_with_C_strings">Comparing ns*Strings with C strings</h3>
+
+<p>You can compare ns*Strings with C strings by converting the ns*String to a C string, or by comparing directly against a C String.</p>
+
+<ul>
+ <li><code><strong>PromiseFlatCString(<em>nsACString</em>).get()</strong></code> - creates a temporary <code>char *</code> out of a nsACString. This can be compared to a C String using C functions.</li>
+ <li><code><strong><em>ns*String</em>.EqualsASCII(<em>const char *</em>)</strong></code> - compares with an ascii C string.</li>
+ <li><code><strong><em>ns*String</em>.EqualsLiteral</strong></code> - compares with a string literal.</li>
+</ul>
+
+<h2 id="Common_Patterns">Common Patterns</h2>
+
+<h3 id="Callee-allocated_Parameters">Callee-allocated Parameters</h3>
+
+<p>Many APIs result in a method allocating a buffer in order to return strings to its caller. This can be tricky because the caller has to remember to free the string when they have finished using it. Fortunately, the <code>getter_Copies()</code> function makes this very easy.</p>
+
+<p>A method may look like this:</p>
+
+<pre class="eval notranslate">void GetValue(<code>char16_t</code>** aValue)
+{
+    *aValue = ToNewUnicode(foo);
+}
+</pre>
+
+<p>Without <code>getter_Copies()</code>, the caller would need to free the string:</p>
+
+<pre class="notranslate">{
+    <code>char16_t</code>* val;
+    GetValue(&amp;val);
+
+    if (someCondition) {
+        // don't forget to free the value!
+        NS_Free(val);
+        return NS_ERROR_FAILURE;
+    }
+
+    ...
+    // and later, still don't forget to free!
+    NS_Free(val);
+}
+</pre>
+
+<p>With <code>getter_copies()</code> you never have to worry about this. You can just use <code>getter_Copies()</code> to wrap a string class argument, and the class will remember to free the buffer when it goes out of scope:</p>
+
+<pre class="notranslate">{
+    nsString val;
+    GetValue(getter_Copies(val));
+
+    // val will free itself here
+    if (someCondition)
+        return NS_ERROR_FAILURE;
+    ...
+    // and later, still nothing to free
+}
+</pre>
+
+<p>The resulting code is much simpler, and easy to read.</p>
+
+<h3 id="Literal_Strings">Literal Strings</h3>
+
+<p>A <em>literal string</em> is a raw string value that is written in some C++ code. For example, in the statement <code>printf("Hello World\n");</code> the value <code>"Hello World\n"</code> is a literal string. It is often necessary to insert literal string values when an <code>nsAString</code> or <code>nsACString</code> is required. Two user-defined literals are provided that implicitly convert to <code>const nsString&amp;</code> resp. <code>const nsCString&amp;</code>:</p>
+
+<ul>
+ <li><code>""_ns</code> for 8-bit literals, converting implicitly to <code>const nsCString&amp;</code></li>
+ <li><code>u""_ns</code> for 16-bit literals, converting implicitly to <code>const nsString&amp;</code></li>
+</ul>
+
+<p>The benefits of the user-defined literals may seem unclear, given that <code>nsDependentCString</code> will also wrap a string value in an <code>nsCString</code>. The advantage of the user-defined literals is that the length of these strings is calculated at compile time, so the string does not need to be scanned at runtime to determine its length.</p>
+
+<p>Nowadays, all supported platforms have 16-bit literals using u""_ns, so we longer need to rely on macros for portability.</p>
+
+<pre class="notranslate">// call Init(const <code>char16_t</code>*) - bad signature, will need to do runtime length calculation inside
+Init(L"start value"); // bad - L"..." is not portable!
+Init(NS_ConvertASCIItoUTF16("start value").get()); // bad - runtime ASCII-&gt;UTF-16 conversion!
+Init(u"start value"); // less bad, portable and no runtime conversion
+
+// call Init(const nsAString&amp;)
+Init(nsDependentString(L"start value")); // bad - not portable!
+Init(NS_ConvertASCIItoUTF16("start value")); // bad - runtime ASCII-&gt;UTF-16 conversion!
+
+// call Init(const nsACString&amp;)
+Init(nsDependentCString("start value")); // bad - length determined at runtime
+</pre>
+
+<p>Here are some examples of proper usage of the literals (both standard and user-defined):</p>
+
+<pre class="notranslate">// call Init(const nsLiteralString&amp;) - enforces that it's only called with literals
+Init(u"start value"_ns);
+
+// call Init(const nsAString&amp;)
+Init(u"start value"_ns);
+
+// call Init(const nsACString&amp;)
+Init("start value"_ns);
+</pre>
+
+<p>In case a literal is defined via a macro, you can just convert it to <code>nsLiteralString</code> or <code>nsLiteralCString</code> using their constructor. You could consider not using a macro at all but a named <code>constexpr</code> constant instead.</p>
+
+<p>In some cases, an 8-bit literal is defined via a macro, either within code or from the environment, but it can't be changed or is used both as an 8-bit and a 16-bit string. In these cases, you can use the <code>NS_LITERAL_STRING_FROM_CSTRING </code>macro to construct a <code>nsLiteralString </code>and do the conversion at compile-time.</p>
+
+<h3 id="String_Concatenation">String Concatenation</h3>
+
+<p>Strings can be concatenated together using the + operator. The resulting string is a <code>const nsSubstringTuple</code> object. The resulting object can be treated and referenced similarly to a <code>nsAString</code> object. Concatenation <em>does not copy the substrings</em>. The strings are only copied when the concatenation is assigned into another string object. The <code>nsSubstringTuple</code> object holds pointers to the original strings. Therefore, the <code>nsSubstringTuple</code> object is dependent on all of its substrings, meaning that their lifetime must be at least as long as the <code>nsSubstringTuple</code> object.</p>
+
+<p>For example, you can use the value of two strings and pass their concatenation on to another function which takes an <code>const nsAString&amp;:</code></p>
+
+<pre class="eval notranslate">void HandleTwoStrings(const nsAString&amp; one, const nsAString&amp; two) {
+    // call HandleString(const nsAString&amp;)
+    HandleString(one + two);
+}
+</pre>
+
+<p>NOTE: The two strings are implicitly combined into a temporary <code>nsString</code> in this case, and the temporary string is passed into <code>HandleString</code>. If <code>HandleString</code> assigns its input into another <code>nsString</code>, then the string buffer will be shared in this case negating the cost of the intermediate temporary. You can concatenate N strings and store the result in a temporary variable:</p>
+
+<pre class="eval notranslate">constexpr auto start = u"start "_ns;
+constexpr auto middle = u"middle "_ns;
+constexpr auto end = u"end"_ns;
+// create a string with 3 dependent fragments - no copying involved!
+nsString combinedString = start + middle + end;
+
+// call void HandleString(const nsAString&amp;);
+HandleString(combinedString);
+</pre>
+
+<p>It is safe to concatenate user-defined literals because the temporary <code>nsLiteral[C]String </code>objects will live as long as the temporary concatenation object (of type <code>nsSubstringTuple</code>).</p>
+
+<pre class="eval notranslate">// call HandlePage(const nsAString&amp;);
+// safe because the concatenated-string will live as long as its substrings
+HandlePage(u"start "_ns + u"end"_ns);
+</pre>
+
+<h3 id="Local_variables">Local variables</h3>
+
+<p>Local variables within a function are usually stored on the stack. The <code>nsAutoString/nsAutoCString</code> classes are derivatives of the <code>nsString/nsCString classes</code>. They own a 64-character buffer allocated in the same storage space as the string itself. If the <code>nsAutoString</code> is allocated on the stack, then it has at its disposal a 64-character stack buffer. This allows the implementation to avoid allocating extra memory when dealing with small strings. <code>nsAutoStringN</code>/<code>nsAutoCStringN</code> are more general alternatives that let you choose the number of characters in the inline buffer.</p>
+
+<pre class="eval notranslate">...
+nsAutoString value;
+GetValue(value); // if the result is less than 64 code units,
+                 // then this just saved us an allocation
+...
+</pre>
+
+<h3 id="Member_variables">Member variables</h3>
+
+<p>In general, you should use the concrete classes <code>nsString</code> and <code>nsCString</code> for member variables.</p>
+
+<pre class="eval notranslate">class Foo {
+    ...
+    // these store UTF-8 and UTF-16 values respectively
+    nsCString mLocalName;
+    nsString mTitle;
+};
+</pre>
+
+<p>Note that the strings are declared directly in the class, not as pointers to strings. Don't do this:</p>
+
+<pre class="notranslate">class Foo {
+public:
+    Foo() {
+        mLocalName = new nsCString();
+        mTitle = new nsString();
+    }
+    ~Foo() { delete mLocalName; delete mTitle; }
+
+private:
+    // these store UTF-8 and UTF-16 values respectively
+    nsCString* mLocalName;
+    nsString*  mTitle;
+};
+</pre>
+
+<p>The above code may appear to save the cost of the string objects, but <code>nsString/nsCString</code> are small objects - the overhead of the allocation outweighs the few bytes you'd save by keeping a pointer.</p>
+
+<p>Another common incorrect pattern is to use <code>nsAutoString/nsAutoCString</code> for member variables. As described in <a href="#Local_variables">Local Variables</a>, these classes have a built in buffer that make them very large. This means that if you include them in a class, they bloat the class by 64 bytes (<code>nsAutoCString</code>) or 128 bytes (<code>nsAutoString</code>).</p>
+
+<p>An example:</p>
+
+<pre class="notranslate">class Foo {
+    ...
+
+    // bloats 'Foo' by 128 bytes!
+    nsAutoString mLocalName;
+};
+</pre>
+
+<h3 id="Raw_Character_Pointers">Raw Character Pointers</h3>
+
+<p><code>PromiseFlatString()</code> and <code>PromiseFlatCString() </code>can be used to create a temporary buffer which holds a null-terminated buffer containing the same value as the source string. <code>PromiseFlatString()</code> will create a temporary buffer if necessary. This is most often used in order to pass an <code>nsAString</code> to an API which requires a null-terminated string.</p>
+
+<p>In the following example, an <code>nsAString</code> is combined with a literal string, and the result is passed to an API which requires a simple character buffer.</p>
+
+<pre class="eval notranslate">// Modify the URL and pass to AddPage(const <code>char16_t</code>* url)
+void AddModifiedPage(const nsAString&amp; url) {
+    constexpr auto httpPrefix = u<span class="nowiki">"http://"</span>_ns;
+    const nsAString&amp; modifiedURL = httpPrefix + url;
+
+    // creates a temporary buffer
+    AddPage(PromiseFlatString(modifiedURL).get());
+}
+</pre>
+
+<p><code>PromiseFlatString()</code> is smart when handed a string that is already null-terminated. It avoids creating the temporary buffer in such cases.</p>
+
+<pre class="eval notranslate">// Modify the URL and pass to AddPage(const <code>char16_t</code>* url)
+void AddModifiedPage(const nsAString&amp; url, PRBool addPrefix) {
+    if (addPrefix) {
+        // MUST create a temporary buffer - string is multi-fragmented
+        constexpr auto httpPrefix = u<span class="nowiki">"http://"</span>_ns;
+        AddPage(PromiseFlatString(httpPrefix + modifiedURL));
+    } else {
+        // MIGHT create a temporary buffer, does a runtime check
+        AddPage(PromiseFlatString(url).get());
+    }
+}
+</pre>
+
+<h3 id="printf_and_a_UTF-16_string"><code>printf</code> and a UTF-16 string</h3>
+
+<p>For debugging, it's useful to <code>printf</code> a UTF-16 string (<code>nsString</code>, <code>nsAutoString</code>, etc). To do this usually requires converting it to an 8-bit string, because that's what printf expects. Use:</p>
+
+<pre class="eval notranslate">printf("%s\n", NS_ConvertUTF16toUTF8(yourString).get());
+</pre>
+
+<h3 id="Sequence_of_appends_without_reallocating">Sequence of appends without reallocating</h3>
+
+<p><code>SetCapacity()</code> allows you to give the string a hint of the future string length caused by a sequence of appends (excluding appends that convert between UTF-16 and UTF-8 in either direction) in order to avoid multiple allocations during the sequence of appends. However, the <em>other</em> allocation-avoidance features of XPCOM strings interact badly with <code>SetCapacity()</code> making it something of a footgun.</p>
+
+<p><code>SetCapacity()</code> is appropriate to use before a sequence of multiple operations from the following list (without operations that are not on the list between the <code>SetCapacity()</code> call and operations from the list):</p>
+
+<ul>
+ <li><code>Append()</code></li>
+ <li><code>AppendASCII()</code></li>
+ <li><code>AppendLiteral()</code></li>
+ <li><code>AppendPrintf()</code></li>
+ <li><code>AppendInt()</code></li>
+ <li><code>AppendFloat()</code></li>
+ <li><code>LossyAppendUTF16toASCII()</code></li>
+ <li><code>AppendASCIItoUTF16()</code></li>
+</ul>
+
+<p><em><strong>DO NOT</strong></em> call <code>SetCapacity()</code> if the subsequent operations on the string do not meet the criteria above. Operations that undo the benefits of <code>SetCapacity()</code> include but are not limited to:</p>
+
+<ul>
+ <li><code>SetLength()</code></li>
+ <li><code>Truncate()</code></li>
+ <li><code>Assign()</code></li>
+ <li><code>AssignLiteral()</code></li>
+ <li><code>Adopt()</code></li>
+ <li><code>CopyASCIItoUTF16()</code></li>
+ <li><code>LossyCopyUTF16toASCII()</code></li>
+ <li><code>AppendUTF16toUTF8()</code></li>
+ <li><code>AppendUTF8toUTF16()</code></li>
+ <li><code>CopyUTF16toUTF8()</code></li>
+ <li><code>CopyUTF8toUTF16()</code></li>
+</ul>
+
+<p>If your string is an <code>nsAuto[C]String</code> and you are calling <code>SetCapacity()</code> with a constant N, please instead declare the string as <code>nsAuto[C]StringN&lt;</code>N+1<code>&gt;</code> without calling <code>SetCapacity()</code> (while being mindful of not using such a large N as to overflow the run-time stack).</p>
+
+<p>There is no need to include room for the null terminator: it is the job of the string class.</p>
+
+<p>Note: Calling <code>SetCapacity()</code> does not give you permission to use the pointer obtained from <code>BeginWriting()</code> to write past the current length (as returned by <code>Length()</code>) of the string. Please use either <code>BulkWrite()</code> or <code>SetLength()</code> instead.</p>
+
+<h2 id="IDL">IDL</h2>
+
+<p>The string library is also available through IDL. By declaring attributes and methods using the specially defined IDL types, string classes are used as parameters to the corresponding methods.</p>
+
+<h3 id="IDL_String_types">IDL String types</h3>
+
+<p>The C++ signatures follow the abstract-type convention described above, such that all method parameters are based on the <a href="#The_Abstract_Classes">abstract classes</a>. The following table describes the purpose of each string type in IDL.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th class="header">IDL type</th>
+   <th class="header">C++ Type</th>
+   <th class="header">Purpose</th>
+  </tr>
+  <tr>
+   <td><code>string</code></td>
+   <td><code>char*</code></td>
+   <td>Raw character pointer to ASCII (7-bit) string, no string classes used. High bit is not guaranteed across XPConnect boundaries.</td>
+  </tr>
+  <tr>
+   <td><code>wstring</code></td>
+   <td><code><code>char16_t</code>*</code></td>
+   <td>Raw character pointer to UTF-16 string, no string classes used.</td>
+  </tr>
+  <tr>
+   <td><code>AString</code></td>
+   <td><code>nsAString</code></td>
+   <td>UTF-16 string.</td>
+  </tr>
+  <tr>
+   <td><code>ACString</code></td>
+   <td><code>nsACString</code></td>
+   <td>8-bit string. All bits are preserved across XPConnect boundaries.</td>
+  </tr>
+  <tr>
+   <td><code>AUTF8String</code></td>
+   <td><code>nsACString</code></td>
+   <td>UTF-8 string. Converted to UTF-16 as necessary when value is used across XPConnect boundaries.</td>
+  </tr>
+  <tr>
+   <td><code>DOMString</code></td>
+   <td><code>nsAString</code></td>
+   <td>UTF-16 string type used in the DOM. The same as <code>AString</code> with a few odd XPConnect exceptions: When the special JavaScript value <code>null</code> is passed to a <code>DOMString</code> parameter of an XPCOM method, it becomes a void <code>DOMString</code>. The special JavaScript value <code>undefined</code> becomes the string <code>"undefined"</code>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="C_Signatures">C++ Signatures</h3>
+
+<p>In IDL, <code>in</code> parameters are read-only, and the C++ signatures for <code>*String</code> parameters follows the above guidelines by using <code>const nsAString&amp;</code> for these parameters. <code>out</code> and <code>inout</code> parameters are defined simply as <code>nsAString</code> so that the callee can write to them.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th class="header">IDL</th>
+   <th class="header">C++</th>
+  </tr>
+  <tr>
+   <td>
+    <pre class="eval notranslate">
+interface nsIFoo : nsISupports {
+
+    attribute AString utf16String;
+
+
+
+
+    AUTF8String getValue(in ACString key);
+
+};
+</pre>
+   </td>
+   <td>
+    <pre class="eval notranslate">
+class nsIFoo : public nsISupports {
+
+     NS_IMETHOD GetUtf16String(nsAString&amp;
+                               aResult) = 0;
+     NS_IMETHOD SetUtf16String(const nsAString&amp;
+                              aValue) = 0;
+
+     NS_IMETHOD GetValue(const nsACString&amp; aKey,
+                     nsACString&amp; aResult) = 0;
+};
+</pre>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>In the above example, <code>utf16String</code> is treated as a UTF-16 string. The implementation of <code>GetUtf16String()</code> will use <code>aResult.Assign</code> to "return" the value. In <code>SetUtf16String()</code> the value of the string can be used through a variety of methods including <a href="#Iterators">Iterators</a>, <code><a href="#Raw_Character_Pointers">PromiseFlatString</a></code>, and assignment to other strings.</p>
+
+<p>In <code>GetValue()</code>, the first parameter, <code>aKey</code>, is treated as a raw sequence of 8-bit values. Any non-ASCII characters in <code>aKey</code> will be preserved when crossing XPConnect boundaries. The implementation of <code>GetValue()</code> will assign a UTF-8 encoded 8-bit string into <code>aResult</code>. If the <code>this</code> method is called across XPConnect boundaries, such as from a script, then the result will be decoded from UTF-8 into UTF-16 and used as a Unicode value.</p>
+
+<h3 id="Choosing_a_string_type">Choosing a string type</h3>
+
+<p>It can be difficult to determine the correct string type to use for IDL. The following points should help determine the appropriate string type.</p>
+
+<ul>
+ <li>Using string classes may avoid new memory allocation for <code>out</code> parameters. For example, if the caller is using an <code>nsAutoString</code> to receive the value for an <code>out</code> parameter, (defined in C++ as simply <code>nsAString&amp;</code> then assignment of short (less than 64-characters) values to an <code>out</code> parameter will only copy the value into the <code>nsAutoString</code>'s buffer. Moreover, using the string classes allows for sharing of string buffers. In many cases, assigning from one string object to another avoids copying in favor of simply incrementing a reference count.</li>
+ <li><code>in</code> strings using string classes often have their length pre-calculated. This can be a performance win.</li>
+ <li>In cases where a raw-character buffer is required, <code>string</code> and <code>wstring</code> provide faster access than <code>PromiseFlatString</code>.</li>
+ <li>UTF-8 strings defined with <code>AUTF8String</code> may need to be decoded when crossing XPConnect boundaries. This can be a performance hit. On the other hand, UTF-8 strings take up less space for strings that are commonly ASCII.</li>
+ <li>UTF-16 strings defined with <code>wstring</code> or <code>AString</code> are fast when the unicode value is required. However, if the value is more often ASCII, then half of the storage space of the underlying string may be wasted.</li>
+</ul>
+
+<h2 id="String_Guidelines">String Guidelines</h2>
+
+<p>Follow these simple rules in your code to keep your fellow developers, reviewers, and users happy.</p>
+
+<ul>
+ <li>Use the most abstract string class that you can. Usually this is:
+  <ul>
+   <li><code><a href="#The_Abstract_Classes">nsAString</a></code> for function parameters</li>
+   <li><code><a href="#The_Concrete_Classes_-_which_classes_to_use_when">nsString</a></code> for member variables</li>
+   <li><a href="#The_Concrete_Classes_-_which_classes_to_use_when"><code>nsAutoString</code> </a> for local (stack-based) variables</li>
+  </ul>
+ </li>
+ <li>Use the <code>""_ns</code> and <code>u""_ns</code> user-defined literals to represent literal strings (e.g. <code>"foo"_ns</code>) as nsAString-compatible objects.</li>
+ <li>Use <a href="#String_Concatenation">string concatenation</a> (i.e. the "+" operator) when combining strings.</li>
+ <li>Use <code><a href="#Raw_Character_Pointers">nsDependentString</a></code> when you have a raw character pointer that you need to convert to an nsAString-compatible string.</li>
+ <li>Use <code><a href="#Substrings_.28string_fragments.29">Substring()</a></code> to extract fragments of existing strings.</li>
+ <li>Use <a href="#Iterators">iterators</a> to parse and extract string fragments.</li>
+</ul>
+
+<h2 id="Appendix_A_-_What_class_to_use_when">Appendix A - What class to use when</h2>
+
+<p>This table provides a quick reference for what classes you should be using.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th class="header">Context</th>
+   <th class="header">class</th>
+   <th class="header">Notes</th>
+  </tr>
+  <tr>
+   <td>Local Variables</td>
+   <td><code>nsAutoString<br>
+    nsAutoCString</code></td>
+   <td></td>
+  </tr>
+  <tr>
+   <td>Class Member Variables</td>
+   <td><code>nsString<br>
+    nsCString</code></td>
+   <td></td>
+  </tr>
+  <tr>
+   <td>Method Parameter types</td>
+   <td><code>nsAString<br>
+    nsACString</code></td>
+   <td>Use abstract classes for parameters. Use <code>const nsAString&amp;</code> for "in" parameters and <code>nsAString&amp;</code> for "out" parameters.</td>
+  </tr>
+  <tr>
+   <td>Retrieving "out" string/wstrings</td>
+   <td><code>nsString<br>
+    nsCString</code></td>
+   <td>Use <code>getter_Copies()</code>. Similar to <code>nsString / nsCString</code>.</td>
+  </tr>
+  <tr>
+   <td>Wrapping character buffers</td>
+   <td><code>nsDependentString<br>
+    nsDependentCString</code></td>
+   <td>Wrap <code>const char* / const <code>char16_t</code>*</code> buffers.</td>
+  </tr>
+  <tr>
+   <td>Literal strings</td>
+   <td><code>nsLiteralString<br>
+    nsLiteralCString</code></td>
+   <td>Similar to <code>nsDependent[C]String</code>, but pre-calculates length at build time.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Appendix_B_-_nsAString_Reference">Appendix B - nsAString Reference</h2>
+
+<p>Read-only methods.</p>
+
+<ul>
+ <li><code><strong>Length()</strong></code></li>
+ <li><code><strong>IsEmpty()</strong></code></li>
+ <li><code><strong>IsVoid()</strong></code> - XPConnect will convert void nsAStrings to JavaScript <code>null</code>.</li>
+ <li><code><strong>BeginReading(<em>iterator</em>)</strong></code></li>
+ <li><code><strong>EndReading(<em>iterator</em>)</strong></code></li>
+ <li><code><strong>Equals(<em>string[, comparator]</em>)</strong></code></li>
+ <li><code><strong>First()</strong></code></li>
+ <li><code><strong>Last()</strong></code></li>
+ <li><code><strong>CountChar()</strong></code></li>
+ <li><code><strong>Left(<em>outstring, length</em>)</strong></code></li>
+ <li><code><strong>Mid(<em>outstring, position, length</em>)</strong></code></li>
+ <li><code><strong>Right(<em>outstring, length</em>)</strong></code></li>
+ <li><code><strong>FindChar(<em>character</em>)</strong></code></li>
+</ul>
+
+<p>Methods that modify the string.</p>
+
+<ul>
+ <li><code><strong>Assign(<em>string</em>)</strong></code></li>
+ <li><code><strong>Append(<em>string</em>)</strong></code></li>
+ <li><code><strong>Insert(<em>string</em>)</strong></code></li>
+ <li><code><strong>Cut(<em>start, length</em>)</strong></code></li>
+ <li><code><strong>Replace(<em>start, length, string</em>)</strong></code></li>
+ <li><code><strong>Truncate(<em>length</em>)</strong></code></li>
+ <li><code><strong>SetIsVoid(<em>true</em>)</strong></code> - Make it null. XPConnect will convert void nsAStrings to JavaScript <code>null</code>.</li>
+ <li><code><strong>BeginWriting(<em>iterator</em>)</strong></code></li>
+ <li><code><strong>EndWriting(<em>iterator</em>)</strong></code></li>
+ <li><code><strong>SetCapacity()</strong></code> - Inform the string about buffer size need before a sequence of calls to  Append() or converting appends that convert between UTF-16 and Latin1 in either direction. (Don't use if you use appends that convert between UTF-16 and UTF-8 in either direction.) Calling this method does not give you permission to use <code>BeginWriting()</code> to write past the logical length of the string. Use <code>SetLength()</code> or <code>BulkWrite()</code> as appropriate.</li>
+</ul>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: <a class="link-mailto" href="mailto:alecf@flett.org">Alec Flett</a></li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+ <li>Thanks to David Baron for <a class="external" href="http://dbaron.org/mozilla/coding-practices">actual docs</a>,</li>
+ <li>Peter Annema for lots of direction</li>
+ <li>Myk Melez for some more docs</li>
+ <li>David Bradley for a diagram</li>
+ <li>Revised by Darin Fisher for Mozilla 1.7</li>
+ <li>Revised by Jungshik Shin to clarify character encoding issues</li>
+</ul>
+</div>

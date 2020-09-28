@@ -1,0 +1,115 @@
+<p class="summary">This article provides an overview of the process by which B2G OS (the TV version — on which <a href="/en-US/docs/Mozilla/Firefox_OS/TV">Firefox OS for TV</a> is based) can be ported onto the Nexus Player (versions running Lollipop.)</p>
+
+<div class="warning">
+<p><strong>Important</strong>: The target audience of these instructions is mainly advanced developers who are already familiar with building Firefox OS or AOSP.</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: We cannot guarantee the reliability of ported devices. However, developers who are interested in the porting process and willing to contribute back to the program are encouraged to hack their own devices. Constructive feedback and questions are always welcome: mail us at <a href="mailto:smarttv@mozilla.com">smarttv@mozilla.com</a>.</p>
+</div>
+
+<div class="note">
+<p><font size="2"><strong>Note:</strong> By assuming your Nexus Player is unlocked, this article will not teach you how to root and/or unlock your Nexus Player.</font></p>
+</div>
+
+<h2 id="Preparing_the_Building_Environment">Preparing the Building Environment</h2>
+
+<p>Currently building B2G OS for Nexus Player requires a PC running Ubuntu 14.04 LTS x64 or compatible.</p>
+
+<p>You should start by running the following commands:</p>
+
+<pre class="brush: bash">sudo dpkg --add-architecture i386
+sudo dpkg --add-architecture amd64
+sudo apt-get update
+sudo apt-get install --no-install-recommends autoconf2.13 bison bzip2 ccache curl flex gawk gcc g++ g++-multilib git lib32ncurses5-dev lib32z1-dev libgconf2-dev zlib1g:amd64 zlib1g-dev:amd64 zlib1g:i386 zlib1g-dev:i386 libgl1-mesa-dev libx11-dev make zip lzop libxml2-utils openjdk-7-jdk nodejs unzip python</pre>
+
+<h2 id="Configuring_USB">Configuring USB</h2>
+
+<p>On Linux systems a regular user can't directly access USB devices by default. You need to configure udev rules.</p>
+
+<p>Create a file at <code>/etc/udev/rules.d/51-android.rules</code> containing the following command, then save it:</p>
+
+<pre class="brush: bash">wget -S -O - https://raw.githubusercontent.com/cm-b2g/B2G/1230463/tools/51-android.rules | sudo tee &gt;/dev/null /etc/udev/rules.d/51-android.rules; sudo udevadm control --reload-rules</pre>
+
+<p>The new rules take effect the next time a device is plugged in.</p>
+
+<div class="note">
+<p><strong>Note</strong>: For more detail about the relevant building environments, please refer to <a href="/en-US/docs/Mozilla/Firefox_OS/Firefox_OS_build_prerequisites">Firefox OS build prerequisites</a>.</p>
+</div>
+
+<h2 id="Download_source_code">Download source code</h2>
+
+<p>To download the source code for the Nexus Player, first make sure you have <a href="https://git-scm.com/">Github</a> installed, then execute the following commands:</p>
+
+<pre>git clone git://github.com/mozilla-b2g/B2G.git nexusplayer
+cd nexusplayer
+BRANCH=v2.6 ./config.sh nexusplayer-l</pre>
+
+<p>To manually download the corresponding Gecko source code, execute the following command:</p>
+
+<pre>git clone https://github.com/mozilla-b2g/gecko-b2g</pre>
+
+<p>And follow the instructions in <a href="https://developer.mozilla.org/en-US/docs/Mozilla/B2G_OS/Customization_with_the_.userconfig_file#Changing_the_Gecko_source_tree">Changing the Gecko source tree</a> to build against a custom Gecko.</p>
+
+<h2 id="Building">Building</h2>
+
+<p>Once the environment has been set up and the source code has been downloaded, building it is a simple matter of executing the following:</p>
+
+<pre class="brush: bash">./build.sh</pre>
+
+<h2 id="Flashing_B2G_to_Nexus_Player">Flashing B2G to Nexus Player</h2>
+
+<p>Flash B2G OS to the Nexus Player with the following:</p>
+
+<pre class="brush: bash">./flash.sh</pre>
+
+<p>Once the flashing is complete, the device should reboot and load up B2G OS. As long as nothing went wrong, you should be able to see the B2G OS TV Home screen after a short while.</p>
+
+<h2 id="Troubleshooting">Troubleshooting</h2>
+
+<p>Sometimes, things can and will go wrong. What follows is a list of known problems, with suggested solutions.</p>
+
+<h3 id="Fastboot_cannot_find_Nexus_Player">Fastboot cannot find Nexus Player</h3>
+
+<p>You might see <code>./flash.sh</code> successfully reboot Nexus Player into bootloader mode but stopped at <code>&lt; waiting for device &gt; </code>message forever. This can be solved by replacing the <code>fastboot</code> in your system with the one under <code>&lt;b2g&gt;/</code><span class="im"><code>out/host/linux-x86/bin/</code> directory.</span></p>
+
+<h3 id="Bluetooth_functionality_is_missing">Bluetooth functionality is missing</h3>
+
+<p>We can’t automatically build <code>bluetooth.default.so</code> and <code>libbt-vendor.so</code> on <code>nexusplayer-l</code>, therefore by default Bluetooth won't work. A workaround for now is to manually build the missing files and flash them into <code>nexusplayer-l</code>, after which you will be able to turn on bluetooth in the <em>Settings</em> app.</p>
+
+<p>The building steps are listed below:</p>
+
+<h4 id="Steps_for_building_bluetooth.default.so">Steps for building bluetooth.default.so</h4>
+
+<ol>
+ <li>Go to <code>dir nexusplayer</code> then type <code>source setup.sh</code>.</li>
+ <li>Go to <code>dir nexusplayer/external/tinyxml2</code> then type <code>mm</code>.</li>
+ <li>Go to <code>dir nexusplayer/external/bluetooth/bluedroid</code> then type<strong> </strong><code>mm</code><strong>.</strong></li>
+ <li>Go to <code>dir nexusplayer/</code> then type the following command:</li>
+</ol>
+
+<pre class="brush: bash">adb push out/target/product/fugu/system/lib/hw/bluetooth.default.so /system/lib/hw</pre>
+
+<h4 id="Steps_for_building_libbt-vendor.so">Steps for building libbt-vendor.so</h4>
+
+<ol>
+ <li>Go to <code>dir nexusplayer</code> then type <code>source setup.sh</code>.</li>
+ <li>Go to <code>dir nexusplayer/hardware/broadcom/libbt</code> then type <code>mm</code><strong>.</strong></li>
+ <li>Go to <code>dir nexusplayer</code> then type the following command:</li>
+</ol>
+
+<pre class="brush: bash">adb push out/target/product/fugu/system/vendor/lib/libbt-vendor.so /system/vendor/lib</pre>
+
+<h3 id="The_TV_Home_screen_doesn't_handle_mouse_events">The TV Home screen doesn't handle mouse events</h3>
+
+<p>By default, the TV home screen app won't handle mouse events (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1260083" title="[nexusplayer] TV home doesn't handle mouse event.">bug 1260083</a>). For now, the recommendation is to bypass mouse usage and use the remote controller instead.</p>
+
+<p>Follow these steps to get things working:</p>
+
+<ol>
+ <li>Use the hardware keyboard to boot up the Nexus Player.</li>
+ <li>Use the arrow keys to navigate the Home screen and go to the <em>Settings</em> app.</li>
+ <li>Use the arrow keys to go to the Bluetooth device setup panel and pair the device with the remote controller.</li>
+</ol>
+
+<p>Then you can use the remote controller instead. Plug the mouse in when you want to navigate within the <em>Browser</em> app.</p>

@@ -1,0 +1,204 @@
+<p>{{obsolete_header}}</p>
+
+<p>{{ gecko_minversion_header("17") }}</p>
+
+<p>The <code>Task.jsm</code> JavaScript code module implements a subset of <a href="https://github.com/mozilla/task.js" title="http://taskjs.org/">Task.js</a> to make sequential, asynchronous operations simple, using the power of JavaScript's <code>yield</code> operator. To use it, you first need to import the code module into your JavaScript scope:</p>
+
+<pre>Components.utils.import("resource://gre/modules/Task.jsm");
+</pre>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>For an introduction to tasks, you may start from the <a href="http://taskjs.org/" title="http://taskjs.org/">Task.js documentation</a>, keeping in mind that only the core subset is implemented in this module.</p>
+
+<p>Tasks are built upon <a href="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators.3A_a_better_way_to_build_Iterators" title="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators:_a_better_way_to_build_Iterators">generator functions</a> and <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise">promises</a>. The <code><a href="#spawn()" title="#spawn()">Task.spawn()</a></code> function takes a generator function and starts running it as a task. Every time the task yields a promise, it waits until the promise is resolved. <code>Task.spawn()</code> returns a promise that is resolved when the task completes successfully, or is rejected if an exception occurs.</p>
+
+<p>You can use the <a href="/en-US/docs/JavaScript/Reference/Operators/yield" title="/en-US/docs/JavaScript/Reference/Operators/yield"><code>yield</code></a> operator inside the generator function to wait on a promise, spawn another task, or propagate a value:</p>
+
+<pre>let resolutionValue = yield (promise/generator/iterator/value);</pre>
+
+<ul>
+ <li>If you specify a <strong><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise">promise</a></strong>, the <code>yield</code> operator returns its resolution value as soon as the promise is resolved. If the promise is rejected, its rejection reason is thrown as an exception.</li>
+ <li>If you specify a <strong><a href="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators.3A_a_better_way_to_build_Iterators" title="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators.3A_a_better_way_to_build_Iterators">generator function</a></strong> or the <strong><a href="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Iterators" title="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Iterators">iterator</a></strong> returned by a generator function, then <code><a href="#spawn()" title="#spawn()">Task.spawn()</a></code> is implicitly called, and the <code>yield</code> operator works on the returned promise. This reduces the syntax overhead of calling <code>Task.spawn()</code> explicitly when you want to recurse into other task functions.</li>
+ <li>If you specify a <strong><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">function</a></strong> that is not a generator, it is called with no arguments, and the <code>yield</code> operator returns the return value of the function. This comes in handy when iterating over function lists where some items have been converted to tasks and some not.</li>
+ <li>If you specify <strong>anything else</strong>, the <code>yield</code> operator returns exactly what you specified.</li>
+</ul>
+
+<h2 id="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>Function <a href="#async()">async</a>(aTask);</code> {{ gecko_minversion_inline("30") }}</td>
+  </tr>
+  <tr>
+   <td><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise">Promise</a> <a href="#spawn()">spawn</a>(aTask);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Properties">Properties</h2>
+
+<table class="standard-table" style="width: auto;">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>Result</code> <span class="inlineIndicator readOnly readOnlyInline" title="This value may not be changed.">Read only </span></td>
+   <td><a href="/en-US/docs/JavaScript/Guide/Working_with_Objects#Using_a_constructor_function" title="/en-US/docs/JavaScript/Guide/Working_with_Objects#Using_a_constructor_function"><code>Constructor</code></a></td>
+   <td>Constructs a special exception that, when thrown inside a legacy generator function, allows the associated task to be resolved with a specific value. Example:
+    <pre class="brush: js">
+Task.spawn( function() { yield ... ; throw new Task.Result("Value"); }</pre>
+
+    <div class="note"><strong>Note:</strong> If you want to exit early from a generator function, without returning a value for the task, you can just use the <code>return</code> statement without any arguments.</div>
+
+    <p class="note"><strong>Note:</strong> If you want to return a result from a non-legacy generator function, don't use this. Return the value instead:<br>
+     Task.spawn( function*() { yield ... ; return "Value"; }</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="async()_gecko_minversion_inline(30)">async() {{ gecko_minversion_inline("30") }}</h3>
+
+<p>Create and return an "async function" that starts a new task.</p>
+
+<pre>Function async(
+  aTask
+);
+</pre>
+
+<p>async() is similar to spawn(), except that:</p>
+
+<ul>
+ <li>
+  <p>it doesn't immediately start the task, rather it returns an "async function" that starts the task when the function is called;</p>
+ </li>
+ <li>
+  <p>it binds the task to the async function's <strong>this</strong> object and arguments;</p>
+ </li>
+ <li>
+  <p>it requires the task to be a function.</p>
+ </li>
+</ul>
+
+<p>async() simplifies the common pattern of implementing a method via a task, like this simple object with a <strong>greet</strong> method that has a <strong>name</strong> parameter and spawns a task to send a greeting and return its reply:</p>
+
+<pre class="brush: js">let greeter = {
+  message: "Hello, NAME!",
+  greet: function(name) {
+    return Task.spawn((function* () {
+      return yield sendGreeting(this.message.replace(/NAME/, name));
+    }).bind(this);
+  })
+};</pre>
+
+<p>With async(), the method can be declared succinctly:</p>
+
+<pre class="brush: js">let greeter = {
+  message: "Hello, NAME!",
+  greet: Task.async(function* (name) {
+    return yield sendGreeting(this.message.replace(/NAME/, name));
+  })
+};</pre>
+
+<p>While maintaining identical semantics:</p>
+
+<pre class="brush: js">greeter.greet("Mitchell").then((reply) =&gt; { ... }); // behaves the same</pre>
+
+<h3 id="spawn()">spawn()</h3>
+
+<p>Creates and starts a new task.</p>
+
+<pre>Promise spawn(
+  aTask
+);
+</pre>
+
+<h6 id="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aTask</dt>
+ <dd>This parameter accepts different data types:
+ <ul>
+  <li>If you specify a <strong><a href="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators.3A_a_better_way_to_build_Iterators" title="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Generators.3A_a_better_way_to_build_Iterators">generator function</a></strong>, it is called with no arguments to retrieve the associated iterator. The generator function is a task, that is can yield promise objects to wait upon. The promise returned by the task either fulfills with the returned value if generator returns or rejects with the thrown error if the generator throws.</li>
+  <li>If you specify the <strong><a href="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Iterators" title="/en-US/docs/JavaScript/Guide/Iterators_and_Generators#Iterators">iterator</a></strong> returned by a generator function you called, the generator function is also executed as a task. This allows you to call the function with arguments. The promise returned by the task either fulfills with the returned value if generator returns or rejects with the thrown error if the generator throws.</li>
+  <li>If you specify a <strong><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">function</a></strong> that is not a generator, it is called with no arguments, and its return value is used to fulfill the returned promise.</li>
+  <li>If you specify <strong>anything else</strong>, you get a promise that is already fulfilled with the specified value.</li>
+ </ul>
+ </dd>
+</dl>
+
+<h6 id="Return_value">Return value</h6>
+
+<p>A <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Promise">promise</a> that is fulfills when the task returns or rejects when the task throws an exception.</p>
+
+<h2 id="Examples">Examples</h2>
+
+<h3 id="General_example">General example</h3>
+
+<pre class="brush: js">Cu.import("resource://gre/modules/Task.jsm");
+
+Task.spawn(function* () {
+
+  // This is our task.  It is a generator function because it contains the
+  // "yield" operator at least once.  Let's create a promise object, wait on
+  // it and capture its resolution value.
+  let myPromise = getPromiseResolvedOnTimeoutWithValue(1000, "Value");
+  let result = yield myPromise;
+
+  // This part is executed only after the promise above is resolved (after
+  // one second, in this imaginary example).  We can easily loop while
+  // calling asynchronous functions, and wait multiple times.
+  for (let i = 0; i &lt; 3; i++) {
+    result += yield getPromiseResolvedOnTimeoutWithValue(50, "!");
+  }
+
+ return "Resolution result for the task: " + result;
+
+}).then(function (result) {
+
+  // result == "Resolution result for the task: Value!!!"
+
+  // The result is undefined if no special Task.Result exception was thrown.
+
+}, function (exception) {
+
+  // Failure!  We can inspect or report the exception.
+
+});</pre>
+
+<h3 id="Exception_handling">Exception handling</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/osfile.jsm")
+Components.utils.import("resource://gre/modules/Task.jsm")
+
+Task.spawn(function* () {
+  let currentDir = yield OS.File.getCurrentDirectory();
+  let path = OS.Path.join(currentDir, ".mozconfig");
+
+  try {
+    let info = yield OS.File.stat(path);
+    console.log("The .mozconfig file is " + info.size + " bytes long.");
+  } catch (ex if ex instanceof OS.File.Error &amp;&amp; ex.becauseNoSuchFile) {
+    console.log("You don't have .mozconfig in " + currentDir);
+  }
+}).then(null, Components.utils.reportError);</pre>
+
+<p>In this example, if the promise returned by <a href="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.stat" title="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.stat"><code>OS.File.stat</code></a> is rejected, an exception is thrown inside the task. If the reason for the exception is that the file doesn't exist, this is treated as an expected condition, and the task will complete succesfully.</p>
+
+<p>Any other unhandled exception that is thrown inside the task is reported by <code><a href="/en-US/docs/Components.utils.reportError" title="/en-US/docs/Components.utils.reportError">Components.utils.reportError</a></code>.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a class="internal" href="/en-US/docs/JavaScript_code_modules/Using" title="en-US/docs/JavaScript code modules/Using JavaScript code modules">Using JavaScript code modules</a></li>
+ <li><a class="internal" href="/en-US/docs/Mozilla/JavaScript_code_modules" title="en-US/docs/Mozilla/JavaScript code modules">JavaScript code modules</a></li>
+ <li><a class="internal" href="/en-US/docs/Components.utils.import" title="en-US/docs/Components.utils.import"><code>Components.utils.import</code></a></li>
+ <li><a href="/en-US/docs/JavaScript_OS.File" title="/en-US/docs/JavaScript_OS.File">JavaScript OS.File</a></li>
+</ul>

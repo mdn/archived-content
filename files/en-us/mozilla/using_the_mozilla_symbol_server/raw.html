@@ -1,0 +1,60 @@
+<p>The Mozilla project runs a symbol server for trunk Firefox nightly and release builds on Windows. Symbols are available for at least 30 previous days worth of nightly builds, and Firefox releases from 2.0.0.4. This allows debugging of those builds without forcing all users to download large debugging files. The server functions like <a class="external" href="https://docs.microsoft.com/en-us/windows/win32/dxtecharts/debugging-with-symbols">Microsoft's symbol server</a> so the documentation there can be useful.</p>
+
+<p>Note that because Mozilla release builds are heavily optimized, debugging is not always easy. The debugger will not be able to show you the content of all variables and the execution path can seem strange because of inlining, tail calls, and other compiler optimizations. The only workaround is to build an unoptimized local build.</p>
+
+<p>The official symbol server URL for Firefox is <code><a class="external" href="https://symbols.mozilla.org/" rel="freelink">https://symbols.mozilla.org/</a></code>. You cannot visit this URL directly: you must add it to the symbol path of your debugging tool. In the examples below, a local cache directory is used to avoid repeatedly fetching the PDB from the server. Replace <code>C:\Users\bsmedberg\symbols</code> with an appropriate cache directory on your machine.</p>
+
+<h3 id="Using_the_symbol_server_in_Microsoft_Visual_C.2B.2B_2005.2B" name="Using_the_symbol_server_in_Microsoft_Visual_C.2B.2B_2005.2B">Using the symbol server in Microsoft Visual C++</h3>
+
+<p><img alt="The Tools menu of Visual C++ with the Options item selected" class="internal" src="https://mdn.mozillademos.org/files/10085/vs_tools_options.png" style="height: 508px; width: 450px;"> <img alt="The Visual C++ 2017 Symbols pane of the Options dialog with the Mozilla symbol server configured" class="internal" src="https://mdn.mozillademos.org/files/15387/snip_20170901070042.png" style="height: 439px; width: 744px;"></p>
+
+<h3 id="Using_the_symbol_server_in_Windbg" name="Using_the_symbol_server_in_Windbg">Using the symbol server in Windbg</h3>
+
+<p>The Windbg symbol path is configured with a string value delimited with asterisk characters. To use only the Mozilla symbol server, add the following entry to your symbol path (<strong>note:</strong> you can replace c<code>:\symcache\</code> with any writable directory on your computer, if you'd prefer a different location for downloaded symbols):</p>
+
+<pre class="eval"><span class="nowiki">SRV*c:\symcache\*https://symbols.mozilla.org/</span>
+</pre>
+
+<p>Set this string as <code>_NT_SYMBOL_PATH</code> in the environment, using the Windbg menus, or by typing the <code>.sympath</code> command. If you would like to get symbols from Microsoft's symbol server as well, you should list that first (<strong>note:</strong> you can replace c<code>:\symcache\</code> with any writable directory on your computer, if you'd prefer a different location for downloaded symbols):</p>
+
+<pre class="eval"><span class="nowiki">SRV*c:\symcache\*https://msdl.microsoft.com/download/symbols;SRV*c:\symcache\*https://symbols.mozilla.org/</span>
+</pre>
+
+<p><img alt="Image:symbol-server-windbg-menu.jpg" class="internal" src="/@api/deki/files/877/=Symbol-server-windbg-menu.jpg"> <img alt="The WinDbg Symbol Search Path dialog with the Mozilla symbol server configured" class="internal" src="https://mdn.mozillademos.org/files/15389/snip_20170901081816.png" style="height: 203px; width: 557px;"></p>
+
+<h3 id="Downloading_symbols_using_symchk.exe" name="Downloading_symbols_using_symchk.exe">Downloading symbols using symchk.exe</h3>
+
+<p>You can also download the symbols using symchk.exe, part of Microsoft's Debugging Tools for Windows. The command should look like this (again, you can replace c<code>:\symcache\</code> with any writable directory on your computer, if you'd prefer a different location for downloaded symbols):</p>
+
+<pre>C:\Program Files\Mozilla Firefox&gt;c:\progra~1\debugg~1\symchk.exe /r c:\progra~1\mozill~1\* /s SRV*C:\symcache\*https://symbols.mozilla.org/
+</pre>
+
+<p>Note the <code>\*</code> after the Mozilla directory. The output of this command should be similar to:</p>
+
+<pre>SYMCHK: fullsoft.dll         FAILED  - Image is split correctly, but fullsoft.dbg is missing
+SYMCHK: qfaservices.dll      FAILED  - qfaservices.pdb mismatched or not found
+SYMCHK: talkback.exe         FAILED  - Built without debugging information.
+SYMCHK: helper.exe           FAILED  - Built without debugging information.
+
+SYMCHK: FAILED files = 4
+SYMCHK: PASSED + IGNORED files = 179
+</pre>
+
+<h3 id="Downloading_symbols_on_Linux_Mac_OS_X" name="Downloading_symbols_on_Linux_Mac_OS_X">Downloading symbols on Linux / Mac OS X</h3>
+
+<p>If you are on Linux and running GDB 7.9 or newer, you can use <a href="https://gist.github.com/luser/193572147c401c8a965c">this GDB Python script</a> to automatically fetch symbols. You will need to source this script before loading symbols (the part where it spends a few seconds loading each .so when you attach gdb). If you want to reload symbols, you can try:</p>
+
+<pre>nosharedlibrary
+sharedlibrary lib</pre>
+
+<p>On older GDB and Mac OS X there is a <a class="external" href="https://hg.mozilla.org/users/jwatt_jwatt.org/fetch-symbols" title="http://hg.mozilla.org/users/jwatt_jwatt.org/fetch-symbols">Python script to download symbols from the Mozilla symbol server</a> for <a href="/en-US/docs/Mozilla/Debugging/Debugging_Mozilla_with_gdb" title="en/Debugging Mozilla with gdb">gdb</a>, Shark and other software that uses symbols. Note that the symbol file for the XUL library is very large and takes some time to download. This may make it appear as if the script has gotten stuck, but it will continue.</p>
+
+<p>Symbol indices are named like so: symbols.mozilla.org/{lowercased:Name}/{lowercased:Name}-{Version}-{Platform}-{BuildID}-symbols.txt. The Platform is either 'Darwin' (for Mac) or 'Linux'. The rest of values are based on the contents of the application.ini file under the [App] heading: For example, the Thunderbird 3.1b2 release with Name=Thunderbird, Version=3.1b2, BuildID=20100430125415 would have a filename of "thunderbird-3.1b2-Linux-20100430125415-symbols.txt" under the thunderbird directory at symbols.mozilla.org.  Its contents are a list of paths to files, all relative to the directory the BLAH-symbols.txt file is found in.</p>
+
+<h3 id="The_source_server" name="The_source_server">The source server</h3>
+
+<p>In addition to symbols, Mozilla also has a <a href="/en-US/docs/Mozilla/Using_the_Mozilla_source_server" title="en/Using_the_Mozilla_source_server">source server</a>, letting you do source-level debugging and inspection on demand.</p>
+
+<h3 id="Troubleshooting_Symbols_will_not_download">Troubleshooting: Symbols will not download</h3>
+
+<p>If symbols will not download no matter what you do, the problem may be that Internet Explorer has been set to the <strong>Work Offline</strong> mode. You will not receive any warnings of this in Windbg, Visual C++ or Visual Studio. Even using the command line with symchk.exe to download symbols will fail. This is because Microsoft uses Internet Explorer's internet &amp; proxy settings to download the symbol files. Check the File menu of Internet Explorer to ensure "Work Offline" is unchecked.</p>

@@ -1,0 +1,164 @@
+---
+title: Feed content access API
+slug: Mozilla/Tech/Feed_content_access_API
+tags:
+  - Add-ons
+  - Extensions
+---
+<p><a href="en/Firefox_2">Firefox 2</a> and Thunderbird 2 introduce a series of interfaces that make it easy for extension authors to access RSS and Atom feeds.</p>
+<h2 id="Feed_interfaces" name="Feed_interfaces">Feed interfaces</h2>
+<dl>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeed" title="">nsIFeed</a></code></dt>
+  <dd>
+    Represents an RSS or Atom feed.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedContainer" title="">nsIFeedContainer</a></code></dt>
+  <dd>
+    A base class subclassed by several of the feed-related interfaces.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedElementBase" title="">nsIFeedElementBase</a></code></dt>
+  <dd>
+    A base class subclassed by several of the other feed-related interfaces.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedEntry" title="">nsIFeedEntry</a></code></dt>
+  <dd>
+    Represents a single entry in an RSS or Atom feed.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedGenerator" title="">nsIFeedGenerator</a></code></dt>
+  <dd>
+    Describes the software that generated an RSS or atom feed.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedPerson" title="">nsIFeedPerson</a></code></dt>
+  <dd>
+    Represents a person. Contains the person's name, email address, and their home page address.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedProcessor" title="">nsIFeedProcessor</a></code></dt>
+  <dd>
+    Parses RSS and Atom feeds.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedProgressListener" title="">nsIFeedProgressListener</a></code></dt>
+  <dd>
+    Implemented by the program that wants to parse an RSS or Atom feed to receive messages during the parsing process.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedResult" title="">nsIFeedResult</a></code></dt>
+  <dd>
+    Describes the result of parsing a feed.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedResultListener" title="">nsIFeedResultListener</a></code></dt>
+  <dd>
+    Implemented by the program that wants to parse an RSS or Atom feed to receive notification when parsing is complete.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedTextConstruct" title="">nsIFeedTextConstruct</a></code></dt>
+  <dd>
+    Represents text values in a feed; includes functions that let you fetch the text as plain text or HTML.</dd>
+  <dt>
+    <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableUnescapeHTML" title="">nsIScriptableUnescapeHTML</a></code></dt>
+  <dd>
+    A utility class that unescapes HTML strings.</dd>
+</dl>
+<h2 id="Example:_Reading_a_feed_from_the_Web" name="Example:_Reading_a_feed_from_the_Web">Example: Reading a feed from the Web</h2>
+<p>It's actually quite easy to read and parse a feed. Use an <code><a href="en/XMLHttpRequest">XMLHttpRequest</a></code> to load the feed, then pass its string to an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedProcessor" title="">nsIFeedProcessor</a></code> to parse the feed.</p>
+<p>Loading the feed and sending it to the parser is done using code similar to this:</p>
+<pre>  fetch: function(feedUrl)
+  {
+    var httpRequest = null;
+
+    function infoReceived() {
+      var data = httpRequest.responseText;
+
+      var ioService = Components.classes['@mozilla.org/network/io-service;1']
+                                         .getService(Components.interfaces.nsIIOService);
+      var uri = ioService.newURI(feedUrl, null, null);
+
+      if (data.length) {
+        var parser = Components.classes["@mozilla.org/feed-processor;1"]
+                                        .createInstance(Components.interfaces.nsIFeedProcessor);
+        var listener = new FeedTestResultListener();
+        try {
+          parser.listener = listener;
+          parser.parseFromString(data, uri);
+        }
+        catch(e) {
+          alert("Error parsing feed.");
+        }
+      }
+    }
+
+    httpRequest = new XMLHttpRequest();
+
+    httpRequest.open("GET", feedUrl, true);
+    try {
+      httpRequest.onload = infoReceived;
+      httpRequest.send(null);
+    }
+    catch(e) {
+      alert(e);
+    }
+  }
+</pre>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedProcessor" title="">nsIFeedProcessor</a></code> interface lets you parse the feed data from several possible sources; in this case, we're loading a document into a string, then parsing that string using its <code>parseFromString()</code> method. However, you could also parse it from a file using <code>parseFromStream()</code>, or directly from an URL using <code>parseAsync()</code>.</p>
+<p>The actual processing of the parsed feed is done by a method called <code>handleResult()</code> on the <code>FeedTestResultListener</code> object. That code looks like this:</p>
+<pre>    FeedTestResultListener.prototype = {
+      handleResult: function(result) {
+        var feed = result.doc;
+
+        feed.QueryInterface(Components.interfaces.nsIFeed);
+
+        // Open a new window
+
+        var win = window.open("", "FeedTest_Window");
+        var doc = win.document.wrappedJSObject;
+
+        doc.open();
+
+        // Write the HTML header and page title
+
+        doc.write("&lt;html&gt;&lt;head&gt;&lt;title&gt;Feed: " + feed.title.text + "&lt;/title&gt;&lt;/head&gt;&lt;body&gt;");
+        doc.write("&lt;h1&gt;" + feed.title.text + "&lt;/h1&gt;&lt;p&gt;");
+
+        var itemArray = feed.items;
+        var numItems = itemArray.length;
+
+        // Write the article information
+
+        if (!numItems) {
+          doc.write("&lt;i&gt;No news is good news!&lt;/i&gt;");
+        }
+        else {
+          var i;
+          var theEntry;
+          var theUrl;
+          var info;
+
+          for (i=0; i&lt;numItems; i++) {
+            theEntry = itemArray.queryElementAt(i, Components.interfaces.nsIFeedEntry);
+
+            if (theEntry) {
+              theUrl =
+              doc.write('&lt;b&gt;&lt;a href="' + theEntry.link.resolve("") + '"&gt;' + theEntry.title.text + '&lt;/a&gt;&lt;/b&gt;&lt;br&gt;');
+              if (theEntry.summary) {
+                info = theEntry.summary.text + "&lt;p&gt;&lt;hr&gt;&lt;p&gt;";
+              }
+              else {
+                info = theEntry.content.text + "&lt;p&gt;&lt;hr&gt;&lt;p&gt;";
+              }
+              doc.write("&lt;blockquote&gt;" + info);
+              doc.write("&lt;/blockquote&gt;&lt;p&gt;");
+            }
+          }
+        }
+
+        // Close the document; we're done!
+
+        doc.write("&lt;/body&gt;&lt;/html&gt;");
+        doc.close();
+      }
+    }
+</pre>
+<p>The <code>handleResult()</code> function receives as its argument an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedResult" title="">nsIFeedResult</a></code> that describes a feed; its <code>doc</code> property is an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeed" title="">nsIFeed</a></code> that contains all the feed data.</p>
+<p>To get the title of the feed, you look at the <code>feed.title</code> property. The title is an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedTextConstruct" title="">nsIFeedTextConstruct</a></code> that can represent the text in various formats; we get its <code>text</code> property to fetch the feed's title as HTML-encoded text. We could, alternatively, use its <code>plainText()</code> method to get a copy of the title translated into plain text.</p>
+<p>We then scan the array of items in the feed by looking at the <code>feed.items</code> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIArray" title="">nsIArray</a></code>. This array contains <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFeedEntry" title="">nsIFeedEntry</a></code> objects that describe each feed item.</p>
+<p>We build the contents of the document by looking at the title, link, summary, and content properties for each item. The full URL of the link is retrieved using the link's <code>resolve()</code> method.</p>
+<p>To initialize a fetch of the feed, we simply call <code>fetch(<i>url</i>)</code>. This opens a new window containing the feed contents, with each item's title a clickable link that takes you to the article itself.</p>
+<p>For details on each of the feed access interfaces, visit their respective reference pages.</p>

@@ -1,0 +1,102 @@
+<p>Mochitest provides functionality for tests to effectively simulate execution across a wide variety of protocols, hosts, and ports, including over SSL using the https protocol.  The vast majority of tests can use existing functionality, but occasionally a test may need new functionality to be written, particularly if it uses SSL in non-trivial ways.  This article documents how SSL in Mochitest is implemented and how you can modify its behavior to add support for particular needs.</p>
+
+<h4 id="SSL_certificate_management">SSL certificate management</h4>
+
+<p>For default SSL Mochitest capability there is a pair of a persistent testing certification authority certificate and an on-demand generated server certificate. This schema provides simulation of a common model of a trusted certificate issuer and a trusted server in the Internet.<br>
+ <br>
+ The certification authority (CA) certificate is a pre-generated self-signed certificate, valid for 10 years. This CA certificate resides in <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/certs/pgoca.p12" rel="custom">build/pgo/certs/pgoca.p12</a></code> (PKCS12 module) and <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/certs/pgoca.ca" rel="custom">build/pgo/certs/pgoca.ca</a></code> (the issuer certificate itself) and both files are permanently stored to the repository. The CA certificate is at run-time added as trusted to the certificate database of the testing profile what ensures no need to manually add an exception when you wish to use the common list of https hosts.<br>
+ <br>
+ The default server certificate resides in the certificate database stored permanently to the repository, in the <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/certs/" rel="custom">build/pgo/certs/</a></code> directory of the source tree. The certificate is based on the list in <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/server-locations.txt" rel="custom">build/pgo/server-locations.txt</a></code> and is signed by the certification authority certificate described above. Each https host is added to the server certificate's subject as an alternative domain name (SubjectAltName) to make the host accessible.</p>
+
+<p>In general, any file in <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/certs/" rel="custom">build/pgo/certs/</a></code> with the extension <code>.ca</code> is considered a certification authority certificate in ASCII BASE64 format and is added as trusted to the testing profile. The default CA is such a file.</p>
+
+<h4 id="Customizing_the_list_of_https_hosts">Customizing the list of https hosts</h4>
+
+<p>To <span style="color: #3366ff;">simply add a new https host</span> for which the default server certificate will be used just add it to the list in server-locations.txt. The content is self explanatory. To reflect these changes run:</p>
+
+<pre># Linux/Mac
+$objdir/_virtualenv/bin/python $topsrcdir/build/pgo/genpgocert.py --gen-server
+# Windows
+$objdir/_virtualenv/Scripts/python.exe $topsrcdir/build/pgo/genpgocert.py --gen-server</pre>
+
+<p>To <span style="color: #3366ff;">add a new https host that has no server certificate assigned</span>, even the default one, just add an option 'nocert' after the host name, like this:</p>
+
+<pre># This is a host without any certificate
+https://nocert.example.com:443         privileged,nocert</pre>
+
+<div class="note">This host is already present in the list of hosts.</div>
+
+<h4 id="Creating_a_new_host_with_a_new_certificate">Creating a new host with a new certificate</h4>
+
+<p>To <span style="color: #3366ff;">add a new host with a new server certificate, different from the default one</span>, you have to generate or provide the certificate and bound it with the host. Just decide if you want to sign it by the prepared CA certificate or create a new CA certificate by your self to sign the new server certificate or create a self-signed server certificate or add your own certificate and key you already have.<br>
+ <br>
+ <span style="color: #993300;">Note:</span> to generate new certificates it is most appropriate to use <span style="color: #993300;"><strong>certutil </strong></span>and <span style="color: #993300;"><strong>pk12util </strong></span>binaries built as part of a test-enabled build. These utils reside in obj-dir/dist/bin.</p>
+
+<p><span style="color: #993300;">Note:</span> you will change the certificate database while creating a new certificate. Thus, don't forget to commit the new certificate database with the new test.</p>
+
+<p> </p>
+
+<p><strong><em>I. Use the prepared CA to create a new server certificate.</em></strong></p>
+
+<p><span style="color: #993300;">Note:</span> in this case keep the command to generate your server certificate for case when the prepared CA get renewed. You must then generate the server certificate again.</p>
+
+<p>To generate your new certificate: (please replace "My" names with something meaningful)</p>
+
+<p><code>    build/pgo/certs$ certutil -S -n "MyNewTestingServerCert" -s "CN=my-new-testing-host.com" -c "pgo temporary ca" -t "P,," -k rsa -g 1024 -m &lt;LARGE RANDOM NUMBER&gt; -v 120 -d .</code></p>
+
+<p>      follow on-screen instructions, "pgo temporary ca" is nickname of the prepared CA present in the database<br>
+     <span style="color: #ff0000;">  IMPORTANT NOTE:</span> make sure you allocate a new unique serial number (the '-m' option). If there were two or more certificates with the same<br>
+ serial number signed by the pgo CA the ssltunnel server would not start! It is best to assign a large random number.<br>
+ <br>
+ <strong><em>II. Create my own CA and server certificate:</em></strong></p>
+
+<p>1. create a new CA certificate: (please replace "My" names with something meaningful)</p>
+
+<p>      <code>build/pgo/certs</code><code>$ certutil -S -s "MyNewCertificationAuthority" -s "CN=My Certificate Authority" -t "C,," -x -m 1 -v 120 -n "my certificate authority" -2 -d .</code><br>
+       type 'Y', confirm with enter<br>
+       type '0' (zero), confirm with enter<br>
+       type 'N', confirm with enter<br>
+ <br>
+ 2. generate the server certificate as described in previous section, just make sure to change the '-c "pgo temporary ca"' to '-c "my certificate authority"' to reflect you want to sign the server certificate by your new CA certificate</p>
+
+<p>3. export the CA certificate:</p>
+
+<p><code>    </code><code>build/pgo/certs</code><code>$ certutil -L -d . -n "my certificate authority" -a -o mycertauth.ca</code><br>
+       add this file to the repository, it must be checked in with the new test<br>
+ <br>
+       optionally, if you wish to save the CA cert with its private key, do:<br>
+ <code>    </code><code>build/pgo/certs</code><code>$ pk12util -o myca.p12 -n "my certificate authority" -d .</code><br>
+       provide any password you wish</p>
+
+<p>      to delete your CA certificate from the database (recommended), do:<br>
+ <code>    </code><code>build/pgo/certs</code><code>$ certutil -D -n "my certificate authority" -d .</code><br>
+ <br>
+ <strong><em>III. Create self signed server certificate:</em></strong></p>
+
+<p>to generate a self signed server certificate: (please replace "My" names with something meaningful)</p>
+
+<p><code>    build/pgo/certs</code><code>$ certutil -S -n "MySelfSignedServerCertificate" -s "CN=my-new-testing-host.com" -x -t "P,," -m 1 -v 120 -d .</code><br>
+ <br>
+ <strong><em>IV. Add my own certificate and private key I already have</em></strong></p>
+
+<p>1. import the existing server certificate and its private key from PKCS12 module:</p>
+
+<p><code>    </code><code>build/pgo/certs</code><code>$ pk12util -i my-own-server-cert.p12 -d .</code><br>
+       enter correct password of the PKCS12 module, nickname of the cert will be used to refer it in server-locations.txt, see bellow<br>
+ <br>
+ 2. optionally, if there is also a CA certificate the server certificate is signed with and you need that CA be trusted, copy this CA to build/pgo/certs and give it a '.ca' extension, the file should be an X.509 certificate in ASCII BASE64 formatting, make sure to commit this file as well<br>
+ <br>
+ <br>
+ Now <span style="color: #3366ff;">you must let Mochitest know about your new server certificate</span>. Edit the server-locations.txt as follows:<br>
+ <code>    # My testing host and its bond to certificate nickname in the certificate database<br>
+     <a class="link-https" href="https://my-new-testing-host.com:443" rel="freelink">https://my-new-testing-host.com:443</a>   privileged,cert=MyNewTestingServerCert</code><br>
+ <br>
+ Run <code>make</code> at <code>obj-dir/testing/mochitest</code> to reflect the changes. If the build fails it is possible you created a certificate with a same serial number as another certificate signed by the same certification authority or two server certificates has a same nickname.</p>
+
+<h4 id="Regenerating_the_temporary_CA_certificate">Regenerating the temporary CA certificate</h4>
+
+<p>The testing CA is valid for 10 years, so this shouldn't be a problem very often, but occasionally it may be necessary to generate a new testing CA.  To do so, use genpgocert.py script like this:</p>
+
+<pre>obj-dir/_profile/pgo$ genpgocert.py --gen-ca</pre>
+
+<p>This will re-create a CA with a different public and private key pair valid from that moment for next 10 years. You must <code>make $objdir/testing/mochitest</code> after this operation to reflect the changes. Don't forget to commit changed pgoca.ca and pgoca.p12 files to the repository. Because the CA's public key changes during this operation keep a command generating your server certificates based on this CA to regenerate them easily. Signatures of your server certificates will become invalid after re-generation of the CA.</p>

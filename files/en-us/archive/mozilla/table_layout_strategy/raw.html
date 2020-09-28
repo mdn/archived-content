@@ -1,0 +1,134 @@
+<h3 id="Specs"> Specs </h3>
+<p>The table layout algorithm is based on two W3C recommendations: <a class="external" href="http://www.w3.org/TR/html401/struct/tables.html">HTML 4.01 (Chapter 11)</a> and <a class="external" href="http://www.w3.org/TR/CSS21/tables.html">CSS2.1 (Chapter 17)</a>.In CSS2 a distinction between fixed and auto layout of tables has been introduced. The auto-layout mechanism is implemented in <code>BasicTableLayoutStrategy.cpp</code> the fixed-layout in <code>FixedTableLayoutStrategy.cpp</code>. All these files are in the <code>layout/html/table/src</code> subdirectory.
+</p>
+<h3 id="The_code"> The code </h3>
+<p>The layout strategies are invoked from <code>nsTableFrame::Reflow</code>.
+</p><p>The overload of the <code>Initialize</code> and <code>BalanceColumnWidths</code> routines depends on the table style and is decided at runtime. On the first reflow <code>nsTableFrame::BalanceColumnWidths</code> is called. Inside this routine the corresponding table layout strategy is created and initialized (<code>BasicTableLayoutStrategy::Initialize</code>). Later the column widths are balanced by <code>BasicTableLayoutStrategy::BalanceColumnWidths</code> or the fixed layout counter part. In the following the Basic Table Layout Strategy is discussed. The functionality is distributed over a large number of subroutines as shown in the chart below.
+</p><p><img alt="layout strategy function chart">
+</p>
+<h3 id="The_words"> The words </h3>
+<p>The table layout is width oriented and knows the following widths:
+</p>
+<dl><dt> Minimum content width - min
+</dt><dd> the minimum width that is required to layout the content, all linebreak possibilities will be used
+</dd><dt> percent width - pct
+</dt><dd> the cell width specified in percent,
+</dd><dt> fixed width - fix
+</dt><dd> the cell width specified as px, mm etc.,
+</dd><dt> proportional width - prop
+</dt><dd> the cell width specified via 1*, 2* etc. and the
+</dd><dt> desired width - des
+</dt><dd> the width the content could fill without any linebreaks.
+</dd></dl>
+<p>Cells can be members of colspans. These colspans have to distribute their space to the columns they include. This information is hold in the adjusted width's. Due to this there are 10 width informations for every column.
+</p>
+<table>
+<tbody><tr>
+<th> MIN_CON
+</th><th> DES_CON
+</th><th> FIX
+</th><th> MIN_ADJ
+</th><th> DES_ADJ
+</th><th> FIX_ADJ
+</th><th> PCT
+</th><th> PCT_ADJ
+</th><th> MIN_PRO
+</th><th> FINAL
+</th></tr></tbody></table>
+<p>The width parameter have the following meaning:
+</p>
+<pre>#define WIDTH_NOT_SET   -1
+#define NUM_WIDTHS       10
+#define NUM_MAJOR_WIDTHS 3 // MIN, DES, FIX
+#define MIN_CON          0 // minimum width required of the content + padding
+#define DES_CON          1 // desired width of the content + padding
+#define FIX              2 // fixed width either from the content or cell, col, etc. + padding
+#define MIN_ADJ          3 // minimum width + padding due to col spans
+#define DES_ADJ          4 // desired width + padding due to col spans
+#define FIX_ADJ          5 // fixed width + padding due to col spans
+#define PCT              6 // percent width of cell or col
+#define PCT_ADJ          7 // percent width of cell or col from percent colspan
+#define MIN_PRO          8 // desired width due to proportional &lt;col&gt;s or cols attribute
+#define FINAL            9 // width after the table has been balanced, considering all of the others
+</pre>
+<p>The priority of allocations for columns is as follows:
+</p>
+<ol><li> max(MIN_CON, MIN_ADJ)
+</li><li> max (PCT, PCT_ADJ)
+</li><li> FIX
+</li><li> FIX_ADJ
+</li><li> max(DES_CON, DES_ADJ), but use MIN_PRO if present
+</li><li> for a fixed width table, the column may get more space if the sum of the col allocations is insufficient
+</li></ol>
+<h3 id="Column_width_info"> Column width info </h3>
+<p>Columns get their width information from style info <code>&lt;col width="200px"&gt;</code> and from the cells that belong into this column. These informations are very often conflicting. For instance one cell could have a large min width,the next could have a specified fixed width and another a specified pct width. For a given width type the maximum wins.
+</p>
+<h3 id="Special_cases"> Special cases </h3>
+<div class="note">
+<p>Note: The following examples are not shown correctly due to technical constraints on wiki content. You can help by editing this page and adding screenshots or links to example pages.
+</p>
+</div>
+<h4 id="width_0*"> width = "0*" </h4>
+<p>Assume that you would like to give all the space to the second column in a table. Poor mans choice is leave the first cell auto and specify 100%on the second one (this works cross-browser)
+</p>
+&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+<pre>&lt;table width="200px" border&gt;
+ &lt;tbody&gt;
+ &lt;tr&gt;&lt;td&gt;foo&lt;/td&gt;&lt;td width="100%"&gt;bar&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>The conflict free solution, the column should have the minimum width. So we specify it (this breaks in some other browsers)
+</p>
+&lt;col width="0*"&gt;&lt;col&gt;&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+<pre>&lt;table border width="200px"&gt;
+ &lt;col width="0*"&gt;&lt;col&gt;
+ &lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;foo&lt;/td&gt;&lt;td&gt;bar&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>This shrink wrapping width has usually the suffix <code>0Proportional</code>
+</p>
+<h4 id="Effective_columns"> Effective columns </h4>
+&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr><tr><td>baz</td><td>zap</td></tr></tbody></table>
+<pre>&lt;table width="200px" border&gt;
+ &lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;foo&lt;/td&gt;&lt;td colspan="2" width="120px"&gt;bar&lt;/td&gt;&lt;/tr&gt;
+  &lt;tr&gt;&lt;td&gt;baz&lt;/td&gt;&lt;td&gt;zap&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>The colspan here is bogus, so the third column should not get any width. One would expect the first column to be 80 px and the second to be 120 px . The advantage of this limiting to <code>numEffCols</code> is that we don't poke the cellmap for nonexisting cells.
+</p>
+<h4 id="Overspeficied_Percent_Columns"> Overspeficied Percent Columns </h4>
+&lt;col width="30%"&gt;&lt;col width="60%"&gt;&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+&lt;col width="33%"&gt;&lt;col&gt;&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+<pre>&lt;table border width="200px"&gt;
+ &lt;col width="30%"&gt;&lt;col width="60%"&gt;
+ &lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;foo&lt;/td&gt;&lt;td&gt;bar&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>The columns reach here only 90 % percent of the width so the remaining 20px need to be redistributed between the cols. The second table has <code>&lt;col width="33%"&gt;&lt;col&gt;</code>
+</p><p>Lets return to the first case but now but with more than 100%:
+</p>
+&lt;col width="40%"&gt;&lt;col width="80%"&gt;&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+&lt;col width="40%"&gt;&lt;col&gt;&lt;tbody&gt;&lt;/tbody&gt;<table><tbody><tr><td>foo</td><td>bar</td></tr></tbody></table>
+<pre>&lt;table border width="200px"&gt;
+ &lt;col width="40%"&gt;&lt;col width="80%"&gt;
+ &lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;foo&lt;/td&gt;&lt;td&gt;bar&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>The algorithm tries to satisfy the requirements on a first come first serve base. The second table has <code>&lt;col width="40%"&gt;&lt;col&gt;</code>. IE and Opera handle this pretty much the same as mozilla.
+</p>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author(s): Bernd Mielke
+</li><li> Last Updated Date: September 27, 2003
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

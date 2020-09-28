@@ -1,0 +1,112 @@
+<p>{{APIRef("Firefox OS")}}</p>
+
+<div class="blockIndicator deprecated">
+<p><strong>Marketplace feature removal</strong><br>
+ The functionality described on this page no longer works — Firefox Marketplace has discontinued support for Android, Desktop, Tablets, and payments (and other related functionality). For more information, read the <a href="https://wiki.mozilla.org/Marketplace/FutureofMarketplaceFAQ">Future of Marketplace FAQ</a>.</p>
+</div>
+
+<div class="blockIndicator nonStandard">
+<p><strong>Non-standard</strong><br>
+ This feature is not on a current W3C standards track, but it is supported on the Firefox OS platform. Although implementations may change in the future and it is not supported widely across browsers, it is suitable for use in code dedicated to Firefox OS apps.</p>
+</div>
+
+<div class="blockIndicator warning">
+<p style="text-align: center;">This API is available on Firefox or <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a> for <a href="/en-US/docs/Mozilla/Firefox_OS/Security/Application_security#App_Types">installed or higher privileged applications</a>.</p>
+</div>
+
+<p>The <code>mozPay</code> function is used to perform payments. It enables an app to use in-app payments.</p>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="eval">var request = navigator.mozPay(jwts);
+</pre>
+
+<h3 id="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>jwts</code></dt>
+ <dd>An array of <a href="http://openid.net/specs/draft-jones-json-web-token-07.html">JSON Web Tokens</a>.</dd>
+</dl>
+
+<div class="warning">
+<p><strong>Warning:</strong> Because signatures are derived from the <a href="/en-US/docs/Web/Apps/Publishing/In-app_payments">application secret</a>, it's mandatory to sign the JSON Web token on the server side. Ensure that no unauthorized party can access your application secret.</p>
+</div>
+
+<h3 id="Return_value">Return value</h3>
+
+<p>A <a href="/en-US/docs/Archive/B2G_OS/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> object.</p>
+
+<h2 id="Example">Example</h2>
+
+<pre class="brush: js">// Begin a purchase. Typically you would attach this to the click handler on a Buy button.
+purchaseSomething("A nice unicorn");
+
+function purchaseSomething(productID) {
+  var xhr = new XMLHttpRequest();
+  xhr.responseType = 'json';
+
+  // Prepare to send a productID to your server and
+  // receive an array of JWTs.
+  xhr.open('POST', '/create_jwts');
+
+  xhr.addEventListener('load', function () {
+    // Retrieve the JWTs and a transactionID from a JSON response, such as:
+    // {"jwts": ["jwt1...", "jwt2..."], "transactionID": "1234"}
+    var jwts = xhr.response.jwts;
+    var transactionID = xhr.response.transactionID;
+
+    // Pass the JSON Web Tokens to the payment provider
+    var request = navigator.mozPay(jwts);
+
+    // Set up the success/error handler for the payment window.
+    request.onsuccess = function () {
+      console.log('The user payment flow completed successfully');
+      // Although the payment flow completed, you need to poll your server and wait
+      // for a verified payment result to be sure the payment went through.
+      waitForPaymentResult(transactionID);
+    };
+    request.onerror = function () {
+      console.log('Sorry, the payment flow had an error:', this.error.name);
+    };
+  })
+
+  // Initiate the payment request by sending information to
+  // get the signed JSON Web Tokens. In our example, productID
+  // is the ID of the product the user wants to puchase.
+  xhr.send(productID);
+}
+
+function waitForPaymentResult(transactionID) {
+  var xhr = new XMLHttpRequest();
+  xhr.responseType = 'json';
+
+  // Prepare to check if a postback/chargeback has been received for transactionID.
+  xhr.open('GET', '/payment_result/' + transactionID);
+
+  xhr.addEventListener('load', function () {
+    // Retrieve the result, such as:
+    // {"result": "postback received"} or {"result": "still waiting"}
+    if (xhr.response.result == 'postback received') {
+      // A postback notice was received and you verified the incoming JWT signature.
+      console.log('Success! The product has been purchased');
+    } else {
+      // No postback/chargeback has been sent to your server yet. Try again in 3 seconds.
+      window.setTimeout(function() { waitForPaymentResult(transactionID); }, 3000);
+    }
+  });
+
+  // Send the request to check the transactionID status.
+  xhr.send();
+}</pre>
+
+<h2 id="Specifications">Specifications</h2>
+
+<p>Not part of any specification. However this topic is heavily discussed at W3C in the <a href="http://www.w3.org/community/webpayments/">Web Payment Community Group</a>.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/Apps/Publishing/In-app_payments">In-app Payment</a></li>
+ <li>Mozilla <a href="https://wiki.mozilla.org/WebAPI/WebPayment">Web Payment full specification</a> on the Mozilla Wiki</li>
+ <li><a href="/en-US/docs/Archive/B2G_OS/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a></li>
+</ul>

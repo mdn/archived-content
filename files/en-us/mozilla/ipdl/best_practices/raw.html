@@ -1,0 +1,74 @@
+<p>There a range of mistakes that authors of new sub-protocols frequently make.  This document is intended to help correct these before the formal review process is initiated.</p>
+<h2 id="Lifetime_Management">Lifetime Management</h2>
+<h4 id="Ensure_IPDL_deletes_your_protocol">Ensure IPDL deletes your protocol</h4>
+<p>All protocols must be deleted.  Period.  Are you sending the __delete__ message to trigger protocol deletion?  This one is easy to miss, as the corresponding Recv__delete__ function has a stub implementation automatically generated in the base class.  Simply calling delete on a pointer to an actor is not enough.</p>
+<h4 id="Using_IPDL_generated_structs_as_data_structures_outside_of_IPC_serializationdeserialization">Using IPDL generated structs as data structures outside of IPC serialization/deserialization</h4>
+<p>IPDL generated structures are meant to facilitate serialization/deserialization and message passing. Do not use them as data structures outside of IPDL, or wou will eventually find yourself in bad situations to implement proper memory management. A good example of this problem is the amount of memory management bugs that we have had with using SurfaceDescriptor directly everywhere.</p>
+<p>Implement (preferably reference counted) classes to wrap the shared data instead of letting several objects reference SurfaceDescriptors or their content directly.</p>
+<h4 id="Reference_counting_protocol_actors_is_tricky">Reference counting protocol actors is tricky</h4>
+<p>Here is the easiest way to get it right the first time (lessons learned from the http channel and geolocation protocols):</p>
+<ul>
+  <li>AllocPProtocol calls AddRef</li>
+  <li>DeallocPProtocol calls Release</li>
+</ul>
+<p>This ensures that the actor will not disappear from under IPDL, and that you won't get bizarre crashes at other times if IPDL deletes the protocol tree.  The main concern you have now is that you absolutely, certainly, positively call Send__delete__ in <em>all possible circumstances</em> or your protocol can and will leak.</p>
+<h4 id="Calling_IPDL_functions_willy-nilly">Calling IPDL functions willy-nilly</h4>
+<p>Let's say you have an object that implements an IPDL interface, but it also outlives it (case in point: reference-counted).  Is there any chance that an IPDL function could be called after the protocol itself has been destroyed, or before it has been created?  Don't let it happen - that is a guaranteed crash right there.  Use a flag and the generated ActorDestroy function to control when IPDL functions can be called; see PHttpChannelParent/Child for an example.</p>
+<h2 id="When_to_run_code">When to run code</h2>
+<p>Here's a rundown on appropriate places to run certain kinds of code:</p>
+<ul>
+  <li><strong>Manager::AllocPProtocol</strong> - allocation</li>
+  <li><strong>Manager::RecvPProtocolConstructor</strong> - initialization, protocol deletion (the TypeAheadFind protocol uses one-shot protocols like this)</li>
+  <li><strong>Actor::Recv__delete__</strong> - cleanup, IPDL calls still valid but ill-advised</li>
+  <li><strong>Actor::ActorDestroy</strong> - non-IPDL cleanup</li>
+  <li><strong>Manager::DeallocPProtocol</strong> - deallocation</li>
+</ul>
+<p>One construct to avoid:</p>
+<pre>class ProtocolParent {
+public:
+    ~ProtocolParent() {
+        Send__delete__(this);
+    }
+};
+
+class ProtocolManagerParent {
+public:
+    PProtocolParent* AllocPProtocol() {
+        return new ProtocolParent();
+    }
+
+    bool DeallocPProtocol() {
+        return true;
+    }
+};
+
+nsAutoPtr&lt;PProtocolParent&gt; parent = manager-&gt;SendPProtocolConstructor();
+</pre>
+<p>While this may look appealing as the IPDL logic is stuffed away in a sensible place, it breaks under error conditions.  Specifically, because AllocPProtocol and DeallocPProtocol are asymmetric, if IPDL ends up shutting down the protocol tree due to an error, the auto pointer will attempt to trigger protocol deletion a second time.  While this can be worked around with ActorDestroy, being explicit about deleting the protocol with Send__delete__ is easier to maintain, with symmetric Alloc/DeallocPProtocol functions also being easier to reason about.</p>
+<h2 id="Minimize_overall_use_of_messages">Minimize overall use of messages</h2>
+<p>Reducing IPC traffic is a righteous goal.  Consider the following protocol:</p>
+<pre>async protocol PAsyncQuerier {
+child:
+  PAsyncQuery();
+}
+
+async protocol PAsyncQuery {
+child:
+  KickOffQuery(nsString query);
+
+parent:
+  ReturnResult(nsString result);
+  __delete__();
+}
+</pre>
+<p>In this situation, there is a guaranteed sequence of messages that will be sent.  Following actor construction, the parent will send a KickOffQuery message and presumably ignore the actor until it receives ReturnResult, at which point it will be deleted.  It makes sense to fold construction and the first message together, as well as the penultimate and deletion messages, so that the final protocol looks like this:</p>
+<pre>async protocol PAsyncQuerier {
+child:
+  PAsyncQuery(nsString query);
+}
+
+async protocol PAsyncQuery {
+parent:
+  __delete__(nsString result);
+}
+</pre>

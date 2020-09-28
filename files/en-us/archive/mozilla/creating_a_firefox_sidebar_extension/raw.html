@@ -1,0 +1,221 @@
+<p>{{FirefoxSidebar}}</p>
+
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It was originally written in 2005. A newer document is available: <a href="/en-US/docs/Mozilla/Creating_a_Firefox_sidebar">Creating a Firefox sidebar</a></p>
+</div>
+
+<p class="summary">This article describes how to create a registered sidebar for Firefox 2 or greater. See the references section for information on creating extension in earlier browsers.</p>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>This article is a quick start for the creation of a new sidebar for Firefox. What we will do is create a sidebar and register it so it will be available in the menu. The goal is creating an empty sidebar that can be used as start for new sidebar applications.</p>
+
+<p>Creating a sidebar requires some GUI creation and registration in the destination application. First a simple XUL page is created. Then the registration files are made and finally the sidebar is packed into an installable XPI file.</p>
+
+<h2 id="Pre-requisites">Pre-requisites</h2>
+
+<p>This article is a quick start, it won't explain all elements of <a href="/en/XUL" title="en/XUL">XUL</a>, packaging and XPI's. It's preferable you have some basic knowledge of how XUL works and how Firefox handles extensions. See <a href="/en/Building_an_Extension" title="en/Building_an_Extension">Building an Extension</a> for more detailed information about structuring, packaging, and deploying extensions.</p>
+
+<h2 id="Packages">Packages</h2>
+
+<p>Extensions to Firefox are installed with packages ("<a href="/en/Bundles" title="en/Bundles">Bundles</a>"). An extension package usually contains a "content" provider, which contains the XUL code and application logic. Optionally locales and skins can be included. Most additions are provided with a default tree structure, although not required it is recommended to use this structure. Here the package for the sidebar is created, the files included are listed below.</p>
+
+<div class="example" id="package_structure">
+<p><strong>Example 1. Package structure</strong></p>
+
+<pre>emptysidebar
+\- chrome
+   |- content
+   |- locale
+   | \- en-US
+   \- skin
+</pre>
+</div>
+
+<p>Create all folders, except for <code>skin</code>. It is not used for this tutorial.</p>
+
+<p>The <code>locale</code> holds the locale, only the <code>en-US</code> locale is created. It is listed in <a href="#en-us_emptysidebar.dtd">Example 2</a>. The locale includes the name and shortcut keys for the sidebar.</p>
+
+<div class="example" id="en-us_emptysidebar.dtd">
+<p><strong>Example 2. chrome/locale/en-US/emptysidebar.dtd</strong></p>
+
+<pre class="brush: xml;">&lt;!ENTITY emptysidebar.title "EmptySidebar"&gt;
+&lt;!ENTITY openEmptySidebar.commandkey "E"&gt;
+&lt;!ENTITY openEmptySidebar.modifierskey "shift accel"&gt;
+</pre>
+</div>
+
+<p>The content folder includes our sidebar, the <code>emptysidebar.xul</code> is shown in <a href="#emptysidebar_xul">Example 3</a>. It creates a <a class="external" href="http://books.mozdev.org/html/appc-77238.html">page</a> holding one label. Other elements can be included, please read the XUL tutorials for more information.</p>
+
+<div class="example" id="emptysidebar_xul">
+<p><strong>Example 3. chrome/content/emptysidebar.xul</strong></p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css" ?&gt;
+&lt;?xml-stylesheet href="chrome://browser/skin/browser.css" type="text/css" ?&gt;
+&lt;!DOCTYPE page SYSTEM "chrome://emptysidebar/locale/emptysidebar.dtd"&gt;
+
+&lt;page id="sbEmptySidebar" title="&amp;emptysidebar.title;"
+         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" &gt;
+  &lt;vbox flex="1"&gt;
+    &lt;label id="atest" value="&amp;emptysidebar.title;" /&gt;
+  &lt;/vbox&gt;
+&lt;/page&gt;
+</pre>
+</div>
+
+<p>New extensions can be registered in the menus or popups, Firefox uses overlays for extending menus. This is an separate XUL file that specifies the location of menu items. The sidebar here is added to the View | Sidebar menu. The overlay file is listed in <a href="#overlay_xul">Example 4</a>.</p>
+
+<div class="example" id="overlay_xul">
+<p><strong>Example 4. chrome/content/firefoxOverlay.xul</strong></p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+
+&lt;!DOCTYPE overlay SYSTEM "chrome://emptysidebar/locale/emptysidebar.dtd"&gt;
+&lt;overlay id="emptySidebarOverlay"
+         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+
+  &lt;menupopup id="viewSidebarMenu"&gt;
+    &lt;menuitem key="key_openEmptySidebar" observes="viewEmptySidebar"  /&gt;
+  &lt;/menupopup&gt;
+
+  &lt;keyset id="mainKeyset"&gt;
+    &lt;key id="key_openEmptySidebar" command="viewEmptySidebar"
+         key="&amp;openEmptySidebar.commandkey;"
+         modifiers="&amp;openEmptySidebar.modifierskey;" /&gt;
+  &lt;/keyset&gt;
+
+  &lt;broadcasterset id="mainBroadcasterSet"&gt;
+    &lt;broadcaster id="viewEmptySidebar"
+                 label="&amp;emptysidebar.title;"
+                 autoCheck="false"
+                 type="checkbox"
+                 group="sidebar"
+                 sidebarurl="chrome://emptysidebar/content/emptysidebar.xul"
+                 sidebartitle="&amp;emptysidebar.title;"
+                 oncommand="toggleSidebar('viewEmptySidebar');" /&gt;
+  &lt;/broadcasterset&gt;
+&lt;/overlay&gt;
+</pre>
+</div>
+
+<p>The overlay file consists of three entries, the menu definition, shortcut keys and the broadcaster.</p>
+
+<p>The broadcaster serves two purposes. The first is it indirectly provides the arguments for the toggleSidebar function. The second is it provides attributes to the menuitem, some of which are changed automatically when toggleSidebar is called. See <a href="/En/Code_snippets/Sidebar" title="En/Code snippets/Sidebar">Code_snippets/Sidebar</a> for more information.</p>
+
+<p>If the sidebar is not going to have a command-key, one can remove the <code>openEmptySidebar.commandkey</code> and <code>openEmptySidebar.modifierskey</code> keys from the dtd, remove the <code>&lt;keyset&gt;</code> from the <code>firefoxOverlay.xul</code> file. One must then set the key attribute of the menuitem to "".</p>
+
+<p>The extension needs to provide some special manifest files that control how it is installed and where its chrome resources are stored. The first is <code>install.rdf</code>, the install manifest. See <a href="/en/Install_Manifests" title="en/Install_Manifests">Install Manifests</a> for a complete listing of the required and optional properties. The install manifest is listed in <a href="#install_manifest">Example 5</a>.</p>
+
+<div class="example" id="install_manifest">
+<p><strong>Example 5. install.rdf</strong></p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+
+&lt;RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+ xmlns:em="http://www.mozilla.org/2004/em-rdf#"&gt;
+  &lt;Description about="urn:mozilla:install-manifest"&gt;
+    &lt;em:id&gt;emptysidebar@yourdomain.com&lt;/em:id&gt;
+    &lt;em:name&gt;EmptySidebar Extension&lt;/em:name&gt;
+    &lt;em:version&gt;1.0&lt;/em:version&gt;
+    &lt;em:creator&gt;Your Name&lt;/em:creator&gt;
+    &lt;em:description&gt;Example extension for creation and registration of a sidebar.&lt;/em:description&gt;
+    &lt;em:targetApplication&gt;
+      &lt;Description&gt;
+        &lt;em:id&gt;{ec8030f7-c20a-464f-9b0e-13a3a9e97384}&lt;/em:id&gt; &lt;!-- firefox --&gt;
+        &lt;em:minVersion&gt;1.5&lt;/em:minVersion&gt;
+        &lt;em:maxVersion&gt;2.0.0.*&lt;/em:maxVersion&gt;
+      &lt;/Description&gt;
+    &lt;/em:targetApplication&gt;
+  &lt;/Description&gt;
+&lt;/RDF&gt;
+</pre>
+</div>
+
+<p>The other manifest file is <code>chrome.manifest</code>, the chrome manifest file. The chrome manifest creates a lookup for all the resource types used by the extension. The manifest also tells Firefox that the extension has an overlay that needs to be merged into the browser. For more information on chrome manifests and the properties they support, see the <a href="/en/Chrome_Registration" title="en/Chrome_Registration">Chrome Manifest</a> reference. The manifest used in this extension is listed in <a href="#chrome_manifest">Example 6</a>.</p>
+
+<div class="example" id="chrome_manifest">
+<p><strong>Example 6. chrome.manifest</strong></p>
+
+<pre class="brush: manifest;">content	emptysidebar	chrome/content/
+locale	emptysidebar	en-US	chrome/locale/en-US/
+skin	emptysidebar	classic/1.0	chrome/skin/
+overlay	chrome://browser/content/browser.xul	chrome://emptysidebar/content/firefoxOverlay.xul
+</pre>
+</div>
+
+<h2 id="Test">Test</h2>
+
+<p>While you're developing your sidebar, you will need to test it frequently from Firefox. There is a simple way to do this. First, we need to tell Firefox about your extension.</p>
+
+<ol>
+ <li>Open your <a class="external" href="http://support.mozilla.com/en-US/kb/Profiles" title="http://support.mozilla.com/en-US/kb/Profiles">Profile Folder</a></li>
+ <li>Open the extensions folder (create it if it doesn't exist)</li>
+ <li>Create a new text file, and put the path to your extension folder inside, e.g. <code>C:\extensions\myExtension</code> or <code>~/extensions/myExtension</code>. Save the file with the id of your extension as its name, e.g. <code><a class="link-mailto" href="mailto:emptysidebar@yourdomain.com" rel="freelink">emptysidebar@yourdomain.com</a></code></li>
+</ol>
+
+<p>Now you're ready to test your extension! Restart Firefox and the sidebar is included in the menu.</p>
+
+<p><img alt="Image:sidebar-test.png" class="internal" src="/@api/deki/files/850/=Sidebar-test.png"></p>
+
+<p>You can now go back and make changes to the XUL file, close and restart Firefox and they should appear.</p>
+
+<h2 id="Deployment">Deployment</h2>
+
+<p>Now that we have a sidebar it is time to make it available to the world. Installation requires the creation of an XPI file which is identified as extension in Firefox. The XPI is a ZIP file containing the content, locale and manifest files.</p>
+
+<p>The content, locale and skin folders are packed into <code>emptysidebar.jar</code>, which should be created in the <code>chrome</code> folder. On unix systems:</p>
+
+<pre class="brush: none;">~/src/emptysidebar$ <strong>cd chrome</strong>
+~/src/emptysidebar/chrome$ <strong>zip -r emptysidebar.jar content/ locale/</strong>
+</pre>
+
+<p>On Windows systems, use a ZIP tool to create <code>emptysidebar.zip</code> and then rename to <code>emptysidebar.jar</code>.</p>
+
+<p>Since we are packaging the extension with a JAR file, we need to update the chrome.manifest file to take to JAR file into consideration:</p>
+
+<div class="example" id="chrome_manifest_jar">
+<p><strong>Example 7. chrome.manifest</strong></p>
+
+<pre>content emptysidebar	jar:chrome/emptysidebar.jar!/content/
+locale  emptysidebar	en-US	jar:chrome/emptysidebar.jar!/locale/en-US/
+skin    emptysidebar	classic/1.0	jar:chrome/emptysidebar.jar!/skin/
+overlay chrome://browser/content/browser.xul	chrome://emptysidebar/content/firefoxOverlay.xul
+</pre>
+</div>
+
+<p>Finally, create the XPI file. This is a ZIP file containing the JAR file in the chrome folder and the manifest files. On unix systems:</p>
+
+<pre class="brush: none;">~/src/emptysidebar/chrome$ <strong>cd ..</strong>
+~/src/emptysidebar$ <strong>zip emptysidebar.xpi install.rdf chrome.manifest chrome/emptysidebar.jar</strong>
+</pre>
+
+<p>Open Firefox and browse to the folder containing <code>emptysidebar.xpi</code>. Click on the file and the Extension installation window pops up. After a restart of Firefox, the sidebar is installed.</p>
+
+<p>You can download the <a class="external" href="http://developer.mozilla.org/samples/extension-samples/emptysidebar.zip">empty sidebar project</a> to use as a basis for your own sidebars.</p>
+
+<div class="figure" id="emptysidebar_extension">
+<p><img alt="Image:sidebar-installed.png" class="internal" src="/@api/deki/files/849/=Sidebar-installed.png"><br>
+ <strong>The EmptySidebar extension</strong></p>
+</div>
+
+<h2 id="Resources">Resources</h2>
+
+<ul>
+ <li><a href="/en/Code_snippets/Sidebar">Code snippets:Sidebar</a></li>
+ <li><a href="/en/Building_an_Extension">Building an Extension</a></li>
+ <li><a class="external" href="http://books.mozdev.org/html/index.html">Creating Applications with Mozilla</a></li>
+ <li><a class="external" href="http://www.bengoodger.com/software/mb/extensions/packaging/extensions.html">Packaging Firefox/Thunderbird Extensions</a></li>
+ <li><a class="external" href="http://occidopagus.nl/firefox/emptysidebar/">Creating a Firefox 1 Sidebar</a></li>
+</ul>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: J.C. Wesdorp &lt;jcwesdorp . at . occidopagus.nl&gt; - May 30, 2005.</li>
+ <li>Updated for Firefox 2 - Dec 12, 2006.</li>
+ <li>Permission granted to migrate in Jan 2006, including permission to relicense under the CC:By-SA.</li>
+ <li>Original Source: <a class="external" href="http://occidopagus.nl/firefox/emptysidebar/" rel="freelink">http://occidopagus.nl/firefox/emptysidebar/</a></li>
+</ul>
+</div>

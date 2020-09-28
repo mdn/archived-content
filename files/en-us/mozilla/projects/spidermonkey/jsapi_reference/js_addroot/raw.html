@@ -1,0 +1,98 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("jsapi31") }}</p>
+
+<div class="summary">
+<p>Register a variable as a member of the garbage collector's root set, to protect anything the root points at from garbage collection.</p>
+</div>
+
+<p>These functions are obsoleted, use {{jsapixref("JS::PersistentRooted")}} instead.</p>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JSBool
+JS_AddValueRoot(JSContext *cx, jsval *vp);
+JSBool
+JS_AddStringRoot(JSContext *cx, JSString **spp);
+JSBool
+JS_AddObjectRoot(JSContext *cx, JSObject **opp);
+JSBool
+JS_AddGCThingRoot(JSContext *cx, void **rp);
+
+JSBool
+JS_AddNamedValueRoot(JSContext *cx, jsval *vp, const char *name);
+JSBool
+JS_AddNamedStringRoot(JSContext *cx, JSString **spp, const char *name);
+JSBool
+JS_AddNamedObjectRoot(JSContext *cx, JSObject **opp, const char *name);
+JSBool
+JS_AddNamedGCThingRoot(JSContext *cx, void **rp, const char *name);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to add the new root. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td><code>jsval *</code></td>
+   <td><em>(In JS_AddValueRoot and JS_AddNamedValueRoot)</em> The address of the jsval variable to root</td>
+  </tr>
+  <tr>
+   <td>spp</td>
+   <td><code>JSString **</code></td>
+   <td><em>(In JS_AddStringRoot</em><em> and JS_AddNamedStringRoot)</em> The address of the JSString* variable to root</td>
+  </tr>
+  <tr>
+   <td>opp</td>
+   <td><code>JSObject **</code></td>
+   <td><em>(In JS_AddObjectRoot and JS_AddNamedObjectRoot)</em> The address of the JSObject* variable to root</td>
+  </tr>
+  <tr>
+   <td>rp</td>
+   <td><code>void **</code></td>
+   <td><em>(In JS_AddGCThingRoot and JS_AddNamedGCThingRoot)</em> The address of the JSString* or JSObject* (<strong>not</strong> jsval) variable to root</td>
+  </tr>
+  <tr>
+   <td><code>name</code></td>
+   <td><code>const char *</code></td>
+   <td><em>(in <code>JS_AddNamedRoot</code> and <code>JS_AddNamedRootRT</code>)</em> The name of the new root, or <code>NULL</code>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>The <code>JS_Add*Root</code> and functions add a C/C++ variable to the garbage collector's <em>root set</em>, the set of variables used as starting points each time the collector checks to see what memory is reachable. The garbage collector aggressively collects and recycles memory that it deems unreachable, so roots are often necessary to protect data from being prematurely collected.</p>
+
+<p><code>vp/spp/opp/rp</code> is the address of a C/C++ variable (or field, or array element) of type {{jsapixref("JSString", "JSString *")}}, {{jsapixref("JSObject", "JSObject *")}}, or {{jsapixref("jsval")}}. This variable must already be initialized. (For example, it must not be an uninitialized local variable. That could cause sporadic crashes during garbage collection, which can be hard to debug.) The variable must remain in memory until the balancing call to {{jsapixref("JS_RemoveRoot")}}. Note that this means that if the root is meant to live past the end of a function, the address of a local (stack-based) variable may not be used for rp. If <code>JS_Add*Root</code> succeeds, then as long as this variable points to a JavaScript value or pointer to GC-thing, that value/GC-thing is protected from garbage collection. If the variable points to an object, then any memory reachable from its properties is automatically protected from garbage collection, too.</p>
+
+<p>JS_AddGCThingRoot allows the caller to have a single root that may hold either strings or objects.  A jsval is not a GC-thing (it has tag bits and may be a different size altogether) and thus the address of a jsval variable must not be passed to JS_AddGCThingRoot.</p>
+
+<p><strong>Do not pass a pointer to a JS string or object to any of these functions—</strong><code>rp</code> must point to a <strong>variable</strong>, the location of the pointer itself, and not an object or string.</p>
+
+<p>An entry for <code>rp</code> is added to the garbage collector's root set for the <code>JSRuntime</code> associated with <code>cx</code> (or, in <code>JS_AddNamedRootRT</code>, the runtime <code>rt</code>). The <code>name</code> parameter, if present and non-null, is stored in the <code>JSRuntime</code>'s root table entry along with <code>rp</code>. The <code>name</code> string's lifetime must last at least until the balancing call to {{jsapixref("JS_RemoveRoot")}}. Typically <code>name</code> is a static string constant, identifying the source location of the call to <code>JS_AddNamedRoot</code> for debugging purposes. {{jsapixref("JS_DumpNamedRoots")}} can be used to access this information from a debugger.</p>
+
+<p>All the <code>JS_Add*Root</code> methods are idempotent: multiple calls for the same address will add only one root.  Correspondingly, only a single {{jsapixref("JS_RemoveRoot")}} is required to unroot the location.</p>
+
+<p>On success, these functions return <code>JS_TRUE</code>. Otherwise they report an out of memory error and return <code>JS_FALSE</code>.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_AddValueRoot") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_AddStringRoot") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_AddObjectRoot") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_AddNamedValueRoot") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_AddNamedStringRoot") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_AddNamedObjectRoot") }}</li>
+ <li>{{bug(912581)}}</li>
+</ul>

@@ -1,0 +1,64 @@
+<h3 id="Callback_patterns_in_IDL">Callback patterns in IDL</h3>
+<p><a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> components use IDL to create interfaces. These interfaces are used to manipulate the component in C++ and JavaScript. A common pattern used with interfaces to create a bi-directional communication between two groups of code is the <a class="external" href="http://en.wikipedia.org/wiki/Observer_pattern">observer (or listener) pattern</a>. Basically, the component defines an observer (or listener) interface which is implemented by some external code and this implementation is passed to the component. The component can then call methods on the observer interface to signal the external code when predefined events occur. Here is a very simple example of the observer pattern:</p>
+<pre>[scriptable, uuid(...)]
+interface StringParserObserver {
+  void onWord(string word);
+};
+
+[scriptable, uuid(...)]
+interface StringParser {
+  void parse(string data);
+
+  void addObserver(StringParserObserver observer);
+};
+</pre>
+<p>In this example, the <code>StringParser</code> will call the <code>StringParserObserver.onWord</code> method whenever it finishes parsing a word found in the raw string data. Here is an example of how to use the callback system:</p>
+<pre>var wordHandler = {
+  onWord : function(word) {
+    alert(word);
+  }
+};
+
+var stringParser = /* get a reference to the parser somehow */
+stringParser.addObserver(wordHandler);
+stringParser.parse("pay no attention to the man behind the curtain");
+</pre>
+<p>You can find examples of this pattern all over the Mozilla codebase. In fact, there is even a specific interface for this form of push callbacks, <a href="/en/XPCOM_Interface_Reference/nsIObserverService" title="en/nsIObserverService">nsIObserverService</a>.</p>
+<h3 id="JavaScript_functions_as_callbacks">JavaScript functions as callbacks</h3>
+<p>Another common use of the pattern is found in <code><a href="/en/DOM/element.addEventListener" title="en/DOM/element.addEventListener">addEventListener</a></code> / <code><a href="/en/DOM/element.removeEventListener" title="en/DOM/element.removeEventListener">removeEventListener</a></code>. A nice feature of <code>addEventListener</code> is that you can pass a JavaScript function in place of the callback listener interface. Remember (or discover) that <code>addEventListener</code> is a method of the <code>{{ Source("dom/interfaces/events/nsIDOMEventListener.idl", "nsIDOMEventTarget") }}</code> interface and is defined as such:</p>
+<pre class="eval">void addEventListener(in DOMString type,
+                      in <strong>nsIDOMEventListener listener</strong>,
+                      in boolean useCapture);
+</pre>
+<p>However, it is extremely common to see developers pass a normal JavaScript function for the listener instead of an <code>{{ Source("dom/public/idl/events/nsIDOMEventListener.idl", "nsIDOMEventListener") }}</code> implementation:</p>
+<pre>function doLoad(event) {
+  // do something here
+}
+
+window.addEventListener("load", doLoad, false);
+</pre>
+<h3 id="Revealing_the_magic">Revealing the magic</h3>
+<p>How is this possible? Is <code>nsIDOMEventListener</code> magical? Well, it actually is a little magical. But you can use the same magic in your own IDL callbacks. The <code>nsIDOMEventListener</code> interface is "marked" with the <code>function</code> attribute. See it {{ Source("dom/interfaces/events/nsIDOMEventListener.idl#52", "here") }}. The <code>function</code> attribute tells the XPConnect machinery to treat the JavaScript function as if it was an implementation of the callback interface. Note, that since the JavaScript function is a single method, this magic only works for callback interfaces with a single method, like <code>nsIDOMEventListener</code>. The JavaScript function is passed the same arguments as defined by the callback method.</p>
+<p>So we could convert the example above to accept JavaScript functions in place of the <code>StringParserObserver</code> by making the following changes:</p>
+<pre class="eval">[scriptable, <strong>function, </strong>uuid(...)]
+interface StringParserObserver : <strong>nsISupports</strong> {
+  void onWord(string word);
+};
+
+[scriptable, uuid(...)]
+interface StringParser {
+  void parse(string data);
+
+  void addObserver(StringParserObserver observer);
+};
+</pre>
+<p>Note the only change was adding <code>function</code> to the interface attributes of the callback interface. Now we can create a callback JavaScript function to handle the <code>onWord</code> event:</p>
+<pre>function handleWord(word) {
+  alert(word);
+}
+
+var stringParser = /* get a reference to the parser somehow */
+stringParser.addObserver(handleWord);
+stringParser.parse("pay no attention to the man behind the curtain");
+</pre>
+<p>Yes, you can still use the normal interface-based callback implementation too. Using JavaScript functions as callback handlers for components can be a nice convenience to developers and there is virtually zero work to expose the feature.</p>

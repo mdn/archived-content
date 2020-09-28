@@ -1,0 +1,59 @@
+<h1 id="SavedFrame"><code>SavedFrame</code></h1>
+<p>A <code>SavedFrame</code> instance is a singly linked list of stack frames. It represents a JavaScript call stack at a past moment of execution. Younger frames hold a reference to the frames that invoked them. The older tails are shared across many younger frames.</p>
+<p><code>SavedFrame</code> stacks should generally be captured, allocated, and live within the compartment that is being observed or debugged. Usually this is a content compartment.</p>
+<h2 id="Capturing_SavedFrame_Stacks">Capturing <code>SavedFrame</code> Stacks</h2>
+<h3 id="From_C">From C++</h3>
+<p>Use <code>JS::CaptureCurrentStack</code> declared in <code>jsapi.h</code>.</p>
+<h3 id="From_JS">From JS</h3>
+<p>Use <code>saveStack</code>, accessible via <code>Components.utils.getJSTestingFunction()</code>.</p>
+<h2 id="Including_and_Excluding_Chrome_Frames">Including and Excluding Chrome Frames</h2>
+<p>Consider the following <code>SavedFrame</code> stack. Arrows represent links from child to parent frame, <code>content.js</code> is from a compartment with content principals, and <code>chrome.js</code> is from a compartment with chrome principals.</p>
+<pre><code>function A from content.js
+            |
+            V
+function B from chrome.js
+            |
+            V
+function C from content.js</code></pre>
+<p>The content compartment will ever have one view of this stack: <code>A -&gt; C</code>.</p>
+<p>However, a chrome compartment has a choice: it can either take the same view that the content compartment has (<code>A -&gt; C</code>), or it can view all stack frames, including the frames from chrome compartments (<code>A -&gt; B -&gt; C</code>). To view everything, use an <code>XrayWrapper</code>. This is the default wrapper. To see the stack as the content compartment sees it, waive the xray wrapper with <code>Components.utils.waiveXrays</code>:</p>
+<pre><code>const contentViewOfStack = Components.utils.waiveXrays(someStack);</code></pre>
+<h2 id="Accessor_Properties_of_the_SavedFrame.prototype_Object">Accessor Properties of the <code>SavedFrame.prototype</code> Object</h2>
+<dl>
+<dt><code>source</code></dt>
+<dd>The source URL for this stack frame, as a string.
+</dd>
+<dt><code>line</code></dt>
+<dd>The line number for this stack frame.
+</dd>
+<dt><code>column</code></dt>
+<dd>The column number for this stack frame.
+</dd>
+<dt><code>functionDisplayName</code></dt>
+<dd>Either SpiderMonkey’s inferred name for this stack frame’s function, or <code>null</code>.
+</dd>
+<dt><code>asyncCause</code></dt>
+<dd>If this stack frame is the <code>asyncParent</code> of other stack frames, then this is a string representing the type of asynchronous call by which this frame invoked its children. For example, if this frame’s children are calls to handlers for a promise this frame created, this frame’s <code>asyncCause</code> would be <code>"Promise"</code>. If the asynchronous call was started in a descendant frame to which the requester of the property does not have access, this will be the generic string <code>"Async"</code>. If this is not an asynchronous call point, this will be <code>null</code>.
+</dd>
+<dt><code>asyncParent</code></dt>
+<dd>If this stack frame was called as a result of an asynchronous operation, for example if the function referenced by this frame is a promise handler, this property points to the stack frame responsible for the asynchronous call, for example where the promise was created. If the frame responsible for the call is not accessible to the caller, this points to the youngest accessible ancestor of the real frame, if any. In all other cases, this is <code>null</code>.
+</dd>
+<dt><code>parent</code></dt>
+<dd>This stack frame’s caller, or <code>null</code> if this is the oldest frame on the stack. In this case, there might be an <code>asyncParent</code> instead.
+</dd>
+</dl>
+<h2 id="Function_Properties_of_the_SavedFrame.prototype_Object">Function Properties of the <code>SavedFrame.prototype</code> Object</h2>
+<dl>
+<dt><code>toString</code></dt>
+<dd>Return this frame and its parents formatted as a human readable stack trace string.
+</dd>
+</dl>
+<h4 id="Source_Metadata">Source Metadata</h4>
+<dl>
+    <dt>Generated from file:</dt><dt>
+    </dt><dd>js/src/doc/SavedFrame/SavedFrame.md</dd>
+    <dt>Watermark:</dt>
+    <dd id="watermark">sha256:3475238d6704c659cb3e411b9c601d6ee836762dea14203f1f00ecf2c3b32452</dd>
+    <dt>Changeset:</dt>
+    <dd><a href="https://hg.mozilla.org/mozilla-central/rev/251fccc1f62b">251fccc1f62b</a></dd>
+</dl>

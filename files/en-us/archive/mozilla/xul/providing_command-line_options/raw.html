@@ -1,0 +1,118 @@
+<p>Extensions and XUL applications can modify the way command line parameters are handled by writing a component that implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsICommandLineHandler" title="">nsICommandLineHandler</a></code> interface and registering it in a category.</p>
+
+<div class="note">
+<p>See also: <a href="/en-US/docs/XULRunner:CommandLine" title="/en-US/docs/XULRunner:CommandLine">XULRunner:CommandLine</a></p>
+</div>
+
+<h2 id="Overview" name="Overview">Overview</h2>
+
+<p>The code below is an example of writing a JavaScript XPCOM component to handle command line parameters.</p>
+
+<p>You can learn more about how the command line is interpreted by looking at the documentation for the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsICommandLine" title="">nsICommandLine</a></code> interface.</p>
+
+<h2 id="Sample_Code" name="Sample_Code">Example</h2>
+
+<p>The below example component implements two command line parameters:</p>
+
+<dl>
+ <dt><code>firefox.exe -myapp</code></dt>
+ <dd>Opens a chrome window for My Application.  </dd>
+ <dt><code>firefox.exe -viewapp <var>url</var></code></dt>
+ <dd>Opens a chrome window for My Application and passes it an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> object.</dd>
+</dl>
+
+<h3 id="Using_the_example">Using the example</h3>
+
+<p>To use this sample code, save the <code>commandLine.js file</code> into the components directory and add the following lines to your <code>chrome.manifest</code> file:</p>
+
+<pre>component {2991c315-b871-42cd-b33f-bfee4fcbf682} components/commandLine.js
+contract @mozilla.org/commandlinehandler/general-startup;1?type=myapp {2991c315-b871-42cd-b33f-bfee4fcbf682}
+category command-line-handler m-myapp @mozilla.org/commandlinehandler/general-startup;1?type=myapp
+</pre>
+
+<h3 id="The_JavaScript_code">The JavaScript code</h3>
+
+<pre class="brush: js">const Cc = Components.classes;
+const Ci = Components.interfaces;
+
+Components.utils.import("<a class="external" rel="freelink">resource://gre/modules/XPCOMUtils.jsm</a>");
+Components.utils.import("<a class="external" rel="freelink">resource://gre/modules/Services.jsm</a>");
+
+// CHANGEME: to the chrome URI of your extension or application
+const CHROME_URI = "<a class="external" rel="freelink">chrome://myapp/content/</a>";
+
+/**
+ * Utility functions
+ */
+
+/**
+ * Opens a chrome window.
+ * @param aChromeURISpec a string specifying the URI of the window to open.
+ * @param aArgument an argument to pass to the window (may be null)
+ */
+function openWindow(aChromeURISpec, aArgument)
+{
+  Services.ww.openWindow(null, aChromeURISpec, "_blank",
+                "chrome,menubar,toolbar,status,resizable,dialog=no",
+                aArgument);
+}
+
+// Command Line Handler
+function CommandLineHandler() {
+};
+
+CommandLineHandler.prototype = {
+  classDescription: "myAppHandler",
+  // CHANGEME: generate a unique ID
+  classID: Components.ID('{2991c315-b871-42cd-b33f-bfee4fcbf682}'),
+  // CHANGEME: change the type in the contractID to be unique to your application
+  contractID: "@mozilla.org/commandlinehandler/general-startup;1?type=myapp",
+  _xpcom_categories: [{
+    category: "command-line-handler",
+    // CHANGEME:
+    // category names are sorted alphabetically. Typical command-line handlers use a
+    // category that begins with the letter "m".
+    entry: "m-myapp"
+  }],
+
+  QueryInterface: XPCOMUtils.generateQI([
+    Ci.nsICommandLineHandler
+  ]),
+
+  /* nsICommandLineHandler */
+  handle : function clh_handle(cmdLine)
+  {
+    try {
+      // CHANGEME: change "viewapp" to your command line flag that takes an argument
+      var uristr = cmdLine.handleFlagWithParam("viewapp", false);
+      if (uristr) {
+        // convert uristr to an nsIURI
+        var uri = cmdLine.resolveURI(uristr);
+        openWindow(CHROME_URI, uri);
+        cmdLine.preventDefault = true;
+      }
+    }
+    catch (e) {
+      Components.utils.reportError("incorrect parameter passed to -viewapp on the command line.");
+    }
+
+    // CHANGEME: change "myapp" to your command line flag (no argument)
+    if (cmdLine.handleFlag("myapp", false)) {
+      openWindow(CHROME_URI, null);
+      cmdLine.preventDefault = true;
+    }
+  },
+
+  // CHANGEME: change the help info as appropriate, but
+  // follow the guidelines in nsICommandLineHandler.idl
+  // specifically, flag descriptions should start at
+  // character 24, and lines should be wrapped at
+  // 72 characters with embedded newlines,
+  // and finally, the string should end with a newline
+  helpInfo : "  -myapp               Open My Application\n" +
+             "  -viewapp &lt;uri&gt;       View and edit the URI in My Application,\n" +
+             "                       wrapping this description\n"
+};
+
+var NSGetFactory = XPCOMUtils.generateNSGetFactory([CommandLineHandler]);
+</pre>

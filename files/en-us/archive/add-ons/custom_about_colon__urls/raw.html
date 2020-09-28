@@ -1,0 +1,113 @@
+<p>This page describes how to register a new about: URL for your extension.</p>
+
+<h3 id="Setup_for_Firefox_4">Setup for Firefox 4+</h3>
+
+<p>This is a simple example of a custom about page for bootstrapped addons. This example creates an about page with url <code>about:myaboutpage</code> which takes a user to a page that writes some text out.</p>
+
+<p>Make sure to generate a unique <code>aboutPage_id</code>, see this page to learn more about generating UUID's: <a href="/en-US/Add-ons/Themes/Obsolete/Creating_a_Skin_for_Firefox/UUID">UUID</a>.</p>
+
+<p>It is imported to <code>QueryInterface</code> the <code>Components.manager</code> otherwise this will not work.</p>
+
+<p>This example can be easily modified, just modify the global <code>const</code> at in the <code>// globals</code> section.</p>
+
+<div class="note">
+<p>In <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1254752">Bug 1254752 </a>things changed for Firefox 48 and up. <code>Services.io.newChannel</code> was deprecated, and the signature of the <code>newChannel </code>method changed.  This change is reflected in the code below. This code will work for all versions of Firefox 4 and up.</p>
+</div>
+
+<pre class="brush: js">const {classes: Cc, interfaces: Ci, manager: Cm, results: Cr, utils: Cu, Constructor: CC} = Components;
+Cm.QueryInterface(Ci.nsIComponentRegistrar);
+
+Components.utils.import("resource://gre/modules/Services.jsm");
+
+// globals
+const ABOUTPAGE_DESCRIPTION = 'This is my custom about page';
+const ABOUTPAGE_ID = 'aa132730-2278-11e5-867f-0800200c9a66'; // make sure you generate a unique id from https://www.famkruithof.net/uuid/uuidgen
+const ABOUTPAGE_WORD = 'myaboutpage'
+const ABOUTPAGE_URI = 'data:text/html,hi this is the page that is shown when navigate to about:myaboutpage';
+// const ABOUTPAGE_URI = 'chrome://myaboutaddon/content/index.html';
+
+
+class AboutPage {
+  static get classID() { return Components.ID(`{${ABOUTPAGE_ID}}`); }
+  static get classDescription() { return ABOUTPAGE_DESCRIPTION; }
+  static get contractID() { return `@mozilla.org/network/protocol/about;1?what=${ABOUTPAGE_WORD}`; }
+  static get QueryInterface() { return XPCOMUtils.generateQI([Ci.nsIAboutModule]); }
+
+  constructor() {
+    Object.freeze(this);
+  }
+
+  getURIFlags(aURI) {
+    return Ci.nsIAboutModule.ALLOW_SCRIPT;
+  }
+
+  newChannel(aURI, aSecurity_or_aLoadInfo) {
+    let channel;
+    if (Services.vc.compare(Services.appinfo.version, '47.*') &gt; 0) {
+        const uri = Services.io.newURI(ABOUTPAGE_URI, null, null);
+        // greater than or equal to firefox48 so aSecurity_or_aLoadInfo is aLoadInfo
+        channel = Services.io.newChannelFromURIWithLoadInfo(uri, aSecurity_or_aLoadInfo);
+    } else {
+        channel = Services.io.newChannel(ABOUTPAGE_URI, null, null);
+    }
+    channel.originalURI = aURI;
+    return channel;
+  }
+}
+
+class Factory {
+  constructor(component) {
+    this.component = component;
+    this.register();
+    Object.freeze(this);
+  }
+
+  createInstance(outer, iid) {
+    if (outer) {
+      throw Cr.NS_ERROR_NO_AGGREGATION;
+    }
+    return new this.component();
+  }
+
+  register() {
+    Cm.registerFactory(this.component.classID,
+                       this.component.classDescription,
+                       this.component.contractID,
+                       this);
+  }
+
+  unregister() {
+    Cm.unregisterFactory(this.component.prototype.classID, this);
+  }
+}</pre>
+
+<p> </p>
+
+<h3 id="Instantiation_Firefox_4">Instantiation Firefox 4+</h3>
+
+<p>Now in the startup procedure of your bootstrapped addon make sure to do register the factory, for example:</p>
+
+<pre class="brush: js">let factory;
+
+function startup(aData, aReason) {
+    // ...
+    factory = new Factory(AboutCustom);
+    // ...
+}</pre>
+
+<p>And then on shutdown of your bootstrapped addon make sure to destroy the factory:</p>
+
+<pre class="brush: js">function shutdown(aData, aReason) {
+    if (aReason == APP_SHUTDOWN) { return }
+    // ...
+    factory.unregister();
+    // ....
+}</pre>
+
+<p>And there you have it, your own custom about page.</p>
+
+<h3 id="See_Also">See Also</h3>
+
+<ul>
+ <li><a href="/en-US/Firefox/Multiprocess_Firefox/Which_URIs_load_where">Which URIs load where</a> - Note on how to use about: pages in e10s, can force them to load per tab</li>
+</ul>

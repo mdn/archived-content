@@ -1,0 +1,144 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<h2 id="Progress_Listeners" name="Progress_Listeners">Progress Listeners</h2>
+
+<p>Progress listeners allow extensions to be notified of events associated with documents loading in the browser and with tab switching events. Progress listeners implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIWebProgressListener" title="">nsIWebProgressListener</a></code> interface.</p>
+
+<p>Note that if you just want to execute your code each time a page loads, you can use an <a href="/en/Code_snippets/On_page_load" title="en/Code_snippets/On_page_load">an easier method, <code>onPageLoad()</code></a>. Note that onPageLoad does not fire for back button clicks.</p>
+
+<p>In the examples below the progress listener is attached to the tabbrowser, which means you don't get any notifications for inactive tabs. Firefox 3.5 includes a way to set up a listener for all tabs, selected and not: <a href="/En/Listening_to_events_on_all_tabs" title="en/Listening to events on all tabs">Listening to events on all tabs</a>.</p>
+
+<h2 id="Example" name="Example">Example</h2>
+
+<ol>
+ <li>Create an object which implements <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIWebProgressListener" title="">nsIWebProgressListener</a></code>:
+
+  <pre class="brush: js">const STATE_START = Ci.nsIWebProgressListener.STATE_START;
+const STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP;
+var myListener = {
+    QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
+                                           "nsISupportsWeakReference"]),
+
+    onStateChange: function(aWebProgress, aRequest, aFlag, aStatus) {
+        // If you use myListener for more than one tab/window, use
+        // aWebProgress.DOMWindow to obtain the tab/window which triggers the state change
+        if (aFlag &amp; STATE_START) {
+            // This fires when the load event is initiated
+        }
+        if (aFlag &amp; STATE_STOP) {
+            // This fires when the load finishes
+        }
+    },
+
+    onLocationChange: function(aProgress, aRequest, aURI) {
+        // This fires when the location bar changes; that is load event is confirmed
+        // or when the user switches tabs. If you use myListener for more than one tab/window,
+        // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
+    },
+
+    // For definitions of the remaining functions see related documentation
+    onProgressChange: function(aWebProgress, aRequest, curSelf, maxSelf, curTot, maxTot) {},
+    onStatusChange: function(aWebProgress, aRequest, aStatus, aMessage) {},
+    onSecurityChange: function(aWebProgress, aRequest, aState) {}
+}</pre>
+ </li>
+ <li>Attach the progress listener to a &lt;<code><a href="/en-US/docs/Mozilla/Tech/XUL/browser" title="browser">browser</a></code>&gt; or a &lt;<code><a href="/en-US/docs/Mozilla/Tech/XUL/tabbrowser" title="tabbrowser">tabbrowser</a></code>&gt; element using <span id="m-AddProgressListener"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/AddProgressListener">AddProgressListener</a></code></span>, for example for Firefox put the following code in a <code>load</code> listener of a main window:
+  <pre class="brush: js">gBrowser.addProgressListener(myListener);</pre>
+
+  <p>When used with a <code><a href="/en-US/docs/Mozilla/Tech/XUL/browser" title="browser">browser</a></code>, the second argument is a <code>mask</code> which determines the type of events that will be received. Note that the <code><a href="/en-US/docs/Mozilla/Tech/XUL/browser" title="browser">browser</a></code> uses a weak reference to your listener object, so make sure to keep an external reference to your object to ensure that it stays in memory.</p>
+
+  <p>When used with a <code><a href="/en-US/docs/Mozilla/Tech/XUL/tabbrowser" title="tabbrowser">tabbrowser</a></code>, you cannot choose which types of events that will be received. Instead, you receive those events that the <code><a href="/en-US/docs/Mozilla/Tech/XUL/tabbrowser" title="tabbrowser">tabbrowser</a></code> is interested in, except that the <code>onLinkIconAvailable</code> and <code>onRefreshAttempted</code> notifications are optional. The <code><a href="/en-US/docs/Mozilla/Tech/XUL/tabbrowser" title="tabbrowser">tabbrowser</a></code> uses a strong reference to your listener object.</p>
+ </li>
+</ol>
+
+<div class="geckoVersionNote">
+<p> </p>
+
+<div class="blockIndicator geckoMinVer standardNote standardNoteBlock">
+<div style="text-align: center; font-weight: bold; padding-bottom: 0.5em;">Gecko 2.0 note</div>
+
+<div> </div>
+</div>
+
+<p> </p>
+
+<p>Starting in Gecko 2.0 (Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1), all events are optional. The <code><a href="/en-US/docs/Mozilla/Tech/XUL/tabbrowser" title="tabbrowser">tabbrowser</a></code> only notifies you of the events for which you provide a callback.</p>
+</div>
+
+<p>Remember to change <code>myListener</code> to a unique identifier.</p>
+
+<h2 id="Example:_Notification_when_the_value_in_Address_Bar_changes" name="Example:_Notification_when_the_value_in_Address_Bar_changes">Example: Notification when the value in Address Bar changes</h2>
+
+<p>A commonly asked question is how to get notified whenever the URL in the address bar (also known as location bar) changes. Using the following code, you will get notified when user navigates to another page (by clicking a link, using the back/forward button, by typing an address in the Location Bar, etc.) and also when user switches tabs.</p>
+
+<pre class="brush: js">var myExtension = {
+    oldURL: null,
+
+    init: function() {
+        gBrowser.addProgressListener(this);
+    },
+
+    uninit: function() {
+        gBrowser.removeProgressListener(this);
+    },
+
+    processNewURL: function(aURI) {
+        if (aURI.spec == this.oldURL) return;
+
+        // now we know the url is new...
+        alert(aURI.spec);
+        this.oldURL = aURI.spec;
+    },
+
+    // nsIWebProgressListener
+    QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
+                                           "nsISupportsWeakReference"]),
+
+    onLocationChange: function(aProgress, aRequest, aURI) {
+        this.processNewURL(aURI);
+    },
+
+    onStateChange: function() {},
+    onProgressChange: function() {},
+    onStatusChange: function() {},
+    onSecurityChange: function() {}
+};
+
+window.addEventListener("load", function() { myExtension.init() }, false);
+window.addEventListener("unload", function() { myExtension.uninit() }, false);
+</pre>
+
+<p>Note: If you use the same listener for more than one tab/window, use aWebProgress.DOMWindow in the callback methods to obtain the tab/window which triggers the state change or event.</p>
+
+<h2 id="Example:_Notification_when_the_value_in_Address_Bar_changes" name="Example:_Notification_when_the_value_in_Address_Bar_changes">Example: Example of listener for anchor change</h2>
+
+<p>The above example "Notification when the value in Address Bar changes" fires multiple times, one of which is when the tab is changed. In some cases you want to catch only a location change when the anchor changes. To do this the optional aFlags parameter of the onLocationChange listener is used.</p>
+
+<pre class="brush: js">var myExt_urlBarListener = {
+    onLocationChange: function (aProgress, aRequest, aURI, aFlags) {
+        if (aFlags &amp; Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
+            //anchor clicked!
+            var domWin = aProgress.DOMWindow;
+            var domDoc = domWin.document;
+        }
+    }
+};
+</pre>
+
+<p>You can learn about this here: <a href="/en-US/docs/XPCOM_Interface_Reference/nsIWebProgressListener#Location_Change_Flags" title="/en-US/docs/XPCOM_Interface_Reference/nsIWebProgressListener#Location_Change_Flags">nsIWebProgressListener - Location Change Flags</a></p>

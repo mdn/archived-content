@@ -1,0 +1,187 @@
+---
+title: How to build a binary XPCOM component using Visual Studio
+slug: Mozilla/Tech/XPCOM/How_to_build_a_binary_XPCOM_component_using_Visual_Studio
+tags:
+  - Add-ons
+  - Extensions
+  - XPCOM
+---
+<p>This is a simple tutorial for building XPCOM objects in C++ using Visual Studio. XPCOM is Mozilla’s cross platform component object model, similar to Microsoft’s COM technology. XPCOM components can be implemented in C, C++, and JavaScript, and can be used from C, C++, and JavaScript. That means you can call JavaScript methods from C++ and vice versa. For more information on the workings of XPCOM look <a href="en/XPCOM">elsewhere</a>.
+</p><p><br>
+</p>
+<h2 id="Development_Setup"> Development Setup </h2>
+<p>The simplest way to get an XPCOM component built is to use the Gecko SDK. On Windows, the SDK is built using a Microsoft compiler, so you need to use one too. This tutorial uses Microsoft’s free <a class="external" href="http://msdn.microsoft.com/vstudio/express/visualc/">Visual C++ Express</a> and the sample project in the next paragraph. You could try to use a different vendor's compiler, but you are going to need to build the SDK from source code. Not the simplest thing to do and it may be incompatible with production releases of Firefox, Thunderbird, and XULRunner from Mozilla.
+</p><p>For example, <a class="external" href="http://releases.mozilla.org/pub/mozilla.org/xulrunner/releases/1.8.0.4/win32/en-US/xulrunner-1.8.0.4.en-US.win32.zip">XULRunner 1.8.0.4</a> which has a pre-built SDK at <a class="external" href="http://releases.mozilla.org/pub/mozilla.org/xulrunner/releases/1.8.0.4/sdk/gecko-sdk-win32-msvc-1.8.0.4.zip">gecko-sdk-win32-msvc-1.8.0.4.zip</a>. Extract the SDK to a folder. The tutorial assumes the folder is called xulrunner-1.8.0.4, but you can call yours whatever you want.
+</p><p>You also need a couple of pre-built libraries (glib-1.2.dll &amp; libIDL-0.6.dll) from the <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/mozilla/source/wintools.zip">wintools.zip</a> archive. Copy glib-1.2.dll &amp; libIDL-0.6.dll into the bin subfolder of gecko-sdk.
+</p>
+<div class="note">Note: wintools.zip seems old and lots of newer MDC documentation refers to <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/mozilla/libraries/win32/historic/vc8/vc8-moztools.zip">moztools.zip</a> archive, but the version of xpidl.exe that comes with the gecko-sdk crashes with the DLL’s from moztools.</div>
+<p>Recap:
+</p>
+<ul><li> Use the right Gecko SDK for your XULRunner release
+</li><li> Use a Microsoft compiler
+</li><li> Use pre-built glib-1.2.dll &amp; libIDL-0.6.dll libraries from wintools.zip
+</li><li> Download the sample project
+</li></ul>
+<p>Here is what the folder structure looks like:
+</p><p><img alt="Image:xpcom-folders.png">
+</p>
+<h2 id="Create_a_VC_Project"> Create a VC++ Project </h2>
+<p>Visual Studio project and file templates (or wizards) for creating XPCOM modules and components do not currently exist. For now, you can use the included XPCOM project that contains a simple XPCOM component. You can use the project as a starting point and modify the component files to add your own functionality.
+</p><p>To make the project, you start with a standard multi-thread DLL project. Then make the following tweaks:
+</p>
+<ul><li> Add "..\gecko-sdk\include" to Additional Include Directories
+</li><li> Add "..\gecko-sdk\lib" to Additional Library Directories
+</li><li> Add "nspr4.lib xpcom.lib xpcomglue_s.lib" to Additional Dependencies
+</li><li> Add "XP_WIN;XP_WIN32″ to Preprocessor Definitions
+</li><li> Turn off precompiled headers (just to keep it simple)
+</li><li> Use a custom build step for the XPCOM IDL file (spawns xpidl-build.bat to process the IDL with Mozilla toolset, not MIDL)
+</li></ul>
+<p>VC++ Express Project: <a class="external" href="/samples/xpcom/xpcom-test.zip">xpcom-test.zip</a>
+</p>
+<div class="note">Note: The project uses <a href="en/XPCOM_Glue">xpcom_glue</a>. It also uses frozen linkage (dependent on XPCOM). I am not defining XPCOM_GLUE and I am linking against xpcomglue_s.lib</div>
+<h2 id="Create_an_XPCOM_Component"> Create an XPCOM Component </h2>
+<p>A full tutorial of XPCOM is beyond the scope of this posting. Check out the resources at the end of the tutorial for more information on the world of XPCOM. Ok then, on with the basic, oversimplified example. Your XPCOM component is made up of 3 parts:
+</p>
+<ul><li> Component interface described using IDL. The interface defines the methods, including arguments and return types, of the component.
+</li><li> Component implementation using C++. The implementation is where the methods actually do the work.
+</li><li> Component factory module, also in C++. The factory is in charge of creating instances of the implementations.
+</li></ul>
+<p>Let’s specify a simple interface:
+</p>
+<pre>#include "nsISupports.idl"
+
+[scriptable, uuid(263ed1ba-5cc1-11db-9673-00e08161165f)]
+interface ISpecialThing : nsISupports
+{
+  attribute AString name;
+
+  long add(in long a, in long b);
+};
+</pre>
+<p>Remember to generate your own GUID. The next step is to compile the IDL into a type-library (*.XPT) and a C++ header file (*.H), which we can use to define our implementation object. The blank VC++ project has a BAT file that will create the XPT and the H files. The command executes XPIDL.EXE twice, like this:
+</p>
+<pre>{path_to_geckosdk}\bin\xpidl.exe -m header -I..\gecko-sdk\idl {your_idl_file}
+{path_to_geckosdk}\bin\xpidl.exe -m typelib -I..\gecko-sdk\idl {your_idl_file}
+</pre>
+<p>The generated H file actually has a skeleton implementation (commented out). You can take the code and create implementation H and CPP files. They could look like this:
+</p><p>H file:
+</p>
+<pre>#ifndef __SPECIALTHING_IMPL_H__
+#define __SPECIALTHING_IMPL_H__
+
+#include "comp.h"
+#include "nsStringAPI.h"
+
+#define SPECIALTHING_CONTRACTID "@starkravingfinkle.org/specialthing;1"
+#define SPECIALTHING_CLASSNAME "SpecialThing"
+#define SPECIALTHING_CID { 0x245626, 0x5cc1, 0x11db, { 0x96, 0x73, 0x0, 0xe0, 0x81, 0x61, 0x16, 0x5f } }
+
+class CSpecialThing : public ISpecialThing
+{
+public:
+	NS_DECL_ISUPPORTS
+	NS_DECL_ISPECIALTHING
+
+	CSpecialThing();
+
+private:
+	~CSpecialThing();
+
+protected:
+	/* additional members */
+	nsString mName;
+};
+
+#endif
+</pre>
+<p>CPP file:
+</p>
+<pre>#include "comp-impl.h"
+
+NS_IMPL_ISUPPORTS1(CSpecialThing, ISpecialThing)
+
+CSpecialThing::CSpecialThing()
+{
+	/* member initializers and constructor code */
+	mName.Assign(L"Default Name");
+}
+
+CSpecialThing::~CSpecialThing()
+{
+	/* destructor code */
+}
+
+/* attribute AString name; */
+NS_IMETHODIMP CSpecialThing::GetName(nsAString &amp; aName)
+{
+	aName.Assign(mName);
+	return NS_OK;
+}
+NS_IMETHODIMP CSpecialThing::SetName(const nsAString &amp; aName)
+{
+	mName.Assign(aName);
+	return NS_OK;
+}
+
+/* long add (in long a, in long b); */
+NS_IMETHODIMP CSpecialThing::Add(PRInt32 a, PRInt32 b, PRInt32 *_retval)
+{
+	*_retval = a + b;
+	return NS_OK;
+}
+</pre>
+<p>Lastly, we need to create the module implementation. I put this together from some samples I found on the MDC site:
+</p>
+<pre>#include "nsIGenericFactory.h"
+#include "comp-impl.h"
+
+NS_GENERIC_FACTORY_CONSTRUCTOR(CSpecialThing)
+
+static nsModuleComponentInfo components[] =
+{
+    {
+       SPECIALTHING_CLASSNAME,
+       SPECIALTHING_CID,
+       SPECIALTHING_CONTRACTID,
+       CSpecialThingConstructor,
+    }
+};
+
+NS_IMPL_NSGETMODULE("SpecialThingsModule", components)
+</pre>
+<p>Assuming you have the right SDK and setup the include and LIB folders correctly, the project should build your XPCOM component.
+</p>
+<h3 id="Test_Component_in_a_XULRunner_Application"> Test Component in a XULRunner Application </h3>
+<p>In order to test your component in a XULRunner application, you need to “install” the component, “clear” the component registry, and use the component from JavaScript.
+</p>
+<ol><li> Install Component: Copy your XPT and DLL files to the {app}/components folder. You should not put your component in the xulrunner/components folder.
+</li><li> Clear Registry: Increment the BuildID in your {app}/application.ini.
+</li><li> Use in JavaScript: </li></ol>
+<pre>function doXPCOM() {
+  try {
+    const cid = "@starkravingfinkle.org/specialthing;1";
+    var obj = Components.classes[cid].createInstance();
+    obj = obj.QueryInterface(Components.interfaces.ISpecialThing);
+  }
+  catch (err) {
+    alert(err);
+    return;
+  }
+
+  var res = obj.add(3, 4);
+  alert('3+4 = ' + res);
+
+  var name = obj.name;
+  alert('Name = ' + name);
+
+  obj.name = 'New Name';
+  name = obj.name;
+  alert('Name = ' + name);
+}
+</pre>
+<h2 id="Other_resources"> Other resources </h2>
+<ul><li> <a href="en/Creating_XPCOM_Components"> Creating XPCOM Components</a> - Mozilla
+</li><li> <a href="en/How_to_Build_an_XPCOM_Component_in_Javascript"> How to Build an XPCOM Component in Javascript</a> - Mozilla
+</li><li> <a class="external" href="http://www-128.ibm.com/developerworks/webservices/library/co-xpcom.html">An Introduction to XPCOM</a> - IBM
+</li><li> <a class="external" href="http://www.mozilla.org/projects/xpcom/">XPCOM Project Page</a> - Mozilla
+</li></ul>

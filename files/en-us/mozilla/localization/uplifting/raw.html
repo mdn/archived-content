@@ -1,0 +1,80 @@
+<p>Localizers who are working on l10n-central are responsible for getting their work onto the Aurora repository.</p>
+<p>Here some tips and tricks for syncing up both l10n-central and releases/l10n/mozilla-aurora at the same time en-US goes from central to aurora.<br>
+  <br>
+  You want to have a repo from which you can uplift to aurora shortly after the migration. The <a class="link-https" href="https://wiki.mozilla.org/Releases" title="https://wiki.mozilla.org/Releases">Releases page on wikimo</a> has the upcoming dates. You should be good doing it the day after.<br>
+  <br>
+  You don't need to work on making the synchronization happen in either of your copies of the aurora or central repositories, but you can create a third one for this work. We even suggest that you do. That makes it easier to throw away attempts that didn't work.<br>
+  <br>
+  So, here are the mercurial steps to reproduce.<br>
+  <br>
+  Prerequisites:</p>
+<ul>
+  <li>merge tool. You really want a merge tool for this. I use kdiff3; you may choose your own based on what you read at <a class="external" href="http://mercurial.selenic.com/wiki/MergeProgram" rel="freelink">http://mercurial.selenic.com/wiki/MergeProgram</a></li>
+  <li>a clone of your central repo. Let's pretend it's at l10n-central/ab-CD.</li>
+  <li>a clone of your aurora repo. Let's pretend it's at releases/l10n-mozilla-aurora/ab-CD</li>
+</ul>
+<p>Here's how we do it:<br>
+  <br>
+  <code># set up a new local clone of your central repo<br>
+  hg clone l10n-central/ab-CD workrepo<br>
+  cd workrepo<br>
+  # pull in the changesets you have on aurora<br>
+  hg pull -r default ../releases/l10n/mozilla-aurora/ab-CD</code><br>
+  <br>
+  Now, there are two routes forward:<br>
+  <br>
+  1) things are pretty silent.<br>
+  Good luck, you're basically done. All you need to do is to push from your l10n-central clone to your aurora repo.<br>
+  <br>
+  2) new heads, you need to merge. this looks something like<br>
+  <br>
+  <code>searching for changes<br>
+  adding changesets<br>
+  adding manifests<br>
+  adding file changes<br>
+  added 22 changesets with 23 changes to 46 files (+1 heads)<br>
+  (run 'hg heads' to see heads, 'hg merge' to merge)</code><br>
+  <br>
+  OK, let's make sure we're not talking relbranches:<br>
+  <br>
+  <code>hg heads --template '{node} {branches}\n'</code><br>
+  <br>
+  This is printing something like<br>
+  <br>
+  <code>5131e147fa50c28ec858c7d9fd1ba201ea2a433b<br>
+  4da525ed77699794c56081791bd46cc85983f6f8<br>
+  9bc7e6c58fc091c8cd0e8d9e1dbc7e6f592772a7 GECKO20b12_2011022218_RELBRANCH<br>
+  230e99fada602842d9630e673077ef9f1ab34247 GECKO20b12pre_20110216_RELBRANCH<br>
+  41a4357884d7bcc50e69c71014124d3af2482afe COMM20b11_20110203_RELBRANCH<br>
+  2ec6ad14e7168ebeb999b1e8ae10632ae4c9df23 GECKO20b11_2011020209_RELBRANCH<br>
+  d68e647ac3c0fee709c13abb0f03fac24a1a5d29 GECKO20b11pre_20110126_RELBRANCH<br>
+  7ff37dc6837669363a51ad3fd2874ac845d312d5 GECKO20b10_2011012115_RELBRANCH<br>
+  6c31fe9bc065a86aea2223ba48698f18ae7563ad GECKO20b9_2011011018_RELBRANCH</code></p>
+<p>Here you can see that there are two changesets without a branch. So yes, you need to merge those two.</p>
+<p><code>hg merge</code></p>
+<p>If this just passes, you want to commit, and you probably want to use a commit message like "merging central and aurora". You can safely push this to l10n-central already, in particular if you don't plan to do further updates on aurora. You don't want to push this to aurora before there's been the notification that the status of aurora has been lifted up to beta.</p>
+<p>If <code>hg merge</code> starts asking you questions, you have a merge conflict. That indicates that the same string has different translations on l10n-central and aurora, and you really want to make sure that your aurora clone doesn't have quality issues. In particular, did you land all the fixes for your work on both central and aurora? Because mercurial suggests that you didn't. Look at the merge conflicts, and figure out if there's stuff that you still want to land on aurora. If so, you want to fix those issues on aurora alone, verify them there, and then go back to this page. One of the reasons why we suggested that you do the merging in a separate tree is just this. You can just throw your merge candidate away as long as you find fixes that you've forgotten on either aurora or beta, and address those in their own repos first. Push them to hg.mozilla.org there, verify the builds, and then try to merge l10n-central and aurora again.</p>
+<p>There is one scenario where you don't want to have the conflicts resolved outside of the actual merge: en-US on central changed, in a way that doesn't make sense on aurora. Say, en-US removed a string for the release+2, and you fixed a typo in the string that still exists in release+1. So you fixed the string on aurora, and you removed the broken string on central. That's gonna conflict, and you need to resolve that with your merge tool so that the resulting localized file doesn't have the string any more.</p>
+<p>Now, if you read this far, you may be overwhelmed, and that's OK. Ask for help. The folks on #l10n won't be able to make language decisions for you, but there will be folks around to explain why you're seeing a merge conflict, and if you're looking for a fix on one branch, on the other, or on both.</p>
+<p>At this point, your resulting <code>workrepo</code> has no more conflicts, and thus it's time to publish it again. In the <code>workrepo</code> directory, do</p>
+<p><code>#verify that we didn't forget changesets<br>
+  hg inc ../l10n-central/ab-CD<br>
+  comparing with ../l10n-central/ab-CD<br>
+  searching for changes<br>
+  no changes found<br>
+  hg inc -r default ../<code>releases/l10n/mozilla-aurora/ab-CD</code><br>
+  comparing with ../<code>releases/l10n/mozilla-aurora</code>/ab-CD<br>
+  searching for changes<br>
+  no changes found</code><br>
+  <code># push to central<br>
+  hg push ../l10n-central/ab-CD<br>
+  # push to aurora<br>
+  hg push ../releases/l10n/mozilla-aurora/ab-CD<br>
+  # push l10n-central upstream<br>
+  cd ../l10n-central/ab-CD<br>
+  hg push<br>
+  # push aurora upstream<br>
+  cd ../../releases/l10n/mozilla-</code><code>aurora/ab-CD<br>
+  hg push</code></p>
+<p>Keep in mind that at this point, aurora and beta correspond to different states of l10n, and thus you don't want to push the aurora state to beta.</p>
+<p> </p>

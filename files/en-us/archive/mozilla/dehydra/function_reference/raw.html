@@ -1,0 +1,68 @@
+<h2 id="GCC_command-line" name="GCC_command-line">GCC Command Line</h2>
+<ul> <li><span style="font-family: Courier New;">-fplugin=/path/to/gcc_dehydra.so</span></li> <li><span style="font-family: Courier New;">-fplugin-arg-gcc_dehydra=/path/to/your/script.js</span></li>
+</ul>
+<h2 id="Callback_Functions" name="Callback_Functions">Callback Functions</h2>
+<p>The following functions may be provided by the analysis script and will be called by Dehydra while compiling. See the <a class="internal" href="/En/Dehydra/Object_Reference" title="En/Dehydra/Object Reference">Dehydra object reference</a> for details on the available object properties.</p>
+<h3 id="process_type" name="process_type">process_type(type)</h3>
+<p>Dehydra calls this for each class, struct, enum, union, and typedef declaration. process_type is called <em>after</em> process_function is called for all the member functions.</p>
+<ul> <li><em>type</em> is a <a href="/En/Dehydra/Object_Reference#Type_Objects" title="En/Dehydra/Object_Reference#Type_Objects">type object</a> representing the type that was declared.</li>
+</ul>
+<h3 id="process_function" name="process_function">process_function(decl, body)</h3>
+<p>Dehydra calls this for each function definition (declarations without bodies are not included), including both top-level functions, class member functions, and inline class member functions.</p>
+<ul> <li><em>decl</em> is a <a class="internal" href="/En/Dehydra/Object_Reference#Variable_Objects" title="En/Dehydra/Object_Reference#Variable_Objects">Variable Type</a> object representing the function being processed</li> <li><em>body</em> is an array of <em>{loc:, statements:array of <a class="internal" href="/En/Dehydra/Object_Reference#Variable_Objects" title="En/Dehydra/Object_Reference#Variable_Objects">Variable Types</a>}</em> representing an outline of the function stripped down to variables, function calls and assignments.</li>
+</ul>
+<h3 id="process_decl" name="process_decl">process_decl(decl)</h3>
+<p><em>process_decl</em> is called for every global variable, function, or template declaration.</p>
+<ul> <li>decl is a <a class="internal" href="/En/Dehydra/Object_Reference#Variable_Objects" title="En/Dehydra/Object_Reference#Variable_Objects">variable type</a></li>
+</ul>
+<h3 id="input_end" name="input_end">input_end()</h3>
+<p>Called once at the end of the C++ source file before the compiler quits. This is useful for finalizing analyses.</p>
+<h2 id="Builtin_functions_.3D" name="Builtin_functions_.3D">Builtin functions</h2>
+<p>The following functions are provided by dehydra and may be called by the user:</p>
+<h3 id="print" name="print">print(msg)</h3>
+<p>Print a string to stdout (or stderr if the compiler is piping output). If the current callback is associated with a particular location, the location will be printed first.</p>
+<ul> <li><em>msg</em> is a string to output</li>
+</ul>
+<p>To customize the location info printed set <em>this._loc</em> before calling <em>print()</em></p>
+<h3 id="include" name="include">include(file [, namespace])</h3>
+<p>Include a javascript file into a namespace.</p>
+<ul> <li><em>file</em> is a string representing the file to include</li> <li>Optional: <em>namespace</em> is an object to include the file into. The default namespace is <em>this</em></li>
+</ul>
+<p>The directories in <em>sys.include_path</em> are searched for the file, and the current working directory is searched last.</p>
+<p>Includes are guarded so a file is only included once and subsequent include calls are ignored. This is accomplished by recording every included file into the <em>_includedArray</em> in the current namespace.</p>
+<h4 id="Include_Example" name="Include_Example">Include Example</h4>
+<pre class="eval">include("map.js") // includes map.js into toplevel
+var Map = {}
+include("map.js", Map) // includes map.js into the Map object
+</pre>
+<h3 id="require" name="require">require({version:, strict:, werror:, gczeal:})</h3>
+<p><em>require</em> is used to set runtime execution flags. It also returns the current values of these flags. <em>require</em> supports optional named arguments via JavaScript object where each parameter is a property. If a property is not specified then it will not be passed to the runtime.</p>
+<ul> <li><em>version</em> integer: this sets js version similar to <a href="/en/JavaScript/New_in_JavaScript/1.7#Using_JavaScript_1.7" title="en/New_in_JavaScript_1.7#Using_JavaScript_1.7">version()</a> in JS 1.7.</li> <li><em>strict</em> boolean: Controls JS strict mode</li> <li><em>werror</em> boolean: Turns JS warnings into errors</li> <li><em>gczeal</em> int: This is a write-only parameter to set turn on frequent garbage collection. It is a mainly useful for debugging Dehydra for rooting bugs. <em>gczeal</em> is only enabled when SpiderMonkey and Dehydra are compiled with DEBUG macro defined.</li>
+</ul>
+<h4 id="require.28.29_Example" name="require.28.29_Example">require() Example</h4>
+<pre class="eval">require({strict:true, gczeal:2})
+if (require().werror) print("werror is set")
+</pre>
+<h3 id="warning" name="warning">warning([code,] msg [, loc])</h3>
+<p>Print a warning message using the GCC warning mechanism. If -Werror is specified this will cause compilation to fail.</p>
+<ul> <li>Optional: <em>code</em> is an integer parameter that allows warnings to be enabled(-Wfoo) and disabled(-Wno-) on the GCC commandline. This parameter is used when the first argument to <em>warning()</em> is an integer. It is not possible to define new warnings in Dehydra, thus one has to figure out a warning code from an existing warning and hijack it for ulterior purposes.</li> <li><em>msg</em> is a string to be presented as a gcc warning</li> <li>Optional: <em>loc</em> is the location that should be reported for the warning. If no location is provided, the location is inferred from the last <em>process_type</em> or <em>process_function</em>.</li>
+</ul>
+<h3 id="error" name="error">error(msg [, loc])</h3>
+<p>Print an error message using the GCC error mechanism. This will cause compilation to fail.</p>
+<ul> <li><em>msg</em> is a string to be presented as a gcc error</li> <li>Optional: <em>loc</em> is the location that should be reported for the warning. If no location is provided, the location is inferred from the last <code>process_type</code> or <code>process_function</code>.</li>
+</ul>
+<h3 id="_print" name="_print">_print(msg, ...)</h3>
+<p>The low level function called by <em>print()</em>. It does not print the location.</p>
+<h3 id="read_file" name="read_file">read_file(filename)</h3>
+<p>Read a file a return it as a string.</p>
+<h3 id="write_file" name="write_file">write_file(filename, data)</h3>
+<p>Write a string to a file.</p>
+<h2 id="Toplevel_Objects" name="Toplevel_Objects">Builtin Objects</h2>
+<h3 id="sys" name="sys">sys</h3>
+<p><em>this.sys</em> is a container for miscellaneous properties exposes by Dehydra</p>
+<ul> <li><em>sys.gcc_version</em> is a GCC version string</li> <li><em>sys.include_path</em> exposes the search path used by <em>include()</em>. The default value is the following directories: <ul> <li>the directory of the dehydra script being processed</li> <li>the <em>libs</em> directory next to the <em>gcc_dehydra.so</em> plugin</li> <li>User script may add additional directories</li> </ul> </li> <li><em>sys.aux_base_name</em> exposes the base filename part of the file being compiled</li> <li><em>sys.frontend</em> exposes the compiler frontend (e.g. <span style="font-family: Courier New;">"GNU C"</span> or <span style="font-family: Courier New;">"GNU C++"</span>)</li>
+</ul>
+<h3 id="sys" name="sys">arguments</h3>
+<p><em>this.arguments </em>is a JavaScript array containing command-line arguments passed to a script.</p>
+<p><span style="font-family: Courier New;">-fplugin-arg="foo.js a b c"</span> would run foo.js with ["a", "b", "c"] arguments array.</p>
+<p>This page was auto-generated because a user created a sub-page to this page.</p>

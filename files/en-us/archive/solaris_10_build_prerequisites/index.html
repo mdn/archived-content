@@ -1,0 +1,67 @@
+---
+title: Solaris 10 Build Prerequisites
+slug: Archive/Solaris_10_build_prerequisites
+---
+<h3 id="Optional_Software" name="Optional_Software">Optional Software</h3>
+<p> </p>
+<ul>
+ <li><a href="http://opensolaris.org/os/project/jds/contributing/building/#jds-cbe" class="external">JDS Common Build Environment</a> (CBE). Provides build tools needed by some open-source projects (eg Gnome). The tools included with Solaris and Sun Studio should be sufficient for building Mozilla, so you can skip this.
+  <ul>
+   <li>The installer must install additional Sun-provided packages from the OS install DVD, so that DVD has to be available.</li>
+   <li>The installer will try to install the SUNWsmbaS package, which is not available in newer versions of SXDE. Fortunately, it also isn't necessary, so you can fix this problem by simply removing the reference to that package from the installer script (cbe-install).</li>
+   <li>The installer may tell you your C compiler is not the recommended compiler, but the compiler you installed will work fine, so you should tell the installer to use the compiler anyway.</li>
+   <li>Run <code>. /opt/jdsbld/bin/env.sh</code> to import the JDS CBE settings into your environment.</li>
+  </ul>
+ </li>
+</ul>
+<h3 id="Build_Environment" name="Build_Environment">Build Environment</h3>
+<p>1. Install Sun Studio 12 or Sun Studio 11 with a patch to avoid a <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=434340#c10" class="link-https" title="https://bugzilla.mozilla.org/show_bug.cgi?id=434340#c10">compiler bug</a>.<br>
+ 2. Install <a href="http://opensolaris.org/os/project/jds/contributing/building/" class="external" title="http://opensolaris.org/os/project/jds/contributing/building/">CBE</a>. Make some changes to /opt/jdsbld/bin/env.sh.</p>
+<pre class="eval">--- env.sh.orig	Tue Jul  1 02:38:35 2008
+
++++ env.sh	Tue Jun 24 01:08:01 2008
+
+@@ -95,7 +95,8 @@
+
+     echo Setting LD=$LD
+
+ export LD
+
+
+
+-PATH="$CBE_PREFIX/bin:/usr/ccs/bin:/usr/gnu/bin:/usr/bin:/usr/sbin:/bin:/usr /sfw/bin:$CCDIR"
+
++PATH="/opt/sfw/bin:$CBE_PREFIX/bin:/usr/ccs/bin:/usr/gnu/bin:/usr/bin:/usr/s bin:/bin:/usr/sfw/bin:$CCDIR"
+
+ test "x$JDS_CBE_ENV_QUIET" != x1  &amp;&amp; \
+
+     echo Setting PATH=$PATH
+
+ export PATH
+
++export PKG_CONFIG_PATH=/opt/sfw/lib/pkgconfig:/usr/lib/pkgconfig</pre>
+<p>3. Replace the commands in CBE that don't work on Solaris 10.</p>
+<pre class="eval">% cd /opt/jdsbld/bin
+% mv make make.bak
+% ln -s /usr/sfw/bin/gmake make
+% mv ls ls.bak
+% ln -s /usr/bin/ls ls</pre>
+<p>4. Checkout the desktop spec files for branch gnome-2-20.</p>
+<pre class="eval">% svn co <a class="external" rel="freelink">svn+ssh://anon</a> at svn dot opensolaris dot org/svn/jds/spec-files/branches/gnome-2-20</pre>
+<p>5. Unpack the extra <a href="http://www.opensolaris.org/jive/servlet/JiveServlet/download/39-66962-260464-7285/firefox-solaris-10-spec.tar.bz2" class="external" title="http://www.opensolaris.org/jive/servlet/JiveServlet/download/39-66962-260464-7285/firefox-solaris-10-spec.tar.bz2">spec file tarball</a> to the spec file directory.</p>
+<pre class="eval">% cd gnome-2-20
+% gtar jxvf firefox-solaris-10-spec.tar.bz2</pre>
+<p>6. Unpack the <a href="http://www.opensolaris.org/jive/servlet/JiveServlet/download/39-66962-260464-7284/firefox-3.0-solaris-10-patches.tar.bz2" class="external" title="http://www.opensolaris.org/jive/servlet/JiveServlet/download/39-66962-260464-7284/firefox-3.0-solaris-10-patches.tar.bz2">patch tarball</a> to the patches directory.</p>
+<pre class="eval">% cd gnome-2-20/patches
+% gtar jxvf firefox-3.0-solaris-10-patches.tar.bz2</pre>
+<p>7. Build <a href="http://pkgconfig.freedesktop.org/releases/pkg-config-0.21.tar.gz" class="external" title="http://pkgconfig.freedesktop.org/releases/pkg-config-0.21.tar.gz">pkg-config</a> and <a href="http://ftp.gnome.org/pub/GNOME/sources/gtk-doc/1.10/gtk-doc-1.10.tar.bz2" class="external" title="http://ftp.gnome.org/pub/GNOME/sources/gtk-doc/1.10/gtk-doc-1.10.tar.bz2">gtk-doc</a> from source. Just unpack the source tarball, run "./configure --prefix=/opt/sfw", make and make install. Add /opt/sfw/bin to PATH environment after installation.</p>
+<p>8. Build glib/atk/cairo/pango/gtk2/dbus/dbus-glib/firefox.</p>
+<pre class="eval">% . /opt/jdsbld/bin/env.sh
+% pkgtool --download build-only -v solaris10/SFW{name1}.spec
+% pkgadd -d . {package_name1}
+% pkgadd -d . {package_name1}-devel
+% pkgtool --download build-only -v solaris10/SFW{name2}.spec
+% pkgadd -d . {package_name2}
+% pkgadd -d . {package_name2}-devel
+......
+</pre>

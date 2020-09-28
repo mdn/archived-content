@@ -1,0 +1,145 @@
+<p>This document presents the mechanisms for walking the contents of a directory <em>from a worker thread</em>. For other uses of OS.File and OS.File.DirectoryIterator, please see the <a href="/en-US/docs/JavaScript_OS.File" title="/en-US/docs/JavaScript_OS.File">main document on OS.File</a>.</p>
+<h2 id="Using_OS.File.DirectoryIterator">Using OS.File.DirectoryIterator</h2>
+<h3 id="Example_Finding_the_subdirectories_of_a_directory_using_an_iterator">Example: Finding the subdirectories of a directory using an iterator</h3>
+<p>The following snippet walks through the content of a directory, selecting subdirectories:</p>
+<pre class="brush: js">let iterator = new OS.File.DirectoryIterator(somePath);
+try {
+  for (let entry in iterator) {
+    if (entry.isDir) {
+      // entry is a directory
+    }
+  }
+} finally {
+  iterator.close();
+}
+</pre>
+<p>Or a variant using <a href="/en-US/docs/JavaScript/Guide/Predefined_Core_Objects#Array_comprehensions" title="/en-US/docs/JavaScript/Guide/Predefined_Core_Objects#Array_comprehensions">array comprehension</a>:</p>
+<pre class="brush: js">let iterator = new OS.File.DirectoryIterator(somePath);
+try {
+  return [entry for (entry in iterator) if (entry.isDir) ];
+} finally {
+  iterator.close();
+}
+</pre>
+<h3 id="Example_Sorting_files_by_last_modification_date">Example: Sorting files by last modification date</h3>
+<p>The following takes advantage of feature detection to minimize file I/O:</p>
+<pre class="brush: js">let iterator = new OS.File.DirectoryIterator(somePath);
+try {
+  let entries;
+  if ("winCreationDate" in OS.File.DirectoryIterator.Entry.prototype) {
+    // Under Windows, additional information allow us to sort files immediately
+    // without having to perform additional I/O.
+    entries = [{entry: entry, creationDate: entry.winCreationDate} for (entry in iterator)];
+  } else {
+    // Under other OSes, we need to call OS.File.stat
+    entries = [{entry: entry, creationDate: OS.File.stat(entry.path).creationDate} for (entry in iterator)];
+  }
+  // Finally, sort the array
+  return entries.sort(function compare(a, b) {
+      return a.creationDate - b.creationDate;
+  });
+}
+</pre>
+<h2 id="Instances_of_OS.File.DirectoryIterator">Instances of OS.File.DirectoryIterator</h2>
+<h3 id="General_remark">General remark</h3>
+<p>All instances of worker thread OS.File.DirectoryIterator can be iterated using array comprehension. This is generally the best way to walk through a directory.</p>
+<div class="warning">
+  <p>Instances of OS.File.DirectoryIterator uses valuable system resources – typically the same resources as files. There is a limit to the total number of files and directory iterators that can be open at any given time. Therefore, you should make sure that these resources are released as early as possible. To do this, you should use method <a href="#OS.File.DirectoryIterator.prototype.close" title="#OS.File.DirectoryIterator.prototype.close">close</a>().</p>
+</div>
+<h3 id="Constructor">Constructor</h3>
+<pre class="brush: js">OS.File.DirectoryIterator(
+  in string path,
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+<h5 id="Arguments">Arguments</h5>
+<dl>
+  <dt>
+    path</dt>
+  <dd>
+    The full path to a directory.</dd>
+  <dt>
+    options</dt>
+  <dd>
+    An object that may contain the following fields:</dd>
+  <dt style="margin-left: 40px;">
+    winPattern</dt>
+  <dd style="margin-left: 40px;">
+    (ignored on non-Windows platforms) This option accepts a pattern such as <code>"*.exe"</code> or <code>"*.txt"</code>. The iterator will only display items whose name matches this pattern.</dd>
+</dl>
+<h3 id="Method_overview">Method overview</h3>
+<table>
+  <tbody>
+    <tr>
+      <td>void <a href="#OS.File.DirectoryIterator.prototype.close" title="#OS.File.DirectoryIterator.prototype.close">close</a>()</td>
+    </tr>
+    <tr>
+      <td>void <a href="#OS.File.DirectoryIterator.prototype.forEach" title="#OS.File.DirectoryIterator.prototype.forEach">forEach</a>(in function callback)</td>
+    </tr>
+    <tr>
+      <td>Array <a href="#OS.File.DirectoryIterator.prototype.nextBatch" title="#OS.File.DirectoryIterator.prototype.nextBatch">nextBatch</a>([optional] in number length)</td>
+    </tr>
+    <tr>
+      <td>Entry <a href="#OS.File.DirectoryIterator.prototype.next" title="#OS.File.DirectoryIterator.prototype.next">next</a>()</td>
+    </tr>
+  </tbody>
+</table>
+<h3 id="Methods">Methods</h3>
+<h4 id="close()">close()<a name="OS.File.DirectoryIterator.prototype.close"></a></h4>
+<p>Close the iterator, releasing the system resources it uses.</p>
+<pre class="brush: js">void close() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+<p>You should always call this method once you are done with an iterator. Calling this method several times is harmless. Calling this method while iterating through the directory is harmless but will stop the iteration.</p>
+<h4 id="forEach()">forEach()<a name="OS.File.DirectoryIterator.prototype.forEach"></a></h4>
+<p>Walk through the iterator.</p>
+<pre class="brush: js">void forEach(
+  in function callback
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+<h5 id="Arguments_2">Arguments</h5>
+<dl>
+  <dt>
+    callback</dt>
+  <dd>
+    A function. It will be applied to each entry in the directory successively, with the following arguments:</dd>
+  <dt style="margin-left: 40px;">
+    entry</dt>
+  <dd style="margin-left: 40px;">
+    An instance of <a href="/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry" title="/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry">OS.File.DirectoryIterator.Entry</a>.</dd>
+  <dt style="margin-left: 40px;">
+    index</dt>
+  <dd style="margin-left: 40px;">
+    The index of the entry in the enumeration.</dd>
+  <dt style="margin-left: 40px;">
+    iterator</dt>
+  <dd style="margin-left: 40px;">
+    The iterator itself. You may stop the iteration by calling <code>iterator.close()</code>.</dd>
+</dl>
+<h4 id="nextBatch()">nextBatch()<a name="OS.File.DirectoryIterator.prototype.nextBatch"></a></h4>
+<p>Return several entries at once.</p>
+<pre class="brush: js">array nextBatch(
+  [optional] in number entries
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+<h5 id="Arguments_3">Arguments</h5>
+<dl>
+  <dt>
+    entries</dt>
+  <dd>
+    The number of entries to return at once. If unspecified, all entries.</dd>
+</dl>
+<h5 id="Returns">Returns</h5>
+<p>An array containing <code>entries</code> entries, or less if there are not enough entries left in the directory. Once iteration is complete, calls to <code>nextBatch</code> return the empty array.</p>
+<h4 id="next()">next()<a name="OS.File.DirectoryIterator.prototype.next"></a></h4>
+<p>Return the next entry in the directory.</p>
+<pre class="brush: js"><a href="https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry" title="https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.DirectoryIterator.Entry">Entry</a> next() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>, <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Guide/Iterators_and_Generators" title="https://developer.mozilla.org/en-US/docs/JavaScript/Guide/Iterators_and_Generators">StopIteration</a></pre>
+<h5 id="Returns_2">Returns</h5>
+<p>The next entry in the directory.</p>
+<h5 id="Throws">Throws</h5>
+<dl>
+  <dt>
+    OS.File.Error</dt>
+  <dd>
+    In case of file error</dd>
+  <dt>
+    StopIteration</dt>
+  <dd>
+    If the method is called after the last entry has been returned</dd>
+</dl>

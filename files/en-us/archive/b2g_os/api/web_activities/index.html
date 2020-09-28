@@ -1,0 +1,645 @@
+---
+title: Web Activities
+slug: Archive/B2G_OS/API/Web_Activities
+tags:
+  - API
+  - B2G
+  - Firefox OS
+  - Guide
+  - Non Standard
+  - Web Activities
+---
+<p></p><section class="Quick_links" id="Quick_Links"><ol><li><strong><a href="/en-US/docs/Web/API/Web_Activities">Web Activities</a></strong></li><li class="toggle"><details open><summary>Interfaces</summary><ol><li><a href="/en-US/docs/Web/API/MozActivity"><code>MozActivity</code></a></li><li><a href="/en-US/docs/Web/API/MozActivityRequestHandler"><code>MozActivityRequestHandler</code></a></li><li><a href="/en-US/docs/Web/API/MozActivityOptions"><code>MozActivityOptions</code></a></li></ol></details></li><li class="toggle"><details open><summary>Methods</summary><ol><li><a href="/en-US/docs/Web/API/Navigator/mozSetMessageHandler"><code>Navigator.mozSetMessageHandler()</code></a></li></ol></details></li></ol></section><div class="blockIndicator nonStandard nonStandardHeader">
+      <p><strong><span class="icon-only-inline" title="This API has not been standardized."><i class="icon-warning-sign"> </i></span> Non-standard</strong><br>
+      This feature is not on a current W3C standards track, but it is supported on the Firefox OS platform. Although implementations may change in the future and it is not supported widely across browsers, it is suitable for use in code dedicated to Firefox OS apps.</p>
+      </div><p></p>
+
+<div class="warning">
+<p style="text-align: center;">This API is available to installed code running on Firefox for Android, and is intended for use by Firefox for Android Webapps in Firefox for Android 32+.</p>
+</div>
+
+<div class="summary">
+<p><span class="seoSummary">Web activities define a way for applications to delegate an activity to another (usually user-chosen) application.</span></p>
+</div>
+
+<p>Web activities are currently enabled on Firefox OS only, and the full specification is <a href="https://wiki.mozilla.org/WebAPI/WebActivities" title="https://wiki.mozilla.org/WebAPI/WebActivities">available on WikiMo</a>.</p>
+
+<h2 id="Activities">Activities</h2>
+
+<p>An activity is something a user wants to do: pick an image, send an e-mail, etc. App authors may want to define an app that can handle an activity or that can delegate to an activity.</p>
+
+<h2 id="Registering_an_App_as_an_activity_handler">Registering an App as an activity handler</h2>
+
+<p>App authors can build an app that will handle one or more activities. That means that the app will be callable by another app to perform some specific actions defined by the activity. For example, let's pretend we want to build a photo manager. It could be used by another application to pick a photo. As an activity handler our app will become part of the other application's workflow.</p>
+
+<h3 id="Register_an_activity">Register an activity</h3>
+
+<p>There is currently only one way to register an app as an activity handler: declaring it in the app manifest.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Any application can register itself as an activity handler for any existing activity or create its own activity. In both cases it's done the same way within the app manifest. However, when creating a new activity, it is considered best practice to avoid activities' name collisions by prefixing the name of the new activity with a URL (e.g.,<em>example.org/myActivity</em> or<em>org.example.myActivity</em> ).</p>
+</div>
+
+<h4 id="App_manifest_(a.k.a._declaration_registration)">App manifest (a.k.a. declaration registration)</h4>
+
+<p>We have to use the <a href="/en-US/docs/Apps/Manifest" title="/en-US/docs/Apps/Manifest">app manifest</a> to express that our app is expected to handle an activity as in this example:</p>
+
+<pre class="brush: js">{
+  // Other App Manifest related stuff
+
+  // Activity registration
+  "activities": {
+
+    // The name of the activity to handle (here "pick")
+    "pick": {
+      "href": "./pick.html",
+      "disposition": "inline",
+      "filters": {
+        "type": ["image/*","image/jpeg","image/png"]
+      },
+      "returnValue": true
+    }
+  }
+}
+</pre>
+
+<h4 id="Dynamic_registration">Dynamic registration</h4>
+
+<p>There are plans to let an app register itself dynamically by using the <a href="/en-US/docs/Web/API/Window/navigator" title="The Window.navigator read-only property returns a reference to the Navigator object, which can be queried for information about the application running the script."><code>navigator</code></a> object. However, this API is not available yet. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=775181" title="Implement navigator.* for Web Activities">bug 775181</a> to follow the work about that specific API.</p>
+
+<h4 id="Activity_handler_description">Activity handler description</h4>
+
+<dl>
+ <dt><code>href</code></dt>
+ <dd>When another app or Web page initiates an activity that is supported by this app, if this app is chosen to perform the activity, this specifies the page that will be opened. It will be opened in the manner specified by the <code>disposition</code> property.
+ <div class="note"><strong>Note:</strong> The URL of this page is restricted by the rules of the <a href="/en-US/docs/JavaScript/Same_origin_policy_for_JavaScript" title="/en-US/docs/JavaScript/Same_origin_policy_for_JavaScript">same origin policy</a>.</div>
+ </dd>
+</dl>
+
+<dl>
+ <dt><code>disposition</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+</dl>
+
+<dl>
+ <dd>Specifies how the page specified in <code>href</code> is presented when an activity is invoked. The value, if specified, must be one of the following (if omitted, defaults to <code>window</code>):
+
+ <ul>
+  <li><strong><code>window</code></strong> - The page handling the activity is opened in a new "window" (on a mobile device this view will replace the original app that requested the activity). The page must call <a href="/en-US/docs/Web/API/Window/navigator/mozSetMessageHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozSetMessageHandler()</code></a> for each activity it supports and subsequently execute the activity for which it receives a message.</li>
+  <li><strong><code>inline</code></strong> - The page that handles the activity will open in an overlay (on a mobile device this will be rendered in a popup over the original app that requested the activity). Subsequent behavior is exactly the same as if <code>disposition</code> were <code>window</code>.</li>
+ </ul>
+ </dd>
+</dl>
+
+<dl>
+ <dt><code>returnValue</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>States if the activity will return a value or not. If an application doesn't plan to return a value, the UA may send a <em>success</em> event as soon as an application has been picked. If a value is expected, the activity handler must call <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postResult" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityRequestHandler.postResult()</code></a> if the activity is successful or <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postError" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityRequestHandler.postError()</code></a> if the activity fails (where <a href="/en-US/docs/Web/API/MozActivityRequestHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityRequestHandler</code></a> is the type of the first argument provided to the function specified within <a href="/en-US/docs/Web/API/Window/navigator/mozSetMessageHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>mozSetMessageHandler</code></a> by the activity handler). The <em>success</em> or <em>error</em> event will be respectively fired after <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postResult" title="The documentation about this has not yet been written; please consider contributing!"><code>postResult</code></a> or <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postError" title="The documentation about this has not yet been written; please consider contributing!"><code>postError</code></a> has been called by the activity handler.</dd>
+</dl>
+
+<dl>
+ <dt><code>filters</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>A dictionary where each property of which specifies a filter. These filters will be applied while determining apps suitable for handling a given activity. Filter names are free-form text and should mirror <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>data</code></a> properties' names from <a href="/en-US/docs/Web/API/MozActivityOptions" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions</code></a>. Filters' values are either a basic value (string or number), an array of basic values, or a filter definition object. An activity will be considered as able to handle an activity only if the filters are all satisfied.</dd>
+</dl>
+
+<p>The way filters are handled depend on each filter value:</p>
+
+<ul>
+ <li>If the filter value is a basic value, the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property is optional but if the property exist it must have the same value as the one provided by the filter.</li>
+ <li>If the filter value is an array of basic values, the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property is optional but if the property exists its value must be equal to one of the values available in the array provided by the filter.</li>
+ <li>If the filter value is a filter definition object, the filter will be satisfied if the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property follows the rules defined by the object. A filter definition object can have the following properties:
+  <ul>
+   <li><code>required</code>: A boolean that indicates if the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property must exist (<code>true</code>) or not (<code>false</code>).</li>
+   <li><code>value</code>: A basic value or an array of basic value. The corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property value must be equal to one of the values defined in the filter.</li>
+   <li><code>min</code>: If the expected value is a number, the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property value must be greater than or equal to that value.</li>
+   <li><code>max</code>: If the expected value is a number, the corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property value must be lesser than or equal to that value.</li>
+   <li><code>pattern</code>: A string pattern following the <a href="/en-US/docs/JavaScript/Guide/Regular_Expressions" title="/en-US/docs/JavaScript/Guide/Regular_Expressions">JavaScript regular expression</a> syntax. The corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property value must match that pattern. <strong>This is supported in Firefox OS from v1.2.</strong></li>
+   <li><code>patternFlags</code>: If the <code>pattern</code> property is used, this property can be used to provide some extra regular expression flag such as <code>i</code> or <code>g</code>. <strong>This is supported in Firefox OS from v1.2.</strong></li>
+   <li><code>regexp</code>: A string containing a regexp litteral following the <a href="/en-US/docs/JavaScript/Guide/Regular_Expressions" title="/en-US/docs/JavaScript/Guide/Regular_Expressions">JavaScript regular expression</a> syntax. The corresponding <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions.data</code></a> property value must match that pattern. In contrary to the pattern flag, this can match only part of the value, therefore you must use the metacharacters ^ and $ to respectively match the start and the end of the string. <strong>This is supported in Firefox OS v1.0 and v1.1 only.</strong> Therefore you're advised to use both <code>pattern</code> and <code>regexp</code>.</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Handle_an_activity">Handle an activity</h2>
+
+<p>Once our application is declared as an activity handler, we have to make it concrete by performing some actions when receiving an activity request from another app.</p>
+
+<p>To handle the activity, we have to register a function that will perform all the necessary actions. To do so, we need to set a message handler with <a href="/en-US/docs/Web/API/Window/navigator/mozSetMessageHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozSetMessageHandler()</code></a>, specifically assigned to the <code>'activity'</code> message (and not the name of the activity). A <a href="/en-US/docs/Web/API/MozActivityRequestHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityRequestHandler</code></a> object is passed as an argument of the activity handler function.</p>
+
+<pre class="brush: js">navigator.mozSetMessageHandler('activity', function(activityRequest) {
+  // Do something to handle the activity
+});</pre>
+
+<p>As the activity handler function is performing an action, it will use the activity request to retrieve information about the activity and to send back an answer if necessary.</p>
+
+<p>The app that calls the activity has to provide some data (see below). This data can be reached through the request's <a href="/en-US/docs/Web/API/MozActivityRequestHandler/source" title="The documentation about this has not yet been written; please consider contributing!"><code>source</code></a> properties which is a <a href="/en-US/docs/Web/API/MozActivityOptions" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions</code></a> object. This object provides the <a href="/en-US/docs/Web/API/MozActivityOptions/name" title="The documentation about this has not yet been written; please consider contributing!"><code>name</code></a> of the activity call and the associated <a href="/en-US/docs/Web/API/MozActivityOptions/data" title="The documentation about this has not yet been written; please consider contributing!"><code>data</code></a>.</p>
+
+<pre class="brush: js">navigator.mozSetMessageHandler('activity', function(activityRequest) {
+  var option = activityRequest.source;
+
+  if (option.name === "pick") {
+    // Do something to handle the activity
+  }
+});</pre>
+
+<p>Once we have performed all the actions to handle the activity, we can call the request's <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postResult" title="The documentation about this has not yet been written; please consider contributing!"><code>postResult()</code></a> method to send the result back to the app that delegated the activity.</p>
+
+<p>If something goes wrong we can call the request's <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postError" title="The documentation about this has not yet been written; please consider contributing!"><code>postError()</code></a> method to send back an error message about the activity.</p>
+
+<pre class="brush: js">navigator.mozSetMessageHandler('activity', function(activityRequest) {
+  var option = activityRequest.source;
+
+  if (option.name === "pick") {
+    // Do something to handle the activity
+    ...
+
+    // Send back the result
+    if (picture) {
+      activityRequest.postResult({
+        type: picture.type,
+        blob: picture
+      });
+    } else {
+      activityRequest.postError("Unable to provide a picture");
+    }
+  }
+});</pre>
+
+<p>Be aware that you need to have <code>returnValue: true</code> set in your manifest file to return a result (see <a href="/en-US/docs/Mozilla/Firefox_OS/Firefox_OS_apps/Building_apps_for_Firefox_OS/Manifest#activities">manifest activities</a> for more information.) If there is no result to return, then you should just use <a href="/en-US/docs/Web/API/Window/close" title="The Window.close() method closes the current window, or the window on which it was called."><code>window.close()</code></a> to get rid of the handling window.</p>
+
+<div class="note">
+<p><strong>Note:</strong> UA is expected to send an error anyway at some point if neither <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postError" title="The documentation about this has not yet been written; please consider contributing!"><code>postError()</code></a> nor <a href="/en-US/docs/Web/API/MozActivityRequestHandler/postResult" title="The documentation about this has not yet been written; please consider contributing!"><code>postResult()</code></a> are called--for example, if the user leaves the application (closes the tab on desktop or goes back to the home screen on a mobile device).</p>
+</div>
+
+<h2 id="Starting_an_activity">Starting an activity</h2>
+
+<p>On the other side of <em>Web Activities</em>, there are apps that want to delegate an activity to our app. To perform such delegation, the apps have to call an activity by instantiating a <a href="/en-US/docs/Web/API/MozActivity" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivity</code></a> object. Such objects are nothing less than <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> objects that allow to wait for any response from the activity handler. As soon as the object is constructed, the activity is started, and the UI is shown to the user as soon as possible.</p>
+
+<pre class="brush: js" id=".C2.A0">var activity = new MozActivity({
+  // Ask for the "pick" activity
+  name: "pick",
+
+  // Provide the data required by the filters of the activity
+  data: {
+    type: "image/jpeg"
+  }
+});
+
+activity.onsuccess = function() {
+  var picture = this.result;
+  console.log("A picture has been retrieved");
+};
+
+activity.onerror = function() {
+  console.log(this.error);
+};
+</pre>
+
+<h3 id="Further_information_contact_retrieval">Further information: contact retrieval</h3>
+
+<p>In Firefox OS 1.3 and below, picking contacts is handled like like:</p>
+
+<pre class="brush: js">switch (this.activityDataType) {
+  case 'webcontacts/tel':
+    type = 'contact';
+    dataSet = theContact.tel;
+    noDataStr = _('no_contact_phones');
+    break;
+  case 'webcontacts/contact':
+    type = 'number';
+    dataSet = theContact.tel;
+    noDataStr = _('no_contact_phones');
+    break;
+  case 'webcontacts/email':
+    type = 'email';
+    dataSet = theContact.email;
+    noDataStr = _('no_contact_email');
+    break;
+}</pre>
+
+<p>If you want a persons name and telephone number you can then use:</p>
+
+<pre class="brush: js">var pick = new MozActivity({
+  name: "pick",
+  data: {
+    type: "webcontacts/contact"
+  }
+});
+
+pick.onsuccess = function () {
+  console.log("got contact");
+  var contact = this.result;
+  if( contact ){
+    console.log( "Name " + contact.name + " number "+ contact.number );
+  }
+};</pre>
+
+<p>In Firefox OS 2.0+ we added a field that if you use webcontacts/contact you can get the whole contact:</p>
+
+<pre class="brush: js">var pick = new MozActivity({
+  name: "pick",
+  data: {
+    type: "webcontacts/contact",
+    fullContact: "true"
+  }
+});</pre>
+
+<p>This returns is a <code>Contact</code> Object, which you can use the properties of directly:</p>
+
+<pre class="brush: js">pick.onsuccess = function (Contact) {
+  console.log( "Name " + Contact.name + " number "+ Contact.number );
+};</pre>
+
+<h3 id="Firefox_OS_activities">Firefox OS activities</h3>
+
+<p><a href="/en-US/docs/Mozilla/Firefox_OS/Platform/Gaia" title="/en-US/docs/Mozilla/Firefox_OS/Platform/Gaia">Gaia</a>, the native interface for Firefox OS, provides many built-in applications that define basic activities. Those activities are the following:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Application</th>
+   <th scope="col">Expected Data (filters)</th>
+   <th scope="col">Comments</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>browse</code></td>
+   <td>Gallery</td>
+   <td>
+    <pre class="brush: js">
+type: "photos"</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>configure</code></td>
+   <td>Settings</td>
+   <td>
+    <pre class="brush: js">
+target: "device"</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>costcontrol/balance</code></td>
+   <td>Costcontrol</td>
+   <td>None</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>costcontrol/data_usage</code></td>
+   <td>Costcontrol</td>
+   <td>None</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>costcontrol/telephony</code></td>
+   <td>Costcontrol</td>
+   <td>None</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>dial</code></td>
+   <td>Communication</td>
+   <td>
+    <pre class="brush: js">
+type: "webtelephony/number",
+number: {
+  regexp: "^[\\d\\s+#*().-]{0,50}$"
+}</pre>
+   </td>
+   <td>Used when an app wants to pass a phone call.</td>
+  </tr>
+  <tr>
+   <td colspan="1" rowspan="3"><code>new</code></td>
+   <td>Communication</td>
+   <td>
+    <pre class="brush: js">
+type: "webcontacts/contact"</pre>
+   </td>
+   <td>Used when an app wants to create a new contact entry.</td>
+  </tr>
+  <tr>
+   <td>Email</td>
+   <td>
+    <pre class="brush: js">
+type: "mail"</pre>
+   </td>
+   <td>
+    <p>Used when an app wants to send a new Email.  The e-mail app can parse <a href="http://tools.ietf.org/html/rfc6068">mailto URI</a> strings provided as either a "url" or "URI" property.  Attachments can be provided by populating parallel "blobs" and "filenames" arrays where then nth filename corresponds to the nth blob.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>SMS</td>
+   <td>
+    <pre class="brush: js" id="LC48">
+type: "websms/sms",
+number: {
+  regexp: "^[\\w\\s+#*().-]{0,50}$"
+}</pre>
+   </td>
+   <td>Used when an app wants to send an SMS.</td>
+  </tr>
+  <tr>
+   <td colspan="1">nfc-ndef-discovered</td>
+   <td>n/a</td>
+   <td>None</td>
+   <td>Used when an app wants to exchange data/tags with an app on another device.</td>
+  </tr>
+  <tr>
+   <td colspan="1" rowspan="4"><code>open</code></td>
+   <td>Communication</td>
+   <td>
+    <pre class="brush: js">
+type: "webcontacts/contact"</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>Gallery</td>
+   <td>
+    <pre class="brush: js">
+type: [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/bmp"
+]</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>Music</td>
+   <td>
+    <pre class="brush: js">
+type: [
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/mp4"
+]</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>Video</td>
+   <td>
+    <pre class="brush: js">
+type: [
+  "video/webm",
+  "video/mp4",
+  "video/3gpp",
+  "video/youtube"
+]</pre>
+
+    <p>Also expect a <code>blob</code> property which is a <a href="/en-US/docs/Web/API/Blob" title="A Blob object represents a file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system."><code>Blob</code></a> object.</p>
+   </td>
+   <td>Used when an app wants to display a video (the <code>view</code> activity allows to do the same).</td>
+  </tr>
+  <tr>
+   <td colspan="1" rowspan="2"><code>pick</code></td>
+   <td>Camera, Gallery, Wallpaper</td>
+   <td>
+    <pre class="brush: js">
+type: ["image/*", "image/jpeg"]</pre>
+   </td>
+   <td>Used when an app wants to get a picture.</td>
+  </tr>
+  <tr>
+   <td>Communication</td>
+   <td>
+    <pre class="brush: js">
+type: [
+  "webcontacts/contact",
+  "webcontacts/email"
+]</pre>
+
+    <p>as of Firefox OS 2.0, you can specify a fullContact: "true" field to return a complete contact object that you can access the properties of directly:</p>
+
+    <pre class="brush: js">
+type: [
+  "webcontacts/contact",
+  fullContact: "true"
+]</pre>
+   </td>
+   <td>Used when an app wants to retrieve some contact information or an e-mail.</td>
+  </tr>
+  <tr>
+   <td><code>record</code></td>
+   <td>Camera</td>
+   <td>
+    <pre class="brush: js">
+type: ["photos", "videos"]</pre>
+   </td>
+   <td>Used when an app wants to record some video.</td>
+  </tr>
+  <tr>
+   <td><code>save-bookmark</code></td>
+   <td>Homescreen</td>
+   <td>
+    <pre class="brush: js" id="LC46">
+type: "url",
+url: {
+  required:true,
+  regexp:/^https?:/
+}</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td colspan="1" rowspan="2"><code>share</code></td>
+   <td>Bluetooth</td>
+   <td>
+    <pre class="brush: js">
+number: 1
+</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>Email, Wallpaper</td>
+   <td>
+    <pre class="brush: js">
+type: "image/*"</pre>
+   </td>
+   <td>Used when an app wants to share an image.</td>
+  </tr>
+  <tr>
+   <td colspan="1" rowspan="4"><code>view</code></td>
+   <td>Browser</td>
+   <td>
+    <pre class="brush: js">
+type: "url"
+url: {
+  required: true,
+  regexp: /^https?:.{1,16384}$/
+}</pre>
+   </td>
+   <td>Used when an app wants to open a URL.</td>
+  </tr>
+  <tr>
+   <td>Email</td>
+   <td>
+    <pre class="brush: js" id="LC64">
+type: "url",
+url: {
+  required:true,
+  regexp: "^mailto:"
+}</pre>
+   </td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>PDFs</td>
+   <td>
+    <pre class="brush: js">
+type: "application/pdf"</pre>
+   </td>
+   <td>Used when an app wants to display the content of a PDF document.</td>
+  </tr>
+  <tr>
+   <td>Video</td>
+   <td>
+    <pre class="brush: js">
+type: [
+  "video/webm",
+  "video/mp4",
+  "video/3gpp",
+  "video/youtube"
+]</pre>
+
+    <p>Also expect a <code>url</code> property which is a string.</p>
+   </td>
+   <td>Used when an app wants to display a video (the <code>open</code> activity allows to do the same).</td>
+  </tr>
+  <tr>
+   <td><code>update</code></td>
+   <td>Communication</td>
+   <td>
+    <pre class="brush: js">
+type: "webcontacts/contact"</pre>
+   </td>
+   <td>Used when an app wants to update a contact.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Firefox_for_Android_activities">Firefox for Android activities</h3>
+
+<p>Firefox for Android 32+ allows installed webapps using the WebappRT to launch native Android intents via Web Activities. For security reasons, only explicitly mapped activities / intents are supported. Those activities are the following:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th colspan="2">MozActivity</th>
+   <th colspan="4">Android Intent</th>
+  </tr>
+  <tr>
+   <th>Name</th>
+   <th>Expected Data</th>
+   <th>Action</th>
+   <th>Extras</th>
+   <th>MIME</th>
+   <th>URI</th>
+  </tr>
+  <tr>
+   <td><code>dial</code></td>
+   <td>
+    <pre class="brush: js">
+type: "webtelephony/number",
+number: "+11234567890"</pre>
+   </td>
+   <td><code>DIAL</code></td>
+   <td> </td>
+   <td> </td>
+   <td><code>tel:+11234567890</code></td>
+  </tr>
+  <tr>
+   <td><code>open</code></td>
+   <td>
+    <pre class="brush: js">
+type: "image/jpeg",
+uri: "http://mozilla.org/image.jpg"</pre>
+   </td>
+   <td><code>VIEW</code></td>
+   <td> </td>
+   <td><code>image/jpeg</code></td>
+   <td><code>http://mozilla.org/image.jpg</code></td>
+  </tr>
+  <tr>
+   <td><code>pick</code></td>
+   <td>
+    <pre class="brush: js">
+type: "image/jpeg"</pre>
+   </td>
+   <td><code>GET_CONTENT</code></td>
+   <td> </td>
+   <td><code>image/jpeg</code></td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td rowspan="2"><code>send</code></td>
+   <td>
+    <pre class="brush: js">
+type: "text/plain",
+text: "my message"</pre>
+   </td>
+   <td><code>SEND</code></td>
+   <td><code>TEXT: "my message"</code></td>
+   <td><code>text/plain</code></td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>
+    <pre class="brush: js">
+type: "text/html",
+html_text: "&lt;strong&gt;my&lt;/strong&gt; message"</pre>
+   </td>
+   <td><code>SEND</code></td>
+   <td><code>HTML_TEXT: "&lt;strong&gt;my&lt;/strong&gt; message"</code></td>
+   <td><code>text/html</code></td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td rowspan="2"><code>view</code></td>
+   <td>
+    <pre class="brush: js">
+type: "url",
+url: "http://mozilla.org/"</pre>
+   </td>
+   <td><code>VIEW</code></td>
+   <td> </td>
+   <td> </td>
+   <td><code>http://mozilla.org/</code></td>
+  </tr>
+  <tr>
+   <td>
+    <pre class="brush: js">
+type: "url",
+uri: "mailto:user@mozilla.org"</pre>
+   </td>
+   <td><code>VIEW</code></td>
+   <td> </td>
+   <td> </td>
+   <td><code>mailto:user@mozilla.org</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<div class="note">
+<p><strong>Note</strong>: As of Firefox 41, Firefox for Android also supports loading of <a href="https://developer.chrome.com/multidevice/android/intents">Android URI Intents</a>. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=851693" title="FIXED: Allow loading URI Intents">bug 851693</a>.</p>
+</div>
+
+<h2 id="Specification">Specification</h2>
+
+<p><em>Web Activities</em> is not part of any specification. However, it has some overlap with the proposed <a href="https://dvcs.w3.org/hg/web-intents/raw-file/tip/spec/Overview-respec.html" title="http://www.w3.org/TR/web-intents/">Web Intents</a> specification. Mozilla actually proposed <em>Web Activities</em> as <a href="https://wiki.mozilla.org/WebAPI/WebActivities" title="https://wiki.mozilla.org/WebAPI/WebActivities">a counter proposal</a> to <em>Web Intents</em>. For more information about this, see discussion on the <a href="http://lists.w3.org/Archives/Public/public-web-intents/2012Jun/0061.html" title="http://lists.w3.org/Archives/Public/public-web-intents/2012Jun/0061.html">Web Intents Task Force ML</a>.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/API/MozActivity" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivity</code></a></li>
+ <li><a href="/en-US/docs/Web/API/MozActivityRequestHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityRequestHandler</code></a></li>
+ <li><a href="/en-US/docs/Web/API/MozActivityOptions" title="The documentation about this has not yet been written; please consider contributing!"><code>MozActivityOptions</code></a></li>
+ <li><a href="/en-US/docs/Web/API/Window/navigator/mozSetMessageHandler" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozSetMessageHandler()</code></a></li>
+ <li><a href="https://hacks.mozilla.org/2013/01/introducing-web-activities/" title="https://hacks.mozilla.org/2013/01/introducing-web-activities/">Introducing Web Activities</a></li>
+ <li><a href="https://github.com/soapdog/firefoxos-sample-app-image-uploader" title="Firefox OS Image Uploader Sample App">Firefox OS Image Uploader Sample App</a></li>
+</ul>

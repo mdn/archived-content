@@ -1,0 +1,657 @@
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/interfaces/base/nsITextInputProcessor.idl" rel="custom">dom/interfaces/base/nsITextInputProcessor.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+This interface is a text input events synthesizer and manages its composition and modifier state
+</span>
+
+  <div style="height: 42px; position: relative; padding: 2px; width: auto;">
+
+  <div style="top: 22px; font-size: 11px; position: absolute;">1.0</div>
+
+  <div style="top: 22px; font-size: 11px; position: absolute; left: 0px; text-align: right; float: right; width: 100%;">66</div>
+
+  <div style="height: 8px; top: 16px; background: #dd0000; left: 0px; position: absolute; width: 60%;"></div>
+
+<div style="height: 8px; top: 16px; left: 60%; background: #00dd00; position: absolute; width: 40%;" title="Introduced in Gecko 38 (Firefox 38 / Thunderbird 38 / SeaMonkey 2.35)"></div>
+
+<div style="top: 0px; font-size: 11px; position: absolute; left: 0px; text-align: right; float: right; width: 60%;">Introduced</div>
+<div style="top: 22px; font-size: 11px; position: absolute; left: 0px; text-align: right; float: right; width: 60%;">Gecko 38</div>
+
+</div>
+
+<div style="background: #eee; padding: 2px;">
+Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code>
+<span style="text-align: right; float: right;">Last changed in Gecko 38.0 (Firefox 38.0 / Thunderbird 38.0 / SeaMonkey 2.35)</span></div>
+</div><p></p>
+
+<p>The motivation of this interface is to provide better API than nsIDOMWindowUtils to dispatch key events and create, modify, and commit composition in higher level. nsIDOMWindowUtils has provided the methods which dispatched keyboard events and composition events almost directly. Therefore they sometimes caused impossible scenarios in automated tests (what's tested with such events?) and JS-IME and/or JS-Keyboard on Firefox OS or add-ons may dispatch events with wrong rules. For solving that issue, methods of this interface have been designed for performing a key operation or representing a change of composition state.</p>
+
+<p>For example, the implementation of this interface manages modifier state and composition state, initializes DOM events from minimum information, and doesn't dispatch some events if they are not necessary. This means that even when Gecko changes the DOM event behavior, it may not be necessary that the users of this interface need to be updated, i.e., the implementation of this class can be a cushion from the impact of Gecko's change.</p>
+
+<p>You can create an instance of this interface with the following code:</p>
+
+<pre class="brush: js">var TIP = Components.classes["@mozilla.org/text-input-processor;1"].
+            createInstance(Components.interfaces.nsITextInputProcessor);
+</pre>
+
+<p>Next, you need to get the rights to create composition or dispatch keyboard events with <a href="#beginInputTransaction()">beginInputTransaction()</a> or <a href="#beginInputTransactionForTests()">beginInputTransactionForTests()</a>:</p>
+
+<pre class="brush: js">if (!TIP.beginInputTransaction(window, callback)) {
+  return;
+}
+</pre>
+
+<p>If <a href="#beginInputTransaction()">beginInputTransaction()</a> or <a href="#beginInputTransactionForTests()">beginInputTransactionForTests()</a> returns false, it means that another instance of nsITextInputProcessor has composition on the window or is dispatching an event. In this case, other instances cannot create composition nor dispatch keyboard events on the window.</p>
+
+<p>The second argument, callback, should be an object which implements <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITextInputProcessorCallback" title="">nsITextInputProcessorCallback</a></code> or just a function which is the same as nsITextInputProcessorCallback.onNotify(). See the document of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITextInputProcessorCallback" title="">nsITextInputProcessorCallback</a></code> for the detail.</p>
+
+<p>Next, you can set the composition string or dispatch keyboard events.</p>
+
+<p>The following example sets "foo-bar-buzz", "bar" is selected clause to convert, and caret position is the end of the selected clause:</p>
+
+<pre class="brush: js">// First, sets composition string.
+TIP.setPendingCompositionString("foo-bar-buzz");
+// Next, append clauses.
+TIP.appendClauseToPendingComposition("foo-".length,  TIP.ATTR_CONVERTED_CLAUSE);
+TIP.appendClauseToPendingComposition("bar".length,   TIP.ATTR_SELECTED_CLAUSE);
+TIP.appendClauseToPendingComposition("-buzz".length, TIP.ATTR_CONVERTED_CLAUSE);
+// Then, sets the caret if you need
+TIP.setCaretInPendingComposition("foo-bar".length);
+// Finally, flush the pending composition on the focused editor
+if (!TIP.flushPendingComposition()) {
+  return; // Composition is not started
+}
+</pre>
+
+<p>If there is no composition, <a href="#flushPendingComposition()">flushPendingComposition()</a> starts composition with dispatching <code><a href="/en-US/docs/Web/Events/compositionstart" title="/en-US/docs/Web/Events/compositionstart">compositionstart</a></code> event automatically. However, if the event is consumed by web content, it returns false. In this case, composition isn't created. So, JS-IME shouldn't continue to compose the string.</p>
+
+<p>Finally, when you commit the composition with the last composition string, just do this:</p>
+
+<pre class="brush: js">TIP.commitComposition();
+</pre>
+
+<p>When you commit composition with specific string, specify commit string with its argument:</p>
+
+<pre class="brush: js">TIP.commitCompositionWith("foo-BAR-buzz");</pre>
+
+<p>When you cancel composition, just do this:</p>
+
+<pre class="brush: js">TIP.cancelComposition();</pre>
+
+<p>When you dispatch keydown event (and one or more keypress events), just do this:</p>
+
+<pre class="brush: js">var keyEvent =
+  new KeyboardEvent("",                        // type attribute value should be empty.
+    { key: "Enter",                            // Required.
+      code: "Enter",                           // Optional.
+      keyCode: KeyboardEvent.DOM_VK_RETURN,    // Required if printable key, but optional if non-printable key.
+      location: KeyboardEvent.DOM_VK_STANDARD, // Optional, may be computed from code attribute value.
+      repeat: false,                           // Optional.
+    });                                        // The other attributes are always ignored.
+var doDefault = TIP.keydown(keyEvent);
+</pre>
+
+<p>When you dispatch keyup event, just do this:</p>
+
+<pre class="brush: js">var keyEvent =
+  new KeyboardEvent("", { key: "a", code: "KeyA", keyCode: KeyboardEvent.DOM_VK_A });
+var doDefault = TIP.keyup(keyEvent);
+</pre>
+
+<p><code>startComposition()</code>, <code>flushPendingComposition()</code>, <code>commitComposition()</code>, <code>commitCompositionWith()</code>, and <code>cancelComposition()</code> can take a KeyboardEvent which causes modifying the composition state.  Specifying a keyboard event is strongly recommended if the <code>TextInputProcessor</code> emulates input from keyboard. For example:</p>
+
+<pre class="brush: js">TIP.setPendingCompositionString("a");
+TIP.appendClauseToPendingComposition("a".length, TIP.ATTR_RAW_CLAUSE);
+TIP.setCaretPosition("a".length);
+
+// This means that the first composition character is inputted by a keypress of "a" key.
+var AKeyEvent =
+  new KeyboardEvent("", { key: "a", code: "KeyA", keyCode: KeyboardEvent.DOM_VK_A });
+TIP.flushPendingComposition(AKeyEvent);
+
+// Pressing shift key for next input.
+var shiftKeyEvent =
+  new KeyboardEvent("", { key: "Shift", code: "ShiftLeft", keyCode: KeyboardEvent.DOM_VK_SHIFT });
+TIP.keydown(shiftKeyEvent);
+
+TIP.setPendingCompositionString("aB");
+TIP.appendClauseToPendingComposition("aB".length, TIP.ATTR_RAW_CLAUSE);
+TIP.setCaretPosition("aB".length);
+
+// This means that the second composition character is inputted by a keypress of "b" key during left shift key is down.
+var BKeyEvent = new KeyboardEvent("", { key: "b", code: "KeyB", keyCode: KeyboardEvent.DOM_VK_B });
+TIP.flushPendingComposition(BKeyEvent);
+
+// Releasing shift key
+TIP.keyup(shiftKeyEvent);
+
+TIP.setPendingCompositionString("AB");
+TIP.appendClauseToPendingComposition("AB".length, TIP.ATTR_SELECTED_CLAUSE);
+TIP.setCaretPosition("AB".length);
+
+// This means that the composition string is converted by a keypress of "Convert" key.
+var convertKeyEvent =
+  new KeyboardEvent("", { key: "Convert", code: "Convert" });
+TIP.flushPendingComposition(convertKeyEvent);
+
+// This means that the composition is committed by a keypress of "Enter" key.
+var enterKeyEvent =
+  new KeyboardEvent("", { key: "Enter", code: "Enter" });
+TIP.commitComposition(enterKeyEvent);
+</pre>
+
+<p>Note that specifying keyboard event<em> </em>may <strong>not</strong> be dispatched during composition due to conforming to the specification of DOM Level 3 Events. However, it's the best for every TextInputProcessor user to specify KeyboardEvent every time because when Gecko will change the behavior of keyboard events during composition, TextInputProcessor must not need to change for the new behavior in most cases.</p>
+
+<h2 id="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#appendClauseToPendingComposition()">appendClauseToPendingComposition</a>(in unsigned long aLength, in unsigned long aAttribute);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#beginInputTransaction()">beginInputTransaction</a>(in nsIDOMWindow aWindow, in nsITextInputProcessorCallback aCallback);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#beginInputTransactionForTests()">beginInputTransactionForTests</a>(in nsIDOMWindow aWindow, [optional] in nsITextInputProcessorCallback aCallback);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#cancelComposition()">cancelComposition</a>([optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#commitComposition()">commitComposition</a>([optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#commitCompositionWith()">commitCompositionWith</a>(in DOMString aCommitString, [optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#flushPendingComposition()">flushPendingComposition</a>([optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#getModifierState()">getModifierState</a>(in DOMString aModifierKeyName);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#keydown()">keydown</a>([optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>boolean <a href="#keyup()">keyup</a>([optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#setCaretInPendingComposition()">setCaretInPendingComposition</a>(in unsigned long aOffset);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#setPendingCompositionString()">setPendingCompositionString</a>(in DOMString aString);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#shareModifierStateOf()">shareModifierStateOf</a>(in nsITextInputProcessor aOther);</code></td>
+  </tr>
+  <tr>
+   <td>boolean <code><a href="#startComposition()">startComposition</a></code>(<code>[optional] in nsIDOMKeyEvent aDOMKeyEvent, [optional] in unsigned long aKeyFlags</code>);</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Attributes">Attributes</h2>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Attribute</th>
+   <th scope="col">Type</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>hasComposition</td>
+   <td>boolean</td>
+   <td>Whether the instance has composition or not. true if it has composition. <strong>Read only</strong>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Constants">Constants</h2>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Constant</th>
+   <th scope="col">Value</th>
+   <th scope="col">Description</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>ATTR_RAW_CLAUSE</code></td>
+   <td><code>0x02</code></td>
+   <td>A clause attribute. This means that the clause is not converted, i.e., raw text of user input.</td>
+  </tr>
+  <tr>
+   <td><code>ATTR_RAW_SELECTED_CLAUSE</code></td>
+   <td><code>0x03</code></td>
+   <td>A clause attribute but this is typically not used. This means that the clause is not converted but selected to convert or modify.</td>
+  </tr>
+  <tr>
+   <td><code>ATTR_CONVERTED_CLAUSE</code></td>
+   <td><code>0x04</code></td>
+   <td>A clause attribute. This means that the clause is already converted.</td>
+  </tr>
+  <tr>
+   <td><code>ATTR_SELECTED_CLAUSE</code></td>
+   <td><code>0x05</code></td>
+   <td>A clause attribute. This means that the clause is already converted and is selected to convert.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_DEFAULT_PREVENTED</code></td>
+   <td><code>0x00000001</code></td>
+   <td>One of <code>aKeyFlags</code>. When this is specified, <code>defaultPrevented</code> attribute of dispatching keyboard events true. This is not useful in usual cases. This may be useful for automated tests.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_NON_PRINTABLE_KEY</code></td>
+   <td><code>0x00000002</code></td>
+   <td>One of <code>aKeyFlags</code>. When you attempt to dispatch a non-printable key's events, it's recommented this be specified. If the <code>key</code> attribute value is not a registered key name, this flag causes throwing an exception. Therefore, this can prevent non-printable key events to cause dispatching as printable keyboard events and you can detect the registered key name change from the thrown exception.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_FORCE_PRINTABLE_KEY</code></td>
+   <td><code>0x00000004</code></td>
+   <td>One of <code>aKeyFlags</code>. When you attempt to dispatch a printable key's event whose <code>key</code> attribute value (i.e., inputting string) will match with a registered key name, this flag makes dispatched keyboard events printable keyboard events forcibly.  For example, if a key causes inputting "Enter" as text, this flag is necessary. If this flag is not specified in such case, non-printable keyboard events will be dispatched.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_KEEP_KEY_LOCATION_STANDARD</code></td>
+   <td><code>0x00000008</code></td>
+   <td>One of <code>aKeyFlags</code>. The <code>location</code> attribute value of dispatching keyboard events is computed automatically if the attribute isn't initialized or initialized with 0. For the latter case, you may not want <code>TextInputProcessor</code> to compute <code>location</code> attribute value. In this case, you can suppress the computation with this flag. If this is specified with non-zero <code>location</code> attribute value, this causes throwing an exception since it doesn't make sense.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_KEEP_KEYCODE_ZERO</code></td>
+   <td><code>0x00000010</code></td>
+   <td>One of <code>aKeyFlags</code>. The <code>keyCode</code> attribute value of dispatching printable keyboard events is computed from key value automatically if the attribute isn't initialized or initialized with 0. For the latter case, you may not want <code>TextInputProcessor</code> to compute <code>keyCode</code> attribute value. In this case, you can suppress the computation with this flag. If this is specified with non-zero <code>keyCode</code> attribute value, this causes throwing an excepction since it doesn't make sense.</td>
+  </tr>
+  <tr>
+   <td><code>KEY_DONT_DISPATCH_MODIFIER_KEY_EVENT</code></td>
+   <td><code>0x00000020</code></td>
+   <td>One of <code>aKeyFlags</code>. <code>TextInputProcessor</code> manages modifier state with every modifier key events. In other words, when you need to specify modifier key state of dispatching keyboard events, you need to dispatch modifier key events before and after that. However, especially for keeping compatibility with legacy API, you may want to modify only the modifier state of a <code>TextInputProcessor</code> instance. In this case, you can suppress <code>TextInputProcessor</code> dispatches modifier key events with this flag. If this is specified for non-modifier key, it causes throwing an exception since it doesn't make sense.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<p></p><h3 id="appendClauseToPendingComposition()">appendClauseToPendingComposition()</h3><p></p>
+
+<p>Appends a clause to the pending composition string which is set by <a href="#setPendingCompositionString()">setPendingCompositionString()</a>. Sum of aLength must be same as the length of <code>aString</code> of <a href="#setPendingCompositionString()">setPendingCompositionString()</a>.</p>
+
+<pre>void appendClauseToPendingComposition(in unsigned long aLength,
+                                      in unsigned long aAttribute);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aLength</dt>
+ <dd>The length of appending clause.</dd>
+ <dt>aAttribute</dt>
+ <dd>The attribute of appending clause. Must be one of <code>ATTR_*</code> constants.</dd>
+</dl>
+
+<p></p><h3 id="beginInputTransaction()">beginInputTransaction()</h3><p></p>
+
+<p>This must be called before starting composition every time. This tries to get the rights to create composition on the window. If no other instance is composing on the window, this associates the instance with the window and registers the callback to the instance.</p>
+
+<pre>boolean beginInputTransaction(in nsIDOMWindow aWindow,
+                              in nsITextInputProcessorCallback aCallback);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aWindow</dt>
+ <dd>The DOM window which has focused editor. This must not be null.</dd>
+ <dt>aCallback</dt>
+ <dd>The callback object. This must not be null. See the document of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITextInputProcessorCallback" title="">nsITextInputProcessorCallback</a></code> for the details.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>Returns true if the instance could create composition. Otherwise, false.</p>
+
+<p></p><h3 id="beginInputTransactionForTests()">beginInputTransactionForTests()</h3><p></p>
+
+<p>This must be called before starting composition for automated tests every time. This tries to get the rights to create composition on the window. If no other instance is composing on the window, this associates the instance with the window and registers the callback to the instance if it's specified.</p>
+
+<pre>boolean beginInputTransactionForTests(in nsIDOMWindow aWindow,
+                                      in nsITextInputProcessorCallback aCallback Optional);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aWindow</dt>
+ <dd>The DOM window which has focused editor. This must not be null.</dd>
+ <dt>aCallback</dt>
+ <dd>The callback object. If this is not specified, requests to IMEs are handled automatically. See the document of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITextInputProcessorCallback" title="">nsITextInputProcessorCallback</a></code> for the details.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>Returns true if the instance could create composition. Otherwise, false.</p>
+
+<p></p><h3 id="cancelComposition()">cancelComposition()</h3><p></p>
+
+<p>Cancels the composition which was created by the instance. If you call this when there is no composition, this throws an exception.</p>
+
+<pre>void cancelComposition(in nsIDOMKeyEvent aDOMKeyEvent Optional,
+                       in unsigned long aKeyFlags Optional);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>When the canceling composition is caused by a key operation, this should be specified. If this is specified, keyboard events <strong>may</strong> be dispatched when Gecko thinks that they should be. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<p></p><h3 id="commitComposition()">commitComposition()</h3><p></p>
+
+<p>Commits the composition with the last composition string. If you call this when there is no composition, this throws an exception.</p>
+
+<pre>void commitComposition(in nsIDOMKeyEvent aDOMKeyEvent Optional,
+                       in unsigned long aKeyFlags Optional);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>When the committing composition is caused by a key operation, this should be specified. If this is specified, keyboard events <strong>may</strong> be dispatched when Gecko thinks that they should be. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<p></p><h3 id="commitCompositionWith()">commitCompositionWith()</h3><p></p>
+
+<p>Commits the composition with the specified string. If you call this when there is no composition, this starts composition automatically and commits the composition with specified string immediately.</p>
+
+<pre>boolean commitCompositionWith(in DOMString aCommitString,
+                              in nsIDOMKeyEvent aDOMKeyEvent Optional,
+                              in unsigned long aKeyFlags aOptional);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aCommitString</dt>
+ <dd>The commit string.</dd>
+ <dt>aDOMKeyEvent <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>When the committing composition is caused by a key operation, this should be specified. If this is specified, keyboard events <strong>may</strong> be dispatched when Gecko thinks that they should be. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>If this couldn't insert the string when there is no composition (e.g., <code><a href="/en-US/docs/Web/Events/compositionstart" title="/en-US/docs/Web/Events/compositionstart">compositionstart</a></code> is consumed by the web contents), it returns false. The other cases return true.</p>
+
+<p></p><h3 id="flushPendingComposition()">flushPendingComposition()</h3><p></p>
+
+<p>Flushes the pending composition which are set by <a href="#setPendingCompositionString()">setPendingCompositionString()</a>, <a href="#appendClauseToPendingComposition()">appendClauseToPendingComposition()</a>, and <a href="#setCaretInPendingComposition()">setCaretInPendingComposition()</a> on the focused editor.</p>
+
+<p>If <a href="#appendClauseToPendingComposition()">appendClauseToPendingComposition()</a> and/or <a href="#setCaretInPendingComposition()">setCaretInPendingComposition()</a> are not called properly, e.g., sum of aLength of calls of <a href="#appendClauseToPendingComposition()">appendClauseToPendingComposition()</a> is not same as composition string set by <a href="#setPendingCompositionString()">setPendingCompositionString()</a>, this throws an exception.</p>
+
+<p>After a call of this, the pending composition string information is cleared. Therefore, you can set new composition string continuously.</p>
+
+<pre>boolean flushPendingComposition(in nsIDOMKeyEvent aDOMKeyEvent Optional,
+                                in unsigned long aKeyFlags Optional);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>When the modifying composition is caused by a key operation, this should be specified. If this is specified, keyboard events <strong>may</strong> be dispatched when Gecko thinks that they should be. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>When there is no composition which was created by the instance and if <code><a href="/en-US/docs/Web/Events/compositionstart" title="/en-US/docs/Web/Events/compositionstart">compositionstart</a></code> is consumed by web contents, i.e., failed to start new composition, this returns false. Otherwise, it returns true.</p>
+
+<p></p><h3 id="getModifierState()">getModifierState()</h3><p></p>
+
+<p>Getting modifier state. This is similar to <a href="/en-US/docs/Web/API/KeyboardEvent/getModifierState">KeyboardEvent.getModifierState() [en-US]</a>. The result is the modifier state of managed by the instance.</p>
+
+<pre>boolean getModifierState(in DOMString aModifierKeyName);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aModifierKeyName</dt>
+ <dd>A modifier key name which is defined by <a href="http://www.w3.org/TR/DOM-Level-3-Events-key/">DOM Level 3 KeyboardEvents key Values</a>.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>true if the modifier state is active. Otherwise, false.</p>
+
+<p></p><h3 id="keydown()">keydown()</h3><p></p>
+
+<p>Dispatches a keydown event and some keypress event when all of or some of them are necessary.</p>
+
+<p>When this dispatches a normal modifier key event, the <code>TextInputProcessor</code> instance activates the modifier state and stores its <code>code</code> attribute value.</p>
+
+<p>When this dispatches a lockable modifier key event, the <code>TextInputProcessor</code> instance activates the modifier state or If the modifier state is activated with the same <code>code</code> attribute value, the lockable modifier state is inactivated.</p>
+
+<pre>boolean keydown(in nsIDOMKeyEvent aDOMKeyEvent,
+                in unsigned long aKeyFlags Optional);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent</dt>
+ <dd>The KeyboardEvent which is initialized with its constructor. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>true if neither dispatched keydown event nor keypress events are not consumed by a call of <code>preventDefault()</code>.</p>
+
+<p></p><h3 id="keyup()">keyup()</h3><p></p>
+
+<p>Dispatches a keyup event when it's necessary.</p>
+
+<p>When this dispatches a normal modifier key event, the <code>TextInputProcessor</code> instance inactivates the modifier state if it was activated by same <code>code</code> attribute.</p>
+
+<pre>boolean keyup(in nsIDOMKeyEvent aDOMKeyEvent,
+              in unsigned long aKeyFlags Optional);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent</dt>
+ <dd>The KeyboardEvent which is initialized with its constructor. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>true if keyup event isn't consumed by a call of <code>preventDefault()</code>.</p>
+
+<p></p><h3 id="setCaretInPendingComposition()">setCaretInPendingComposition()</h3><p></p>
+
+<p>Sets caret position in the composition string set by <a href="#setPendingCompositionString()">setPendingCompositionString()</a>. This is optional, i.e., you may not call this before <a href="#flushPendingComposition()">flushPendingComposition()</a>.</p>
+
+<pre>void setCaretInPendingComposition(in unsigned long aOffset);
+</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aOffset</dt>
+ <dd>Caret offset in the composition string. This value must be between 0 and the length of aString of <a href="#setPendingCompositionString()">setPendingCompositionString().</a></dd>
+</dl>
+
+<p></p><h3 id="setPendingCompositionString()">setPendingCompositionString()</h3><p></p>
+
+<p>Sets pending composition string. This must be called before every call of <a href="#flushPendingComposition()">flushPendingComposition()</a>.</p>
+
+<pre>void setPendingCompositionString(in AString aString);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aString</dt>
+ <dd>New pending composition string.</dd>
+</dl>
+
+<p></p><h3 id="shareModifierStateOf()">shareModifierStateOf()</h3><p></p>
+
+<p>Shares modifier state of another instance. After sharing modifier state between two or more instances, modifying modifier state on of this affects other instances. Therefore, this is useful if you want to create <code>TextInputProcessor</code> instance in every DOM window or something. See also <a href="#Sharing_modifier_state_during_multiple_instances" rel="internal">Sharing modifier state during multiple instances</a>.</p>
+
+<pre>void shareModifierStateOf(in nsITextInputProcessor aOther);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aOther</dt>
+ <dd>Another instance. If this is <code>null</code>, the instance stops sharing modifier state with other instances and clears all modifier state.</dd>
+</dl>
+
+<p></p><h3 id="startComposition()">startComposition()</h3><p></p>
+
+<p>This starts composition explicitly. This is useful if your IME doesn't generate composing string but provides some UI to select commit string.</p>
+
+<p>If the instance has a composition already, this throws an exception.</p>
+
+<pre>boolean startComposition(in nsIDOMKeyEvent aDOMKeyEvent Optional,
+                         in unsigned long aKeyFlags Optional);</pre>
+
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aDOMKeyEvent <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>When the starting composition is caused by a key operation, this should be specified. If this is specified, keyboard events <strong>may</strong> be dispatched when Gecko thinks that they should be. See also <a href="#How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor" rel="internal">How to create KeyboardEvent instance for nsITextInputProcessor</a>.</dd>
+ <dt>aKeyFlags <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>See <code>KEY_*</code> constants. If this is not specified, the value is assumed as 0.</dd>
+</dl>
+
+<h6 id="Parameters" name="Parameters">Return value</h6>
+
+<p>When there is no composition which was created by the instance and if <code><a href="/en-US/docs/Web/Events/compositionstart" title="/en-US/docs/Web/Events/compositionstart">compositionstart</a></code> is consumed by web contents, i.e., failed to start new composition, this returns false. Otherwise, returns true.</p>
+
+<h2 id="How_to_create_KeyboardEvent_instance_for_nsITextInputProcessor">How to create KeyboardEvent instance for nsITextInputProcessor</h2>
+
+<p>This section describes how to create <code>KeyboardEvent</code> for arguments of some methods of <code>nsITextInputProcessor</code>.</p>
+
+<p>You should/can specify following attribute values at creating a <code>KeyboardEvent</code> instance. Other attributes are always ignored. Especially, please note that modifier key states such as <code>shiftKey</code> are also ignored because each instance of <code>nsITextInputProcessor</code> manages modifier state which is modified when <code>keydown()</code> or <code>keyup()</code> is called with modifier key event.</p>
+
+<dl>
+ <dt><code>type</code></dt>
+ <dd>When you use the KeyboardEvent instance for a call of either keydown() or keyup(), this value should be empty string.</dd>
+ <dd>Otherwise, when you use the KeyboardEvent instance for a call of <code>startComposition()</code>, <code>flushPendingComposition()</code>, <code>commitComposition()</code>, <code>commitCompositionWith()</code>, or <code>cancelComposition()</code>, you can specify <code>"keydown"</code> or empty string. If <code>"keydown"</code> is specified, the methods don't dispatch the <code>"keyup"</code> event.</dd>
+ <dt><code>key</code></dt>
+ <dd><strong>Required</strong>.</dd>
+ <dd>When you dispatch printable key events, this value should be the text to be inputted. Even if the key event shouldn't cause text input actually, e.g., <kbd>Ctrl</kbd> key is pressed, this value should be the text when such modifiers causing suppressing text input are not pressed. For example, <kbd>Ctrl</kbd>+<kbd>C</kbd> should be <code>"c"</code>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>should be <code>"C"</code>, <kbd>AltGr</kbd>+<kbd>C</kbd> may be <code>"©"</code> and then, <kbd>Ctrl</kbd>+<kbd>AltGr</kbd>+<kbd>C</kbd> should be <code>"©"</code>.</dd>
+ <dd>When you dispatch non-printable key events, this value should be one of the key names defined by <a href="http://www.w3.org/TR/DOM-Level-3-Events-key/">DOM Level 3 KeyboardEvent key Values</a> or <a href="http://mxr.mozilla.org/mozilla-central/source/dom/events/KeyNameList.h#28">registered by Gecko with "Moz" prefix</a>.</dd>
+ <dt><code>code</code></dt>
+ <dd><strong>Optional</strong>, but should be specified when you emulate PC keyboard operation.</dd>
+ <dd>The value should be one of the physical key names defined by <a href="http://www.w3.org/TR/DOM-Level-3-Events-code/">DOM Level 3 KeyboardEvent code Values</a>.</dd>
+ <dt><code>keyCode</code></dt>
+ <dd><strong>Optional</strong>, but should be specified when you dispatch printable key events.</dd>
+ <dd>When you emulate PC keyboard, deciding the value may be complicated. Although the rules to decide the <code>keyCode</code> value are different on each web browser, you should use same rules as Gecko because your events are dispatched on Gecko. Basically, Gecko decides a <code>keyCode</code> value for a printable key from ASCII character which is inputted with a far simpler modifier state. See <a href="/en-US/docs/Web/API/KeyboardEvent/keyCode#Printable_keys_in_standard_position">"Printable keys in standard position" section of KeyboardEvent.keyCode</a> for the strict rules of Gecko.</dd>
+ <dd>When you dispatch non-printable key events, preferred <code>keyCode</code> value is computed from <code>key</code> value automatically if you don't initialize this value. But the computation doesn't emulate the mapping of native key event handling completely because it has some special cases depending on platform or selected keyboard layout. Therefore, if you need to emulate PC keyboard on specific platform, you may need to specify this explicitly.</dd>
+ <dt><code>location</code></dt>
+ <dd><strong>Optional</strong>. It's not recommended to specify this explicitly since this value should be linked with <code>code</code> attribute value. The automatic computation can compute the best value for this.</dd>
+ <dt><code>repeat</code></dt>
+ <dd><strong>Optional</strong>. When you emulate auto-repeat caused by long keypress, you can specify this true.</dd>
+</dl>
+
+<h2 id="Modifier_state_management">Modifier state management</h2>
+
+<p>This section describes how to manage modifier state.</p>
+
+<p>Each <code>nsITextInputProcessor</code> instance manages modifier state internally and uses the state when it initializes a <code>KeyboardEvent</code> instance before dispatching it.</p>
+
+<h3 id="Activating_normal_modifier_state">Activating normal modifier state</h3>
+
+<p>When <code>keydown()</code> is called with normal modifier key (i.e., not lockable like <kbd>CapsLock</kbd>) event, the instance stores the modifier <code>key</code> and <code>code</code> values. Stored modifier key information means that the modifier is active.</p>
+
+<h3 id="Inactivating_normal_modifier_state">Inactivating normal modifier state</h3>
+
+<p>When <code>keyup()</code> is called with normal modifier key event, the instance checks if there is a stored modifier key whose <code>key</code> attribute and <code>code</code> attribute are the same as the event. If the same modifier key is stored, the instance forgets the key. This means that the modifier is inactivated.</p>
+
+<h3 id="Toggling_lockable_modifier_state">Toggling lockable modifier state</h3>
+
+<p>When <code>keydown()</code> is called with lockable modifier key event, the instance checks if there is a stored modifier key whose <code>key</code> attribute and <code>code</code> attribute are the same as the event. If it's not stored, i.e., the modifier state is inactive, the instance stores the modifier key, otherwise forgets the key.</p>
+
+<h3 id="Examples_of_modifier_state_management">Examples of modifier state management</h3>
+
+<pre class="brush: js">var leftShiftKey =
+  new KeyboardEvent("", { key: "Shift", code: "ShiftLeft" });
+var rightShiftKey =
+  new KeyboardEvent("", { key: "Shift", code: "ShiftRight" });
+var shiftKeyOnVirtualKeyboard =
+  new KeyboardEvent("", { key: "Shift", code: "" });
+
+TIP.keydown(leftShiftKey); // This activates Shift state.
+TIP.keydown(rightShiftKey); // This looks like not modifying Shift state.
+
+TIP.keyup(leftShiftKey); // This does NOT inactivate Shift state becaue right shift key is still pressed.
+TIP.keyup(rightShiftKey); // This inactivates Shift state.
+
+TIP.keydown(shiftKeyOnVirtualKeyboard); // This activates Shift state.
+TIP.keydown(leftShiftKey);
+
+TIP.keyup(shiftKeyOnVirtualKeyboard); // This also doesn't inactivate Shift state.
+TIP.keyup(leftShiftKey); // This inactivates Shift state.
+</pre>
+
+<h3 id="Examples_of_lockable_modifier_state_management">Examples of lockable modifier state management</h3>
+
+<pre class="brush: js">var capsLockKey =
+  new KeyboardEvent("", { key: "CapsLock", code: "CapsLock" });
+var capsLockKeyOnVirtualKeyboard =
+  new KeyboardEvent("", { key: "CapsLock", code: "" });
+
+TIP.keydown(capsLockKey); // This activates CapsLock state.
+
+TIP.keyup(capsLockKey); // This doesn't inactivate CapsLock state.
+
+TIP.keyup(capsLockKeyOnVirtualKeyboard); // This also doesn't inactivate CapsLock state.
+
+TIP.keydown(capsLockKey); // This inactivates CapsLock state.
+
+TIP.keyup(capsLockKey); // This doesn't modify CapsLock state.
+</pre>
+
+<h3 id="Sharing_modifier_state_during_multiple_instances">Sharing modifier state during multiple instances</h3>
+
+<p><code>shareModifierStateOf()</code> allows to share modifier state between multiple instances:</p>
+
+<pre class="brush: js">var shiftKey =
+  new KeyboardEvent("", { key: "Shift", code: "ShiftLeft" });
+var ctrlKey =
+  new KeyboardEvent("", { key: "Control", code: "ControlLeft" });
+var altKey =
+  new KeyboardEvent("", { key: "Alt", code: "AltLeft" });
+
+TIP1.keydown(shiftKey); // TIP1's Shift state becomes active.
+TIP1.keyup(shiftKey);
+
+TIP2.keydown(ctrlKey); // TIP2's Control state becomes active.
+TIP2.keyup(ctrlKey);
+
+TIP3.shareModifierStateOf(TIP1); // TIP3 shares modifier state of TIP1. Therefore, TIP3's Shift state is active.
+
+TIP3.keydown(altKey); // TIP1 and TIP3's Alt state becomes active.
+TIP3.keyup(altKey);
+
+TIP3.shareModifierStateOf(TIP2); // TIP3 shares modifier state of TIP2. Therefore, only Control state is active.
+                                 // Shift and Alt state are still active in TIP1.
+
+TIP3.shareModifierStateOf(null); // All TIP3's modifier state becomes deactive.
+                                 // But TIP2's Control state is still active.
+</pre>

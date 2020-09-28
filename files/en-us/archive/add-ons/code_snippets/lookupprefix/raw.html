@@ -1,0 +1,91 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>Here is an implementation of lookupPrefix which should work cross-browser.</p>
+
+<div class="note">Note that all Gecko-based browsers (including Firefox) support <a href="/En/DOM/Node.lookupPrefix" title="En/DOM/Node.lookupPrefix">Node.lookupPrefix</a>. This function is not necessary for Gecko-based browsers when used in XHTML.</div>
+
+<pre class="brush: js">function lookupPrefix (node, namespaceURI) {
+	var htmlMode = document.contentType; // Mozilla only
+	// Depends on private function _lookupNamespacePrefix() below and on https://developer.mozilla.org/En/Code_snippets/LookupNamespaceURI
+	// http://www.w3.org/TR/DOM-Level-3-Core/core.html#Node3-lookupNamespacePrefix
+	// http://www.w3.org/TR/DOM-Level-3-Core/namespaces-algorithms.html#lookupNamespacePrefixAlgo
+	// (The above had a few apparent 'bugs' in the pseudo-code which were corrected here)
+	if (node.lookupPrefix &amp;&amp; htmlMode !== 'text/html') { // Shouldn't use this in text/html for Mozilla as will return null
+		  return node.lookupPrefix(namespaceURI);
+	}
+	if (namespaceURI === null || namespaceURI === '') {
+		return null;
+	}
+	switch (node.nodeType) {
+		case 1: // Node.ELEMENT_NODE
+			return _lookupNamespacePrefix(namespaceURI, node);
+		case 9: // Node.DOCUMENT_NODE
+			return _lookupNamespacePrefix(namespaceURI, node.documentElement);
+		case 6: // Node.ENTITY_NODE
+		case 12: // Node.NOTATION_NODE
+		case 11: // Node.DOCUMENT_FRAGMENT_NODE
+		case 10: // Node.DOCUMENT_TYPE_NODE
+			return null;  // type is unknown
+		case 2: // Node.ATTRIBUTE_NODE
+			if (node.ownerElement) {
+				return _lookupNamespacePrefix(namespaceURI, node.ownerElement);
+			}
+			return null;
+		default:
+			if (node.parentNode) {
+				// EntityReferences may have to be skipped to get to it
+				return _lookupNamespacePrefix(namespaceURI, node.parentNode);
+			}
+			return null;
+	 }
+}
+
+// Private function for lookupPrefix only
+function _lookupNamespacePrefix (namespaceURI, originalElement) {
+	var xmlnsPattern = /^xmlns:(.*)$/;
+	if (originalElement.namespaceURI &amp;&amp; originalElement.namespaceURI === namespaceURI &amp;&amp;
+			originalElement.prefix &amp;&amp; originalElement.lookupNamespaceURI(originalElement.prefix) === namespaceURI) {
+		return originalElement.prefix;
+	}
+	if (originalElement.attributes &amp;&amp; originalElement.attributes.length) {
+		for (var i=0; i &lt; originalElement.attributes.length; i++) {
+			var att = originalElement.attributes[i];
+			xmlnsPattern.lastIndex = 0;
+			var localName = att.localName || att.name.substr(att.name.indexOf(':')+1); // latter test for IE which doesn't support localName
+			if (localName.indexOf(':') !== -1) { // For Firefox when in HTML mode
+				localName = localName.substr(att.name.indexOf(':')+1);
+			}
+			if (
+				xmlnsPattern.test(att.name) &amp;&amp;
+				att.value === namespaceURI &amp;&amp;
+				lookupNamespaceURI(originalElement, localName) === namespaceURI
+			) {
+				return localName;
+			}
+		}
+	}
+	if (originalElement.parentNode) {
+		// EntityReferences may have to be skipped to get to it
+		return _lookupNamespacePrefix(namespaceURI, originalElement.parentNode);
+	}
+	return null;
+}
+</pre>
+
+<p> </p>

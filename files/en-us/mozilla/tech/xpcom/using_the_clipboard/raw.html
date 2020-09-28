@@ -1,0 +1,185 @@
+<p>This section provides information about cutting, copying, and pasting to and from the clipboard.</p>
+
+<h2 id="The_Clipboard" name="The_Clipboard">The clipboard</h2>
+
+<p>Mozilla provides a number of interfaces for accessing the clipboard. The component <code>@mozilla.org/widget/clipboardhelper;1</code> can be used to copy text to the clipboard. This component implements the interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIClipboardHelper" title="">nsIClipboardHelper</a></code>, which has a function <code>copyString</code> that can be used to copy a string.</p>
+
+<pre class="brush: js">const gClipboardHelper = Components.classes["@mozilla.org/widget/clipboardhelper;1"]
+                                   .getService(Components.interfaces.nsIClipboardHelper);
+gClipboardHelper.copyString("Put me on the clipboard, please.");
+</pre>
+
+<p>This example will first create a clipboard helper and then copy a short string to the clipboard. This method only works to put strings on the clipboard. For other types of data, such as URLs or images, you will need to use a more complex method.</p>
+
+<p>A component <code>@mozilla.org/widget/clipboard;1</code> and an interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIClipboard" title="">nsIClipboard</a></code> provide general access to the system clipboard. You can use them to copy and paste any type of data from your application to the clipboard. Three <a href="/en-US/docs/XPCOM" title="en/XPCOM">XPCOM</a> objects are needed to handle clipboard operations. The first is an object that holds the data to put on the clipboard. The second is the clipboard object. The third is an object which is used to transfer the data from the first object to the clipboard. The clipboard model in Mozilla requires you to perform the following steps to copy data:</p>
+
+<ol>
+ <li>Create an XPCOM wrapper for the data which you want to put on the clipboard. This is needed because you can put anything on the clipboard from text to images.</li>
+ <li>Create a transferring object. This object can be the component <code>@mozilla.org/widget/transferable;1</code> which implements the interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITransferable" title="">nsITransferable</a></code>.</li>
+ <li>Initialize the transferring object with the nsILoadContext obtained from the window that is the source of the clipboard data. This ensures that if the copied data comes from a window in private browsing mode, the clipboard will be cleared when private browsing mode ends. For reading from the clipboard you can call the init method of the transferable with null as nsILoadContext, but you have to call it.</li>
+ <li>Tell the transferring object about the type of data being copied.</li>
+ <li>Tell the transferring object about the data to copy.</li>
+ <li>Create a clipboard object which refers to the system clipboard.</li>
+ <li>Tell the clipboard object to copy the data using the transferring object.</li>
+</ol>
+
+<p>You might wonder why a transferring object is needed instead of just putting the object directly on the clipboard. One reason is that some systems do not copy the data right away. Instead, they wait until the data is pasted. Another reason is that the transferable can hold multiple representations of the same data. For example, a piece of HTML can be represented in both its original HTML form and in plain text. If an application wants to get the data from the clipboard and doesn't understand HTML, it can use the plain text version. If it does understand HTML, it can grab that version. The transferring object will hold the clipboard contents until the application has decided what it needs. This allows the clipboard to be used by another application right away.</p>
+
+<p>Let's break down the steps needed to copy data to the clipboard. First, we need to create an XPCOM object to wrap what we want to copy. We'll assume that we want to copy some text. We will use the interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupportsString" title="">nsISupportsString</a></code> which can be used to represent strings (specifically, Unicode strings).</p>
+
+<p>The following boilerplate utility functions will be used in all later code examples.</p>
+
+<pre class="brush: js">// Import the Services module for future use, if we're not in
+// a browser window where it's already loaded.
+Components.utils.import('resource://gre/modules/Services.jsm');
+
+// Create a constructor for the built-in supports-string class.
+const nsSupportsString = Components.Constructor("@mozilla.org/supports-string;1", "nsISupportsString");
+function SupportsString(str) {
+    // Create an instance of the supports-string class
+    var res = nsSupportsString();
+
+    // Store the JavaScript string that we want to wrap in the new nsISupportsString object
+    res.data = str;
+    return res;
+}
+
+// Create a constructor for the built-in transferable class
+const nsTransferable = Components.Constructor("@mozilla.org/widget/transferable;1", "nsITransferable");
+
+// Create a wrapper to construct an nsITransferable instance and set its source to the given window, when necessary
+function Transferable(source) {
+    var res = nsTransferable();
+    if ('init' in res) {
+        // When passed a Window object, find a suitable privacy context for it.
+        if (source instanceof Ci.nsIDOMWindow)
+            // Note: in Gecko versions &gt;16, you can import the PrivateBrowsingUtils.jsm module
+            // and use PrivateBrowsingUtils.privacyContextFromWindow(sourceWindow) instead
+            source = source.QueryInterface(Ci.nsIInterfaceRequestor)
+                           .getInterface(Ci.nsIWebNavigation);
+
+        res.init(source);
+    }
+    return res;
+}
+</pre>
+
+<p>Here, the string "Text to copy" will be copied but you can replace this with the text string that you want to copy. Now that we have the object to copy, a transferring object needs to be created:</p>
+
+<pre class="brush: js">var str = "Text to copy";
+
+var trans = Transferable(sourceWindow);
+trans.addDataFlavor("text/unicode");
+// We multiply the length of the string by 2, since it's stored in 2-byte UTF-16
+// format internally.
+trans.setTransferData("text/unicode", SupportsString(str), str.length * 2);
+</pre>
+
+<p>The first line gets the transferring component which implements <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITransferable" title="">nsITransferable</a></code>. Next we need to initialize it with a "privacy context", which will ensure that source data from inside private browsing mode will be cleared when the mode is exited. Please note: the <code>sourceWindow</code> variable is a placeholder for whatever window owns the data being copied -- from any DOM element you can obtain it via <code>element.ownerDocument.defaultView</code>. If, <em>and only if</em>, you are placing data on the clipboard that is unrelated to web content the user is viewing, you can pass a <code>null</code> privacy context to the <code>init</code> method.</p>
+
+<p>The next step is to tell the transferable what type of data we want to use. The type of data is referred to as a data flavor. The function <code>addDataFlavor</code> is used to tell the transferable that it needs to transfer data of a certain flavor. In this case, we are transferring the flavor "text/unicode" which is a Unicode string. Then, the function <code>setTransferData</code> is called which copies the data from the string into the transferable. This function takes three parameters. The first is the flavor we are setting, the second is the object holding the string, and the third is the length of the data, in bytes. Here, the length is multiplied by two because we are using a Unicode string which requires two bytes per character.</p>
+
+<p>You can repeat the last two lines and call <code>addDataFlavor</code> and <code>setTransferData</code> for multiple flavors. That way, you could have a text version and an HTML version of the content. The <code>Transferable</code> object will hold its own copy of the data. When you've added all the flavors you want, you can put it all on the clipboard at once. The transferable object will hold all of the data that you want until you're ready to put it on the clipboard.</p>
+
+<pre class="brush: js">Services.clipboard.setData(trans, null, Services.clipboard.kGlobalClipboard);</pre>
+
+<p>We get the system clipboard object and store it in the clip variable. We can copy the data to the clipboard by calling the function <code>setData</code>. The first parameter of this function is the transferable. The second parameter can usually be set to <code>null</code> but you could set it to an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIClipboardOwner" title="">nsIClipboardOwner</a></code> so that you can tell when the data you've copied is overwritten by another copy operation. Call <code>setData</code> only when you're ready to copy to the system clipboard.</p>
+
+<p>The third parameter to <code>setData</code> (and the parameter to <code>emptyClipboard</code>) indicates which clipboard buffer to use. The above code uses the constant <code>kGlobalClipboard</code> for this, which refers to the global clipboard. This would be the same one that cut and paste operations from the Edit menu typically use. If you use <code>kSelectionClipboard</code> instead, you will copy into the selection buffer, which is generally only available on Unix systems.</p>
+
+<p>This multi-step process has resulted in text being copied on the clipboard. We can cut to the clipboard instead of copying by doing a copy and then deleting the original data. Normally, the text would be in a document or textbox. The code is put together below, with additional error checking:</p>
+
+<pre class="brush: js">var copytext = "Text to copy";
+
+var trans = Transferable(sourceWindow);
+
+trans.addDataFlavor("text/unicode");
+trans.setTransferData("text/unicode", SupportsString(copytext), copytext.length * 2);
+
+Services.clipboard.setData(trans, null, Services.clipboard.kGlobalClipboard);
+</pre>
+
+<p>The complete function shown below copies some text to the clipboard as HTML, as well as making it a clickable Hyperlink. So we've added a text flavor and an HTML flavor of the content. The <code>Transferable</code> object will hold both flavors.</p>
+
+<pre class="brush: js">function copyLinkToClipboard(copyURL, copyLabel, sourceWindow) {
+    // generate the Unicode and HTML versions of the Link
+    var textUnicode = copyURL;
+    var textHtml = copyLabel.link(copyURL);
+
+    // add Unicode &amp; HTML flavors to the transferable widget
+    var trans = Transferable(sourceWindow);
+
+    trans.addDataFlavor("text/unicode");
+    trans.setTransferData("text/unicode", SupportsString(textUnicode), textUnicode.length * 2); // *2 because it's unicode
+
+    trans.addDataFlavor("text/html");
+    trans.setTransferData("text/html", SupportsString(textHtml), textHtml.length * 2); // *2 because it's unicode
+
+    // copy the transferable widget!
+    Services.clipboard.setData(trans, null, Services.clipboard.kGlobalClipboard);
+    return true;
+}
+</pre>
+
+<h2 id="Pasting_Clipboard_Contents" name="Pasting_Clipboard_Contents">Pasting Clipboard Contents</h2>
+
+<p>To paste data from the clipboard we can use a similar process, except we use <code>getData</code> instead of <code>setData</code> and <code>getTransferData</code> instead of <code>setTransferData</code>. Here are the steps to pasting:</p>
+
+<ol>
+ <li>Create a clipboard object which refers to the system clipboard.</li>
+ <li>Create a transferring object which implements the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITransferable" title="">nsITransferable</a></code> interface.</li>
+ <li>Initialize the transferring object with a null privacy context, as long as this object will not be placed on the clipboard. Otherwise, use a one from a logical source window instead (see the description above).</li>
+ <li>Tell the transferring object about the flavor of data you want to get.</li>
+ <li>Retrieve the data from the clipboard and put it in the transferable.</li>
+ <li>Get the data from the transferring object.</li>
+</ol>
+
+<p>The first steps are similar to that used for copying:</p>
+
+<pre class="brush: js">var trans = Transferable();
+trans.addDataFlavor("text/unicode");
+</pre>
+
+<div class="note">
+<p>Recall that <code>Transferable()</code> is a function from the boilerplate in the previous section. Instead, you can create a Ci.nsITransferable instance. The boilerplate may be a better method, but this method works as well.</p>
+
+<pre class="brush: js">var trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+trans.init(null)
+trans.addDataFlavor("text/unicode");</pre>
+</div>
+
+<p>This code gets the system clipboard object and a transferable object. The flavor is added to the transferable. Next, we need to get the data from the clipboard:</p>
+
+<pre class="brush: js">Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
+
+var str       = {};
+var strLength = {};
+
+trans.getTransferData("text/unicode", str, strLength);
+</pre>
+
+<p>The first line performs the opposite of <code>setData</code>. The data currently on the system clipboard is placed into the transferable. Next we create two JavaScript objects which will hold the return values from <code>getTransferData</code>.</p>
+
+<p>Then we use <code>getTransferData</code> to retrieve the data from the transferable. We specify the flavor we would like to get. The data will be converted if it is not available in the desired flavor, and a conversion from an available flavor is possible. If you originally copied data of multiple flavors onto the clipboard, you can retrieve the data in the best format necessary. For example, a textbox would accept "text/unicode" (or "text/plain") while a Composer window might accept HTML and image data.</p>
+
+<p>The variable <code>str</code> now holds the data from the clipboard. We need to convert the data back into a JavaScript string from an XPCOM object. The code below can be used for this purpose:</p>
+
+<pre class="brush: js">if (str) {
+  var pastetext = str.value.QueryInterface(Ci.nsISupportsString).data;
+}</pre>
+
+<p>Because the data from the transferable is an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupportsString" title="">nsISupportsString</a></code>, we need to convert it into a JavaScript string. The property <code>value</code> of the object filled in by <code>getTransferData</code>, which is <code>str</code> in this case, provides the actual value of the object.</p>
+
+<p>We assign the string to the variable <code>pastetext</code>. We can then put that into a textbox or other location as necessary.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:enndeakin@sympatico.ca">Neil Deakin</a></li>
+ <li>Original Document: <a class="external" href="http://xulplanet.com/tutorials/mozsdk/clipboard.php" rel="freelink">http://xulplanet.com/tutorials/mozsdk/clipboard.php</a></li>
+ <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:enndeakin@sympatico.ca">Neil Deakin</a></li>
+</ul>
+</div>
+
+<p> </p>

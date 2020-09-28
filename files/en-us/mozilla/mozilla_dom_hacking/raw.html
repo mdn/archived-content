@@ -1,0 +1,477 @@
+<p>Mozilla gives you the opportunity not only to <strong>use</strong> very powerful and complete DOM support, but also to <strong>work</strong> on a world-class implementation of one of the greatest Internet technologies ever created.</p>
+
+<p>Mozilla's DOM is coded almost entirely in C++. Seriously hacking on it requires excellent knowledge of C++ and XPCOM, Mozilla's own component model. In this document I will try to outline the main aspects of the implementation, beginning with the Class Info mechanism, which lies at the heart of the DOM, then with the description of various interfaces and classes. Since I am myself still learning how it works, don't expect this to be a complete reference quite yet. If you can contribute any time or knowledge to this document, it is greatly appreciated!</p>
+
+<p>Target audience: People interested in learning how the DOM is implemented. Prior knowledge of C++ and XPCOM is assumed. If you don't know XPCOM yet, and would like to be able to read this document quickly, you can read the <a href="/en/Introduction_to_XPCOM_for_the_DOM" title="en/Introduction_to_XPCOM_for_the_DOM">Introduction to XPCOM for the DOM</a>. Otherwise, for more detailed XPCOM documentation, please see the <a class="external" href="http://www.mozilla.org/projects/xpcom/">XPCOM project page</a>.</p>
+
+<h2 id="Class_Info_and_Helper_Classes" name="Class_Info_and_Helper_Classes">Class Info and Helper Classes</h2>
+
+<h3 id="Introduction_to_Class_Info" name="Introduction_to_Class_Info">Introduction to Class Info</h3>
+
+<p>Class Info is what gives the DOM classes their correct behavior when used through XPConnect. It lies at the heart of the famous "XPCDOM landing" that happened in May. We will talk a lot about XPConnect in this document, since it is so important for the DOM. By "correct behavior", I mean "the intended behavior with respect to the specification or de facto standard". We will see that Class Info is mainly used to implement the DOM Level 0. The W3C DOM is mainly implemented in IDL. The goals of Class Info are twofold: Interface flattening, and implementing behaviors that are not possible with IDL alone.</p>
+
+<p>A brief introduction to JavaScript and XPConnect.</p>
+
+<p>Before we begin the explanation of Class Info, I'd like to introduce quickly the JavaScript engine and XPConnect. In JavaScript, there is no knowledge of types, like there is in C++. A function for example can be represented by a JSFunction, a JSObject, a jsval, ... This means that when we use the DOM from JavaScript, we pass arguments that have no type. However, since the DOM is coded in C++, we expect to receive an argument of the correct type for our function. This is one of the jobs of XPConnect. XPConnect will "wrap" the argument in a wrapper that will be of the type expected by our C++ function. Similarly, then return type of the C++ function will be wrapped by XPConnect so that JavaScript can use it safely.</p>
+
+<p>When, in JavaScript, a client tries to access a DOM object or a DOM method on a DOM object, the JS engine asks XPConnect to search for the relevant C++ method to call. For example, when we ask for |document.getElementById("myID");|, XPConnect will find that |document| is a property of the window object, so it will look on the interface nsIDOMWindow, and it will find the GetDocument() method. The return value of GetDocument() is a nsIDOMDocument. So XPConnect will then try to find a method named GetElementById() on the nsIDOMDocument interface. And indeed it will find it, and thus call it.</p>
+
+<p>This is the schema used most of the time when using W3C DOM objects and methods. It is however different for some DOM Level 0 objects and methods. I'll take two very different examples. The first one is the window.location object (the same holds true for document.location, actually). We can change the URL of the current window by assigning window.location. In IDL, location is declared to be a readonly attribute. This is because, if we had a SetLocation() method, it would take an nsIDOMLocation parameter, and not a URL string. Instead, in the helper class for the window object (nsWindowSH, see the next Section), we define the GetProperty() member function. GetProperty() is a function used by XPConnect when we are setting an unknown property on the object (window, in our case). In GetProperty(), we check if the property being set is "location". If that is the case, we call nsIDOMLocation::SetHref(). In fact, when setting window.location, we really set window.location.href. This is all possible thanks to the magic of the interaction between XPConnect and the DOM.</p>
+
+<p>The second example is the history object. Other browsers allow the history object to be used like an array, e.g. history{{ mediawiki.external(1) }}. The behavior "act as an array" cannot be reflected in the IDL itself. Fortunately, XPConnect provides us with a way to make our class available as an array in JavaScript. I'm talking about the "scriptable flags". The nsIXPCScriptable interface, implemented by the nsDOMClassInfo class (see Section) defines several flags, one of which is the WANT_GETPROPERTY flag. When set, it allows us to define a GetProperty() function on nsHistorySH (the helper class for the history object), which will handle the array behavior. Indeed, it will forward the call history{{ mediawiki.external(1) }} to history.item(1), which is defined in the IDL and easily coded. The relevant code is at {{ Source("dom/src/base/nsDOMClassInfo.cpp#4520", "nsDOMClassInfo.cpp") }}, around line 4520.</p>
+
+<p>These two examples demonstrate the power of the DOM combined with XPConnect and the JavaScript engine. The possibilities are endless. "What do you want to code today?" ;-)</p>
+
+<p>All the DOM classes are listed in an enum defined in {{ Source("dom/public/nsIDOMClassInfo.h", "nsIDOMClassInfo.h") }}, nsDOMClassInfoID. There are classes for the DOM0, Core DOM, HTML, XML, XUL, XBL, range, css, events, etc...</p>
+
+<p>The array sClassInfoData, defined in {{ Source("dom/src/base/nsDOMClassInfo.cpp", "nsDOMClassInfo.cpp") }}, maps each DOM class to its helper class and to the interfaces that are exposed to JavaScript. It is an array of type nsDOMClassInfoData, which is a structure defined in {{ Source("dom/public/nsIDOMClassInfo.h", "nsIDOMClassInfo.h") }}. The array uses two macros to define its items: <code>NS_DEFINE_CLASSINFO_DATA</code> and <code>NS_DEFINE_CLASSINFO_DATA_WITH_NAME</code>. The first one calls the second one. The first argument passed to <code>NS_DEFINE_CLASSINFO_DATA_WITH_NAME</code>, _class, is used for debug purposes. The second argument, _name, is the name that should appear in JavaScript. The third argument, _helper, is the name of the helper class for this DOM class. Helper classes are detailed in Section 1.3. The fourth and last argument, _flags, is a bitvector of nsIXPCScriptable flags. The macros for those flags are defined {{ Source("dom/src/base/nsDOMClassInfo.cpp", "nsDOMClassInfo.cpp") }}. The flags give special behavior through XPConnect. See also Section 1.9.</p>
+
+<p>The nsDOMClassInfoData objects are created in the sClassInfoData array by explicitly initializing it. Here is the description of the structure:</p>
+
+<ul>
+ <li><code>const char *mName</code>: C-style string that is passed as second argument to the macro. It is the name of the JavaScript object that will be available in the browser through the DOM.</li>
+ <li>
+  <pre class="code">union {
+nsDOMClassInfoConstructorFnc mConstructorFptr;
+nsDOMClassInfoExternalConstructorFnc mExternalConstructorFptr;
+} u;
+</pre>
+  This union is a pointer to a function typedef'ed:<br>
+  <code>typedef nsIClassInfo* (*nsDOMClassInfoConstructorFnc)(nsDOMClassInfoID aID);</code><br>
+  or<br>
+  <code>typedef nsIClassInfo* (*nsDOMClassInfoExternalConstructorFnc) (const char* aName);</code><br>
+  It is initialized with the doCreate member function of the helper class passed as third argument to the macro.</li>
+ <li><code>nsIClassInfo *mCachedClassInfo</code>: mCachedClassInfo holds an nsIClassInfo pointer to an instance of the relevant helper class.</li>
+ <li><code>const nsIID *mProtoChainInterface</code>: Pointer to the IID of the first interface available to JavaScript clients. This is used in global resolve functions, when XPConnect has to find the member function to call.</li>
+ <li><code>const nsIID **mInterfaces</code>: Pointer to the first element of an array of pointers to all the interfaces available through JS for this class.</li>
+ <li><code>PRUInt32 mScriptableFlags: 31;</code> : The fourth argument passed to NS_DEFINE_CLASSINFO_DATA_WITH_NAME.</li>
+ <li><code>PRBool mHasClassInterface: 1;</code> : Help me?</li>
+</ul>
+
+<p>mName and mConstructorFptr, mScriptableFlags and mHasInterface are initialized by NS_DEFINE_CLASSINFO_DATA_WITH_NAME. mCachedClassInfo, mProtoChainInterface and mInterfaces, however, are initialized in nsDOMClassInfo::Init(), described in Section 1.5.</p>
+
+<h3 id="Interface_flattening" name="Interface_flattening">Interface flattening</h3>
+
+<p>One of the nicest -- and most important -- features of the XPConnect'ed DOM is the interface flattening. "Interface flattening is the ability to call methods on an object regardless of the interface it was defined on." For example, when we have the document object in JavaScript, we can call indistinctly document.getElementById(), or document.addEventListener(), although they are defined on two different interfaces ({{ Source("dom/public/idl/core/nsIDOMDocument.idl", "DOMDocument") }} and {{ Source("dom/public/idl/events/nsIDOMEventTarget.idl", "DOMEventTarget") }}. Needless to say this is critical for the use of the DOM in real-world content.</p>
+
+<p>In Mozilla interface flattening is obtained through the use of the nsIClassInfo interface. nsIClassInfo stores the interfaces available for an object and later on XPConnect uses those interfaces to lookup the right method to call.</p>
+
+<p>The great thing is that one can easily see the interfaces available from JS through interface flattening by looking at the code. The interesting part is in {{ Source("dom/src/base/nsDOMClassInfo.cpp", "nsDOMClassInfo::Init()") }}. There we have a long list of macros. There is one set of macros per <a href="#domclasses">DOM class</a>. There you can see, for each object, what interfaces are part of the "flattened" set. As an example, on the window object, we can call all the methods defined on the following interfaces: nsIDOMWindow, nsIDOMJSWindow, nsIDOMEventReciever, nsIDOMEventTarget, nsIDOMViewCSS, and nsIDOMAbstractView. Again, without caring on what interface the method is defined. See Section 1.5 for more information about the Init() method.</p>
+
+<p>For the W3C DOM (Level 1, 2, 3) objects, for each object there is one "standards-compliant" interface, which is exactly the same as the W3C one, named nsIDOM&lt;ObjectName&gt;.idl, and a mozilla-specific extension interface, named nsIDOMNS&lt;ObjectName&gt;.idl, for compatibility with DOM Level 0. For example, the HTML "area" element has the following interfaces in its flattened set: nsIDOMHTMLAreaElement and nsIDOMNSHTMLAreaElement.</p>
+
+<h3 id="Helper_Classes" name="Helper_Classes">Helper Classes</h3>
+
+<p>nsDOMClassInfo.h defines several new classes. They all end in "SH", for "Scriptable Helper" e.g. nsWindowSH, nsElementSH, ... . We call these classes the "Helper Classes". <em>All</em> the helper classes inherit from the nsDOMClassInfo class. To demonstrate this, look in {{ Source("dom/src/base/nsDOMClassInfo.h", "nsDOMClassInfo.h") }}. We can see that the nsEventRecieverSH helper class inherits from nsDOMGenericSH:</p>
+
+<pre>class nsEventRecieverSH : public nsDOMGenericSH
+</pre>
+
+<p>And nsDOMGenericSH is typedef'ed to nsDOMClassInfo:</p>
+
+<pre>typedef nsDOMClassInfo nsDOMGenericSH;
+</pre>
+
+<p>Another example is nsWindowSH, which inherits from nsEventReceiverSH, thus inheriting from nsDOMClassInfo.</p>
+
+<p>Each DOM class is mapped to its helper class during the initialization of the sClassInfoData array.</p>
+
+<p>Each helper class has a public doCreate member function that is called by GetClassInfoInstance (see also Section 1.6) to create a new instance of the class if needed. Remember that the doCreate member function is called through a pointer to a function named mConstructorFptr, a member of the nsDOMClassInfoData struct. An instance of a helper class is created the first time XPConnect needs access to the flattened set of interfaces of an object. The instance is then cached for further use.</p>
+
+<p>Most of the helper classes implement one or more nsIXPCScriptable methods. Those methods are used by XPConnect when we require something from JavaScript that was not defined in IDL. For example, GetProperty() is used when retrieving an attribute that was not defined in IDL, and NewResolve() is used when resolving for the first time an attribute or method that was not previously resolved. Please see the {{ Source("js/src/xpconnect/idl/nsIXPCScriptable.idl", "nsIXPCScriptable interface") }} for more information.</p>
+
+<h3 id="The_nsDOMClassInfo_class" name="The_nsDOMClassInfo_class">The nsDOMClassInfo class</h3>
+
+<p>The heart of Class Info is the nsDOMClassInfo class, defined in {{ Source("dom/src/base/nsDOMClassInfo.h", "nsDOMClassInfo.h") }}. It implements two interfaces besides nsISupports: {{ Source("js/src/xpconnect/idl/nsIXPCScriptable.idl", "nsIXPCScriptable") }} and {{ Source("xpcom/components/nsIClassInfo.idl", "nsIClassInfo") }}.</p>
+
+<p>We already know what nsIXPCScriptable is used for (see the previous Section).</p>
+
+<p>nsIClassInfo is an XPCOM interface, very well described by Mike Shaver in <a href="/en/Using_nsIClassInfo" title="en/Using_nsIClassInfo">this overview of nsIClassInfo</a>. Basically it contains convenient methods to find out about the interfaces an object promises to support. In our case, this list of interfaces will be populated by "Class Info". See also Section 1.5 on the Init() function and Section 1.2 on interface flattening.</p>
+
+<p>We saw in Section 1.3 that nsDOMClassInfo is the base class for all the helper classes. Let's see what it's made of. Let's begin with the public interface.</p>
+
+<ul>
+ <li>Constructor: It is called for each created helper class through the member initialization list. It simply initializes the mID data member with the aID argument.</li>
+ <li>The nsIXPCScriptable, nsISupports, and nsIClassInfo member functions, declared with NS_DECL_X macros.</li>
+ <li><code>static nsIClassInfo* GetClassInfoInstance(nsDOMClassInfoID aID)</code>:<br>
+  this helper method returns a non-refcounted nsIClassInfo pointer to an instance of the helper class corresponding to the ID passed in. The implementation is detailed in Section 1.6.</li>
+ <li><code>static nsIClassInfo* GetClassInfoInstance(nsDOMClassInfoData* aData);</code>:<br>
+  this helper method returns a non-refcounted nsIClassInfo pointer to an instance of the helper class corresponding to the Data passed in. The implementation is detailed in Section 1.6.</li>
+ <li><code>static void ShutDown()</code>:<br>
+  Releases the interface pointers.</li>
+ <li><code>static nsIClassInfo* doCreate(nsDOMClassInfoData* aData)</code>:<br>
+  Inline function that returns a nsIClassInfo pointer to a new instance of the nsDOMClassInfo class.</li>
+ <li><code>static nsresult WrapNative(...)</code>: XPConnect fu, not our problem.</li>
+ <li><code>static nsresult ThrowJSException(JSContext *cx, nsresult aResult);</code>:<br>
+  help me!</li>
+ <li><code>static nsresult InitDOMJSClass(JSContext *cx, JSObject *obj);</code>:<br>
+  help me!</li>
+ <li><code>static JSClass sDOMJSClass;</code>:<br>
+  help me!</li>
+</ul>
+
+<p>Protected section:</p>
+
+<ul>
+ <li><code>const nsDOMClassInfoData* mData;</code>: help me!</li>
+ <li><code>static nsresult Init()</code>: Called only once, it is used to initialize the remaining members of the nsDOMClassInfoData structure, as mentioned above. Once called, Init() sets sIsInitialized to true, to remember that the initialization has been performed. The implementation is described in Section 1.5.</li>
+ <li><code>static nsresult RegisterClassName(PRInt32 aDOMClassInfoID)</code>: help me!</li>
+ <li><code>static nsresult RegisterClassProtos(PRInt32 aDOMClassInfoID)</code>: help me!</li>
+ <li><code>static nsresult RegisterExternalClasses();</code>: help me!</li>
+ <li><code>nsresult ResolveConstructor(JSContext *cx, JSObject *obj, JSObject **objp);</code>: help me!</li>
+ <li><code>static PRInt32 GetArrayIndexFromId(JSContext *cx, jsval id, PRBool *aIsNumber =<br>
+  nsnull)</code>:<br>
+  If the JS value is an integer, then *aIsNumber is true, and the integer is returned. Else, *aIsNumber is false and -1 is returned.</li>
+ <li><code>static inline PRBool IsReadonlyReplaceable(jsval id) { ... }</code>: help me!</li>
+ <li><code>static inline PRBool IsWritableReplaceable(jsval id) { ... }</code>: help me!</li>
+ <li><code>nsresult doCheckPropertyAccess(...)</code>: help me! (bug 90757)</li>
+ <li><code>static JSClass sDOMConstructorProtoClass</code>: XPConnect fu to expose the DOM objects constructors to JavaScript.</li>
+ <li><code>static JSFunctionSpec sDOMJSClass_methods[];</code>: help me! (bug 91557)</li>
+ <li><code>static nsIXPConnect *sXPConnect</code>: Used to call nsIXPConnect methods that we need. Initialized in Init().</li>
+ <li><code>static nsIScriptSecurityManager *sSecMan</code>: Used by the DOM security engine. Initialized in Init().</li>
+ <li><code>static nsresult DefineStaticJSVals(JSContext *cx);</code>: Used to define all the static JSString data members of nsDOMClassInfo.</li>
+ <li><code>static PRBool sIsInitialized</code>:<br>
+  Keeps track of wether Class Info was already initialized, because Init() shouldn't be called twice.</li>
+ <li><code>static jsval *sX_id</code>: strings used in the global resolve methods for comparison with the passed in arguments. They represent special words for the DOM. Initialized by DefineStaticJSVals().</li>
+ <li><code>static const JSClass *sObjectClass</code>: help me!</li>
+ <li><code>static PRBool sDoSecurityCheckInAddProperty;</code>: help me!</li>
+</ul>
+
+<h3 id="nsDOMClassInfoInit.28.29" name="nsDOMClassInfo::Init.28.29">nsDOMClassInfo::Init()</h3>
+
+<p>This method is to be called only once. Its purpose is, well, to initialize... It does a lot of different things: Fill the blanks in the sClassInfoData array, initialize the sXPConnect and sSecMan data members, create a new JavaScript Context, define the JSString data members, and register class names and class prototypes. Finally it sets sIsInitialized to true. The actions that concern the DOM are described below.</p>
+
+<p>First, the call to CallGetService() initializes sXPConnect. Then the Script Security Manager (sSecMan) is initialized. GetSafeJSContext() grabs us a cool JS context to run our JavaScript code in. The part about ComponentRegistrar is designed to allow external modules (in this case XPath) to be included in DOMClassInfo and as such benefit from the JavaScript benefits it provides. After that, we fill the blanks in the sClassInfoData array.</p>
+
+<p>If you remember the discussion in the introduction to Class Info, there is the main array, sClassInfoData, filled with objects of type nsDOMClassInfoData. However when the array is created, three data members of the structure are left as null pointers: mCachedClassInfo, mProtoChainInterface, and mInterfaces. Init() uses a set of macros to fill the blanks: the DOM_CLASSINFO_MAP family. Each DOM class needs to use these macros, otherwise bad things <em>will</em> happen. I will use the example of the Window class to illustrate the use of the macros. Here is the relevant piece of code.</p>
+
+<pre class="code">DOM_CLASSINFO_MAP_BEGIN(Window, nsIDOMWindow)
+DOM_CLASSINFO_MAP_ENTRY(nsIDOMWindow)
+...
+DOM_CLASSINFO_MAP_ENTRY(nsIDOMAbstractView)
+DOM_CLASSINFO_MAP_END
+</pre>
+
+<p>DOM_CLASSINFO_MAP_BEGIN(_class, _interface) maps to _DOM_CLASSINFO_MAP_BEGIN(_class, &amp;NS_GET_IID(_interface), PR_TRUE). NS_GET_IID is a macro that expands to the IID of the interface passed in. We pass the address of this nsIID object to the second macro.</p>
+
+<pre class="code">#define _DOM_CLASSINFO_MAP_BEGIN(_class, _ifptr, _has_class_if)
+{
+nsDOMClassInfoData &amp;d = sClassInfoData[eDOMClassInfo_##_class##_id];
+d.mProtoChainInterface = _ifptr;
+d.mHasClassInterface = _has_class_if;
+static const nsIID *interface_list[] = {
+</pre>
+
+<p>In this macro, |d| is a reference to the entry of the sClassInfoData array that corresponds to the class passed as an argument to the macro. The mProtoChainInterface member pointer is initialized to the address of the IID of the interface passed as an argument to DOM_CLASSINFO_MAP_BEGIN. A static array of pointers to objects of type nsIID is then declared. It is initialized explicitly with the DOM_CLASSINFO_MAP_ENTRY macro (see below).</p>
+
+<p>There are two other similar macros:</p>
+
+<pre class="code">#define DOM_CLASSINFO_MAP_BEGIN_NO_PRIMARY_INTERFACE(_class)
+_DOM_CLASSINFO_MAP_BEGIN(_class, nsnull, PR_TRUE)
+</pre>
+
+<p>This macro is used if the DOM class (for example XMLHTTPRequest) does not have any interface, yet you want the XMLHTTPRequest object to be available from JavaScript.</p>
+
+<pre class="code">#define DOM_CLASSINFO_MAP_BEGIN_NO_CLASS_IF(_class, _interface)
+_DOM_CLASSINFO_MAP_BEGIN(_class, &amp;NS_GET_IID(_interface), PR_FALSE)
+</pre>
+
+<p>This macro should be used for DOM classes that have no "leaf" interface. For example, there is no HTMLSpanElement in the W3C DOM specification. Therefore, the first interface in the prototype chain for the span element is HTMLElement. However we do want to be able to access HTMLSpanElement to modify it. This macro allows you to do that. See {{ Bug(92071) }} for more information. Let's now see how to specify the interfaces available from JavaScript for a particular DOM class.</p>
+
+<pre class="code">#define DOM_CLASSINFO_MAP_ENTRY(_if)
+&amp;NS_GET_IID(_if),
+</pre>
+
+<p>The array of pointers interface_list is filled with the addresses of the IID's of all the interfaces passed as arguments to the macro. In our Window example, the interfaces are nsIDOMWindow, nsIDOMJSWindow, nsIDOMEventReciever, nsIDOMEventTarget, nsIDOMViewCSS, and nsIDOMAbstractView. Please see Section 1.2 on interface flattening for an explanation of the use of these interfaces. The initialization for a class is finished by the DOM_CLASSINFO_MAP_END macro.</p>
+
+<pre class="code">#define DOM_CLASSINFO_MAP_END
+nsnull
+};
+d.mInterfaces = interface_list;
+}
+</pre>
+
+<p>The interface_list array is terminated by a null pointer. The line d.mInterfaces = interface_list assigns to mInterfaces the address of the first element of the interface_list array, which is itself a pointer. mInterfaces is thus correctly a pointer to a pointer to an object of type nsIID.</p>
+
+<p>To define the jsvals, Init() simply calls DefineStaticJSVals(). To register the class names and class protos, Init() simply calls RegisterClassProtos and RegisterClassNames. This process might be described in a later document. Finally, sIsInitialized is set to true. Init() returns NS_OK if everything went fine.</p>
+
+<h3 id="nsDOMClassInfoGetClassInfoInstance.28.29" name="nsDOMClassInfo::GetClassInfoInstance.28.29">nsDOMClassInfo::GetClassInfoInstance()</h3>
+
+<p>There are two versions of this function. The first one takes an ID as argument, the second takes a Data struct as argument. This function is very important so let's take a closer look at it. Here is the function definition.</p>
+
+<pre class="code">nsIClassInfo* nsDOMClassInfo::GetClassInfoInstance(nsDOMClassInfoID aID)
+{
+if(!sIsInitialized) {
+nsresult rv = Init();
+}
+
+if(!sClassInfoData[aID].mCachedClassInfo) {
+nsDOMClassInfoData &amp;data = sClassInfoData[aID];
+data.mCachedClassInfo = data.u.mConstructorFptr(&amp;data);
+NS_ADDREF(data.mCachedClassInfo);
+}
+
+return sClassInfoData[aID].mCachedClassInfo;
+}
+</pre>
+
+<p>Here is the short explanation:<br>
+ This method returns the mCachedClassInfo member of the nsDOMClassInfoData structure that corresponds to aID in the sClassInfoData array, if it exists, i.e. if this method has been called before. If it is called for the first time however, mCachedClassInfo is still a null pointer, and the function will create a new instance of the relevant helper class, and cache it in the mCachedClassInfo pointer, then return it.</p>
+
+<p>And for those interested, here the longer explanation.</p>
+
+<p>The first time GetClassInfoInstance() is called, passing in an aID, mCachedClassInfo for that class will still be null. The body of the "if" clause is thus executed. We initialize "data" to be a reference to the nsDOMClassInfoData object that corresponds to the DOM class we want to "help". On the next line, there is a call to data.mConstructorFptr(aID), which, if you remember the introduction to Class Info, maps to the doCreate static member function of the relevant helper class. doCreate creates a new instance of the helper class, and returns a pointer to the nsIClassInfo interface, which is then assigned into mCachedClassInfo. mCachedClassInfo is AddRef'ed to keep it from being destroyed without our permission. Finally it is returned.</p>
+
+<p>On subsequent calls to this function with the same aID passed in, mCachedClassInfo will still be there, and thus the creation of a new helper class will not be necessary.</p>
+
+<p>"Where is GetClassInfoInstance used and why should I use it", would be an excellent question for now. The short answer is, "to implement the QueryInterface for nsIClassInfo". Indeed, a QueryInterface to nsIClassInfo cannot be implemented the same way as other interfaces. If you don't like macros, you can see the full QueryInterface implementation in {{ Source("content/xml/content/src/nsXMLElement.cpp", "nsXMLElement.cpp") }}. Two other GetClassInfoInstance member functions are defined in Mozilla, as member of class nsContentUtils and class nsDOMSOFactory. Both of these methods end up calling nsDOMClassInfo::GetClassInfoInstance so there is no real point in documenting them further. GetClassInfoInstance is used in the NS_INTERFACE_MAP_ENTRY_CONTENT_CLASSINFO macro, which is used to implement QueryInterface for the nsIClassInfo interface in {{ LXRSearch("ident", "i", "NS_INTERFACE_MAP_ENTRY_CONTENT_CLASSINFO", "most of the DOM classes") }}, and in the NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO macro, which is used to implement QueryInterface for the nsIClassInfo interface in most {{ LXRSearch("ident", "i", "NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO", "global object properties") }}.</p>
+
+<p>I think that's all there is to say about this function. If you think of something else don't hesitate to contact me, as usual.</p>
+
+<h3 id="nsWindowSHGlobalResolve.28.29" name="nsWindowSH::GlobalResolve.28.29">nsWindowSH::GlobalResolve()</h3>
+
+<p>This Section will describe in detail the absolutely horrific GlobalResolve() member function of the nsWindowSH helper, as an example of those functions. This is not for the faint of heart, and is not absolutely necessary, so you might want to skip this Section if you don't have too much time (and I suppose you don't).</p>
+
+<h3 id="User.27s_guide_to_Class_Info" name="User.27s_guide_to_Class_Info">User's guide to Class Info</h3>
+
+<div class="warning">
+<p>Warning: this document has not yet been reviewed by the DOM gurus, it might contain some errors. Specifically, due to some changes that happened around, April 2002, some things that were not possible before are now possible. I will try to update this guide as soon as possible. Please send any comment to <a class="link-mailto" href="mailto:fguisset@softhome.net">Fabian Guisset</a>.</p>
+</div>
+
+<h4 id="When_should_DOMClassInfo_be_used" name="When_should_DOMClassInfo_be_used">When should DOMClassInfo be used</h4>
+
+<ul>
+ <li>To add a new interface to an existing DOM object</li>
+ <li>To expose a new DOM object to JavaScript</li>
+ <li>To add a new JS external constructor, like "new Image()"</li>
+ <li>To bypass the default behavior of XPConnect</li>
+ <li>To implement a "replaceable" property</li>
+ <li>To mess with the prototypes of DOM objects</li>
+</ul>
+
+<p>Example of functionality implemented using DOMClassInfo:</p>
+
+<ul>
+ <li>Constructors of DOM objects in the global scope (e.g. Node)</li>
+ <li>Setting up custom prototypes for those DOM objects</li>
+ <li>new Image(), new Option()</li>
+ <li>window.history{{ mediawiki.external('index') }}</li>
+ <li>document.&lt;formName&gt;</li>
+</ul>
+
+<h4 id="How_to_add_a_new_interface_to_an_existing_DOM_object" name="How_to_add_a_new_interface_to_an_existing_DOM_object">How to add a new interface to an existing DOM object</h4>
+
+<div class="highlight">
+<p>For this Section, we will use the simple example of the DOMImplementation DOM object. This is a real-world case that was used to solve bug 33871 (the patch is not checked in yet, as of writing this document). The problem is the following: We have to add a new HTMLDOMImplementation interface to the DOMImplementation DOM object. The DOMImplementation object is used when one does, in JS, <code>document.implementation</code>. This object already implements the DOMImplementation interface, but DOM2 HTML says it should also implement the HTMLDOMImplementation interface, so here we go. The C++ implementation is in <span class="filename">nsDocument.cpp</span>. The first step is of course to do the C++ implementation of the interface, which is described in the <a href="/en/Introduction_to_XPCOM_for_the_DOM" title="en/Introduction_to_XPCOM_for_the_DOM">intro to XPCOM</a> document.</p>
+
+<p>Let's assume nsDOMImplementation now implements the nsIDOMHTMLDOMImplementation interface (look in bug 33871 if you want to know how to do that). We want to expose this interface to JavaScript (otherwise only XPCOM callers will be able to access this interface). To do that, we have to add it to the DOMClassInfo of the DOMImplementation DOM object.</p>
+</div>
+
+<h5 id="Benefits" name="Benefits">Benefits</h5>
+
+<ul>
+ <li>The HTMLDOMImplementation interface will be available from JavaScript.</li>
+ <li>Methods defined on the HTMLDOMImplementation interface will be accessible on the <code>document.implementation</code> object (the main goal) using the automatic interface flattening brought to you by nsDOMClassInfo and XPConnect.</li>
+ <li><code>document.implementation instanceof HTMLDOMImplementation</code> will work (returns true)</li>
+ <li><code>HTMLDOMImplementation.prototype</code> will be accessible and modifyable</li>
+ <li>Lots of other stuff you probably don't care about</li>
+</ul>
+
+<h5 id="What_there_is_to_do" name="What_there_is_to_do">What there is to do</h5>
+
+<ol>
+ <li>Include the new interface definition in nsDOMClassInfo.cpp:<br>
+  <code>#include "nsIDOMHTMLDOMImplementation.h"</code>.<br>
+  Put it where you think it fits the most.</li>
+ <li>Find the code where all the interfaces implemented by the relevant DOM object are implemented. This is in the nsDOMClassInfo::Init() method.</li>
+ <li>For DOMImplementation, this is around line 1220 (at the time of writing this document):<br>
+  <code>1224 DOM_CLASSINFO_MAP_BEGIN(DOMImplementation, nsIDOMDOMImplementation)</code><br>
+  The next line specifies that the DOMImplementation object implements the nsIDOMDOMImplementation interface.</li>
+ <li>Add the new interface to the DOMClassInfo definition. For us, it is:<br>
+  <code>1225 DOM_CLASSINFO_MAP_ENTRY(nsIDOMHTMLDOMImplementation)</code></li>
+ <li>Add the new interface to the makefiles, manifests, etc.</li>
+ <li>Recompile.</li>
+ <li>Nuke components.reg if you build optimized.</li>
+ <li>Wonder at the beauty of DOMClassInfo.</li>
+</ol>
+
+<h4 id="How_to_expose_a_new_DOM_object_to_JavaScript" name="How_to_expose_a_new_DOM_object_to_JavaScript">How to expose a new DOM object to JavaScript</h4>
+
+<p>Let's now go a step further. Not only do we want to add a new interface to an object, but we also want to expose a completely new object to JavaScript. DOMClassInfo does almost everything for you, from prototypes to implementing a default ToString() method on your object.</p>
+
+<div class="highlight">
+<p>We will again take the example of the DOMImplementation object. It is accessible using <code>document.implementation</code>. It is defined in the W3C DOM Level 1 Core spec. The requirements include that the global constructor <code>DOMImplementation</code> be accessible, that the ToString() method called on an instance of a DOMImplementation return "DOMImplementation", and that it implements the following methods: hasFeature() (DOM1), createDocumentType() and createDocument() (DOM2).</p>
+</div>
+
+<h5 id="What_there_is_to_do_2" name="What_there_is_to_do_2">What there is to do</h5>
+
+<ol>
+ <li>Implement your object in C++. This is not in the scope of this document. The best thing you can do is probably to copy existing code. A DOM object is a simple XPCOM object with DOMClassInfo. In our example, the implementation class is nsDOMImplementation (in nsDocument.cpp). It implements the nsIDOMDOMImplementation interface (which contains the three methods mentionned above).</li>
+ <li>Modify the QueryInterface implementation of your XPCOM object to include DOMClassInfo data. Add the following line at the end of the QueryInterface implementation:<br>
+  <code>NS_INTERFACE_MAP_ENTRY_CONTENT_CLASSINFO(dom_object_name)</code><br>
+  For the DOMImplementation object, the line would be:<br>
+  <code>NS_INTERFACE_MAP_ENTRY_CONTENT_CLASSINFO(DOMImplementation)</code><br>
+  What does it do? It's the QueryInterface implementation for the nsIClassInfo interface, which is requested internally by XPConnect. Basically it will create an instance of the scriptable helper class for this DOM object. More on this subject in the rest of this document.</li>
+ <li>Add the DOM object DOMClassInfo in the sClassInfoData array (nsDOMClassInfo.cpp):
+  <pre class="code">NS_DEFINE_CLASSINFO_DATA(dom_object_name, scriptable_helper_class,
+scriptable_flags)
+</pre>
+
+  <p>For the DOMImplementation object, the lines would be:</p>
+
+  <pre class="code">NS_DEFINE_CLASSINFO_DATA(DOMImplementation, nsDOMGenericSH,
+DOM_DEFAULT_SCRIPTABLE_FLAGS)
+</pre>
+  The place where you have to add the DOMClassInfo in that array should be obvious. If it is not, ask <a class="link-mailto" href="mailto:jst@netscape.com">Johnny Stenback</a>.</li>
+ <li>Add the DOM object DOMClassInfo in the nsDOMClassInfo::Init() method (nsDOMClassInfo.cpp):
+  <pre class="programlisting">DOM_CLASSINFO_MAP_BEGIN(dom_object_name, dom_object_main_interface)
+DOM_CLASSINFO_MAP_ENTRY(interface1)
+DOM_CLASSINFO_MAP_ENTRY(interface2)
+...
+DOM_CLASSINFO_MAP_END
+</pre>
+
+  <p>For the DOMImplementation object, the lines would be:</p>
+
+  <pre class="programlisting">DOM_CLASSINFO_MAP_BEGIN(DOMImplementation, nsIDOMDOMImplementation)
+DOM_CLASSINFO_MAP_ENTRY(nsIDOMDOMImplementation)
+DOM_CLASSINFO_MAP_END
+</pre>
+  The <code>interface1</code>, <code>interface2</code>, ... arguments are the name of the interfaces implemented by the DOM object AND exposed to JavaScript. The internal interfaces should NOT be a part of this list.</li>
+ <li>#include the relevant files to make it build, tweak the makefiles, etc. Make sure it builds on all platforms! :-P</li>
+ <li>If you used an already existing scriptable helper class, then all you need to do is build, nuke components.reg (if you build optimized) and run. Everything should work well.</li>
+ <li>If you want to use a new scriptable helper class, you will have to implement it as well.</li>
+</ol>
+
+<h4 id="How_to_override_the_default_behavior_of_XPConnect_on_DOM_objects" name="How_to_override_the_default_behavior_of_XPConnect_on_DOM_objects">How to override the default behavior of XPConnect on DOM objects</h4>
+
+<p>XPConnect implements default behaviors for XPCOM objects in general, and for DOM objects in particular. DOMClassInfo allows the implementor to override this default behavior using the nsIXPCScriptable interface. Before we begin, please take a look at the nsIXPCScriptable.idl file. It defines a set of constants, called the "scriptable flags", and a set of functions, like NewResolve(), SetProperty(), ... Each flag corresponds to one function. For example, nsIXPCScriptable::WANT_NEWRESOLVE means that we want to implement the NewResolve() function. The important thing to grasp is that each function corresponds to an event in the life of the DOM object. For example, the SetProperty() function is called automatically by XPConnect when, in JS, the client tries to set a property on this DOM object. This is how we can override the default "set this property on this object" XPConnect behavior. For more information about each nsIXPCScriptable function, please see the nsIXPCScriptable documentation.</p>
+
+<div class="highlight">
+<p>To illustrate the use of nsIXPCScriptable and scriptable helper functions, we will take the example of the "location" property of the window object. <code>window.location</code> is a DOM object of type "Location". However a common technique is to do <code><span class="nowiki">window.location = "http://mozilla.org"</span></code> instead of the correct <code><span class="nowiki">window.location.href = "http://mozilla.org"</span></code>. So, we have to override the default behavior of "setting the location property on the window object". The default behavior would be that XPConnect expects a nsIDOMLocation object. However it would be passed a JS string. A bad conversion exception would be thrown.</p>
+</div>
+
+<p>Before we start looking at the implementation of the nsIXPCScriptable interface, the implementor needs the following information:</p>
+
+<ul>
+ <li>Which DOM object is concerned</li>
+ <li>What action does he want to override</li>
+ <li>What should happen</li>
+</ul>
+
+<p>For our example, it is the window object. The action is setting a property. What should happen is that setting .location should set .location.href. With that information in hand, we can start coding.</p>
+
+<h5 id="What_there_is_to_do_3" name="What_there_is_to_do_3">What there is to do</h5>
+
+<ol>
+ <li>Locate the DOM object ClassInfo data in the sClassInfoData array. In our example, it is the Window object. The three parameters passed to the macro, as described in the previous Section, are the DOM object name, the scriptable helper class, and the scriptable flags.</li>
+ <li>The scriptable flags tell you which nsIXPCScriptable interfaces are implemented by this DOM object. If the flag you need is already there, then go on to the next step. Else, add it to the flag list.</li>
+ <li>Remember the name of the scriptable helper class for this object. For most objects, it is the nsDOMGenericSH class, which is just a typedef for the nsDOMClassInfo class. If your DOM object does not require any special-casing, then the scriptable helper for your object should be nsDOMGenericSH. If you need special-casing, scroll to the implementation of the helper class.<br>
+  In our example, it's the nsWindowSH class.</li>
+ <li>If the helper class already implements the nsIXPCScriptable function you need, go on to the next step. Else, implement this new method, using the arguments described in the nsIXPCScriptable interface.</li>
+ <li>Now comes the interesting part. It is unfortunately impossible to describe all the uses of the scriptable helpers, you will have to use your coding skills and/or copy existing code. We will however describe the implementation of our example, the window.location property.</li>
+</ol>
+
+<h5 id="The_window.location_implementation" name="The_window.location_implementation">The window.location implementation</h5>
+
+<p>Overriding the setter of a property requires two scriptable flags: WANT_NEWRESOLVE and WANT_SETPROPERTY. NewResolve() will define the property on the object using the JS API, the second one will map .location to .location.href. As of writing this document, the code in nsWindowSH::NewResolve() looks like this: (nsDOMClassInfo.cpp)</p>
+
+<pre>3553     if (flags &amp; JSRESOLVE_ASSIGNING) {
+// Only define the property if we are setting it.
+3554       if (str == sLocation_id) {
+// Setting the location property.
+3555         nsCOMPtr&lt;nsIDOMWindow&gt;
+window(do_QueryInterface(native));
+3556         NS_ENSURE_TRUE(window, NS_ERROR_UNEXPECTED);
+3557
+3558         nsCOMPtr&lt;nsIDOMLocation&gt; location;
+3559         rv = window-&gt;GetLocation(getter_AddRefs(location));
+3560         NS_ENSURE_SUCCESS(rv, rv);
+// Use the DOM to get the Location object of the window object.
+3561
+3562         jsval v;
+3563
+3564         rv = WrapNative(cx, obj, location, NS_GET_IID(nsIDOMLocation),
+&amp;v);
+// This XPConnect method creates a wrapper for the Location object on the //
+Window object.
+3565         NS_ENSURE_SUCCESS(rv, rv);
+3566
+3567         if (!::JS_DefineUCProperty(cx, obj, ::JS_GetStringChars(str),
+3568                                    ::JS_GetStringLength(str), v, nsnull,
+3569                                    nsnull, 0)) {
+3570           return NS_ERROR_FAILURE;
+3571         }
+// This JS API call defines the "location" property on the window object, its
+// value being the XPConnect wrapper for the Location object.
+3572
+3573         *objp = obj;
+3574
+3575         return NS_OK;
+3576       }
+</pre>
+
+<p>This is the first step. It is required to have the getter for .location work as well, but that's another story. The second step is to map .location to .location.href in nsWindowSH::SetProperty()</p>
+
+<pre>2894     if (str == sLocation_id) {
+// Setting the location property
+2895       JSString *val = ::JS_ValueToString(cx, *vp);
+2896       NS_ENSURE_TRUE(val, NS_ERROR_UNEXPECTED);
+// Convert the value assigned to location (i.e. the url) to a JSString.
+2897
+2898       nsCOMPtr&lt;nsISupports&gt; native;
+2899       wrapper-&gt;GetNative(getter_AddRefs(native));
+// Get the pointer to the content object that was wrapped.
+2900
+2901       nsCOMPtr&lt;nsIDOMWindow&gt;
+window(do_QueryInterface(native));
+2902       NS_ENSURE_TRUE(window, NS_ERROR_UNEXPECTED);
+// QueryInterface to have a nsIDOMWindow pointer to call
+// GetLocation() on it.
+2903
+2904       nsCOMPtr&lt;nsIDOMLocation&gt; location;
+2905       nsresult rv = window-&gt;GetLocation(getter_AddRefs(location));
+2906       NS_ENSURE_SUCCESS(rv, rv);
+// Get the Location object for this window.
+2907
+2908       nsDependentString href(NS_REINTERPRET_CAST(PRUnichar *,
+2909                                                  ::JS_GetStringChars(val)),
+2910                              ::JS_GetStringLength(val));
+// Convert the JSString to a string that can be passed to SetHref()
+2911
+2912       rv = location-&gt;SetHref(href);
+2913       NS_ENSURE_SUCCESS(rv, rv);
+// After this, we effectively mapped .location to .location.href
+2914
+2915       return WrapNative(cx, obj, location, NS_GET_IID(nsIDOMLocation), vp);
+// Create a wrapper for the location object with vp (the url) as value.
+2916     }
+</pre>
+
+<p>It's that simple. And the possibilities are endless.</p>
+
+<h4 id="Resources_of_interest" name="Resources_of_interest">Resources of interest</h4>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/Tech/XPIDL" title="en/XPIDL/xpidl">The XPIDL reference</a></li>
+ <li><a class="external" href="https://www-archive.mozilla.org/docs/dom/mozilla/classes/index.html">Mapping DOM Objects to their C++ class</a></li>
+ <li><a href="/en-US/docs/Archive/Mozilla/Modularization_Techniques" title="en/Modularization_Techniques">Modularization Techniques</a></li>
+</ul>
+
+<h3 id="Scriptable_Helper_flags" name="Scriptable_Helper_flags">Scriptable Helper flags</h3>
+
+<p>This chapter has not been written yet. If you want to help please contact me!</p>
+
+<h3 id="Security_features_implementation" name="Security_features_implementation">Security features implementation</h3>
+
+<p>This chapter has not been written yet. If you want to help please contact me!</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:fguisset@softhome.net">Fabian Guisset</a></li>
+ <li>Last Updated Date: September 27, 2007</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

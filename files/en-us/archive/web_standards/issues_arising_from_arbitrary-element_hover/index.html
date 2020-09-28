@@ -1,0 +1,98 @@
+---
+title: Issues Arising From Arbitrary-Element hover
+slug: Archive/Web_Standards/Issues_Arising_From_Arbitrary-Element_hover
+tags:
+  - Archive
+  - CSS
+---
+<p> </p>
+
+<p><span class="comment">Summary: Thanks to long-standing limitations, we're used to thinking of hover styles as applying only to hyperlinks, which has led to some sloppy authoring practices that are now causing problems for some Web sites. This technote explains the source of the problems and how to avoid encountering them.</span> Many authors make use of the CSS2 <a href="/en/CSS/Pseudo-classes" title="Pseudo-classes">pseudo-class</a> <code>:hover</code> to style their links. This innovation, first introduced by Microsoft® Internet Explorer and later adopted into the CSS specification, is very popular for the styling of text links, particularly those that are supposed to look and act like JavaScript-driven "rollovers." However, advancing CSS support in browsers has caused some unexpectedly aggressive hovering behavior on some pages.</p>
+
+<h3 id="Hover_and_Non-Link_Elements" name="Hover_and_Non-Link_Elements">Hover and Non-Link Elements</h3>
+
+<p><a href="http://www.w3.org/TR/CSS2/selector.html#x36" class="external">Section 5.11.3 of CSS2</a> defines the three dynamic pseudo-classes (<a href="/En/CSS/:hover" title=":hover"><code>:hover</code></a>, <a href="/En/CSS/:active" title=":active"><code>:active</code></a>, and <a href="/En/CSS/:focus" title=":focus"><code>:focus</code></a>) and then goes on to say:</p>
+
+<blockquote>CSS doesn't define which elements may be in the above states, or how the states are entered and left. Scripting may change whether elements react to user events or not, and different devices and UAs may have different ways of pointing to, or activating elements.</blockquote>
+
+<p>Thus, although authors are used to thinking of these states as applying exclusively to hyperlinks, they are not so restricted by CSS2. Any element can, in theory, be in any of the three states, and thus can be styled based on those states. This has not traditionally been the case.</p>
+
+<h3 id="Bare_Pseudo-Classes" name="Bare_Pseudo-Classes">Bare Pseudo-Classes</h3>
+
+<p>The second piece of the problem comes when we consider the effects of a "bare" pseudo-class in a selector. For example:</p>
+
+<pre>:hover {color: red;}</pre>
+
+<p>This is equivalent to the CSS2 rule:</p>
+
+<pre>*:hover {color: red;}</pre>
+
+<p>..which translates as "any element that is being hovered should have its foreground colored red." Thus, hovering over paragraphs, tables, headings, and any other element in a document will cause text to become red.</p>
+
+<p>A common variant is to use a bare class and hover pseudo-class together, like this:</p>
+
+<pre>.nav:hover {color: red;}</pre>
+
+<p>In situations where the only instances of the <code>class</code> value <code>nav</code> are applied to hyperlinks, this will work fine. However, rules of this type are usually seen in conjunction with markup like this:</p>
+
+<pre>&lt;td class="nav"&gt;
+&lt;a href="one.html" class="nav"&gt;one&lt;/a&gt; |
+&lt;a href="two.html" class="nav"&gt;two&lt;/a&gt; |
+&lt;a href="thr.html" class="nav"&gt;three&lt;/a&gt; |
+&lt;a href="fou.html" class="nav"&gt;four&lt;/a&gt;
+&lt;/td&gt;</pre>
+
+<p>Because the enclosing table cell has a <code>class</code> of <code>nav</code>, the vertical-bar characters will turn red when the user moves the mouse pointer anywhere within the table cell. The links will also turn red when they are hovered.</p>
+
+<h3 id="Gecko_Behavior" name="Gecko_Behavior">Gecko Behavior</h3>
+
+<p>In browsers based on Netscape Gecko builds later than 20020410 (Netscape 6.1+), <code>:hover</code> styles can be applied to any element in a document. Thus authors who have used bare pseudo-classes, or bare class-pseudo-class combinations, are at risk of seeing hover styles applied to more than just their links. The most reliable fix is to add the anchor element to the selectors, like this:</p>
+
+<pre>a:hover {color: red;}
+a.nav:hover {color: red;}</pre>
+
+<p>In an attempt to avoid causing problems for legacy documents, browsers based on Mozilla 1.0 and later (Netscape 7+) include code that causes bare pseudo-classes to be restricted only to links if the document is rendered in "quirks" mode. In browsers based on the engine found in Mozilla 1.3b and later, this quirk is extended to cover selectors that combine a bare class selector with the <code>:hover</code> pseudo-class (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=169078" title="FIXED: .class:hover should be ignored for non-links in quirks mode">bug 169078</a> for details).</p>
+
+<h3 id="Named_Anchor_Problems" name="Named_Anchor_Problems">Named Anchor Problems</h3>
+
+<p>In addition to the effects described previously, there are two other relatively common effects that authors may not expect. One is easily fixed by validation, but the other is a little more subtle.</p>
+
+<p>First, there is the problem of authors who open a named anchor but do not close it. For example:</p>
+
+<pre>&lt;a name="pagetop"&gt;
+&lt;h2&gt;My Page&lt;/h2&gt;</pre>
+
+<p>Without a <code>&lt;/a&gt;</code>, this name will effectively enclose the rest of the document. This generally means that the rest of the document will take hover styles. Consider the effects of the following rule:</p>
+
+<pre>a:hover {color: red;}</pre>
+
+<p>In a document with an unclosed named anchor, any text that follows the anchor's open tag will be colored red (unless another CSS rule intervenes).</p>
+
+<p>This brings up the second common problem, which is that named anchors can accept hover styles. Although authors may intend the selector <code>a:hover</code> to apply only to hyperlinks, it will also apply to named anchors, since the selector merely states that any <code>a</code> element which is in a hover state will be styled. In order to avoid this problem, authors should use the combined pseudo-class syntax described by CSS2:</p>
+
+<pre>a:link:hover {color: red;}
+a:visited:hover {color: maroon;}</pre>
+
+<p>Note that, with this syntax, it is possible to style visited and unvisited links differently when they are hovered. This was not possible with simple <code>a:hover</code>. It does mean, of course, that the selector <code>a:link:hover</code> will only apply to unvisited links, so authors who want the same hover style to apply to both visited and unvisited links should group the two selectors into a single rule.</p>
+
+<h3 id="Recommendation" name="Recommendation">Recommendation</h3>
+
+<p>To avoid unexpected problems, authors are <strong>strongly</strong> encouraged to include element names in dynamic-state pseudo-classes that are meant to be applied to hyperlinks. Furthermore, combining pseudo-classes prevents hover styles from being applied to non-hyperlink anchors. Thus, <code>a:hover</code> should always be used instead of just <code>:hover</code>, and <code>a:link:hover</code> (and <code>a:visited:hover</code>) are preferred to the simpler <code>a:hover</code></p>
+
+<h3 id="Related_Links" name="Related_Links">Related Links</h3>
+
+<ul>
+ <li><a href="http://www.w3.org/TR/CSS2/selector.html#x36" class="external">The dynamic pseudo-classes: :hover, :active, and :focus</a></li>
+ <li><a href="http://msdn.microsoft.com/en-us/library/ms530766.aspx" class="external">:hover Pseudo-class (MSDN)</a></li>
+</ul>
+
+<div class="originaldocinfo">
+<h3 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h3>
+
+<ul>
+ <li>Author(s): Eric A. Meyer, Netscape Communications</li>
+ <li>Last Updated Date: Published 07 Mar 2003; Revised 21 Mar 2003</li>
+ <li>Copyright Information: Copyright © 2001-2003 Netscape. All rights reserved.</li>
+ <li>Note: This reprinted article was originally part of the DevEdge site.</li>
+</ul>
+</div>

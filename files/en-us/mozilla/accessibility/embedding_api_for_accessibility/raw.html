@@ -1,0 +1,350 @@
+<div id="main-content">
+  <p>Comments/Questions? Please contact the <a href="http://www.mozilla.org/access/index#community">Mozilla Accessibility Community</a>.</p>
+  <p>Mozilla needs to move in the direction of accessibility. Here is the <a href="http://www.w3.org/wai/ua">W3C's definition of accessibility for a
+    <i>
+      user agent</i>
+    </a> like Mozilla.</p>
+  <p>In part, being accessible means supporting a built-in accessibility APIs for a platform, such as <a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/msaa/msaastart_9w2t.asp">Microsoft Active Accessibility</a> or <a href="http://developer.gnome.org/projects/gap/">ATK</a> for Linux and UNIX desktops.</p>
+  <p>There are many other pieces, such as preferences to allow the user to change foreground and background colors, and font sizes. Mozilla already supports some of these options. This document lays out what we already have, and what we'll need later, in the embedding API to support accessibility.</p>
+  <h2 id="Text_Zoom_on_a_Per-Window_Basis">Text Zoom on a Per-Window Basis</h2>
+  <p>The <code>nsIDOMWindow::GetTextZoom(float *zoomFactor)</code> and <code>nsIDOMWindow::SetTextZoom(float zoomFactor)</code> methods can be used to set a wide range of text zoom factors on a content window. A zoom factor of 1.0 represents 100%, or normal zoom. For double-sized text, use <code>nsIDOMWindow::SetTextZoom(2.0);</code></p>
+  <h2 id="Using_Accessibility_Preferences">Using Accessibility Preferences</h2>
+  <p>There are a number of prefs related to accessibility. For the most part, <strong>an automatic reframe is performed when one of these prefs is changed</strong>. A reframe fixes the appearance of the page to match the new prefs, without reloading the document over the network. Be aware that in debug builds, this can cause a great number of assertions (bug <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=71598">71598</a>)</p>
+  <p>To use prefs in embedding, use something like the following code:</p>
+  <pre>#include "nsIPref.h";
+nsresult rv;
+
+nsCOMPtr&lt;nsIPref&gt; prefs(do_GetService(NS_PREF_CONTRACTID, &amp;rv));
+prefs-&gt;SetBoolPref("bool.pref.name", PR_TRUE /* or PR_FALSE */);
+prefs-&gt;SetIntPref("int.pref.name", newValue);
+prefs-&gt;SetCharPref("string.pref.name", newCharStarValue);
+</pre>
+  <p>To manually add a pref to your settings, add a line like the following to your prefs.js:</p>
+  <pre>user_pref("accessibility.browsewithcaret", true);
+</pre>
+  <h2 id="Accessibility_Prefs_Reference">Accessibility Prefs Reference</h2>
+  <p>The following is a description of what accessibility prefs give us (or will give us), for accessibility:</p>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Functionality</th>
+        <th scope="col">Implementation</th>
+        <th scope="col">Works as of</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Images</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("network.image.imageBehavior", behavior);</span></div>
+          <div>
+            /* behavior: 0=Accept, 1=Accept images from originating server only, 2=no images */</div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Cookies</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("network.cookie.cookieBehavior", behavior);</span></div>
+          <div>
+            /* behavior: 0=Accept, 1=Accept cookies from originating server only, 2=no cookies */</div>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("network.cookie.warnAboutCookies", boolWarn);</span></div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Fonts</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("font.name.monospace.x-western", newFontName);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("font.name.serif.x-western", newFontName);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("font.name.sans-serif.x-western", newFontName);</span></div>
+          <div>
+            /* For other i18n charsets, change x-western to x-central-euro, x-cyrillic, x-unicode, x-user-def, x-baltic, el, tr, he, ar, th, ja, zh-CN or zh-TW */</div>
+          <div>
+             </div>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("font.size.fixed.x-western", newFontSize);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("font.size.variable.x-western", newFontSize);</span></div>
+          <div>
+            /* For other i18n charsets, change the name as explained above for font face*/</div>
+          <div>
+             </div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("font.default","serif");</span> /* or "sans-serif" */</div>
+          <div>
+             </div>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("browser.use_document_fonts", whichFonts);</span></div>
+          <div>
+            /* whichFonts: 0=no, 1=yes */</div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Fonts from Operating system?</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.use_system_fonts", useSystemFonts);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Colors for page</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.display.foreground_color", "#abcdef" /* hex color value */);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.display.background_color", "#abcdef" /* hex color value */);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.display.use_system_colors", boolSystemColors);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.display.use_document_colors", boolUseAuthorColors);</span></div>
+          <div>
+            /* Setting use_document_colors also stops background images from loading */</div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Link appearance</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.anchor_color", "#abcdef" /* hex color value */);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.visited_color", "#abcdef" /* hex color value */);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.underline_anchors", boolUnderlineLinks);</span></div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Focus appearance</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.display.use_focus_colors", useFocusColors);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.display.focus_background_color", colorString);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.display.focus_text_color", colorString);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.display.focus_ring_width", numPixels);</span> /* 0-4 */</div>
+        </td>
+        <td>Moz 0.9.2</td>
+      </tr>
+      <tr>
+        <td>Text Selection appearance</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.selection.background_color", colorString);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.selection.foreground_color", colorString);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("browser.selection.border", cssBorderStyleString);</span></div>
+          <div>
+            /* Is a selection border hard to implement? It's a W3C UAAG requirement */</div>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.selection.use_system_colors", useSystemColors);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Content Waiting Alerts</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.mail_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.background_image_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.popup_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.applet_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.script_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.redirect_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.refresh_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.plugin_content_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.video_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.audio_waiting", pathToSoundFile);</span></div>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("alert.audio.timed_event_waiting", pathToSoundFile);</span></div>
+          <div>
+            /* These alerts will also be mirrored visually, either on the status bar or elsewhere */</div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Background images</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.background_images", acceptBackgroundImages);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Blinking text</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.blink_allowed", acceptBlinkText);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Animations</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetCharPref("image.animation_mode", animationMode);</span></div>
+          <div class="api">
+            <span style="color: #008000;">animationMode: "normal", "none", "once"</span></div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Applets</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.applets", acceptApplets);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Scripts</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.scripts", acceptScripts);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Popup windows</td>
+        <td>
+          <div>
+            // Turn window.open off for particular sites:</div>
+          <div class="api">
+            <span style="color: #008000;">user_pref("capability.policy.popupsites.sites", "http://www.annoyingsite1.com http://www.popupsite2.com");</span></div>
+          <div class="api">
+            <span style="color: #008000;">user_pref("capability.policy.popupsites.windowinternal.open","noAccess");</span></div>
+          <div>
+             </div>
+          <div>
+            // Or turn it off everywhere:</div>
+          <div class="api">
+            <span style="color: #008000;">user_pref("capability.policy.default.windowinternal.open","noAccess");</span></div>
+          <div>
+             </div>
+          <div>
+            // Override popping up new windows on target=anything</div>
+          <div class="api">
+            <span style="color: #008000;">user_pref("browser.block.target_new_window", true);</span></div>
+          <div>
+             </div>
+          <div>
+            // Override popup windows at beginning of new page load (blocks most popup advertisements)</div>
+          <div class="api">
+            <span style="color: #008000;">user_pref("dom.disable_open_during_load", true);</span></div>
+        </td>
+        <td>Moz 0.8</td>
+      </tr>
+      <tr>
+        <td>Client side redirects</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.redirects", acceptRedirects);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Content refreshes</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.refreshes", acceptRefreshes);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Plugin content</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.plugin_content.[plugin_name_goes_here]", acceptPluginContent);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Video</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.video", acceptVideo);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Audio</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.audio", acceptAudio);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Timed events</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("browser.accept.timed_events", acceptTimedEvents);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Timer speed</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetIntPref("timer.relative_speed", percent);</span></div>
+          /* 100 corresponds to normal speed, 200 to double speed */</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Allow cycling in lists and links</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("keyboardnav.allow_cycling", allowCycling);</span></div>
+        </td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Mouse pointer moves with keyboard focus</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("keyboardnav.mouse_follows_keyboard_focus", mouseFollows);</span></div>
+          /* If this pref is set, the mouse pointer will always be move to the 0,0 pixel of the current keyboard focus frame */</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Browse with caret</td>
+        <td>
+          <div class="api">
+            <span style="color: #008000;">SetBoolPref("accessibility.browsewithcaret", useCaret);</span></div>
+          /* If this pref is set, the caret will be visible in the text of the browser, allowing the user to cursor around the HTML content as if in a read-only editor */</td>
+        <td>Moz 0.9</td>
+      </tr>
+    </tbody>
+  </table>
+  <h2 id="Special_Content_Notifications">Special Content Notifications</h2>
+  <p>The W3C UAAG specifies types of content that must be optional. The intention is for a user to be notified of its existence, and at some point they can choose to load the content. This is a much better alternative than having the user go through a long series of confirm boxes for each new page, for each type of content.</p>
+  <p>For each preference named "browser.accept.*", there is also an "alert.audio.*" preference, to allow configuration of sound files to go with each type of content. The audio file could be a clip of a human voice saying "You've got video" or even a simple beep. How we expose this through the user interface is another matter.</p>
+  <h2 id="Accepting_Special_Content_on_an_Instance_Basis">Accepting Special Content on an Instance Basis</h2>
+  <p>After being notified of special content, the user needs to be able to select specific unloaded content for loading.</p>
+  <p>One way of doing this is to build up the nsIWebBrowserAccessible interface, so that there is a method to force loading each type of content just for the current page in the current session.</p>
+  <h2 id="Open_Issue_Accessibility_Settings_per_URL">Open Issue: Accessibility Settings per URL</h2>
+  <p>A powerful possibility is that we design an interface for setting certain preferences based on the URL. If we can find a clean way to present it to the user, this would be extremely useful. For example, settings per URL would allow a user to accept scripts from their known benign web pages, but not others. Users may want similarity abilities with applets, background images, style sheets, etc.</p>
+  <p>We have a permissions system for cookies and images based on URL's. Perhaps it can be extended to store accessibility preferences. This is a UI issue we'll need to settle before we know where to go with the embedding accessibility interface.</p>
+</div>
+<p> </p>

@@ -1,0 +1,92 @@
+<p>{{ jsapi_minversion_header("17") }}</p>
+
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Create a new JavaScript object for use as a global object.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JSObject *
+JS_NewGlobalObject(JSContext *cx, const JSClass *clasp, JSPrincipals *principals,
+                   JS::OnNewGlobalHookOption hookOption,
+                   const JS::CompartmentOptions &amp;options = JS::CompartmentOptions());
+
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to create the new global object. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>clasp</code></td>
+   <td>{{jsapixref("Jsclass", "Jsclass *")}}</td>
+   <td>
+    <p>The class to use for the new global object.</p>
+
+    <p><code>clasp-&gt;flags</code> must have the {{jsapixref("JS_SetGlobalObject", "JSCLASS_GLOBAL_FLAGS")}} bits set.</p>
+    The caller must ensure that the <code>JSClass</code> remains alive throughout the lifetime of the new object, including the garbage collection cycle that finally frees it. The usual way to do this is to make <code>JSClass</code>es global or <code>static</code>.</td>
+  </tr>
+  <tr>
+   <td>principals</td>
+   <td>{{jsapixref("JSPrincipals", "JSPrincipals *")}}</td>
+   <td>The security information to associate with this compartment.</td>
+  </tr>
+  <tr>
+   <td>hookOption</td>
+   <td><code>JS::OnNewGlobalHookOption</code></td>
+   <td>See <a href="#Debugger_API_Hook">Debugger API Hook</a> {{ Jsapi_minversion_inline("31") }}</td>
+  </tr>
+  <tr>
+   <td>options</td>
+   <td>{{jsapixref("JS::CompartmentOptions", "const JS::CompartmentOptions &amp;")}}</td>
+   <td>The option for new compartment (passed to <code>JScompartment</code> constructor). {{ Jsapi_minversion_inline("31") }}</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS_NewGlobalObject</code></strong> creates a new global object based on the specified class.</p>
+
+<p>The new object has no {{jsapixref("JS_GetParent", "parent", "", 1)}}. It initially has no prototype either, since it is typically the first object created; call {{jsapixref("JS_InitStandardClasses")}} to create all the standard objects, including <code>Object.prototype</code>, and set the global object's prototype.</p>
+
+<p>The constructor {{jsapixref("JSClass.construct", "clasp-&gt;construct")}} is not called.</p>
+
+<p>On success, <code>JS_NewGlobalObject</code> returns a pointer to the new object. Otherwise it returns <code>NULL</code>.</p>
+
+<h3 id="Debugger_API_Hook" name="Debugger_API_Hook">Debugger API Hook</h3>
+
+<p>During global creation, we fire notifications to callbacks registered via the Debugger API. These callbacks are arbitrary script, and can touch the global in arbitrary ways. When that happens, the global should not be in a half-baked state. But this creates a problem for consumers that need to set slots on the global to put it in a consistent state.</p>
+
+<p>This API provides a way for consumers to set slots atomically (immediately after the global is created), before any debugger hooks are fired. It's unfortunately on the clunky side, but that's the way the cookie crumbles.</p>
+
+<p>If callers have no additional state on the global to set up, they may pass <strong><code>FireOnNewGlobalHook</code></strong> to <code>JS_NewGlobalObject</code>, which causes that function to fire the hook as its final act before returning. Otherwise, callers should pass <strong><code>DontFireOnNewGlobalHook</code></strong>, which means that they are responsible for invoking <code>JS_FireOnNewGlobalObject</code> upon successfully creating the global. If an error occurs and the operation aborts, callers should skip firing the hook. But otherwise, callers must take care to fire the hook exactly once before compiling any script in the global's scope (we have assertions in place to enforce this). This lets us be sure that debugger clients never miss breakpoints.</p>
+
+<pre class="brush: cpp">enum OnNewGlobalHookOption {
+    FireOnNewGlobalHook,
+    DontFireOnNewGlobalHook
+};
+</pre>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_NewGlobalObject") }}</li>
+ <li>{{ LXRSearch("ident", "i", "OnNewGlobalHookOption") }}</li>
+ <li>{{bug(897322)}}</li>
+ <li>{{bug(880917)}}</li>
+ <li>{{bug(759585)}}</li>
+ <li>{{bug(570040)}}</li>
+ <li>{{bug(755186)}}</li>
+ <li>{{bug(1239666)}} - options is no longer optional</li>
+</ul>

@@ -1,0 +1,214 @@
+<p>Please contact the <a href="http://www.mozilla.org/access/index#community">Mozilla Accessibility Community</a> with questions or feedback.</p>
+<h3 id="The_Work"><a name="fundamentalgoals">The Work</a></h3>
+<p>When implementing a new toolkit it's important to:</p>
+<ul>
+  <li>Implement <span style="text-decoration: underline;">standard keyboard behavior</span>, which can vary from platform to platform.</li>
+  <li><span style="text-decoration: underline;">Expose your UI</span> - a way for assistive technologies such as screen readers, screen magnifiers and voice dictation software to understand your software.</li>
+  <li>Provide <span style="text-decoration: underline;">theme compatibility</span> with the operating system, at least as an option. Some low vision users will be running your software with high contrast or large font themes.</li>
+  <li><span style="text-decoration: underline;">Go beyond <a href="http://www.section508.gov/index.cfm?FuseAction=Content&amp;ID=12#Software">section 508</a></span>. Implement true usability for everyone, and make your toolkit follow the guidelines for each platform.</li>
+</ul>
+<h3 id="The_Approaches"><a name="approaches">The Approaches</a></h3>
+<p>There are two basic kinds of toolkits, which each provide different challenges when implementing accessibility:</p>
+<ul>
+  <li>
+    <i>
+      Native widget toolkits</i>
+    , like <a href="http://www.eclipse.org/">Eclipse</a> and <a href="http://www.wxwidgets.org/">wxWidgets</a>, already have some accessibility built-in. These toolkits wrap the widgets implemented by the OS with a consistent API for each platform. Since the individual widgets predominately come from the operating system, they already implement standard keyboard commands and follow the operating system's visual theme. Also, assistive technologies already understand native widgets so it is only necessary to implement <a href="http://www.mozilla.org/access/windows/msaa-server#intro">Microsoft Active Accessibility (MSAA) API</a> support for custom controls. However, be aware that the wrapping layer will introduce accessibility bugs, and thus you will need to test extensively and fill in the holes. You will also need to provide a way for custom and owner drawn controls to easily accessibility API support, as <a href="http://www.wxwidgets.org/docs/access.htm">wxWidgets does</a>. There will be custom and owner drawn controls -- there always are. For example, lists of checkboxes are implemented in Windows with images of checked and unchecked checkboxes.</li>
+  <li>
+    <i>
+      Owner drawn toolkits</i>
+    , like <a href="http://www.xulplanet.com/">XUL</a> and <a href="http://www.adobe.com/devnet/flex/articles/struts.html">Flash's Flex UI framework</a> use few or no native widgets. These toolkits need to have accessibility implemented from the ground up, and get nothing for free in terms of keyboard, API or OS-theme support. In this case, adding a complete or even a partial accessibility solution is major work, and will require more than one full time person as well as cooperation from Windows assistive technology vendors when parts of your MSAA solution isn't working. Often these kinds of toolkits don't use a separate window for each control; in that case remember to generate a unique 32 bit child ID for each control so that the MSAA event system can call back for the right IAccessible for each event.</li>
+</ul>
+<h3 id="The_Checklist"><a name="checklist">The Checklist</a></h3>
+<p>This checklist is currently only for Microsoft Windows, but should be expanded to include information about Linux and OS X. It is maintained by the <a href="http://www.mozilla.org/access#community">Mozilla Accessibility Community</a>. Contributions are welcome.</p>
+<h4 id="General"><a name="general">General</a></h4>
+<ol>
+  <li>Dialogs/windows/general
+    <ol style="list-style-type: lower-alpha;">
+      <li>Escape key cancels dialogs and refocuses the previously focused on the parent window.</li>
+      <li>Alt+F4 closes windows, similar to Escape but even works on dialogs without Cancel button</li>
+      <li>Alt+space opens window menu with Restore, Move, Size, Minimize, Maximize, Close</li>
+      <li>The Move and Size options must be usable with the arrow keys on the keyboard</li>
+      <li>In windows, initial focus goes to first focusable widget that is not a clickable tabbed property sheet label</li>
+      <li>Making tab order definable. Default tab order should be in document order.</li>
+      <li>Tab order must wrap, not have invisible items in tab order</li>
+      <li>Dynamically added items must not corrupt the tab cycle or make it disorderly</li>
+      <li>Tab cycle must be identical backwards and forwards</li>
+      <li>The F6 and Shift+F6 key combinations should cycle through panes in a window</li>
+      <li>Making focus visible on any widget, and focus must always be visible</li>
+      <li>Shift+F10 or context menu key should work like right click on focused item, and context menu should show just under and to the right of the current focus. On Mac OS X, ctrl+space is used to bring up the context menu.</li>
+      <li>Most widgets (like checkboxes) can have a label outside of themselves, which should focus the widget when clicked on, or when its mnemonic is pressed. The system should require these labels to be created/associated with each widget, not as a separate static text with no tie to the widget. The MSAA support needs to know what label goes with what widget.</li>
+      <li>MSAA support: expose window with ROLE_DIALOG, unless it's already the standard dialog window class #32770. If you don't, some screen readers won't automatically read the dialog when it receives focus. Expose status bars with ROLE_STATUSBAR, unless they already use the standard window class msctls_statusbar32. Make sure that parent-child relationships are exposed correctly in each window's MSAA tree</li>
+    </ol>
+  </li>
+  <li>General MSAA support
+    <ol style="list-style-type: lower-alpha;">
+      <li>Focus events</li>
+      <li>Handling event callbacks, which requires a unique ID for each non-windowed child of every widget that can be focused or have any other event associated with it. For example, a unique child ID would be required for each tree item
+        <ul>
+          <li>Supporting the most important basic IAccessible events</li>
+          <li>get_accParent: Get the parent of an IAccessible.</li>
+          <li>get_accChildCount: Get the number of children of an IAccessible.</li>
+          <li>get_accChild: Get the child of an IAccessible.</li>
+          <li>get_accName: Get the "name" of the IAccessible, for example the name of a button, checkbox or menu item. This is one reason why a label must be created together with each widget, rather than separately.</li>
+          <li>get_accValue: Get the "value" of the IAccessible, for example a number in a slider, a URL for a link, the text a user entered in a field.</li>
+          <li>get_accRole: Get an enumerated value representing what this IAccessible is used for, for example. is it a link, static text, editable text, a checkbox, or a table cell, etc.</li>
+          <li>get_accState: a 32 bit field representing possible on/off states, such as focused, focusable, selected, selectable, visible, protected (for passwords), checked, etc.</li>
+          <li>get_accKeyboardShortcut: What is the keyboard shortcut for this IAccessible (underlined alt+combo mnemonic)</li>
+          <li>get_accFocus: Which child is focused?</li>
+          <li>get_accSelection: Which children of this item are selected?</li>
+          <li>accLocation: Get the x,y coordinates, and the height and width of this IAccessible node.</li>
+          <li>accNavigate: Navigate to the first/last child, previous/next sibling, up, down, left or right from this IAccessible. [important, but no need to implement up/down/left/right]</li>
+          <li>accDoDefaultAction: Perform the action described by get_accDefaultAction.</li>
+        </ul>
+      </li>
+      <li>Supporting the basic MSAA states on every item: unavailable, focused, readonly, offscreen, focusable</li>
+      <li>To avoid extra work, utilize <a href="http://www.mozilla.org/access/windows/msaa-server">implementing an MSAA Server</a></li>
+    </ol>
+  </li>
+  <li>Mnemonics
+    <ol style="list-style-type: lower-alpha;">
+      <li>Ability to define in XML for any widget with a text label (via attribute or a preceding char in label)</li>
+      <li>Automatically define mnemonics for all standard common dialogs (like Yes/No confirmations and Retry/Exit error dialogs)</li>
+      <li>Support mnemonics in dialogs created via method calls</li>
+      <li>Layout engine - drawing underline under correct letter</li>
+      <li>Events - making keystrokes do the right thing</li>
+      <li>MSAA support, via IAccessible's get_accKeyboardShortcut</li>
+    </ol>
+  </li>
+  <li>Support for MS Windows settings
+    <ol>
+      <li>When high contrast checkbox is set (in accessibility control panel, SPI_GETHIGHCONTRAST), or when user selects a "Native" skin option in your software, then get all look and feel from current OS skin.</li>
+      <li>The high contrast theme can be toggled dynamically with LeftAlt+LeftShift+printscreen</li>
+      <li>Expose the SPI_GETSCREENREADER flag to XML/scripts so that apps can alter behavior</li>
+      <li>Use system highlight color where possible for item selection, but never use that exact color in more than 1 place at a time, otherwise screen reader will read everything with that color whenever highlight changes</li>
+      <li>Pay attention to SPI_GETCARETWIDTH for the correct width of the caret</li>
+      <li>Pay attention to 'route mouse pointer to default button' setting</li>
+      <li>It's possible that the user wants mnemonics hidden except when the alt key is pressed. This can be supported through SPI_GETKEYBOARDCUES and SPI_GETMENUUNDERLINES</li>
+    </ol>
+  </li>
+</ol>
+<h4 id="Simple_widgets"><a name="simplewidgets">Simple widgets</a></h4>
+<ol>
+  <li>Buttons
+    <ol style="list-style-type: lower-alpha;">
+      <li>Tab, arrow, unmodified letter mnemonics</li>
+      <li>Require and support text labels for buttons with images, can be same as tooltip</li>
+      <li>Space key activates button</li>
+      <li>Enter key activates focused button (thus current button, not default button shows dark border when a different button is focused)</li>
+      <li>When button has a popup available by clicking on it, the Enter key or space bar should also activate the popup</li>
+      <li>Toolbars and toolbar buttons are not focusable, but we should expose the tooltip. If possible, make the tooltip automatically append text for the keyboard shortcut associated with it.</li>
+      <li>MSAA support, including the haspopup state</li>
+    </ol>
+  </li>
+  <li>Default buttons
+    <ol style="list-style-type: lower-alpha;">
+      <li>Ability to define in XML</li>
+      <li>Enter key fires it, but not when another widget has focus that needs the Enter key</li>
+      <li>Layout engine - drawing dark border dynamically when the currently focused widget does not need the Enter key</li>
+      <li>Events - making keystrokes do the right thing</li>
+      <li>MSAA support (default state)</li>
+    </ol>
+  </li>
+  <li>Links
+    <ol>
+      <li>Enter key activates link (thus default button no longer shows dark border when link is focused)</li>
+      <li>MSAA support, including linked and traversed states, and accessible value that holds destination URL</li>
+    </ol>
+  </li>
+  <li>Text fields - single and multiple line
+    <ol style="list-style-type: lower-alpha;">
+      <li>It's probably best to use native widgets for these, otherwise accessibility support will be quite difficult</li>
+      <li>Tab should always focus the next item, not insert a tab, unless there's a really good reason and another way to navigate</li>
+      <li>Always use system selection color, otherwise screen reader won't read the text</li>
+      <li>Make sure the caret is never blinking when focus is not in text field</li>
+      <li>Handle standard editing keys, such as arrow keys, home, end, pageup, pagedown, ctrl+left/right, shifted keys for selection, delete, ctrl+delete, backspace, ctrl+backspace, ctrl+a, ctrl+b, ctrl+c, ctrl+i, ctrl+u, ctrl+x, ctrl+v, ctrl+[shift]+z</li>
+      <li>In multiline text field, Enter key inserts new line (thus default button no longer shows dark border when multiline text field is focused)</li>
+      <li>In autocomplete text fields, make sure the autocomplete popup doesn't receive actual or MSAA focus unless an up/down arrow is pressed, and don't use the default system highlight color in the list itself unless it really has focus</li>
+      <li>In autocomplete text fields, make sure that the delete or backspace key removes all auto completed selected text.</li>
+      <li>In autocomplete text fields, make sure that the left or right arrow closes the popup and starts moving through the text letter by letter</li>
+      <li>MSAA support, including accessible value that holds text, protected for password fields and readonly for read-only fields</li>
+    </ol>
+  </li>
+  <li>Checkboxes
+    <ol style="list-style-type: lower-alpha;">
+      <li>Space bar to toggle</li>
+      <li>MSAA support, including checkbox state and statechange event</li>
+    </ol>
+  </li>
+  <li>Sliders
+    <ol style="list-style-type: lower-alpha;">
+      <li>Keyboard support for moving slider: arrow keys, home, end, PgUp, PgDn</li>
+      <li>MSAA support including ROLE_SLIDER, accessible value, value change events</li>
+    </ol>
+  </li>
+  <li>Progress bars
+    <ol style="list-style-type: lower-alpha;">
+      <li>MSAA support including accessible name, value, name and value change events</li>
+    </ol>
+  </li>
+</ol>
+<h4 id="Grouped_navigation_widgets"><a name="grpnavwidgets">Grouped navigation widgets</a></h4>
+<ol>
+  <li>Menus
+    <ol style="list-style-type: lower-alpha;">
+      <li>Arrow keys, Enter, Escape</li>
+      <li>Alt alone enters main menu</li>
+      <li>After leaving menus, focus is restored to where it was</li>
+      <li>Modified and unmodified mnemonics</li>
+      <li>MSAA support (including focus events, menu start and end events, radio and checkbox menu items)</li>
+    </ol>
+  </li>
+  <li>Static text and Group boxes
+    <ol style="list-style-type: lower-alpha;">
+      <li>MSAA support</li>
+    </ol>
+  </li>
+  <li>Radio groups
+    <ol style="list-style-type: lower-alpha;">
+      <li>Only the selected radio button is in the tab order</li>
+      <li>The other radio buttons can be selected and focused with up/down arrow.</li>
+      <li>The focused radio button is always selected, and vice versa</li>
+      <li>Keyboard and MSAA support must still work correctly when radio button labels have textfields, combo boxes or other controls as part of their prompts.</li>
+      <li>MSAA support, including checkbox state and statechange event</li>
+    </ol>
+  </li>
+  <li>Tab panels
+    <ol style="list-style-type: lower-alpha;">
+      <li>Ctrl+[shift]+tab or Ctrl+PgUp/PgDn to switch tabs</li>
+      <li>Tabs can be focused, and then left/right arrow to switch</li>
+      <li>First click on a tab switches to it, second click focuses it</li>
+      <li>MSAA support. Note, you can use the accessible description to expose the current tab position, such as "3 of 5" in order to provide ease of access for the user. The "of" will be parsed out by the assistive technology, so don't localize it.</li>
+    </ol>
+  </li>
+  <li>Lists and combo boxes
+    <ol style="list-style-type: lower-alpha;">
+      <li>When a list is tabbed to, select the first item if nothing else is already selected</li>
+      <li>F4, Alt+down or alt+up toggle a combo box open and closed</li>
+      <li>Escape closes combo box if it was open (be careful not to have it cancel entire dialog)</li>
+      <li>Up/down arrow key navigation. Shift+up and shift+down move and extend the selection.</li>
+      <li>Typing letter or several letters to navigate (same letter goes to each item starting with that, different letters go to first item starting with that entire string).</li>
+      <li>Multiple selection is possible with Ctrl+arrow to move focus without selecting, then space to select item, shift+space to select to current point or control+space to toggle selection of current item</li>
+      <li>Shift+F10 or context menu key to bring up context menu for current item. Generate a context menu event. On Mac OS X, ctrl+space is used to bring up the context menu.</li>
+      <li>Space bar toggles checkboxes</li>
+      <li>For listboxes, use owner drawn list items to show a different highlight color when the list is not focused. If you don't the list focus will not be apparent, and screen readers may read the selected list item when they shouldn't. For unfocused lists, use a lighter color highlight to show a non-focused state. For autocomplete lists, use the system color offset by 1, so that it looks active but the list items don't get echoed while they user's trying to simply type and edit.</li>
+      <li>MSAA support, including accessible selection, selectable, multiselectable and extselectable states, and statechange events for checkbox children</li>
+    </ol>
+  </li>
+  <li>Trees
+    <ol style="list-style-type: lower-alpha;">
+      <li>When a tree view is tabbed to, select the first item if nothing else is already selected</li>
+      <li>Up/down arrow key navigation</li>
+      <li>Left arrow to first collapse a branch, then move to parent</li>
+      <li>Right arrow to first expand a branch, then move to first child</li>
+      <li>Multiple selection is possible with Ctrl+arrow to move focus without selecting, then space to select item, shift+space to select to current point or control+space to toggle selection of current item</li>
+      <li>Typing letter or several letters to navigate (similar to list support for this)</li>
+      <li>Shift+F10 or context menu key to bring up context menu for current item (On OS X ctrl+space is used to bring up context menu).</li>
+      <li>Space bar toggles checkboxes</li>
+      <li>The enter key should activate an item if double clicking would do so</li>
+      <li>MSAA support, including accessible selection, exposing current level and position in list, alternative text for informative or interactive images, selectable, multiselectable and extselectable states, statechange events for expanding/collapsing and toggling of checkbox children. Note, you can use the accessible description to expose the current tree view level and position, such as "L3, 6 of 9" in order to provide ease of access for the user. The "L" and "of" will be parsed out by the assistive technology, so don't localize it.</li>
+      <li>Mac OS X difference: option+left and option+right should do deep expand/collapse</li>
+      <li>Mac OS X difference: user should be able to select multiple rows and expand them with one keystroke. After the expansion, the multiple (now discontiguous) selection should remain.</li>
+    </ol>
+  </li>
+</ol>

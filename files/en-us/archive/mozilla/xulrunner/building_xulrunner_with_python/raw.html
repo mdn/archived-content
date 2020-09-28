@@ -1,0 +1,144 @@
+<p> </p>
+
+<p>This page describes how to build and use XULRunner with the Python extension on Windows and while generally useful it is written based on experiences with accessibility projects. See also <a href="en/XULRunner">XULRunner</a>. Or, if you are interested in working with XULRunner with Python on Linux, see <a class="external" href="http://www.digitalspace.ca/2008/01/14/mozilla-python-xpcomdom-in-linux">Mark Lise's Post</a></p>
+
+<p>With the Python extensions enabled XULRunner provides python script access to the DOM and XPCOM in addition to the usual Java Script. This gives access to Python features and modules and builds on Mark Hammond's pyXPCOM work from Active State. XPCOM components can also be created in Python.</p>
+
+<p>Currently (Mar 07) Python is not enabled by default so a custom build of Mozilla is needed. This page provides instructions in the hope of eliminating much trial and error. You should also read the the developer documentation on <a href="en/Download_Mozilla_Source_Code">source code</a> and <a href="en/Build_Documentation">building</a> as wells as <a href="en/PyXPCOM">PyXPCOM</a></p>
+
+<p>XULRunner with Python promises to be a good platform for accessibility projects and both <a class="external" href="http://www.oatsoft.org/trac/jambu/wiki">Jambu Alternative Input</a> and the IAccessible2 test tool are using it. Of particular interested is access to MSAA and IAccessible2 via the Python comtypes package.</p>
+
+<p> </p>
+
+<h3 id="Development_Machine_Setup" name="Development_Machine_Setup">Development Machine Setup</h3>
+
+<p>First a word of warning that ZoneAlarm has exhibited memory leaks that cause build machines to crash with rather spurious errors. You may want to uninstall it if you suspect this to be a problem. You will also want to disable any virus scanner resident monitoring as that will slow builds.</p>
+
+<p>Ensure the PC is running XP with all the latest Service Packs and patches applied.</p>
+
+<p>Microsoft C++ compiler is required and whilst the current free version is Visual Studio 8 Express (MSVC8) you will almost certainly want to use Visual Studio .NET 2003 (MSVC71) which is not longer officially available. The issue is that XULRunner must be built with the same version of C as Python and with Python 2.5 that is MSVC71. Both must use the same version of the C runtime library MSVCRT?.DLL or crashes will ensue. The alternative is to build Python with MSVC8 as well asMozilla, but that may be problematic. It might also be possible to use the Open Source MinGW compiler with the correct MSVC run time but that is apparently not recommended. Apply any Service Packs and for MSVC71 <a class="external" href="http://www.microsoft.com/downloads/details.aspx?familyid=69d2219f-ce82-46a5-8aec-072bd4bb955e&amp;displaylang=en">SP 1</a> is available. The matching platform SDK is also needed and for MSVC71 that is <a class="external" href="http://www.microsoft.com/downloads/details.aspx?FamilyID=9b3a2ca6-3647-4070-9f41-a333c6b9181d&amp;DisplayLang=en">.NET Framework SDK 1.1</a>.</p>
+
+<p>The latest <a href="en/Windows_Build_Prerequisites"> Mozilla Build system</a> is easy to use. Install the included Python distro using<em>python25\python-2.5.msi</em>. It doesn't need to be installed for the build but will be useful later when installing Python packages which look for entries in the Windows' registry.</p>
+
+<h3 id="Building" name="Building">Building</h3>
+
+<p>The batch file<em>start-msvc71.bat</em> is used to launch the build console (MSys from the MinGw project ). If you plan to checkout often into empty folders you could modify it to set the CVSROOT environment variable.</p>
+
+<pre>set CVSROOT=:pserver:anonymous@cvs-mirror.mozilla.org:/cvsroot
+</pre>
+
+<p>Having created a<em>mozilla</em> project directory (e.g.<em>C:\projects\mozilla</em> or<em>/c/projects/mozilla</em> in msys) create the following .mozconfig file. Note this is complete and does not require the checkout of any other project specific .mozconfig files as sometimes shown. It effectively specifies a release build that is not particularly suitable for debugging XULRunner itself. It uses the trunk (or latest) code in CVS so may be unstable.</p>
+
+<pre>mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/../obj-xulrunner
+mk_add_options MOZ_CO_PROJECT=xulrunner
+ac_add_options --enable-application=xulrunner
+ac_add_options --enable-extensions=python,default
+ac_add_options --disable-javaxpcom
+ac_add_options --disable-activex
+ac_add_options --disable-activex-scripting
+ac_add_options --disable-tests
+ac_add_options --enable-optimize
+</pre>
+
+<p>To check out all the required source code and build it the first time with no local client.mk file, execute</p>
+
+<pre>cd /c/projects
+cvs -d :pserver:anonymous@cvs-mirror.mozilla.org:/cvsroot co mozilla/client.mk
+cd mozilla
+make -f client.mk
+</pre>
+
+<p>For subsequent updates from CVS followed by a build, use</p>
+
+<pre>cd /c/projects/mozilla
+make -f client.mk
+</pre>
+
+<p>which will also checkout client.mk itself</p>
+
+<p>For build only, without checkouts, use</p>
+
+<pre>make -f client.mk build
+</pre>
+
+<p>and see client.mk for other options.</p>
+
+<p>The built XULRunner can then be found as<em>c:\projects\obj-xulrunner\dist\bin\xulrunner.exe</em>.</p>
+
+<h3 id="Using_Python_in_XUL_applications" name="Using_Python_in_XUL_applications">Using Python in XUL applications</h3>
+
+<p>Add the following to your<em>prefs.js</em> during development</p>
+
+<pre>pref("browser.dom.window.dump.enabled", true);
+pref("javascript.options.showInConsole", true);
+pref("javascript.options.strict", true);
+pref("nglayout.debug.disable_xul_cache", true);
+pref("nglayout.debug.disable_xul_fastload", true);
+</pre>
+
+<p>HTML &lt;script&gt; tags specify that Python is used with<em>type="application/x-python"</em> attribute. DOM scripting is pretty much as with Java Script. For example</p>
+
+<pre>def onLoad():
+    btnTest = document.getElementById("btnTest")
+    btnTest.addEventListener('command', onTest, False)
+
+def onTest():
+    window.alert('Button activated')
+
+window.addEventListener('load', onLoad, False)
+</pre>
+
+<p>One possible gotcha is that the default python path used to find modules that are<em>import</em>ed explicitly includes the xulrunner executable directory and the directory that is current when XULRunner launches. However it does not include any path related to the XUL application being run. Some work around will need to be found.</p>
+
+<p>Unhandled exceptions are displayed in the JavaScript Error Console which can be opened using<em>xulrunner -jsconsole</em>. One solution is to put<em>try .... except: print_exc()</em> round any event handler to print tracebacks to stdout and use a python console to catch that output. The JSconsole can also be open and used from code, for example (in Javascript)</p>
+
+<pre>function openJavaScriptConsole() {
+   var wwatch = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+                         .getService(Components.interfaces.nsIWindowWatcher);
+   wwatch.openWindow(null, "chrome://global/content/console.xul", "_blank",
+                    "chrome,dialog=no,all", null);
+}
+
+
+// dump to the js console (xulrunner -jsconsole)
+function jsdump(str)
+{
+  Components.classes['@mozilla.org/consoleservice;1']
+            .getService(Components.interfaces.nsIConsoleService)
+            .logStringMessage(str);
+}
+
+function jserror(str)
+{
+    Components.utils.reportError(str);
+}
+</pre>
+
+<p>A final tip is to use task manager to check for a zombie xulrunner process after a crash. A zombie will keep old code open and cause confusion when you make changes and run xulrunner again.</p>
+
+<p> </p>
+
+<h3 id="Deploying" name="Deploying">Deploying</h3>
+
+<p>Python must be installed on the target machine. Perhaps eventually a XULRunner with a minimal Python installation can be generated with something like <a class="external" href="http://www.py2exe.org/">py2exe</a> or <a class="external" href="http://pyinstaller.python-hosting.com/">pyInstaller</a>. Untill then simply deploy the<em>dist\bin</em> folder and the XUL application. Don't copy any<em>.pyo</em> files that exist for python modules in the application or errors will occur on the target machine.</p>
+
+<p>It is possible to test for python in a batch file using something like</p>
+
+<pre>rem Check Python 2.5 installed
+reg query "HKLM\SOFTWARE\Python\PythonCore\2.5" &gt; nul 2&gt;&amp;1 || reg query "HKCU\SOFTWARE\Python\PythonCore\2.5" &gt; nul 2&gt;&amp;1
+if errorlevel 1 (
+    echo Python 2.5 was not found. Please install it.
+    echo Exiting...
+    pause
+    exit /b 1
+    )
+
+start "XULRunner with Python" "%moz_bin%\xulrunner.exe" -app application.ini %opts%
+exit /b 0
+</pre>
+
+<p>See <a href="en/XULRunner/Deploying_XULRunner_1.8">XULRunner:Deploying_XULRunner_1.8</a> for general information.</p>
+
+<h3 id="Sample" name="Sample">Sample</h3>
+
+<p>A sample XULRunner application with these Python features <a class="external" href="http://fullmeasure.co.uk/mozilla/XRPySample.zip">is available</a>. This includes the pyXPCOM tests and a basic Python console from <a class="external" href="http://vamposdecampos.googlepages.com/pyxpcom">Alex Badea</a></p>

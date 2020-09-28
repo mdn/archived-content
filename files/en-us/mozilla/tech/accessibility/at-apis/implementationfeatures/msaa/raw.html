@@ -1,0 +1,168 @@
+<p> </p>
+<p><a href="/en-US/docs/Accessibility:AT-APIs#Implementation_Features">« AT APIs Support Page</a></p>
+<h2 id="Enhancing_Performance_on_the_Client_End_via_IEnumVARIANT" name="Enhancing_Performance_on_the_Client_End_via_IEnumVARIANT">Enhancing Performance on the Client End via IEnumVARIANT</h2>
+<div class="indent">
+  <p>Whenever you get an IAccessible, you can QI it to IEnumVARIANT. If that succeeds, then it has children. You can then get the number of children via IAccessible::get_accNumChildren(), then allocate an array of VARIANT's to hold the children, and call IEnumVARIANT::Next() to get all the children in one call. The VARIANT's we provide will always be VT_DISPATCH.</p>
+  <p>Using IEnumVARIANT in this way is much faster than getting the children via get_accChild() or accNavigate(). See MSDN for more information.</p>
+</div>
+<p> </p>
+<h2 id="Additional_DOM_Support" name="Additional_DOM_Support">Additional DOM Support</h2>
+<div class="indent">
+  <p>There are a number of things available in the parsed HTML or XML of a document that MSAA will not tell you.</p>
+  <p>To solve this problem, we provide access to the content DOM for Gecko documents, through two interfaces:</p>
+  <ul>
+    <li>ISimpleDOMNode gives you the actual parsed structure of a document, by node.</li>
+    <li>ISimpleDOMText supports scrolling and rectangular bounds information on a character by character basis</li>
+    <li>ISimpleDOMDocument contains basic document information, such title, URL, doctype and mime type.</li>
+  </ul>
+  <h3 id="Compiling_the_.idl_Files" name="Compiling_the_.idl_Files">Compiling the .idl Files</h3>
+  <div class="indent">
+    <p>To use these interfaces, you'll need to get the <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/accessible/public/msaa/ISimpleDOMNode.idl?raw=1">ISimpleDOMNode.idl</a>, <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/accessible/public/msaa/ISimpleDOMText.idl?raw=1">ISimpleDOMText.idl</a> and <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/accessible/public/msaa/ISimpleDOMDocument.idl?raw=1">ISimpleDOMDocument.idl</a> file. You must make a header files for them, by running these commands:</p>
+    <div class="indent">
+      <code>MIDL ISimpleDOMNode.idl<br>
+      MIDL ISimpleDOMText.idl</code></div>
+    <div class="indent">
+      <code>MIDL ISimpleDOMDocument.idl</code></div>
+    <p>That will generate ISimpleDOMNode.h and ISimpleDOMDocument.h, which define the interfaces. It will also create ISimpleDOMNode_i.c and ISimpleDOMDocument_i.c, which contain the necessary IID constants.</p>
+  </div>
+  <h3 id="ISimpleDOMNode" name="ISimpleDOMNode">ISimpleDOMNode</h3>
+  <div class="indent">
+    <p>To get to the ISimpleDOMNode interface for an object, you start with an IAccessible*, and then you QueryService to the ISimpleDOMNode*:</p>
+    <pre>IServiceProvider *pServProv = NULL;
+pAccessible-&gt;QueryInterface(IID_IServiceProvider, (void**)&amp;pServProv);
+ISimpleDOMNode *pSimpleDOMNode;
+if (pServProv) {
+  const GUID refguid = {0x0c539790, 0x12e4, 0x11cf, 0xb6, 0x61,
+                        0x00, 0xaa, 0x00, 0x4c, 0xd6, 0xd8};
+  HRESULT result = pServProv-&gt;QueryService(refguid, IID_ISimpleDOMNode,
+                                           (void**)&amp;pSimpleDOMNode);
+  if (SUCCEEDED(hresult) &amp;&amp; pSimpleDOMNode != NULL) {
+    /* This is a Mozilla node! Use special ISimpleDOMNode methods described in
+      ISimpleDOMNode.idl. */
+  }
+}
+</pre>
+    <p>The <code>get_nodeInfo</code> method is used to get basic information about a node such as the tag name and namespace ID, node type (see ISimpleDOMNode.idl for definitions), node value (text held in the node), a unique ID for use in tracking where events occur, and the number of children. The namespace ID is meaningless until you get the namespace URI for it, through the ISimpleDOMDocument interface (see below).</p>
+    <pre>HRESULT get_nodeInfo(
+  /* [out] */ BSTR  *nodeName,    // For elements, this is the tag name
+  /* [out] */ short  *nameSpaceID,
+  /* [out] */ BSTR  *nodeValue,
+  /* [out] */ unsigned int  *numChildren,
+  /* [out] */ unsigned int  *uniqueID, // see description of unique ID's
+                                       // in above section on events
+  /* [out] */ unsigned short  *nodeType);
+</pre>
+    <p><br>
+      The <code>get_attributes</code> method returns the set of attribute, value pairs for a given node, as well as the namespace ID for each attribute. The return value numAttribs specifies the number of attributes for this node, and the last 3 parameters return 3 arrays corresponding to attribute name, namespace ID, and attribute value.</p>
+    <pre>HRESULT get_attributes(
+  /* [in]  */ unsigned short maxAttribs,
+  /* [out] */ BSTR  *attribNames,
+  /* [out] */ short  *nameSpaceID,
+  /* [out] */ BSTR  *attribValues,
+  /* [out] */ unsigned short  *numAttribs);
+</pre>
+    <p>A variation on this method is <code>get_attributesForNames</code>, which lets turns the attribNames array into an [in] parameter, letting you specify only those attributes you're interested in. This helps minimize the cost of marshalling for those times in which you're interested in only a few attributes per node.</p>
+    <pre>HRESULT get_attributesForNames(
+  /* [in]  */ unsigned short numAttribs,
+  /* [in]  */ BSTR __RPC_FAR *attribNames,
+  /* [in]  */ short __RPC_FAR *nameSpaceID,
+  /* [out] */ BSTR __RPC_FAR *attribValues);
+</pre>
+    <p>The <code>get_computedStyle</code> method is used to find out the cumulative, computed results for all style rules applied to a node. The return value numStyleProperties specifies the number of style properties for this node, and the last 2 parameters return 2 arrays corresponding to style property name and style property value. Another [in] parameter, useAlternativeMediaProperties, indicates whether you want style information for the default media type (usually screen), or a set of alternative media types specified in <code>nsISimpleDOMDocument::set_alternateViewMediaType(mediaTypeString)</code> . See the W3C's website for a list of official <a class="external" href="http://www.w3.org/TR/REC-CSS2/media.html#media-types">media type name</a> . Unfortunately, at this time the argument <code>useAlternateView</code> is ignored.</p>
+    <pre>HRESULT get_computedStyle(
+  /* [in]  */ unsigned short maxStyleProperties,
+  /* [in]  */ boolean useAlternateView,  // If TRUE, returns properties for
+                                         // media as set in nsIDOMDocument::
+                                         // set_alternateViewMediaTypes
+  /* [out] */ BSTR *styleProperties,
+  /* [out] */ BSTR *styleValues,
+  /* [out] */ unsigned short *numStyleProperties);
+</pre>
+    <p>A variation on this method is <code>get_computedStyleForProperties</code>, which lets turns the styleProperties array into an [in] parameter, letting you specify only those style properties you're interested in. This helps minimize the cost of marshalling for those times in which you're interested in only a few style properties per node.</p>
+    <pre>HRESULT get_computedStyleForProperties(
+  /* [in]  */  unsigned short numStyleProperties,
+  /* [in]  */  boolean useAlternateView,  // If TRUE, returns properties for
+                                          // media as set in nsIDOMDocument::
+                                          // set_alternateViewMediaTypes
+  /* [in]  */  BSTR *styleProperties,
+  /* [out] */ BSTR *styleValues);
+</pre>
+    <p>To scroll the document in order make a specific element visible in the window, use <code>scrollTo(boolean placeTopLeft)</code>. If the parameter <code>placeTopLeft</code> is TRUE the document will be scrolled so that the element is placed in the top left corner of the window. If <code>placeTopLeft</code> is FALSE, the document will only be scrolled if the element is not already visible, or the document will be scrolled the minimum amount to make the element visible anywhere within the current window.</p>
+    <pre>HRESULT scrollTo([in] boolean placeTopLeft);
+</pre>
+    <p>You can also get to any other node by traversing the ISimpleDOMNode structure. The DOM content tree is a superset of the MSAA tree. In other words, you can always QueryInterface from an IAccessible to an ISimpleDOMNode, but often not the other way around.</p>
+    <pre>HRESULT get_parentNode     (/* [in] */ ISimpleDOMNode *newNodePtr);
+HRESULT get_firstChild     (/* [in] */ ISimpleDOMNode *newNodePtr);
+HRESULT get_lastChild      (/* [in] */ ISimpleDOMNode *newNodePtr);
+HRESULT get_previousSibling(/* [in] */ ISimpleDOMNode *newNodePtr);
+HRESULT get_nextSibling    (/* [in] */ ISimpleDOMNode *newNodePtr);
+HRESULT get_childAt        (/* [in] */ unsigned childIndex,
+                            /* [out] */ ISimpleDOMNode **newNodePtr);
+</pre>
+    <p>Next we provide a convenience method for getting the actual HTML within a DOM subtree. This only applies if the node is HTML.</p>
+    <pre>HRESULT get_innerHTML([out, retval] BSTR *innerHTML);
+</pre>
+    <p>Finally we provide a method for getting the current <a class="external" href="http://en.wikipedia.org/wiki/ISO_639">ISO 639 language code</a>, such as "en" for English or even possible "en-cockney" for the British Cockney dialect.</p>
+    <pre>HRESULT get_language([out, retval] BSTR *language);</pre>
+    <p>Please look at the <a class="external" href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMNode.idl?raw=1">ISimpleDOMNode.idl</a> file for parameter types and the definitions of the node type constants.</p>
+  </div>
+</div>
+<h3 id="ISimpleDOMText" name="ISimpleDOMText">ISimpleDOMText</h3>
+<div class="indent">
+  <p>DOM nodes that are text nodes support ISimpleDOMText. This extension is useful if you need to work on a character by character basis, whereas IAccessible provides only node by node support. Text nodes must be leaf nodes, so there is no need to check for this interface if the current node has any MSAA or DOM children. Text nodes always support ISimpleDOMNode as well as ISimpleDOMText.</p>
+  <p>Here are the methods for ISimpleDOMText:</p>
+  <pre>// Includes all DOM whitespace; IAccessible::get_accName does not
+HRESULT get_domText(BSTR *domText);
+
+// Bounding rect clipped to window
+HRESULT get_clippedSubstringBounds([in] unsigned int startIndex,
+                                   [in] unsigned int endIndex,
+                                   [out] int *x,
+                                   [out] int *y,
+                                   [out] int *width,
+                                   [out] int *height);
+
+// Bounding rect unclipped
+HRESULT get_unclippedSubstringBounds([in] unsigned int startIndex,
+                                     [in] unsigned int endIndex,
+                                     [out] int *x,
+                                     [out] int *y,
+                                     [out] int *width,
+                                     [out] int *height);
+
+// Scroll to this part of the subsstring
+HRESULT scrollToSubstring([in] unsigned int startIndex,
+                          [in] unsigned int endIndex);
+
+// Get the current font being used -- this is better than using
+// the ISimpleDOMNode CSS property methods, because it provides
+// a single font name, rather than a comma delineated list of possibilities
+HRESULT fontFamily([out] BSTR *fontFamily);
+</pre>
+  <h3 id="ISimpleDOMDocument" name="ISimpleDOMDocument">ISimpleDOMDocument</h3>
+  <div class="indent">
+    <p>There is one ISimpleDOMDocument interface for each XML or HTML document in Gecko, which you can use to get important information global to the document. If a given node's get_nodeType method returns NODETYPE_DOCUMENT, then you know you can QueryInterface to an ISimpleDOMDocument. The root accessible can also always be QueryInterface'd to an ISimpleDOMDocument.</p>
+    <p>Here are the methods for ISimpleDOMDocument:</p>
+    <pre>// Location of document
+HRESULT get_URL(/* [out] */ BSTR *url);
+
+// From the &lt;TITLE&gt;
+HRESULT get_title(/* [out] */ BSTR *title);
+
+// For example text/html or text/plain
+HRESULT get_mimeType(/* [out] */ BSTR *mimeType);
+
+// From the &lt;!DOCTYPE ..&gt;
+HRESULT get_docType(/* [out] */ BSTR *docType);
+
+// Translate namespace ID's from ISimpleDOMNode
+HRESULT get_nameSpaceURIForID(
+  /* [in]  */ unsigned short nameSpaceID,  // calls into the actual namespace URI's
+  /* [out] */ BSTR *nameSpaceURI);
+
+// For example "aural, braille"
+HRESULT put_alternateViewMediaTypes(/* [in] */ BSTR *commaSeparatedMediaTypes);
+</pre>
+  </div>
+</div>
+<p> </p>

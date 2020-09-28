@@ -1,0 +1,227 @@
+<p class="summary">The <strong>B2G installer add-on</strong> helps to solve the long-standing issue of not being able to redistribute full system builds because of blobs (proprietary components.) This article details how the add-on works, and how to install it.</p>
+
+<div class="warning">
+<p><strong>Important</strong>: This add-on is still at an experimental stage, and in need of a <strong>maintainer</strong>. For now, it is recommended to use it only against a device you know how to reflash in case something bad happens. It is currently only supported on Linux (32 and 64 bit) and OSX (64 bit.)</p>
+</div>
+
+<div class="warning">
+<p><strong>Important</strong>: As of the first release of this add-on, it is important to understand that the scope is really to support the following basic use case: flashing B2G on a supported device running an Android (or CyanogenMod) system. Handling of B2G upgrades, and getting Blobs from a source other than the device are not (yet) addressed.</p>
+</div>
+
+<h2 id="Building_a_blobfree_distribution">Building a blobfree distribution</h2>
+
+<p>One solution to the named issue above is to produce a so-called "blobfree" distribution (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1175934" title="FIXED: [B2G] Add support to build blobfree images">bug 1175934</a>) that bundles everything needed for a device build:</p>
+
+<ul>
+ <li>Full system built out of sources.</li>
+ <li>Device compatibility information.</li>
+ <li>Partition mapping.</li>
+ <li>List of required Blobs, along with mappings to their required destinations in the final build.</li>
+</ul>
+
+<p>Such a blobfree distribution can be built by specifying the <code>|blobfree|</code> <code>make</code> target when building B2G:</p>
+
+<pre class="brush: bash">$ ./build.sh blobfree</pre>
+
+<div class="note">
+<p><strong>Note</strong>: More details about this can be found on the <a href="/Firefox_OS/Building#Building_a_blob_free_full_system_zip">blobfree section of the B2G building page</a>.</p>
+</div>
+
+<p>The B2G installer add-on facilitates installing such distributons.</p>
+
+<h2 id="Adding_new_device_support">Adding new device support</h2>
+
+<p>To make a new device available from within the add-on when the user plugs in a compatible device, a few steps are required:</p>
+
+<ol>
+ <li>Make sure that your device has support for generating a blobfree distribution. Check the <a href="/Firefox_OS/Building#Building_a_blob_free_full_system_zip">blobfree section of the B2G building page. </a></li>
+ <li>Once your device does have support for this, you can proceed to make it available from the add-on. First, fork the <a href="https://github.com/mozilla-b2g/b2g-installer-builds/">builds repository</a>.</li>
+ <li>File a bug in <a href="https://bugzilla.mozilla.org">Bugzilla</a> in the <strong>Firefox OS :: B2GInstaller</strong> component.</li>
+ <li>Augment <code>builds.json</code> with the information for your new device.</li>
+ <li>Send a PR on Github, attach it to the bug you created and ask for <em>review :gerard-majax</em>.</li>
+</ol>
+
+<p>The <code>builds.json</code> file contains an array of objects, each one describing a compatible device. Those objects have the following properties:</p>
+
+<ul>
+ <li><code>id</code>: The name of the device as displayed to the user.</li>
+ <li><code>builds</code>: An array of the builds available for this device. Each build object inside the array must have these properties:
+  <ul>
+   <li><code>name</code>: The string displayed when selecting the build.</li>
+   <li><code>description</code>: A user-friendly description of what this build is.</li>
+   <li><code>url</code>: URL of the blobfree distribution file.</li>
+  </ul>
+ </li>
+ <li><code>adb</code>: A set of Android properties that the device <strong>MUST</strong> match to be detected as compatible.</li>
+ <li><code>fastboot</code>: A set of Fastboot variables that the device <strong>MUST</strong> match to be detected as compatible.</li>
+ <li><code>requiresRoot</code>: Optional value that defines whether the device must be rootable for installation to go ahead. This defaults to <code>true</code>.</li>
+</ul>
+
+<div class="note">
+<p><strong>Note</strong>: Each Android property or Fastboot variable can either be matched against a string (strict equality) or an array (strict equality of one of the array values.)</p>
+</div>
+
+<h2 id="Installation">Installation</h2>
+
+<p>To install the B2G installer add-on, follow these steps:</p>
+
+<ul>
+ <li>Make sure you are running <a href="https://nightly.mozilla.org/">Firefox Desktop Nightly</a> and have the ADB Helper installed (v0.8.6 at least) — see the bottom of the <a href="https://ftp.mozilla.org/pub/labs/fxos-simulator/">fxos-simulator page</a> for the install link.</li>
+ <li>Create a <a href="/Firefox/Multiple_profiles">separate profile</a>
+  <pre class="brush: bash">./firefox -P</pre>
+ </li>
+ <li>Install the B2G installer add-on XPI, using either of those methods:
+  <ul>
+   <li>Install it from <a href="https://addons.mozilla.org/en-US/firefox/addon/b2g-installer/">AMO</a> (recommended).</li>
+   <li>Build it yourself — see the <a href="#Hacking">Hacking</a> section.</li>
+  </ul>
+ </li>
+ <li><span lang="en-us">Make sure ADB helper 0.8.6 or higher is installed (WebIDE -&gt; Project -&gt; Manage Extra Components)</span></li>
+ <li>Make sure you have at least 2GB of available space in /tmp/.</li>
+ <li>Load the <code>about:b2g-installer</code> page (write this in the search bar). You might have to restart the browser before this works the first time.</li>
+ <li>If you want to help us improve the addon, you can tick the checkbox to collect information directly from your usage sessions. What information we collect is explained below, in the <a href="#Data">Data</a> section.</li>
+</ul>
+
+<h3 id="Ready_to_use_VM">Ready to use VM</h3>
+
+<p>You can also make use of a pre-built virtual machine as an OVA package. Please check with VirtualBox or your favorite tool on how to import this appliance. It provides a ready-to-use B2G Installer installation that supports some devices out of the box (udev, etc. already configured.) See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1204482" title="FIXED: Provide a VirtualBox VM ready for B2G Installer use">bug 1204482</a> for more details, and the link below to download. Please verify the SHA1 to make sure the VM is good to use (~1.5GB download).</p>
+
+<pre class="comment-text " id="ct-19">https://drive.google.com/file/d/0B8Ju6ek0Knd6WnE0N2F6ZHF0VTQ/view?usp=sharing
+SHA1: 01574220718e90d7de498952270cbbaee8e85acd</pre>
+
+<p>It is recommended to use the VM if you are running on an OS where B2G Installer does not work (e.g., Windows), or if you are running into issues with the steps above. The default configuration of this VM should handle those devices:</p>
+
+<ul>
+ <li>Mozilla Flame</li>
+ <li>Sony Xperia Z3 and Sony Xperia Z3 Compact</li>
+ <li>LG Nexus 4 and LG Nexus 5</li>
+ <li>Fairphone 2</li>
+ <li>Wileyfox Swift</li>
+</ul>
+
+<p>If you are willing to flash another device, you will have to configure USB passthrough with the proper USB VID/PID (do not forget the fastboot ones, that might differ) and also configure udev rules.</p>
+
+<h2 id="Usage">Usage</h2>
+
+<ol>
+ <li>When the add-on starts up, it will download <code>builds.json</code> from <a href="https://github.com/mozilla-b2g/b2g-installer-builds/blob/master/builds.json">Github</a> to get the list of available builds. A local zip file can always be used.</li>
+ <li>Attach your device via USB, and wait for the add-on to detect it.</li>
+ <li>Once it has been detected as a supported device, a list of builds will be made available.</li>
+ <li>Pick the build you want, click <em>Flash</em> and wait.<span id="cke_bm_232E" style="display: none;"> </span></li>
+</ol>
+
+<h2 id="Screenshots">Screenshots</h2>
+
+<p>When the device is not plugged in:</p>
+
+<p><img alt="First page, no device plugged" src="https://mdn.mozillademos.org/files/12353/Capture%20du%202016-01-27%2016-13-38.png" style="display: block; height: 232px; margin: 0px auto; width: 320px;"></p>
+
+<p>When selecting a build:</p>
+
+<p><img alt="Device plugged in and detected" src="https://mdn.mozillademos.org/files/12355/Capture%20du%202016-01-27%2016-14-25.png" style="display: block; height: 232px; margin: 0px auto; width: 320px;"></p>
+
+<p>When flashing a device:</p>
+
+<p><img alt="Device plugged in and flashing a device" src="https://mdn.mozillademos.org/files/12357/Capture%20du%202016-01-27%2016-14-43.png" style="display: block; height: 232px; margin: 0px auto; width: 320px;"></p>
+
+<h2 id="Data">Data</h2>
+
+<p>As part of improving the addon, we are collecting some data as it is used. The main goal is to ensure the add-on works properly for everyone. We are also collecting data to discover which devices people are interested in, so that supported builds can be adjusted accordingly. No tracking is being done.</p>
+
+<p>We are sending two external telemetry pings to collect this data:</p>
+
+<ul>
+ <li>One upon the device being detected by the add-on after it is plugged into the computer (this will happen every time the add-on is running <strong>*and*</strong> a device with ADB enabled is plugged in.) For this ping, we record:
+
+  <ul>
+   <li>Device identification variables (model, build id, manufacturer, bootloader.)</li>
+   <li>Whether this device has a CyanogenMod build installed.</li>
+   <li>Whether a supported build was detected on the device.</li>
+  </ul>
+
+  <p>Sample payload of plugging a supported device:</p>
+
+  <pre class="brush: json">{
+  "payload": {
+    "buildid": "KOT49H",
+    "isSupported": true,
+    "model": "Xperia Z3 Compact (B2G)",
+    "bootloader": "s1",
+    "manufacturer": "Sony"
+  }, [...]
+}</pre>
+
+  <p>Sample payload of plugging an unsupported device:</p>
+
+  <pre class="brush: json">{
+  "payload": {
+    "buildid": "LVY48I",
+    "isSupported": false,
+    "model": "Xperia Z1 Compact (B2G)",
+    "bootloader": "s1",
+    "manufacturer": "Sony"
+  }, [...]
+}
+</pre>
+ </li>
+ <li>One each time a device flashing procedure is running. That will happen either at the end of a successful flashing procedure, or upon failure. For this ping, we record:
+  <ul>
+   <li>The same variables as above.</li>
+   <li>Whether the device is already running a B2G build.</li>
+   <li>The URL of the build flashed (full path for a public build, filename without the whole path for a local build.)</li>
+   <li>Whether the user kept their data.</li>
+   <li>Whether the flashing was successful.</li>
+  </ul>
+
+  <p>Sample payload with flash success:</p>
+
+  <pre class="brush: json">{
+  "payload": {
+    "isSupported": true,
+    "installResult": true,
+    "runsB2G": true,
+    "buildid": "KOT49H",
+    "keepData": false,
+    "buildURL": "https://index.taskcluster.net/v1/task/gecko.v1.mozilla-central.latest.linux.nexus-4-kk-user.opt/artifacts/public/build/mako.blobfree-dist.zip",
+    "model": "AOSP on Mako",
+    "bootloader": "MAKOZ30d",
+    "manufacturer": "LGE"
+  }, [...]
+}</pre>
+
+  <p>Sample payload with flash failure:</p>
+
+  <pre class="brush: json">{
+  "payload": {
+    "isSupported": true,
+    "installResult": false,
+    "runsB2G": true,
+    "buildid": "KOT49H",
+    "keepData": false,
+    "buildURL": "https://index.taskcluster.net/v1/task/gecko.v1.mozilla-central.latest.linux.nexus-4-kk-eng.opt/artifacts/public/build/mako.blobfree-dist.zip",
+    "model": "AOSP on Mako",
+    "bootloader": "MAKOZ30d",
+    "manufacturer": "LGE"
+  }, [...]
+}</pre>
+ </li>
+</ul>
+
+<h2 id="Hacking">Hacking</h2>
+
+<ul>
+ <li>The code lives in the <a href="https://github.com/mozilla-b2g/b2g-installer/">b2g-installer</a> repo. You need to apply the patch to a mozilla-central clone, and then symlink <code>browser/extensions/b2g-installer</code> to your clone of the <code>b2g-installer</code> repo.</li>
+ <li>To build it you need to run <code>|./mach build &amp;&amp; ./mach build package|</code>.</li>
+ <li>The resulting XPI will be produced in your <code>MOZ_OBJDIR/dist/xpi-stage/b2g-installer/</code> directory.</li>
+ <li>It contains a copy of the source code of external tools from AOSP/CAF, needed when building partitions.</li>
+ <li>Tests are written as mochitest/xpcshell tests.</li>
+ <li>Check also the meta bug and its dependencies: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1166276">Bug 1166276</a></li>
+</ul>
+
+<h2 id="TODO">TODO</h2>
+
+<ol>
+ <li>Move back out of mozilla-central tree for building. This probably implies rewriting tests with something else than mochitests.</li>
+ <li>Convert building of tools from moz.build to Makefile.</li>
+ <li>Support external source of blobs (needed to handle upgrade case).</li>
+</ol>

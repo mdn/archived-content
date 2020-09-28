@@ -1,0 +1,124 @@
+---
+title: Browser chrome tests
+slug: Mozilla/Browser_chrome_tests
+tags:
+  - Automated testing
+  - Developing Mozilla
+  - NeedsUpdate
+---
+<p>The browser chrome test suite is an automated testing framework designed to allow testing of application chrome windows using JavaScript. It currently allows you to run JavaScript code in the same scope as the main Firefox browser window and report results using the same functions as the <a href="/en/Mochitest" title="en/Mochitest">Mochitest test framework</a>. As all tests, they won't work in a build with tests disabled (<code>--disable-tests</code>).</p>
+
+<h3 id="Running_the_browser_chrome_tests" name="Running_the_browser_chrome_tests">Running the browser chrome tests</h3>
+
+<p>To run Mochitest, first <a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions" title="Build Instructions">build Mozilla</a> with your changes; then run</p>
+
+<pre>./mach mochitest -f browser</pre>
+
+<p>This will launch your build and open a "browser chrome tests" window, and report the results in the UI and to stdout.</p>
+
+<p>It is possible to run specific groups of tests. As with <a class="internal" href="/en/Mochitest" title="En/Mochitest">Mochitest</a>, the path given as an argument is the path to a test or directory within the Mozilla source tree. If the path points to a directory, then the tests in that directory and all of its subdirectories will be run.</p>
+
+<p>For example, to run the tests in <code>browser/base/content/test</code> the command would be:</p>
+
+<pre>./mach mochitest -f browser browser/base/content/test/
+</pre>
+
+<p>or without mach</p>
+
+<pre>TEST_PATH=&lt;path_to_the_tests&gt; make -C &lt;objdir&gt; mochitest-browser-chrome</pre>
+
+<p>To run tests in debugger the following should work</p>
+
+<pre>./mach mochitest -f browser --debugger gdb browser/base/content/test/</pre>
+
+<p>Run <code>./mach help mochitest-browser</code> for more options.</p>
+
+<h3 id="Writing_browser_chrome_tests" name="Writing_browser_chrome_tests">Writing browser chrome tests</h3>
+
+<p>Browser chrome tests are snippets of JavaScript code that run in the browser window's global scope. A simple test would look like this:</p>
+
+<pre class="brush: js"> function test() {
+   ok(gBrowser, "gBrowser exists");
+   is(gBrowser.tabs.length, 1, "browser has 1 tab");
+ }
+</pre>
+
+<p>The <code>test()</code> function is invoked by the test harness when the test is run. The test file can contain other functions, they will be ignored unless invoked by <code>test()</code>.</p>
+
+<p>gBrowser is set in <a href="https://dxr.mozilla.org/mozilla-central/source/browser/base/content/browser.js">browser.js</a> and is a <a href="/en-US/docs/XUL/tabbrowser">tabbrowser</a> element (<a href="/en-US/docs/">the tabbrowser with id="content" in browser.xul</a>).</p>
+
+<div class="note"><strong>Note:</strong> Be careful when naming your functions and variables. Since the test files are executed in the same scope as the browser window, conflicting variable names could cause trouble while running the tests. You should attempt to reduce the side effects of the testing code and "clean up" after yourself, to avoid influencing other tests.</div>
+
+<p>The comparison functions are identical to those supported by Mochitests, see <a href="/en/Mochitest#Test_functions" title="en/Mochitest#Test_functions">how the comparison functions work</a> in the Mochitest documentation for more details. The <a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/EventUtils.js" rel="custom">EventUtils helper functions</a> are available on the <code>EventUtils</code> object defined in the global scope.</p>
+
+<p>The test file name must be prefixed with "browser_", and must have a file extension of ".js". Files that don't match this pattern will be ignored by the test harness. Using a descriptive file name is strongly encouraged instead of just using a bug number.</p>
+
+<p>You can collect common utils and helpers in a file called <code>head.js</code>, that must live in the same folder as the browser-chrome tests. This file will be injected into the test scope for each test living in the same folder. Notice that any function call in <code>head.js</code> main scope will run before the main test() method.</p>
+
+<h4 id="Test_functions" name="Test_functions">Asynchronous tests</h4>
+
+<p>When writing async tests, you can use the add_task method with <a href="https://developer.mozilla.org/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm">Promises</a>. See <a href="/en-US/docs/Mozilla/QA/Writing_xpcshell-based_unit_tests#XPCShell_test_utility_functions">the xpcshell documentation</a> for more information about this.</p>
+
+<p>The test suite also supports asynchronous tests, using the same function names as Mochitest. Call <code>waitForExplicitFinish()</code> from <code>test()</code> if you want to delay reporting a result until after <code>test()</code> has returned. Call <code>finish()</code> once the test is complete. Be aware that the test harness will mark tests that take too long to complete as FAILED (the current timeout is 30 seconds).</p>
+
+<pre class="brush: js"> function test() {
+   waitForExplicitFinish();
+   setTimeout(completeTest, 1000);
+ }
+
+ function completeTest() {
+   ok(true, "Timeout ran");
+   finish();
+ }
+</pre>
+
+<p>If your test is randomly timing out and you think that's just due to it taking too long, you can extend the timeout. <strong>Be aware that this is not a solution; you should investigate why your test is taking so long, since it's most likely due to a bad test design or a performance problem.</strong> If you can rewrite the test to make is shorter, split it into smaller tests, or find why it's taking so long, you should really do that instead!</p>
+
+<pre class="brush: js"> function test() {
+   // requestLongerTimeout accepts an integer factor, that is a multiplier for the the default 30 seconds timeout.
+   // So a factor of 2 means: "Wait for at last 60s (2*30s)".
+   requestLongerTimeout(2);
+   waitForExplicitFinish();
+
+   setTimeout(completeTest, 40000);
+ }
+
+ function completeTest() {
+   ok(true, "Timeout did not run");
+   finish();
+ }
+</pre>
+
+<h4 id="Test_functions" name="Test_functions">Exceptions in tests</h4>
+
+<p>Any exceptions thrown under <code>test()</code> will be caught and reported in the test output as a failure. Exceptions thrown outside of <code>test()</code> (e.g. in a timeout, event handler, etc) will not be caught, but will result in a timed out test if they prevent <code>finish()</code> from being called.</p>
+
+<h4 id="Test_functions" name="Test_functions">Cleaning up after yourself</h4>
+
+<p>If you need to do special clean up after running your test, you can register a cleanup function that is guaranteed to be run after your test finishes. You can call <code>registerCleanupFunction()</code> at any point in your test, even in <code>head.js</code> if you need to register a clean up function for all tests in that folder. Notice that you can register as many clean up functions as you will. Clean up functions are also guaranteed to be called if your test timeouts, so you can ensure that in case of timeouts you won't pollute next running tests and causing them to fail.</p>
+
+<pre class="brush: js">registerCleanupFunction(function() {
+  // Clean up test related stuff here.
+});
+
+function test() {
+  // Add some test related stuff.
+}
+</pre>
+
+<p><strong>When writing tests, design for failure.</strong> It is <em>much</em> better to call <code>registerCleanupFunction()</code> than doing the cleanup after you have successfully run your tests because the cleanup functions are always called, no matter what. For instance, if you change a preference you want to make sure that the preference is <em>always</em> reset so that it doesn't impact other tests after yours.</p>
+
+<h3 id="Adding_a_new_browser_chrome_test_to_the_tree" name="Adding_a_new_browser_chrome_test_to_the_tree">Adding a new browser chrome test to the tree</h3>
+
+<p>To add a new browser chrome test to the tree, add it to the <code>browser.ini</code> file in the same folder as the test. Also remember that the test file's name must begin with "browser_" for the test to be recognized as a browser chrome test. If you are adding the first tests in a directory, make sure to also include any <code>head.js</code> you added to <code>support-files</code>, and additionally, ensure that your browser.ini is referenced by a moz.build file somewhere, such as:</p>
+
+<pre>BROWSER_CHROME_MANIFESTS += [
+  'test/functional/mochitest/browser.ini'
+]
+</pre>
+
+<h4 id="Support-files">Support-files</h4>
+
+<p>Once added to support-file section of <code>browser.ini</code> support files may be referenced as <code>https://example.com/browser/[path_to_file]</code> or <code> chrome://mochitests/content/browser/[path_to_file]</code>.</p>
+
+<p>&lt;tmui style="top:1px; right:1px;"&gt;&lt;/tmui&gt;</p>

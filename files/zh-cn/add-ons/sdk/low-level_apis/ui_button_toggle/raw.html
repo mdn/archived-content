@@ -1,0 +1,812 @@
+<div class="note">
+<p>实验性</p>
+</div>
+
+<p><span class="seoSummary">在Firefox用户界面上添加一个切换按钮。</span> 通过这个模块，你可以建立一个功能类似复选框的按钮, 表现出 开启/关闭的效果.</p>
+
+<p>切换按钮拥有<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_action">动作按钮</a>的所有特征: 它们可以显示一个图标、对点击事件做出反应。类似于动作按钮，你可以在每一个窗口或每一个标签栏或者是全局下改变它们的状态。切换按钮有两个额外的特性:</p>
+
+<ul>
+ <li>它们被点击的时候会发送一个改变的事件，就像单击事件一样。</li>
+ <li>当按钮被按下时，它们有一个额外的自动切换属性。当一个按钮被按下，它将在用户界面显示一个“按下”效果（注意： "按下"效果当前在Mac OS X上无效）。</li>
+</ul>
+
+<h2 id="用法">用法</h2>
+
+<h3 id="建立按钮">建立按钮</h3>
+
+<p>为了建立一个按钮，你必须指定一个ID，一个图标，和一个标签:</p>
+
+<pre class="brush: js">var { ToggleButton } = require("sdk/ui/button/toggle");
+
+var button = ToggleButton({
+    id: "my-button",
+    label: "my button",
+    icon: {
+      "16": "./firefox-16.png",
+      "32": "./firefox-32.png"
+    },
+    onChange: function(state) {
+      console.log(state.label + " checked state: " + state.checked);
+    }
+  });</pre>
+
+<p>默认的，按钮在Firefox的工具栏上显示:</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/6803/action-button-toolbar.png" style="display: block; height: 201px; margin-left: auto; margin-right: auto; width: 381px;">事实上，用户可以在Firefox的菜单面板上移动它:</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/6809/action-button-menu.png" style="display: block; height: 573px; margin-left: auto; margin-right: auto; width: 381px;"></p>
+
+<h3 id="徽标按钮">徽标按钮</h3>
+
+<div class="geckoVersionNote">
+<p>在Firefox 36版本新增</p>
+</div>
+
+<p>你可以使用标志属性在按钮上添加一个"标志"。它可以包含一个数字或是一个字符串，并且你可以在任何时候更新它。默认的，标志的颜色是红色的，但是你可以通过<code>badgeColor</code>属性将它设置成你需要的颜色, 设置时像CSS中的 <a href="/en-US/docs/Web/CSS/color_value"><code>&lt;color&gt;</code></a> 值:</p>
+
+<pre class="brush: js">var { ToggleButton } = require("sdk/ui/button/toggle");
+
+var button = ToggleButton({
+    id: "my-button1",
+    label: "my button1",
+    icon: "./icon-16.png",
+    onChange: changed,
+    badge: 0,
+    badgeColor: "#00AAAA"
+  });
+
+function changed(state) {
+  button.badge = state.badge + 1;
+  if (state.checked) {
+    button.badgeColor = "#AA00AA";
+  }
+  else {
+    button.badgeColor = "#00AAAA";
+  }
+}</pre>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/9805/badge.png" style="display: block; height: 168px; margin-left: auto; margin-right: auto; width: 384px;"></p>
+
+<h3 id="指定多个图标">指定多个图标</h3>
+
+<p>你可以只指定一个图标，或者是多个不同大小的图标。</p>
+
+<p>如果你指定了多个图标，Firefox将根据设备屏幕的大小和图标位置选择最为合适的图片尺寸来显示。例如截图按钮，当按钮处于标签栏中时Firefox选择小图标，在菜单面板时Firefox则使用大图标<code>请参考</code><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#ToggleButton(options)"><code>ToggleButton</code> constructor</a>来获取更多指定图标的信息.</p>
+
+<h3 id="响应单击事件">响应单击事件</h3>
+
+<p>你可以通过监听按钮的 <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click"><code>单击</code></a> 或 <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#change"><code>改变</code></a> 事件来响应单击事件。你可以在按钮的构造函数内,通过 <code>onClick</code> 或 <code>onChange</code> 选项来建立一个监听。你也可以在建立之后对它进行增加或修改:</p>
+
+<pre class="brush: js">var { ToggleButton } = require("sdk/ui/button/toggle");
+
+var button = ToggleButton({
+    id: "my-button",
+    label: "my button",
+    icon: {
+      "16": "./firefox-16.png",
+      "32": "./firefox-32.png"
+    },
+    onClick: firstClick,
+    onChange: firstChange
+  });
+
+function firstClick(state) {
+  console.log("You clicked '" + state.label + "'");
+  button.removeListener("click", firstClick);
+  button.on("click", subsequentClicks);
+}
+
+function subsequentClicks(state) {
+  console.log("You clicked '" +  state.label + "' again");
+}
+
+function firstChange(state) {
+  console.log("You changed '" + state.label + "'");
+  button.removeListener("change", firstChange);
+  button.on("change", subsequentChanges);
+}
+
+function subsequentChanges(state) {
+  console.log("You changed '" +  state.label + "' again");
+}</pre>
+
+<p>The listener is passed a <code>state</code> object that contains all the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Properties">properties</a>.</p>
+
+<p>You can generate click and change events programmatically with the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click()"><code>click()</code></a> method.</p>
+
+<h3 id="Attaching_panels_to_buttons">Attaching panels to buttons</h3>
+
+<p>You can attach panels to buttons by passing the button as the <code>position</code> option to the panel's <a href="/en-US/Add-ons/SDK/High-Level_APIs/panel#show(options)"><code>show()</code></a> method or the panel's constructor:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+var panels = require("sdk/panel");
+var self = require("sdk/self");
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "my button",
+  icon: {
+    "16": "./icon-16.png",
+    "32": "./icon-32.png",
+    "64": "./icon-64.png"
+  },
+  onChange: handleChange
+});
+
+var panel = panels.Panel({
+  contentURL: self.data.url("panel.html"),
+  onHide: handleHide
+});
+
+function handleChange(state) {
+  if (state.checked) {
+    panel.show({
+      position: button
+    });
+  }
+}
+
+function handleHide() {
+  button.state('window', {checked: false});
+}
+</pre>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/7617/panel-button.png" style="display: block; height: 332px; margin-left: auto; margin-right: auto; width: 397px;"></p>
+
+<h3 id="Disabling_buttons">Disabling buttons</h3>
+
+<p>你可以通过设置 <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#disabled"><code>disabled</code></a> 属性为真来隐藏一个按钮. A disabled button will not generate click or change events and its icon will appear disabled:</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/6805/action-button-toolbar-disabled.png" style="display: block; height: 201px; margin-left: auto; margin-right: auto; width: 381px;"></p>
+
+<h3 id="更新状态">更新状态</h3>
+
+<p>你可以更新按钮的除了id之外的所有<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Properties">属性</a>。</p>
+
+<p>Depending on your application, you might want a button to have different state in different browser windows or different tabs. For example, you might want to give it a different appearance when the current page is being served over HTTPS. The button API handles this by defining a tree of potential states. At the root is the global state, then there's a state you can set for each window, then a state you can set for each tab.</p>
+
+<p>More-specific states override less-specific states. For example, suppose the browser has two windows (W1 and W2), and each window has two tabs. Initially the buttons in all tabs and windows will display the label value inherited from the global state:</p>
+
+<ul class="directory-tree">
+ <li>Browser: label = "my default"
+  <ul>
+   <li>W1
+    <ul>
+     <li>T1   &gt; displays "my default"</li>
+     <li>T2   &gt; displays "my default"</li>
+    </ul>
+   </li>
+   <li>W2
+    <ul>
+     <li>T3   &gt; displays "my default"</li>
+     <li>T4   &gt; displays "my default"</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<p>If you then set a label specific to T3 as "my T3 label", then set a label state specific to W2 as "my W2 label", then the button displayed when T3 is the active tab will still show "my T3 label", but the button displayed when T4 is the active tab will show "my W2 label":</p>
+
+<ul class="directory-tree">
+ <li>Browser: label = "my default"
+  <ul>
+   <li>W1
+    <ul>
+     <li>T1   &gt; displays "my default"</li>
+     <li>T2   &gt; displays "my default"</li>
+    </ul>
+   </li>
+   <li>W2
+    <ul>
+     <li>T3   &gt; displays "my T3 label"</li>
+     <li>T4   &gt; displays "my W2 label"</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<p>Setting the properties on the button instance sets the button's global state:</p>
+
+<pre class="brush: js">button.label = "my new label";</pre>
+
+<p>You can set state to be specific to a window or tab using the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#state()"><code>state()</code></a> method. To set state like this, call <code>state()</code> with 2 parameters:</p>
+
+<ul>
+ <li>the first parameter is a <a href="/en-US/Add-ons/SDK/High-Level_APIs/windows"><code>window</code></a> or <a href="/en-US/Add-ons/SDK/High-Level_APIs/tabs#Tab"><code>tab</code></a> object or as a shorthand, the string "window" for the currently active window, or the string "tab" for the currently active tab</li>
+ <li>the second parameter is an object containing the state properties you wish to update.</li>
+</ul>
+
+<p>Here's an add-on with a button that disables itself when you click it, but only for the currently active window:</p>
+
+<pre class="brush: js">var { ToggleButton } = require("sdk/ui/button/toggle");
+
+var button = ToggleButton({
+    id: "my-button",
+    label: "my button",
+    icon: {
+      "16": "./firefox-16.png",
+      "32": "./firefox-32.png"
+    },
+    onClick: disableForThisWindow
+  });
+
+function disableForThisWindow(state) {
+  button.state("window", {
+    disabled: true
+  });
+}</pre>
+
+<p>To fetch the state for a specific window or tab, call <code>state()</code>, passing in the window or tab you are interested in, and it will return the state:</p>
+
+<pre class="brush: js">var labelForActiveTab = button.state("tab").label;</pre>
+
+<p>To learn more about this, see the API documentation for <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#state()"><code>state()</code></a>.</p>
+
+<h3 id="Updating_checked">Updating <code>checked</code></h3>
+
+<p>You can update a toggle button's <code>checked</code> property in just the same way you update its other properties, but there's one extra thing you need to keep in mind.</p>
+
+<p>The <code>checked</code> property is not only updated directly by assignment, but is also updated when the user clicks the button (or when some code calls <code>button.click()</code>). When that happens,  the button is updated for the window whose button was clicked. Because window-specific state overrides global state, if you try to update <code>checked</code> by direct assignment to the button, this will be overridden by the user clicking the button.</p>
+
+<p>If you want to change this default behavior, you can delete the window-specific state in your button's <code>onChange</code> handler. For example, here's a button that makes click events update checked globally, and not just for the current window:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+
+var globalToggle = ToggleButton({
+  id: 'my-global-toggle',
+  label: 'global',
+  icon: './foo.png',
+  onChange: function() {
+    // delete the window state for the current window,
+    // automatically set when the user click on the button
+    this.state('window', null);
+
+    // now that the state hierarchy is clean, set the global state
+    this.checked = !this.checked;
+  }
+});</pre>
+
+<p>Here's a button that makes click events update only the current tab:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+
+var tabToggle = ToggleButton({
+  id: 'my-tab-toggle',
+  label: 'tab-specific',
+  icon: './foo.png',
+  onChange: function() {
+    // delete the window state for the current window,
+    // automatically set when the user click on the button
+    this.state('window', null);
+
+    // now that the state hierarchy is clean, set the
+    // tab state for the current tab
+    let { checked } = this.state('tab');
+    this.state('tab', {checked: !checked});
+  }
+});</pre>
+
+<h3 id="销毁按钮">销毁按钮</h3>
+
+<p>当你使用完一个按钮后，通过调用<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#destroy()"><code>destroy()</code></a>方法销毁它。在这之后，任何试图访问它的属性、调用它的方法的行为，都将抛出异常。</p>
+
+<h2 id="Globals">Globals</h2>
+
+<h3 id="Constructors">Constructors</h3>
+
+<h4 class="addon-sdk-api-name" id="ToggleButton(options)"><code>ToggleButton(options)</code></h4>
+
+<p>Creates a toggle button.</p>
+
+<h5 id="Parameters">Parameters</h5>
+
+<p><strong>options : object</strong><br>
+ Required options:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col"> </th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>id</td>
+   <td>string</td>
+   <td>
+    <p>The button's ID. This is used internally to keep track of this button. The ID must be unique within your add-on.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>label</td>
+   <td>string</td>
+   <td>
+    <p>The button's human-readable label. When the button is in the toolbar, this appears in a tooltip, and when the button is in the menu, it appears underneath the button as a legend.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>icon</td>
+   <td>url, string, object</td>
+   <td>
+    <p>One or more icons for the button. You can specify this in one of three ways: </p>
+
+    <ul>
+     <li><strong>as a resource:// URL</strong> pointing at an icon file in your add-on's "data" directory, typically constructed using <em><code>self.data.url(iconfile)</code></em></li>
+     <li><strong>as a relative path</strong>: a string in the form "./iconfile", where "iconfile" is a relative path to the icon file beginning in your add-on's "data" directory</li>
+     <li><strong>as an object, or dictionary of key-value pairs</strong>. Here you can specify a range of sizes for your button's icon. Each key-value pair specifies an icon:
+      <ul>
+       <li>each value specifies an image file as a resource:// URL or relative path.</li>
+       <li>each key must be a numeric string such as "16", or "32", which represents the size in pixels of the corresponding image.</li>
+      </ul>
+     </li>
+    </ul>
+
+    <pre class="brush: js">
+var { ToggleButton } = require('sdk/ui/button/toggle');
+var self = require("sdk/self");
+
+var button1 = ToggleButton({
+    id: "my-button1",
+    label: "my button1",
+    icon: self.data.url("firefox-16.png")
+  });
+
+var button2 = ToggleButton({
+    id: "my-button2",
+    label: "my button2",
+    icon: "./firefox-16.png"
+  });
+
+var button3 = ToggleButton({
+    id: "my-button3",
+    label: "my button3",
+    icon: {
+      "16" : "./firefox-16.png",
+      "32" : "./firefox-32.png",
+      "64" : "./firefox-64.png"
+    }
+  });</pre>
+
+    <p>If you use the final form, Firefox will automatically choose the best-fit icon for your button, depending on the device screen resolution and where the button is in the UI. On a device with a "normal" screen resolution, the toolbar has space for 18 x 18 pixels and the menu panel has space for 32 x 32 pixels. On a high resolution screen (such as a <a href="https://en.wikipedia.org/wiki/Retina_Display">HiDPI</a> display), these are doubled to 36 x 36 and 64 x 64 pixels, respectively. So you can supply three icon files:</p>
+
+    <pre class="brush: js">
+icon: {
+  "16": "./addon16.png",
+  "32": "./addon32.png",
+  "64": "./addon64.png"
+}</pre>
+
+    <p>This will look fine in both toolbar and menu panel, and for both screen resolutions. However, the icons in the toolbar will not quite fill the space available, so you can instead supply four icons:</p>
+
+    <pre class="brush: js">
+icon: {
+  "18": "./addon18.png", // toolbar icon non HiDPI
+  "32": "./addon32.png", // menu panel icon non HiDPI
+  "36": "./addon36.png", // toolbar icon HiDPI
+  "64": "./addon64.png"  // menu panel icon HiDPI
+}
+</pre>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Optional options:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Name</th>
+   <th scope="col">Type</th>
+   <th scope="col"> </th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>disabled</td>
+   <td>boolean</td>
+   <td>
+    <p>Determines whether the button is disabled. Disabled buttons appear disabled in the UI, and do not respond to clicks. Defaults to false.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>onClick</td>
+   <td>function</td>
+   <td>
+    <p>Click handler for the button.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>badge</td>
+   <td>Number or String</td>
+   <td>
+    <div class="geckoVersionNote">
+    <p>New in Firefox 36.</p>
+    </div>
+
+    <p><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Badged_buttons">Badge</a> to attach to the button.</p>
+
+    <p>The badge can contain as many characters (or digits) as you like, but only the first four will be displayed.</p>
+   </td>
+  </tr>
+  <tr>
+   <td>badgeColor</td>
+   <td>CSS <a href="/en-US/docs/Web/CSS/color_value">&lt;color&gt;</a> value</td>
+   <td>
+    <div class="geckoVersionNote">
+    <p>New in Firefox 36.</p>
+    </div>
+
+    <p>Color for the <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Badged_buttons">badge</a>. If <code>badgeColor</code> is omitted and <code>badge</code> is specified, then the badge is red.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="ToggleButton">ToggleButton</h2>
+
+<h3 id="Methods">Methods</h3>
+
+<h4 class="addon-sdk-api-name" id="click()"><code>click()</code></h4>
+
+<p>Click the button. This will cause the button to generate the <code>click</code> event:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "my button",
+  icon: {
+    "16": "./firefox-16.png",
+    "32": "./firefox-32.png"
+  },
+  onClick: function(state) {
+      console.log("You clicked '" + state.label + "'");
+  }
+});
+
+button.click();
+</pre>
+
+<h4 class="addon-sdk-api-name" id="state()"><code>state()</code></h4>
+
+<p>Get or set the button's state for a specific window or tab.</p>
+
+<p>By default, a button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Properties">properties</a> are global, meaning that they are the same across all open windows and tabs, and that if you update these properties, then they are updated across all windows and tabs. But sometimes you want a button attached to one window (or tab) to have a different state to a button attached to a different window (or tab). That's what <code>state()</code> is for.</p>
+
+<p>To set a button's properties for a specific window or tab, call <code>state()</code>, passing it the <a href="/en-US/Add-ons/SDK/High-Level_APIs/windows"><code>window</code></a> or <a href="/en-US/Add-ons/SDK/High-Level_APIs/tabs"><code>tab</code></a> you want the property to apply to, and the property value to set. A special shortcut allows you to pass the string "window" or "tab" to select the currently active window or tab.</p>
+
+<p>For example, if you have a button like this:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "default",
+  icon: "./firefox-16.png"
+});</pre>
+
+<p>You can change its label for only the currently active window like this:</p>
+
+<pre class="brush: js">button.state("window", {
+  "label" : "window-specific label"
+});</pre>
+
+<p>You can change its label for only the currently active tab like this:</p>
+
+<pre class="brush: js">button.state("tab", {
+  "label" : "tab-specific label"
+});
+</pre>
+
+<p>To fetch the button state for a specific window or tab, call <code>state()</code>, passing it the window or tab you're interested in, and it will return a state object containing the <code>id</code>, <code>label</code>, <code>icon</code>, and <code>disabled</code> properties for the button associated with that window or tab. Again. you can use the strings "window" or "tab" as shortcuts. For example, this add-on:</p>
+
+<ul>
+ <li>creates a button with a default label</li>
+ <li>opens a new tab</li>
+ <li>sets a new label only for the new tab</li>
+ <li>logs the result of accessing the global label, the window-specific label, and each of the 2 tab-specific labels</li>
+</ul>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+var tabs = require("sdk/tabs");
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "default label",
+  icon: "./firefox-16.png"
+});
+
+tabs.open({
+  url: "https://mozilla.org/",
+  onOpen: onNewTab
+});
+
+function onNewTab(tab) {
+  // Modify the label only for the new tab
+  button.state(tab, {
+    "label" : "tab-specific label"
+  });
+
+  // access the global label -&gt; "default label"
+  console.log(button.label);
+
+  // access the window's label -&gt; "default label"
+  console.log(button.state("window").label);
+
+  // access the first tab's label -&gt; "default label"
+  console.log(button.state(tabs[0]).label);
+
+  // access the second tab's label -&gt; "tab-specific label"
+  console.log(button.state(tabs[1]).label);
+}</pre>
+
+<p>Setting a property won't affect a more-specific property setting. For example, if you have a window with two tabs, and you set a tab-specific label, then set the window-specific label, this will not overwrite the tab-specific label:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+var tabs = require("sdk/tabs");
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "default label",
+  icon: "./firefox-16.png"
+});
+
+tabs.open({
+  url: "https://mozilla.org/",
+  onOpen: onNewTab
+});
+
+function onNewTab(tab) {
+  // Modify the label only for the new tab
+  button.state(tab, {
+    "label" : "tab-specific label"
+  });
+
+  // Modify the label for the window
+  button.state("window", {
+    "label" : "window-specific label"
+  });
+
+  // access the global label -&gt; "default label"
+  console.log(button.label);
+
+  // access the window's label -&gt; "window-specific label"
+  console.log(button.state("window").label);
+
+  // access the first tab's label -&gt; "window-specific label"
+  console.log(button.state(tabs[0]).label);
+
+  // access the second tab's label -&gt; "tab-specific label"
+  console.log(button.state(tabs[1]).label);
+}</pre>
+
+<p>The best way to think of this is as a tree: the global state is the root, followed by the state for each window, followed by the state for each tab in a window. If a property value for a node in the tree has not been set explicitly using <code>state()</code>, then it inherits its value from the next level up. So if you have one window containing two tabs, and have set the button's <code>label</code> only for tab A, then tab B will inherit <code>label</code>'s value from the window, and changing the value for the window will implicitly change the value for tab B.</p>
+
+<p>To delete a tab- or window-specific state, assign <code>null</code> to the property. After that, the property will inherit its value from the less-specific state as before:</p>
+
+<pre class="brush: js">var { ToggleButton } = require('sdk/ui/button/toggle');
+var tabs = require("sdk/tabs");
+
+var button = ToggleButton({
+  id: "my-button",
+  label: "default label",
+  icon: "./firefox-16.png"
+});
+
+tabs.open({
+  url: "https://mozilla.org/",
+  onOpen: onNewTab
+});
+
+function onNewTab(tab) {
+  // Modify the label only for the new tab
+  button.state(tab, {
+    "label" : "tab-specific label"
+  });
+
+  // Modify the label for the window
+  button.state("window", {
+    "label" : "window-specific label"
+  });
+
+  // access the global label -&gt; "default label"
+  console.log(button.label);
+
+  // access the window's label -&gt; "window-specific label"
+  console.log(button.state("window").label);
+
+  // access the first tab's label -&gt; "window-specific label"
+  console.log(button.state(tabs[0]).label);
+
+  // access the second tab's label -&gt; "tab-specific label"
+  console.log(button.state(tabs[1]).label);
+
+  // Reset the tab-specific state
+  button.state(tab, null);
+
+  // access the second tab's label -&gt; "window-specific label"
+  console.log(button.state(tabs[1]).label);
+}</pre>
+
+<p>Finally, you can pass the button itself into <code>state()</code>. This is an alternative way to set or get the global state. The reason for using this, rather than setting state properties individually, is that you can define an object with the properties to set in one place, then apply it to the global state with a single line:</p>
+
+<pre class="brush: js">const defaultState = {
+  "label": "default label",
+  "icon": "./default.png",
+}
+
+const differentState = {
+  "label": "different label",
+  "icon": "./different.png",
+}
+
+var { ToggleButton } = require("sdk/ui/button/toggle");
+
+var button = ToggleButton({
+    id: "default-label",
+    label: "default label",
+    icon: "./default.png",
+    onClick: function(state) {
+      if (button.label == "default label") {
+        button.state(button, differentState);
+      }
+      else {
+        button.state(button, defaultState);
+      }
+      console.log(button.state(button).label);
+      console.log(button.state(button).icon);
+    }
+  });
+</pre>
+
+<h5 id="Parameters_2">Parameters</h5>
+
+<p><strong>target : button, tab, window, string</strong></p>
+
+<ul>
+ <li>To set or get the global state, this needs to be the <code>button</code> instance.</li>
+ <li>To get or set window-specific state, this needs to be the <a href="/en-US/Add-ons/SDK/High-Level_APIs/windows"><code>window</code></a> object for which you wish to set a specific state, or the string "window" to select the currently active window.</li>
+ <li>To get or set tab-specific state this needs to be the <a href="/en-US/Add-ons/SDK/High-Level_APIs/tabs"><code>tab</code></a> object for which you wish to set a specific state, or the string "tab" to select the currently active tab.</li>
+</ul>
+
+<p><strong>state : object, null</strong><br>
+ Include this parameter only if you are setting state. It is an object containing all the properties you wish to set. For example:</p>
+
+<pre class="brush: js">button.state("tab", {
+  "label" : "tab-specific label",
+  "icon": "./tab-specific-icon.ico"
+});</pre>
+
+<p>To reset state, pass null:</p>
+
+<pre class="brush: js">button.state("tab", null);</pre>
+
+<h5 id="Returns">Returns</h5>
+
+<p><strong>state</strong> : if you have passed the second <code>state</code> argument to make this function a setter, it returns <code>undefined</code>. Otherwise, it functions as a getter and returns the button's state for the specified object. This logs the state for the button associated with the currently active tab:</p>
+
+<pre class="brush: js">console.log(button.state("tab"));</pre>
+
+<p>This object represents a snapshot of the state at the time <code>state()</code> is called. It is not kept up to date with changes made to the button:</p>
+
+<pre class="brush: js">button.label = "foo";
+var state = button.state(button);
+button.label = "bar";
+console.log(state.label) // foo</pre>
+
+<h4 class="addon-sdk-api-name" id="on()"><code>on()</code></h4>
+
+<p>Add a listener to an event emitted by the button.</p>
+
+<pre class="brush: js">button.on("click", handleClick)
+
+function handleClick(state) {
+  console.log("button '" + state.label + "' was clicked");
+}</pre>
+
+<h5 id="Parameters_3">Parameters</h5>
+
+<p><strong>event : string</strong><br>
+ The event to listen for. Toggle buttons emit two types of event, "<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click"><code>click</code></a>" and "<code><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#change">change</a></code>".</p>
+
+<p><strong>listener : function</strong><br>
+ Function that will be called on the event.</p>
+
+<h4 class="addon-sdk-api-name" id="once()"><code>once()</code></h4>
+
+<p>Assign a listener to the first occurrence only of an event emitted by the button. The listener is automatically removed after the first time the event is emitted.</p>
+
+<h5 id="Parameters_4">Parameters</h5>
+
+<p><strong>event : string</strong><br>
+ The event to listen for. Toggle buttons emit two types of event, "<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click"><code>click</code></a>" and "<code><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#change">change</a></code>".</p>
+
+<p><strong>listener : function</strong><br>
+ Function that will be called on the event.</p>
+
+<h4 class="addon-sdk-api-name" id="removeListener()"><code>removeListener()</code></h4>
+
+<p>Removes an event listener. For example, this code is equivalent to <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#once()"><code>once()</code></a>:</p>
+
+<pre class="brush: js">button.on("click", handleClick)
+
+function handleClick(state) {
+  console.log("button '" + state.label + "' was clicked");
+  button.removeListener("click", handleClick);
+} </pre>
+
+<h5 id="Parameters_5">Parameters</h5>
+
+<p><strong>event : string</strong><br>
+ The event to listener is listening for. Toggle buttons emit two types of event, "<a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click"><code>click</code></a>" and "<code><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#change">change</a></code>".</p>
+
+<p><strong>listener : function</strong><br>
+ The listener to remove.</p>
+
+<h4 class="addon-sdk-api-name" id="destroy()"><code>destroy()</code></h4>
+
+<p>Destroy the button. After calling this function, the button will no longer appear in the UI, and accessing any of its properties or methods will throw an error.</p>
+
+<h3 id="属性">属性</h3>
+
+<h4 class="addon-sdk-api-name" id="id"><code>id</code></h4>
+
+<p>按钮独一无二的ID. 这个属性是只读的。</p>
+
+<h4 class="addon-sdk-api-name" id="label"><code>label</code></h4>
+
+<p>按钮的标签</p>
+
+<h4 class="addon-sdk-api-name" id="icon"><code>icon</code></h4>
+
+<p>按钮的图标（或多个图标）, 一个URL,相对路径, 或者一个包含按键-值的集合。</p>
+
+<h4 class="addon-sdk-api-name" id="disabled"><code>disabled</code></h4>
+
+<p>Boolean property indicating whether or not the button is disabled.</p>
+
+<h4 class="addon-sdk-api-name" id="checked"><code>checked</code></h4>
+
+<p>Boolean property indicating whether or not the button is checked. It's initialized to <code>false</code>, or the value of the <code>checked</code> option to the button's constructor. It is then flipped, on a per-window basis, whenever the user clicks the button or when the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#click()"><code>click()</code></a> method is called.</p>
+
+<h4 class="addon-sdk-api-name" id="标志"><code>标志</code></h4>
+
+<div class="geckoVersionNote">
+<p>在Firefox 36新增</p>
+</div>
+
+<p>Value to attach to the button as a <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Badged_buttons">badge</a>. May be a number or a string.</p>
+
+<p>The badge can contain as many characters (or digits) as you like, but only the first four will be displayed.</p>
+
+<h4 class="addon-sdk-api-name" id="标志颜色"><code>标志颜色</code></h4>
+
+<div class="geckoVersionNote">
+<p>在Firefox 36新增</p>
+</div>
+
+<p><a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Badged_buttons">标志</a>的颜色像CSS <a href="/en-US/docs/Web/CSS/color_value">&lt;color&gt;</a> 的值一样指定.</p>
+
+<h3 id="事件">事件</h3>
+
+<h4 class="addon-sdk-api-name" id="单击"><code>单击</code></h4>
+
+<p>这个事件将在用户单击或者你的插件调用click()方法时被发出。</p>
+
+<h5 id="Arguments">Arguments</h5>
+
+<p><strong>state</strong> : The button's state. This includes all the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Properties">properties</a>.</p>
+
+<h4 class="addon-sdk-api-name" id="change"><code>change</code></h4>
+
+<p>This event is emitted when a user clicks the button or your add-on calls the button's <code>click()</code> method. This event is emitted at the same time as <code>click</code> and its listener receives the same argument. The only purpose of the extra event is that <code>change</code> is a more natural event name for a toggle button, as it matches the <code>change</code> event emitted by elements like <a href="/en-US/docs/Web/HTML/Element/select"><code>&lt;select&gt;</code></a> and <a href="/en-US/docs/Web/HTML/Element/Input"><code>&lt;input&gt;</code></a>.</p>
+
+<h5 id="Arguments_2">Arguments</h5>
+
+<p><strong>state</strong> : The button's state. This includes all the button's <a href="/en-US/Add-ons/SDK/Low-Level_APIs/ui_button_toggle#Properties">properties</a>.</p>

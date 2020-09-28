@@ -1,0 +1,59 @@
+---
+title: Using spell checking in XUL
+slug: Archive/Mozilla/XUL/Using_spell_checking_in_XUL
+tags:
+  - Add-ons
+  - Extensions
+---
+<p>Spell checking functionality is available starting in <a href="/en/Firefox_2_for_developers" title="en/Firefox_2_for_developers">Firefox 2</a>. This document describes how to use the <code><a class="external" href="/en/XPCOM_Interface_Reference/mozISpellCheckingEngine">mozISpellCheckingEngine</a></code> component to add spell checking capabilities to your Firefox extension.</p>
+
+<p>See <a href="/en/HTML/Controlling_spell_checking_in_HTML_forms" title="en/Controlling_spell_checking_in_HTML_forms">Controlling spell checking in HTML forms</a> for details on adding spell check support to HTML forms for your website.</p>
+
+<h2 id="Checking_the_spelling_of_a_word" name="Checking_the_spelling_of_a_word">Checking the spelling of a word</h2>
+
+<p>To check the spelling of a word, you must first create an interface to the <code><a class="external" href="/en/XPCOM_Interface_Reference/mozISpellCheckingEngine">mozISpellCheckingEngine</a></code> component and then call the <code>check()</code> method on the string you wish to test. This method returns <code>true</code> if the word is correctly spelled, or <code>false</code> if it's not.</p>
+
+<p>You may also want to check to see if the word is in the user's personal dictionary, since sometimes a word might be correctly spelled but in the dictionary.</p>
+
+<pre>// Different versions of Firefox have different contract IDs
+var spellclass = "@mozilla.org/spellchecker/myspell;1";
+if ("@mozilla.org/spellchecker/hunspell;1" in Components.classes)
+	spellclass = "@mozilla.org/spellchecker/hunspell;1";
+if ("@mozilla.org/spellchecker/engine;1" in Components.classes)
+	spellclass = "@mozilla.org/spellchecker/engine;1";
+
+gSpellCheckEngine = Components.classes[spellclass].getService(Components.interfaces.mozISpellCheckingEngine);
+gSpellCheckEngine.dictionary = 'en-US';
+
+if (gSpellCheckEngine.check("kat"))
+{
+    // It's spelled correctly
+}
+else
+{
+    // It's spelled incorrectly but check if the user has added "kat" as a correct word..
+    var mPersonalDictionary = Components.classes["@mozilla.org/spellchecker/personaldictionary;1"]
+                                .getService(Components.interfaces.mozIPersonalDictionary);
+    if (mPersonalDictionary.check("kat", gSpellCheckEngine.dictionary))
+    {
+        // It's spelled correctly accourdly to user personal dictionary
+    }
+    else
+    {
+        // It's spelled incorrectly
+    }
+}
+</pre>
+
+<h2 id="Getting_a_list_of_suggestions" name="Getting_a_list_of_suggestions">Getting a list of suggestions</h2>
+
+<p>To get a list of suggestions for a misspelled word, you call the <code>suggest()</code> method, specifying the word and an object to be filled with an array of possible suggestions.</p>
+
+<pre class="eval">var suggestions = {};
+gSpellCheckEngine.suggest("kat", suggestions, {});
+
+if (suggestions.value) {
+   // suggestions.value is a JavaScript <a href="/en/JavaScript/Reference/Global_Objects/Array" title="en/Core_JavaScript_1.5_Reference/Global_Objects/Array">Array</a> of strings
+   // there were suggestions.value.length suggestions found
+}
+</pre>

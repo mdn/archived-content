@@ -1,0 +1,94 @@
+<p></p><div class="warning warningHeader">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It was last updated in 2002.</p>
+</div><p></p>
+<h3 id="Overview" name="Overview">Overview</h3>
+<p>Handling network and locally retrievable resources is a central part of Necko. Resources are identified by URI "Uniform Resource Identifier" (Taken from <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>):</p>
+<blockquote>
+ <dl>
+  <dt>
+   Uniform</dt>
+  <dd>
+   Uniformity provides several benefits: it allows different types of resource identifiers to be used in the same context, even when the mechanisms used to access those resources may differ; it allows uniform semantic interpretation of common syntactic conventions across different types of resource identifiers; it allows introduction of new types of resource identifiers without interfering with the way that existing identifiers are used; and, it allows the identifiers to be reused in many different contexts, thus permitting new applications or protocols to leverage a pre-existing, large, and widely-used set of resource identifiers.</dd>
+  <dt>
+   Resource</dt>
+  <dd>
+   A resource can be anything that has identity. Familiar examples include an electronic document, an image, a service (e.g., "today's weather report for Los Angeles"), and a collection of other resources. Not all resources are network "retrievable"; e.g., human beings, corporations, and bound books in a library can also be considered resources. The resource is the conceptual mapping to an entity or set of entities, not necessarily the entity which corresponds to that mapping at any particular instance in time. Thus, a resource can remain constant even when its content---the entities to which it currently corresponds---changes over time, provided that the conceptual mapping is not changed in the process.</dd>
+  <dt>
+   Identifier</dt>
+  <dd>
+   An identifier is an object that can act as a reference to something that has identity. In the case of URI, the object is a sequence of characters with a restricted syntax.</dd>
+ </dl>
+ A URI can be further classified as a locator, a name, or both. The term "Uniform Resource Locator" (URL) refers to the subset of URI that identify resources via a representation of their primary access mechanism (e.g., their network "location"), rather than identifying the resource by name or by some other attribute(s) of that resource. ... The URI scheme defines the namespace of the URI, and thus may further restrict the syntax and semantics of identifiers using that scheme. Although many URL schemes are named after protocols, this does not imply that the only way to access the URL's resource is via the named protocol. Gateways, proxies, caches, and name resolution services might be used to access some resources, independent of the protocol of their origin, and the resolution of some URL may require the use of more than one protocol (e.g., both DNS and HTTP are typically used to access an "http" URL's resource when it can't be found in a local cache).</blockquote>
+<p>In Necko every URI scheme is represented by a protocol handler. Sometimes a protocol handler represents more than one scheme. The protocol handler provides scheme specific information and methods to create new URIs of the schemes it supports. One of the main Necko goals is to provide a "plug able" protocol support. This means that it should be possible to add new protocols to Necko just by implementing <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIProtocolHandler.idl" rel="custom">nsIProtocolHandler</a> and <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIChannel.idl" rel="custom">nsIChannel</a>. It also might be necessary to implement a new urlparser for a new protocol but that might not be necessary because Necko already provides URI implementations that can deal with a number of schemes, by implementing the generic urlparser defined in <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>.</p>
+<h3 id="nsIURI_and_nsIURL" name="nsIURI_and_nsIURL">nsIURI and nsIURL</h3>
+<p>In a strict sense Necko does only know URLs, URIs by the above definition are much too generic to be properly represented inside a library.</p>
+<p>There are however two interfaces which loosely relate to the distinction between URI and URL as per the above definition: <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIURI.idl" rel="custom">nsIURI</a> and <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/public/nsIURL.idl" rel="custom">nsIURL</a>.</p>
+<p>nsIURI represents access to a very simple, very generic form of an URL. Simply speaking it's scheme and non-scheme, separated by a colon, like "about". nsIURL inherits from nsIURI and represents access to typical URLs with schemes like "http", "ftp", ...</p>
+<h4 id="nsSimpleURI" name="nsSimpleURI">nsSimpleURI</h4>
+<p>One implementation of nsIURI is <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/src/nsSimpleURI.h" rel="custom">nsSimpleURI</a> which is the basis for protocols like "about". nsSimpleURI contains setters and getters for the URI and the components of an URI: scheme and path (non-scheme). There are no pre written urlparsers for simple URIs, because of it's simple structure.</p>
+<h4 id="nsStandardURL" name="nsStandardURL">nsStandardURL</h4>
+<p>The most important implementation of nsIURL is <a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/base/src/nsStandardURL.h" rel="custom">nsStandardURL</a> which is the basis for protocols like http, ftp, ...</p>
+<p>These schemes support a hierarchical naming system, where the hierarchy of the name is denoted by a "/" delimiter separating the components in the path. nsStandardURL also contains the facilities to parse these typ of urls, to break the specification of the URL "spec" down into the most basic segments.</p>
+<p>The spec consists of prepath and path. The prepath consists of scheme and authority. The authority consists of prehost, host and port. The prehost consists of username and password. The path consists of directory, filename, param, query and ref. The filename consists of filebasename and fileextension.</p>
+<p>If the spec is completly broken down, it consists of: scheme, username, password, host, port, directory, filebasename, fileextension, param, query and ref. Together these segments form the URL spec with the following syntax:</p>
+<p><code><a class="external" rel="freelink">scheme://username:password@host</a>:port/directory/filebasename.fileextension;param?query#ref</code></p>
+<p>For performance reasons the complete spec is stored in <a href="#Escaping">escaped</a> form in the nsStandardURL object with pointers (position and length) to each basic segment and for the more global segments like path and prehost for example.</p>
+<p>Necko provides pre written urlparsers for schemes based on hierachical naming systems.</p>
+<p> </p>
+<h3 id="Escaping" name="Escaping">Escaping</h3>
+<p>To be able to parse an URL safely it is sometimes necessary to "escape" certain characters, to hide them from the parser. An escaped character is encoded as a character triplet, consisting of the percent character "%" followed by the two hexadecimal digits representing the octet code. For example, "%20" is the escaped encoding for the US-ASCII space character.</p>
+<p>Another quote from <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>:</p>
+<blockquote>
+ A URI is always in an "escaped" form, since escaping or unescaping a completed URI might change its semantics. Normally, the only time escape encodings can safely be made is when the URI is being created from its component parts; each component may have its own set of characters that are reserved, so only the mechanism responsible for generating or interpreting that component can determine whether or not escaping a character will change its semantics. Likewise, a URI must be separated into its components before the escaped characters within those components can be safely decoded.</blockquote>
+<p>This implies that the segments of urls are escaped differently. This is done by <a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsEscape.cpp#368" rel="custom">NS_EscapeURL</a> which is now part of xpcom, but started as part of Necko. The information how to escape each segment is stored in a matrix.</p>
+<p>Also a string should not be escaped more than once. Necko will not escape an already escaped character unless forced by a special mask that can be used if it is known that a string is not escaped.</p>
+<h3 id="Parsing_URLs" name="Parsing_URLs">Parsing URLs</h3>
+<p><a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a> defines an URL parser that can deal with the syntax that is common to most URL schemes that are currently in existence.</p>
+<p>Sometimes scheme specific parsing is required. Also to be somewhat tolerant to syntax errors the parser has to know more about the specific syntax of the URLs for that scheme. To stay almost generic Necko contains three parsers for the main classes of standard URLs. Which one has to be used is defined by the implementation of nsIProtocolhandler for the scheme in question.</p>
+<p>The three main classes are:</p>
+<dl>
+ <dt>
+  Authority</dt>
+ <dd>
+  The URLs have an authority segment, like "http".</dd>
+ <dt>
+  NoAuthority</dt>
+ <dd>
+  These URLs have no or a degenerated authority segment, like the "file" scheme. Also this parser can identify drives if possible depending on the platform.</dd>
+ <dt>
+  Standard</dt>
+ <dd>
+  It is not known if an authority segment exists or not, less syntax correction can be applied in this case.</dd>
+</dl>
+<h4 id="Noteable_Differences" name="Noteable_Differences">Noteable Differences</h4>
+<ol>
+ <li>Necko does not support certain deprecated forms of relative URLs, based on the following part of <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>:
+  <blockquote>
+   If the scheme component is defined, indicating that the reference starts with a scheme name, then the reference is interpreted as an absolute URI and we are done. Otherwise, the reference URI's scheme is inherited from the base URI's scheme component. Due to a loophole in prior specifications (<a class="external" href="http://www.ietf.org/rfc/rfc1630.txt">RFC1630</a>), some parsers allow the scheme name to be present in a relative URI if it is the same as the base URI scheme. Unfortunately, this can conflict with the correct parsing of non-hierarchical URI. For backwards compatibility, an implementation may work around such references by removing the scheme if it matches that of the base URI and the scheme is known to always use the "hier_part" syntax. The parser can then continue with the steps below for the remainder of the reference components. Validating parsers should mark such a misformed relative reference as an error.</blockquote>
+  <p>The decision was made against backwards compatibility. This means that URLs like "<span class="nowiki">http:page.html</span>" or "<span class="nowiki">http:/directory/page.html</span>" are interpreted as absolute urls and "corrected" by the parser.</p>
+ </li>
+ <li>Also the handling of query segments is different from the examples given in <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>:
+  <blockquote>
+   Within an object with a well-defined base URI of <span class="nowiki">http://a/b/c/d;p?q</span> the relative URI would be resolved as follows: ... <span class="nowiki">?y = http://a/b/c/?y</span> ...</blockquote>
+  <p>Instead</p>
+  <p><span class="nowiki">?y = http://a/b/c/d;p?y</span></p>
+  <p>was implemented as suggested by the older <a class="external" href="http://tools.ietf.org/html/rfc1808" title="http://tools.ietf.org/html/rfc1808">RFC 1808</a>. This decision is based on an email by Roy T. Fielding, one of the authors of <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>, stating that the given example is wrong. Details can be found at <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=90439" title="FIXED: relative queries from cgi broken">bug 90439</a>.</p>
+ </li>
+ <li>Registry-based authoritys Currently Necko's url-objects only support host based authoritys or urls with no authoritys. Registry-based authoritys as defined in <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>
+  <blockquote>
+   Many URI schemes include a top hierarchical element for a naming authority, such that the namespace defined by the remainder of the URI is governed by that authority. This authority component is typically defined by an Internet-based server or a scheme-specific registry of naming authorities. ... The structure of a registry-based naming authority is specific to the URI scheme, but constrained to the allowed characters for an authority component.</blockquote>
+  <p>are not supported.</p>
+ </li>
+</ol>
+<h3 id="References" name="References">References</h3>
+<p>Main reference for URIs, URLs and URL-parsing is <a class="external" href="http://tools.ietf.org/html/rfc2396" title="http://tools.ietf.org/html/rfc2396">RFC 2396</a>.</p>
+<p> </p>
+<div class="originaldocinfo">
+ <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+ <ul>
+  <li>Author(s): <a class="link-mailto" href="mailto:andreas.otte@debitel.net">Andreas Otte</a></li>
+  <li>Last Updated Date: January 2, 2002</li>
+  <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+ </ul>
+</div>
+<p> </p>

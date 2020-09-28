@@ -1,0 +1,171 @@
+<div class="warning">
+<p>This may not work in Thunderbird 25 and later, because of <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=452232">Bug 452232</a>, which has been fixed.</p>
+</div>
+
+<p>This Add-on creates a textbox at the end of Thunderbird main window into which you can type name and E-Mail addresses that will be autocompleted by searching the local addressbooks and the globally configured LDAP server, extra work has been done to make it with Thunderbird 2.x (Gecko 1.8) and 3.x (Gecko 1.9).</p>
+
+<p>Here is a quick walkthrough:</p>
+
+<p>First, in the overlay, both autocompletesearch (Gecko 1.9) and searchSessions (Gecko 1.8) are specified:</p>
+
+<pre><code class="brush: xml">        &lt;textbox flex="1" id="ldap-autocomp" timeout="300"
+                 maxrows="4"
+                 autoFill="true"
+                 autoFillAfterMatch="true"
+                 forceComplete="true"
+                 minResultsForPopup="3"
+                 ignoreBlurWhileSearching="true"
+                 type="autocomplete"
+                 autocompletesearch="mydomain addrbook"
+                 searchSessions="addrbook" /&gt;              </code></pre>
+
+<p><br>
+ Then, in the js code, the LDAP search session gets added:</p>
+
+<p> </p>
+
+<pre><code class="brush: js">  // This function originates from setupLdapAutocompleteSession:
+  // <a class="external" href="http://hg.mozilla.org/comm-central/file/117e438feb4a/mail/components/compose/content/MsgComposeCommands.js" rel="freelink">http://hg.mozilla.org/comm-central/f...oseCommands.js</a>
+  //
+  // It was modified in the following ways:
+  // - Modified to support both Gecko 1.8.x and 1.9+
+  // - Modified to take in an array of textbox ids to which the LDAP
+  //   autocomplete should be attached
+  // - Removed mail.autoComplete.commentColumn support to keep code simple
+  // - Removed observers on pref changes to keep code simple
+
+  setupLDAPAutoComplete: function(textBoxIds) {
+    var autocompleteLdap = false;
+    var autocompleteDirectory = null;
+    autocompleteLdap = getPref("ldap_2.autoComplete.useDirectory");
+
+    if (!autocompleteLdap) {
+      return;
+    }
+    else {
+      autocompleteDirectory = getPref("ldap_2.autoComplete.directoryServer");
+    }
+    var LDAPSession= Components.classes["@mozilla.org/autocompleteSession;1?type=ldap"];
+    LDAPSession = LDAPSession.createInstance().QueryInterface(Components.interfaces.nsILDAPAutoCompleteSession);
+    var url;
+    try {
+      // Gecko 1.9 way
+      url = getPref(autocompleteDirectory + ".uri", true);
+      LDAPSession.serverURL = Components.classes["@mozilla.org/network/io-service;1"].
+        getService(Components.interfaces.nsIIOService).
+          newURI(url, null, null).
+            QueryInterface(Components.interfaces.nsILDAPURL);
+    }
+    catch(ex) {
+      // Try gecko 1.8 way
+      var serverURL = Components.classes[
+          "@mozilla.org/network/ldap-url;1"].
+          createInstance().QueryInterface(
+              Components.interfaces.nsILDAPURL);
+
+      try {
+          serverURL.spec = getPref(autocompleteDirectory + ".uri", true);
+      } catch (ex) {
+          dump("ERROR: " + ex + "\n");
+      }
+      LDAPSession.serverURL =  serverURL;
+    }
+    // get the login to authenticate as, if there is one
+    try {
+      LDAPSession.login = getPref(autocompleteDirectory + ".auth.dn", true);
+    } catch (ex) {
+      // if we don't have this pref, no big deal
+    }
+
+    try {
+      LDAPSession.saslMechanism = getPref(autocompleteDirectory + ".auth.saslmech", true);
+    } catch (ex) {
+      // don't care if we don't have this pref
+    }
+
+    // set the LDAP protocol version correctly
+    var protocolVersion;
+    try {
+      protocolVersion = getPref(autocompleteDirectory +".protocolVersion");
+    } catch (ex) {
+      // if we don't have this pref, no big deal
+    }
+
+    if (protocolVersion == "2") {
+      LDAPSession.version = Components.interfaces.nsILDAPConnection.VERSION2;
+    }
+    // don't search on non-CJK strings shorter than this
+    try {
+      LDAPSession.minStringLength = getPref(autocompleteDirectory + ".autoComplete.minStringLength");
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsLDAPAutoCompleteSession use its default.
+    }
+    // don't search on CJK strings shorter than this
+    try {
+      LDAPSession.cjkMinStringLength = getPref(autocompleteDirectory + ".autoComplete.cjkMinStringLength");
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsLDAPAutoCompleteSession use its default.
+    }
+
+    // we don't try/catch here, because if this fails, we're outta luck
+    var ldapFormatter = Components.classes["@mozilla.org/ldap-autocomplete-formatter;1?type=addrbook"].
+      createInstance().QueryInterface(Components.interfaces.nsIAbLDAPAutoCompFormatter);
+    // override autocomplete name format?
+    try {
+      ldapFormatter.nameFormat = getPref(autocompleteDirectory +".autoComplete.nameFormat",true);
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsAbLDAPAutoCompFormatter use its default.
+    }
+
+    // override autocomplete mail address format?
+    try {
+      ldapFormatter.addressFormat = getPref(autocompleteDirectory +".autoComplete.addressFormat",true);
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsAbLDAPAutoCompFormatter use its default.
+    }
+
+    // set the session's formatter, which also happens to
+    // force a call to the formatter's getAttributes() method
+    // -- which is why this needs to happen after we've set the
+    // various formats
+    LDAPSession.formatter = ldapFormatter;
+
+    // override autocomplete entry formatting?
+    try {
+      LDAPSession.outputFormat = getPref(autocompleteDirectory +
+                                           ".autoComplete.outputFormat",
+                                         true);
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsLDAPAutoCompleteSession use its default.
+    }
+
+    // override default search filter template?
+    try {
+      LDAPSession.filterTemplate = getPref(
+        autocompleteDirectory + ".autoComplete.filterTemplate",
+        true);
+    } catch (ex) {
+      // if this pref isn't there, no big deal.  just let
+      // nsLDAPAutoCompleteSession use its default
+    }
+
+    // override default maxHits (currently 100)
+    try {
+      // XXXdmose should really use .autocomplete.maxHits,
+      // but there's no UI for that yet
+      LDAPSession.maxHits = getPref(autocompleteDirectory + ".maxHits");
+    } catch (ex) {
+      // if this pref isn't there, or is out of range, no big deal.
+      // just let nsLDAPAutoCompleteSession use its default.
+    }
+
+    for (i=0 ; i &lt; textBoxIds.length ; i++ ) {
+      var autoCompleteWidget = document.getElementById(textBoxIds[i]);
+      autoCompleteWidget.addSession(LDAPSession);
+    }
+  }</code></pre>

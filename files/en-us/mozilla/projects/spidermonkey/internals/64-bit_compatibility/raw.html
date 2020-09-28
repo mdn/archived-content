@@ -1,0 +1,338 @@
+<div>
+ {{SpiderMonkeySidebar("Internals")}}</div>
+<div class="summary">
+ <p>This article focuses on hacking TraceMonkey code generation (jstracer.cpp, jsregex.cpp) in ways that will work on both 32-bit and 64-bit JIT backends.</p>
+</div>
+<h3 id="What_widths_are_the_random_typedefs_everywhere">What widths are the random typedefs everywhere?</h3>
+<p>The following types or typedefs are always 64-bit on 64-bit platforms, and 32-bit on 32-bit platforms:</p>
+<ul>
+ <li>Pointers</li>
+ <li>uintptr_t, intptr_t, ptrdiff_t, (probably) size_t</li>
+ <li>jsval</li>
+ <li>jsuword, jsword</li>
+ <li>Length of a string, though the actual length cannot exceed 30 bits</li>
+ <li>JSUintPtr, JSIntPtr, JSPtrDiff, JSUptrDiff, JSSize, JSUword, JSWord (let's not use these, kthx)</li>
+</ul>
+<p>The following types are 32-bit on 32-bit platforms. For all intents and purposes they are also 32-bit on 64-bit platforms:</p>
+<ul>
+ <li>intN, uintN</li>
+ <li>JSIntn, JSUintn, JSBool</li>
+</ul>
+<h3 id="General_Problems_with_Pointers">General Problems with Pointers</h3>
+<p>When performing bitwise operations on pointer values, make sure that both operands are 64-bit. The compiler can implicitly sign or zero extend operands with unintended side effects. For example, consider this code:</p>
+<pre>#define POINTER_TAGBITS    3
+
+static inline uintptr_t
+UnmaskPointer(uintptr_t v)
+{
+    return v &amp; ~POINTER_TAGBITS;
+}
+</pre>
+<p>The value 3 will be inverted to 0xFFFFFFFC, then zero-extended to 0x00000000FFFFFFFC - a subtle and nasty bug, assuming it is unintended. The best way to fix this is to make types explicit, such as:</p>
+<pre>const uintptr_t POINTER_TAGBITS = 3
+</pre>
+<p>Or by using a cast inside the macro. This sort of bug happens surprisingly often - see <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=501324" title="https://bugzilla.mozilla.org/show_bug.cgi?id=501324">bug 501324</a>, <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=512866" title="https://bugzilla.mozilla.org/show_bug.cgi?id=512866">bug 512866</a> for example.</p>
+<h3 id="AMD64_Pointers">AMD64 Pointers</h3>
+<p>If mucking with pointers on AMD64 (or EM64-T/Intel64), it is important to keep in mind an invariant that bits 63-48 must be sign-extended from bit 47. If you use these bits to squirrel away a payload, they must be adjusted before attempting to dereference the pointer. For more information and platform specific details on virtual address widths, see <a class="external" href="http://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details" title="http://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details">this article on Wikipedia</a>.</p>
+<h3 id="Builtins_and_Calls">Builtins and Calls</h3>
+<p>When passing arguments to <code>LirWriter::insCall()</code>, there are four types:</p>
+<ul>
+ <li><code>ARGSIZE_F</code> - floating point value</li>
+ <li><code>ARGSIZE_I</code> - 32-bit integer</li>
+ <li><code>ARGSIZE_Q</code> - 64-bit integer</li>
+ <li><code>ARGSIZE_P</code> - 32-bit integer on 32-bit platforms, 64-bit integer on 64-bit platforms.</li>
+</ul>
+<p>Remember to use <code>ARGSIZE_P</code> where appropriate - on pointers or natively sized integers (including jsvals). Similarly, when adding types to <code>jsbuiltins.h</code>, remember to use <code>_JS_PTR</code> for pointer-width values.</p>
+<h3 id="LIR_Safety">LIR Safety</h3>
+<p>It is not immediately clear from reading LIR which opcodes should be used for 64-bit safety. If you make a mistake, there's an extremely good chance the SanityFilter in Nanojit will catch it while generating code. If this happens you will get an assert that points directly to the ill-typed LIR.</p>
+<p>Not all pointer-width values are actually pointers. To avoid equivocating, the rest of this article will use the term "native integers". A native integer is the size used for intptr_t/uintptr_t, which is usually the width of a general-purpose register on the target CPU.</p>
+<h4 id="Loading_and_Storing_Native_Integers">Loading and Storing Native Integers</h4>
+<p>The harder cases to detect usually involve runtime value truncation. For example, this code will not load a native integer correctly on a 64-bit machine:</p>
+<pre>struct Object {
+   void *data;
+};
+
+lir-&gt;insLoad(LIR_ld, objIns, ins-&gt;insImm(offsetof(Object, data)));
+</pre>
+<p><code>LIR_ld</code> is 32-bit. On 64-bit machines you must use <code>LIR_ldq</code>. Luckily there is an alias that will choose the right opcode for you - <code>LIR_ldp</code>:</p>
+<pre>struct Object {
+   void *data;
+};
+
+lir-&gt;insLoad(LIR_ldp, objIns, ins-&gt;insImm(offsetof(Object, data)));
+</pre>
+<p>When you use <code>LirWriter::insStore</code>, the correct size is chosen for you automatically, based on the size of the input operands.</p>
+<p>To insert constants, use <code>LirWriter::insImmPtr()</code> for pointer types or <code>LirWriter::insImmWord()</code> for integral types. Note that <code>LirWriter::insImm()</code> is always 32-bit.</p>
+<h4 id="Quad_versus_Float">Quad versus Float</h4>
+<p>Internally, "quads" are 64-bit opaque values in Nanojit. They can be either floating point values or integral values. To help form well-typed LIR, there is a special opcode called <code>LIR_float</code> which specifies that the associated constant value is definitely floating-point. TraceMonkey uses this to decide whether arbitrary constants in LIR are pointers or doubles. You should never use <code>LirWriter::insImmq()</code> to inject a floating point value. Use <code>LirWriter::insImmf()</code> instead.</p>
+<h4 id="Mucking_with_Native_Integers_in_LIR">Mucking with Native Integers in LIR</h4>
+<p>The following opcodes can be used to safely load, modify, and compare native integers. For such opcodes there are two forms, an "undecorated" form which is 32-bit, and a form decorated with a "q" or "qi" that is 64-bit. To make it easier to generate platform specific code, these opcodes have aliases decorated with a "p". The following table contains the most relevant opcodes:</p>
+<table style="">
+ <thead>
+  <tr>
+   <th scope="col">Platform Alias</th>
+   <th scope="col">32-bit Op</th>
+   <th scope="col">64-bit Op</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>ldp</code></td>
+   <td><code>ld</code></td>
+   <td><code>ldq</code></td>
+  </tr>
+  <tr>
+   <td><code>ldcp</code></td>
+   <td><code>ldc</code></td>
+   <td><code>ldcq</code></td>
+  </tr>
+  <tr>
+   <td><code>piadd</code></td>
+   <td><code>add</code></td>
+   <td><code>qiadd</code></td>
+  </tr>
+  <tr>
+   <td><code>piand</code></td>
+   <td><code>and</code></td>
+   <td><code>qiand</code></td>
+  </tr>
+  <tr>
+   <td><code>pilsh</code></td>
+   <td><code>lsh</code></td>
+   <td><code>qilsh</code></td>
+  </tr>
+  <tr>
+   <td><code>pirsh</code></td>
+   <td><code>rsh</code></td>
+   <td><code>qirsh</code></td>
+  </tr>
+  <tr>
+   <td><code>pursh</code></td>
+   <td><code>ush</code></td>
+   <td><code>qursh</code></td>
+  </tr>
+  <tr>
+   <td><code>pcmov</code></td>
+   <td><code>cmov</code></td>
+   <td><code>qcmov</code></td>
+  </tr>
+  <tr>
+   <td><code>pior</code></td>
+   <td><code>or</code></td>
+   <td><code>qior</code></td>
+  </tr>
+  <tr>
+   <td><code>pxor</code></td>
+   <td><code>xor</code></td>
+   <td><code>qxor</code></td>
+  </tr>
+  <tr>
+   <td><code>addp</code></td>
+   <td><code>iaddp</code></td>
+   <td><code>qaddp</code></td>
+  </tr>
+  <tr>
+   <td><code>peq - puge</code></td>
+   <td><code>eq - uge</code></td>
+   <td><code>qeq - quge</code></td>
+  </tr>
+  <tr>
+   <td><code>pcall</code></td>
+   <td><code>icall</code></td>
+   <td><code>qcall</code></td>
+  </tr>
+ </tbody>
+</table>
+<p>The 32-bit versions have the following inputs and outputs. <code>i32</code> means "32-bit integer".</p>
+<table style="">
+ <thead>
+  <tr>
+   <th scope="col">32-bit Op</th>
+   <th scope="col">Inputs</th>
+   <th scope="col">Output</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>ld</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>ldc</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>add</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>and</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>lsh</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>rsh</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>ush</code></td>
+   <td> </td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>cmov</code></td>
+   <td><code>i32, i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>or</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>xor</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>iaddp</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>eg - uge</code></td>
+   <td><code>i32, i32</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>icall</code></td>
+   <td><code>N/A</code></td>
+   <td><code>i32</code></td>
+  </tr>
+ </tbody>
+</table>
+<p>The 64-bit versions have the following inputs and outputs. <code>i64</code> means "64-bit integer".</p>
+<table style="">
+ <thead>
+  <tr>
+   <th scope="col">64-bit Op</th>
+   <th scope="col">Inputs</th>
+   <th scope="col">Output</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><code>ldq</code></td>
+   <td><code>i64, i32</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>ldcq</code></td>
+   <td><code>i64, i32</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qiadd</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qiand</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qilsh</code></td>
+   <td><code>i64, i32</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qirsh</code></td>
+   <td><code>i64, i32</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qursh</code></td>
+   <td><code>i64, i32</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qcmov</code></td>
+   <td><code>i32, i64, i64</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>qior</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qixor</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qiaddp</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i64</code></td>
+  </tr>
+  <tr>
+   <td><code>qeq - quge</code></td>
+   <td><code>i64, i64</code></td>
+   <td><code>i32</code></td>
+  </tr>
+  <tr>
+   <td><code>qcall</code></td>
+   <td><code>N/A</code></td>
+   <td><code>i64</code></td>
+  </tr>
+ </tbody>
+</table>
+<h4 id="Extending_or_Truncating_Native_Integers">Extending or Truncating Native Integers</h4>
+<p>Sometimes it is necessary to reduce a native integer to a 32-bit integer (for example, array or string lengths in TraceMonkey) or extend a 32-bit integer to a native integer.</p>
+<p>There are three such opcodes:</p>
+<ul>
+ <li><code>LIR_i2q</code> - Sign-extends a 32-bit integer to a 64-bit integer.</li>
+ <li><code>LIR_u2q</code> - Zero-extends a 32-bit integer to a 64-bit integer.</li>
+ <li><code>LIR_qlo</code> - Truncates a 64-bit integer to its lower 32 bits.</li>
+</ul>
+<p>There are three helper functions in <code>LirWriter</code>:</p>
+<ul>
+ <li><code>ins_i2p</code><code>()</code> - On 32-bit platforms, does nothing. On 64-bit platforms, performs a <code>LIR_i2q</code>.</li>
+ <li><code>ins_u2p()</code> - On 32-bit platforms, does nothing. On 64-bit platforms, performs a <code>LIR_u2q</code>.</li>
+ <li><code>ins_p2i()</code> - On 32-bit platforms, does nothing. On 64-bit platforms, performs a <code>LIR_qlo</code>.</li>
+</ul>
+<p>A common use for extending values is to perform advanced addressing. For example, this code tries to load an index from an integer array, but it is not portable:</p>
+<pre>lir-&gt;insLoad(LIR_ldp,
+             lir-&gt;ins2(LIR_piadd,
+                       arrayIns,
+                       lir-&gt;ins2i(LIR_mul, indexIns, sizeof(int))
+                       ),
+             0);
+</pre>
+<p>The SanityFilter will assert on a 64-bit platform because <code>LIR_piadd</code> (which will be <code>LIR_qiadd</code>) needs both operands to be 64-bit. The correct code is, assuming the index is unsigned:</p>
+<pre>lir-&gt;insLoad(LIR_ldp,
+             lir-&gt;ins2(LIR_piadd,
+                       arrayIns,
+                       lir-&gt;ins_u2p(lir-&gt;ins2i(LIR_mul, indexIns, sizeof(int)))
+                       ),
+             0);
+</pre>
+<h3 id="What's_Pointer-Width_in_TraceRecorder">What's Pointer-Width in TraceRecorder?</h3>
+<ul>
+ <li><code>stobj_get_fslot</code> - Returns jsval-width LIns</li>
+ <li><code>stobj_get_dslot</code> - Returns jsval-width LIns</li>
+ <li><code>stobj_set_dslot</code> - Stores jsval-width LIns</li>
+ <li><code>stobj_set_fslot</code> - Stores jsval-width LIns</li>
+ <li><code>box_jsval</code> - Returns jsval-width LIns</li>
+ <li><code>unbox_jsval</code> - Expects jsval-width LIns</li>
+</ul>

@@ -1,0 +1,54 @@
+<p>This is a cautionary note that may be old information for some of you. However, since it affects the portability of code, it was deemed prudent to include a short memo describing the issue.
+</p>
+<h3 id="Problem_statement"> Problem statement </h3>
+<p>WIN-16 (aka, Windows 3.1, et al), is unique in that the architecture depends on the Operating Environment (i.e., Windows) knows the address of the stack, and that there is only one such address. Consequently, implementing threads, with their implication of a unique stack for each thread, requires that the NSPR <em>copy</em> the stacks during thread context switches.
+</p><p>The actual copying of the stack is not such a hardship as one would imagine. With the speed of today's processors (even those running WIN-16), the copying of 10 - 50 kilobytes of data between two locations in memory is barely measurable <sup>1</sup>. What is a hardship is that addresses of dynamic variables, those allocated on the call stack, in a function's local frame, are not valid across thread boundaries.
+</p><p>The simplest demonstration of the problem is as follows:
+</p>
+<pre>typedef struct SharedData
+{
+    PRLock *ml;
+    PRCondVar *cv;
+    PRInt32 counter;
+} SharedData;
+
+static void ForkedThread(void *arg)
+{
+    SharedData *shared = (SharedData*)arg;
+    while (--shared-&gt;counter &gt; 0)
+        PR_WaitCondVar(shared-&gt;cv, PR_INTERVAL_NO_TIMEOUT);
+    return;
+}  /* ForkedThread */
+
+PRIntn main(PRIntn argc, char **argv)
+{
+    PRThread *thread;
+    SharedData shared;
+    shared.ml = PR_NewLock();
+    shared.cv = PR_NewCondVar(shared.ml);
+    shared.counter = 10;
+    thread = PR_CreateThread(
+        PR_USER_THREAD, ForkedThread, &amp;shared, PR_PRIORITY_NORMAL,
+        PR_LOCAL_THREAD, PR_JOINABLE_THREAD, 0);
+
+    do
+    {
+        PR_Sleep(PR_SecondsToInterval(1));
+        PR_Lock(shared.ml);
+        if (0 == shared.counter) break;
+        PR_NotifyCondVar(shared.cv);
+        PR_Unlock(shared.ml);
+    } while (PR_TRUE);
+
+    rv = PR_JoinThread(thread);
+    return (PR_SUCCESS == rv) ? 0 : 1;
+}</pre>
+<p>This is a completely correct (albeit trivial) program that will run predictably on all NSPR platforms other than WIN-16. On WIN-16, the thread's attempt to address the &lt;tt&gt;SharedData&lt;/tt&gt; through the pointer <code>shared</code> will provide interesting (though always incorrect) results. It's difficult to tell exaclty where the updated &lt;tt&gt;counter&lt;/tt&gt; is being stored. The only portable manner to write this program requires that the shared structure be allocated from the heap. Well, that isn't so hard to remember, is it?
+</p><p>What is probably more likely to cause problems is passing addresses of automatically allocated variables to a function that wends its way though arbitrary amounts of convoluted logic, and finds its way into an object that is shared. One should be particularly cautious of arrays since they are passed by reference by default. </p><p><sup>1</sup> It is possible that our ability to measure the costs is not up to the task.
+</p>
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<div class="originaldocinfo">
+<ul><li> Author: <a class="link-mailto" href="mailto:larryh@netscape.com">larryh@netscape.com</a>, Wan Teh Chang
+</li><li> Last Updated Date: December 1, 2004
+</li></ul>
+</div> <span>This note is about writing win16-portable code that uses NSPR threads, probably not interesting to today's developers</span>

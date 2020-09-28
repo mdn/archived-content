@@ -1,0 +1,263 @@
+<div class="note">
+<p>This is the long version of <a href="/en/XPCOM_hashtable_guide" title="XPCOM hashtable guide">XPCOM hashtable guide</a>.  The information you're looking for is probably there.</p>
+</div>
+
+<h2 id="What_Is_a_Hashtable.3F" name="What_Is_a_Hashtable.3F">What Is a Hashtable?</h2>
+
+<p>A hashtable is a data construct that stores a set of <strong>items</strong>. Each item has a <strong>key</strong> that identifies the item. Items are found, added, and removed from the hashtable by using the key. Hashtables may seem like <a href="/en/XPCOM_array_guide" title="en/XPCOM_array_guide">arrays</a>, but there are important differences:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th> </th>
+   <th class="header">Array</th>
+   <th class="header">Hashtable</th>
+  </tr>
+  <tr>
+   <td class="header">Keys:</td>
+   <td><em>integer:</em> arrays are always keyed on integers, and must be contiguous.</td>
+   <td><em>any type:</em> almost any datatype can be used as key, including strings, integers, XPCOM interface pointers, IIDs, and almost anything else. Keys can be disjunct (i.e. you can store entries with keys 1, 5, and 3000).</td>
+  </tr>
+  <tr>
+   <td class="header">Lookup Time:</td>
+   <td><em>O(1):</em> lookup time is a simple constant</td>
+   <td><em>O(1):</em> lookup time is mostly-constant, but the constant time can be larger than an array lookup</td>
+  </tr>
+  <tr>
+   <td class="header">Sorting:</td>
+   <td><em>sorted:</em> stored sorted; iterated over in a sorted fashion.</td>
+   <td><em>unsorted:</em> stored unsorted; cannot be iterated over in a sorted manner.</td>
+  </tr>
+  <tr>
+   <td class="header">Inserting/Removing:</td>
+   <td><em>O(n):</em> adding and removing items from a large array can be time-consuming</td>
+   <td><em>O(1):</em> adding and removing items from hashtables is a quick operation</td>
+  </tr>
+  <tr>
+   <td class="header">Wasted space:</td>
+   <td><em>none:</em> Arrays are packed structures, so there is no wasted space.</td>
+   <td><em>some:</em> hashtables are not packed structures; depending on the implementation, there may be significant wasted memory.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>In their implementation, hashtables take the key and apply a mathematical <strong>hash function</strong> to <strong>randomize</strong> the key and then use the hash to find the location in the hashtable. Good hashtable implementations will automatically resize the hashtable in memory if extra space is needed, or if too much space has been allocated.</p>
+
+<h2 id="When_Should_I_Use_a_Hashtable.3F" name="When_Should_I_Use_a_Hashtable.3F">When Should I Use a Hashtable?</h2>
+
+<p>Hashtables are useful for</p>
+
+<ul>
+ <li>sets of data that need swift <strong>random access</strong>;</li>
+ <li>with <strong>non-integral keys</strong> or <strong>non-contiguous integral keys</strong>;</li>
+ <li>or where <strong>items will be frequently added or removed</strong>.</li>
+</ul>
+
+<p>Hashtables should <em>not</em> be used for</p>
+
+<ul>
+ <li>Sets that need to be <strong>sorted</strong>;</li>
+ <li>Very small datasets (less than 12-16 items);</li>
+ <li>Data that does not need random access.</li>
+</ul>
+
+<p>In these situations, an array, a linked-list, or various tree data structures are more efficient.</p>
+
+<h2 id="Mozilla.27s_Hashtable_Implementations" name="Mozilla.27s_Hashtable_Implementations">Mozilla's Hashtable Implementations</h2>
+
+<p>Mozilla has several hashtable implementations, which have been tested and, tuned, and hide the inner complexities of hashtable implementations:</p>
+
+<ul>
+ <li><code><a href="#PLDHash_.28JSDHash.29">PLDHash</a></code> - low-level C API; stores keys and data in one large memory structure; uses the heap efficiently; client must declare an "entry class" and may not hold onto entry pointers.</li>
+ <li><code><a href="#PLHashTable">PLHashTable</a></code> - low-level C API; entry class pointers are constant; more efficient for large entry structures; often wastes memory making many small heap allocations.</li>
+ <li><code><a href="#nsTHashtable">nsTHashtable</a></code> - low-level C++ wrapper around <code>PLDHash</code>; generates callback functions and handles most casting automagically. Client writes their own entry class which can include complex key and data types.</li>
+ <li><code><a href="#nsBaseHashtable_and_friends:_nsDataHashtable.2C_nsInterfaceHashtable.2C_and_nsClassHashtable">nsDataHashtable/nsInterfaceHashtable/nsClassHashtable</a></code> - high-level C++ wrappers around <code>PLDHash</code>; simplifies the common usage pattern mapping a simple keytype to a simple datatype; client does not need to declare or manage an entry class; <code><strong>nsDataHashtable</strong></code> datatype is a scalar such as <code>PRUint32</code>; <code><strong>nsInterfaceHashtable</strong></code> datatype is an interface; <code><strong>nsClassHashtable</strong></code> datatype is a class pointer owned by the hashtable.</li>
+</ul>
+
+<h3 id="Which_Hashtable_Should_I_Use.3F" name="Which_Hashtable_Should_I_Use.3F">Which Hashtable Should I Use?</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <th class="header" colspan="2" rowspan="2"> </th>
+   <th class="header" colspan="5">Key Type:</th>
+  </tr>
+  <tr>
+   <th class="header">integer</th>
+   <th class="header">String/CString</th>
+   <th class="header">nsID</th>
+   <th class="header">nsISupports*</th>
+   <th class="header">Complex</th>
+  </tr>
+  <tr>
+   <td class="header" rowspan="8">Data Type:</td>
+   <td class="header">None (Hash Set)</td>
+   <td colspan="5" rowspan="1"><code>nsTHashtable&lt;...&gt;</code></td>
+  </tr>
+  <tr>
+   <td class="header" rowspan="2">Simple (PRUint32)</td>
+   <td colspan="4"><code>nsDataHashtable</code></td>
+   <td rowspan="6"><code>nsTHashtable&lt;...&gt;</code></td>
+  </tr>
+  <tr>
+   <td><code>&lt;nsUint32HashKey,<br>
+    PRUint32&gt;</code></td>
+   <td><code>&lt;ns(C)StringHashKey,<br>
+    PRUint32&gt;</code></td>
+   <td><code>&lt;nsIDHashKey,<br>
+    PRUint32&gt;</code></td>
+   <td><code>&lt;nsISupportsHashKey,<br>
+    PRUint32&gt;</code></td>
+  </tr>
+  <tr>
+   <td class="header" rowspan="2">Interface (nsISupports)</td>
+   <td colspan="4"><code>nsInterfaceHashtable</code></td>
+  </tr>
+  <tr>
+   <td><code>&lt;nsUint32HashKey,<br>
+    nsISupports&gt;</code></td>
+   <td><code>&lt;ns(C)StringHashKey,<br>
+    nsISupports&gt;</code></td>
+   <td><code>&lt;nsIDHashKey,<br>
+    nsISupports&gt;</code></td>
+   <td><code>&lt;nsISupportsHashKey,<br>
+    nsISupports&gt;</code></td>
+  </tr>
+  <tr>
+   <td class="header" rowspan="2">Class (nsString*)</td>
+   <td colspan="4"><code>nsClassHashtable</code></td>
+  </tr>
+  <tr>
+   <td><code>&lt;nsUint32HashKey,<br>
+    nsString&gt;</code></td>
+   <td><code>&lt;ns(C)StringHashKey,<br>
+    nsString&gt;</code></td>
+   <td><code>&lt;nsIDHashKey,<br>
+    nsString&gt;</code></td>
+   <td><code>&lt;nsISupportsHashKey,<br>
+    nsString&gt;</code></td>
+  </tr>
+  <tr>
+   <td class="header">Complex<br>
+    (structures, etc.)</td>
+   <td colspan="5"><code>nsTHashtable&lt;...&gt;</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="PLDHash_.28JSDHash.29" name="PLDHash_.28JSDHash.29">PLDHash</h3>
+
+<p>The <code>PLDHash</code> implementation is a fairly low-level implementation, written in C. It is extremely flexible, but requires some time to understand and use. A basic guide is included here, but you should read most of {{ Source("xpcom/glue/pldhash.h") }} if you intend to use <code>PLDHash</code>. The C++ wrappers for <code>PLDHash</code> (see below) are often much easier and safer to use in C++ code, as many potential casting errors are easily avoided.</p>
+
+<p>You must declare an <strong>entry struct</strong> type, deriving from {{ Source("xpcom/glue/pldhash.h#81", "PLDHashEntryHdr") }}. This entry struct should contain whatever data you wish to store in the hashtable (any pointer or fixed-length data type). <strong>Note:</strong> because of the double-hashing implementation, entries may move in memory when the hashtable is altered. If you need entry pointers to remain constant, you may want to consider using <code><a href="#PLHashTable">PLHashTable</a></code> instead.</p>
+
+<p>You must also initialize a <code>{{ Source("xpcom/glue/pldhash.h#312", "PLDHashTableOps") }}</code> structure. This serves similarly to a vtable in C++, with pointers to appropriate user-defined functions that initialize, compare, and match entries. Because <code>PLDHash</code> does not know what datatype your key is, all functions that work with keys are declared using <code>{{ Source("xpcom/glue/pldhash.h#354", "const void*") }}</code>, and your client code must cast these pointers to the appropriate type.</p>
+
+<p>PLDHashTables can be allocated on the stack or the heap:</p>
+
+<ul>
+ <li>When allocated on the stack, or as a C++ class member, the table must be initialized using <code>{{ Source("xpcom/glue/pldhash.h#427", "PL_DHashTableInit") }}</code>, and finalized using <code>{{ Source("xpcom/glue/pldhash.h#459", "PL_DHashTableFinish") }}</code>;</li>
+ <li>When allocated on the heap, use <code>{{ Source("xpcom/glue/pldhash.h#410", "PL_NewDHashTable") }}</code> and <code>{{ Source("xpcom/glue/pldhash.h#420", "PL_DHashTableDestroy") }}</code> to allocate and delete the table.</li>
+</ul>
+
+<h3 id="PLHashTable" name="PLHashTable">PLHashTable</h3>
+
+<p><code>PLHashTable</code> is a part of NSPR. The header file can be found at <code>{{ Source("nsprpub/lib/ds/plhash.h") }}</code>. In general, <code><a href="#PLDHash_.28JSDHash.29">PLDHash</a></code> is a better solution than <code>PLHashTable</code>, because <code>PLHashTable</code> makes many heap allocations.</p>
+
+<p>There are two situations where <code>PLHashTable</code> may be preferable to <code>PLDHash</code>:</p>
+
+<ul>
+ <li>You need entry-pointers to remain constant.</li>
+ <li>The entries stored in the table are very large (larger than 12 words). <code>PLDHash</code> does not handle large entry structures efficiently.</li>
+</ul>
+
+<h3 id="nsTHashtable" name="nsTHashtable">nsTHashtable</h3>
+
+<p><code>nsTHashtable</code> is a C++ template that wraps <code>PLDHash</code>. It hides many of the complexities of <code>PLDHash</code> (callback functions, the ops structure, etc). You should read {{ Source("xpcom/glue/nsTHashtable.h") }}.</p>
+
+<p>To use <code>nsTHashtable</code>, you must declare an entry-class in a {{ Source("xpcom/glue/nsTHashtable.h#65", "pre-defined format") }}. This entry class contains the key and the data that you are hashing (just like <code>PLDHash</code>, above). It also declares functions that manipulate the key. In most cases, the functions of this entry class can be entirely inline. For examples of entry classes, see the declarations at {{ Source("xpcom/glue/nsHashKeys.h") }}.</p>
+
+<p>The template parameter is the entry class. You must use the <code>Init()</code> function to initalize the table properly. At this point, use the functions <code>PutEntry/GetEntry/RemoveEntry</code> to alter the hashtable. The <code>Iterator</code> class will do iteration, but beware that the iteration will occur in a seemingly-random order (no sorting).</p>
+
+<ul>
+ <li><code>nsTHashtable</code>s can be allocated on the stack, as class members, or on the heap.</li>
+ <li>Entry pointers can and do change when items are added to or removed from the hashtable. Do not keep long-lasting pointers to entries.</li>
+ <li>because of this, <code>nsTHashtable</code> is not inherently thread-safe. If you use a hashtable in a multi-thread environment, you must provide locking as appropriate.</li>
+</ul>
+
+<p>Before using <code>nsTHashtable</code>, see if <code>nsBaseHashtable</code> and relatives will work for you. They are much easier to use, because you do not have to declare an entry class. If you are hashing a simple key type to a simple data type, they are generally a better choice.</p>
+
+<h3 id="nsBaseHashtable_and_friends:_nsDataHashtable.2C_nsInterfaceHashtable.2C_and_nsClassHashtable" name="nsBaseHashtable_and_friends:_nsDataHashtable.2C_nsInterfaceHashtable.2C_and_nsClassHashtable">nsBaseHashtable and friends: nsDataHashtable, nsInterfaceHashtable, and nsClassHashtable</h3>
+
+<p>These C++ templates provide a high-level interface for using hashtables that hides most of the complexities of <code>PLDHash</code>. They provide the following features:</p>
+
+<ul>
+ <li>hashtable operations can be completed without using an entry class, making code easier to read;</li>
+ <li>optional thread-safety: the hashtable can manage a read-write lock around the table;</li>
+ <li>predefined key classes provide automatic cleanup of strings/interfaces</li>
+ <li><code>nsInterfaceHashtable</code> and <code>nsClassHashtable</code> automatically release/delete objects to avoid leaks.</li>
+</ul>
+
+<p><code>nsBaseHashtable</code> is not used directly; choose one of the three derivative classes based on the data type you want to store. The <code>KeyClass</code> is taken from <code>nsHashKeys.h</code> and is the same for all three classes:</p>
+
+<ul>
+ <li><code>nsDataHashtable&lt;KeyClass, <em>DataType</em>&gt;</code> - <code>DataType</code> is a simple type such as <code>PRUint32</code> or <code>PRBool</code>.</li>
+ <li><code>nsInterfaceHashtable&lt;KeyClass, <em>Interface</em>&gt;</code> - <code>Interface</code> is an XPCOM interface such as <code>nsISupports</code> or <code>nsIDOMNode</code></li>
+ <li><code>nsClassHashtable&lt;KeyClass, <em>T</em>&gt;</code> - <code>T</code> is any C++ class. The hashtable stores a pointer to the object, and deletes that object when the entry is removed.</li>
+</ul>
+
+<p>The important files to read are {{ Source("xpcom/glue/nsBaseHashtable.h") }} and {{ Source("xpcom/glue/nsHashKeys.h") }}. These classes can be used on the stack, as a class member, or on the heap. Initialize using the <code>Init()</code> function; you can specify whether you need thread-safety at this time. Use the <code>Put()</code>, <code>Get()</code>, and <code>Remove()</code> methods to alter the table.</p>
+
+<h3 id="Using_nsTHashtable_as_a_hash-set" name="Using_nsTHashtable_as_a_hash-set">Using nsTHashtable as a hash-set</h3>
+
+<p>A hash set only tracks the existence of keys: it does not associate data with the keys. This can be done using <code>nsTHashtable&lt;nsSomeHashKey&gt;</code>. The appropriate entries are GetEntry and PutEntry.</p>
+
+<h2 id="Future_Plans" name="Future_Plans">Future Plans</h2>
+
+<h3 id="nsISimpleEnumerator_support" name="nsISimpleEnumerator_support">nsISimpleEnumerator support</h3>
+
+<p>The (obsolete) <code>nsHashtable</code> has a wrapper that exposes an <code>nsISimpleEnumerator</code> on its items. I will add this support to the various <code>nsBaseHashtable</code> classes as well, as needed.</p>
+
+<h2 id="Hash_Functions" name="Hash_Functions">Hash Functions</h2>
+
+<p>All of the above hashtables need a <a class="external" href="http://www.nist.gov/dads/HTML/hash.html">Hash Function</a>. This function converts the key into a semi-unique integer. The mozilla codebase already contains hash functions for most key types, including narrow and wide strings, pointers, and most binary data:</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void*<br>
+    (or nsISupports*)</code></td>
+   <td>cast using <code>{{ Source("xpcom/base/nscore.h#443", "NS_PTR_TO_INT32") }}</code></td>
+  </tr>
+  <tr>
+   <td><code>char*</code> string</td>
+   <td rowspan="2"><code>{{ Source("xpcom/ds/nsCRT.h#228", "nsCRT::HashCode()") }}</code></td>
+  </tr>
+  <tr>
+   <td><code>PRUnichar*</code> string</td>
+  </tr>
+  <tr>
+   <td><code>nsAString</code></td>
+   <td rowspan="2"><code>{{ Source("xpcom/glue/nsTHashtable.cpp#41", "HashString()") }}</code></td>
+  </tr>
+  <tr>
+   <td><code>nsACString</code></td>
+  </tr>
+  <tr>
+   <td><code>nsID&amp;</code></td>
+   <td><code>{{ Source("xpcom/glue/nsHashKeys.h#227", "nsIDHashKey::HashKey()") }}</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Writing a good hash function is well beyond the scope of this document, and has been discussed extensively in computer-science circles for many years. There are many different types of hash functions. Mozilla has tuned a good general-purpose hash algorithm for strings and <code>nsID</code>.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): Benjamin Smedberg &lt;<a class="link-mailto" href="mailto:benjamin@smedbergs.us" rel="freelink">benjamin@smedbergs.us</a>&gt;</li>
+</ul>
+</div>
+
+<p> </p>

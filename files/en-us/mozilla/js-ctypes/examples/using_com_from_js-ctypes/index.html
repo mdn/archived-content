@@ -1,0 +1,503 @@
+---
+title: Using COM from js-ctypes
+slug: Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes
+tags:
+  - COM
+  - JavaScript
+  - NeedsContent
+  - Windows
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+<ol>
+ <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+ <li class="toggle">
+  <details><summary>Introduction</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details><summary>References</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li>
+  </ol>
+  </details>
+ </li>
+ <li class="toggle">
+  <details open><summary>Examples</summary>
+  <ol>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li>
+   <li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li>
+  </ol>
+  </details>
+ </li>
+</ol>
+</section>
+
+<p>The Windows API mostly concerns itself with the interaction between the operating system and an application. For communication between the different Windows applications among themselves, Microsoft has developed a series of technologies alongside the main Windows API. This started out with <a href="http://en.wikipedia.org/wiki/Dynamic_Data_Exchange" title="Dynamic Data Exchange">Dynamic Data Exchange</a> (DDE), which was superseded by <a href="http://en.wikipedia.org/wiki/Object_Linking_and_Embedding" title="Object Linking and Embedding">Object Linking and Embedding</a> (OLE) and later by the <a href="http://en.wikipedia.org/wiki/Component_Object_Model" title="Component Object Model">Component Object Model</a> (COM), <a href="http://en.wikipedia.org/wiki/OLE_Automation" title="OLE Automation">Automation Objects</a>, <a href="http://en.wikipedia.org/wiki/ActiveX" title="ActiveX">ActiveX controls</a>, and the <a href="http://en.wikipedia.org/wiki/.NET_Framework" title=".NET Framework">.NET Framework</a>.</p>
+
+<p>COM is C++ and it cannot be written directly with js-ctypes. This documentaion explains how to convert the COM C++ code into js-ctypes code.</p>
+
+<div class="note">
+<p>Basis and reference for this article <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=738501">Bugzilla :: Bug 738501 - Implement ability to create Windows shortcuts from javascript - Comment 4 </a></p>
+</div>
+
+<div class="note">
+<p>Relavent topic <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=505907">Bugzilla :: Bug 505907 - Support C++ calling from JSctypes</a></p>
+</div>
+
+<h2 id="Converting_COM_code_to_C_code">Converting COM code to C code</h2>
+
+<p>To convert COM code to js-ctypes, we need to write C++ VTable pointers in C. After that, we can pass a pointer .</p>
+
+<h3 id="Speech_Synthesis_Example">Speech Synthesis Example</h3>
+
+<p>Let&apos;s start with following C++ code, which invokes <a href="https://msdn.microsoft.com/en-us/library/ee125663%28v=vs.85%29.aspx">Microsoft Speech API</a> and says &quot;Hello, Firefox!&quot; with system default voice, then wait until the speaking done.</p>
+
+<pre class="brush: cpp">#include &lt;sapi.h&gt;
+
+int main(void)
+{
+    if (SUCCEEDED(CoInitialize(NULL)))
+    {
+        ISpVoice* pVoice = NULL;
+        HRESULT hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL,
+                                      IID_ISpVoice, (void**)&amp;pVoice);
+
+        if (SUCCEEDED(hr))
+        {
+            pVoice-&gt;Speak(L&quot;Hello, Firefox!&quot;, SPF_DEFAULT, NULL);
+
+            pVoice-&gt;Release();
+        }
+    }
+
+    // MSDN documentation says that even if CoInitalize fails, CoUnitialize
+    // must be called
+    CoUninitialize();
+
+    return 0;
+}
+</pre>
+
+<p>To run the code, save it as <code>test.cpp</code>, and run following command in the directory (needs Visual Studio).</p>
+
+<pre class="brush: cpp">$ cl ole32.lib test.cpp</pre>
+
+<h3 id="vtable">vtable</h3>
+
+<div class="note">
+<p>Needs vtable description here.</p>
+</div>
+
+<p>The order of the vtable is very critical. When used from C or js-ctypes, the order of the vtable methods should match the order of the C++ vtable.</p>
+
+<h3 id="__stdcall_and___cdecl">__stdcall and __cdecl</h3>
+
+<div class="note">
+<p>Needs __stdcall and __cdecl (CALLBACK_ABI) description here.</p>
+</div>
+
+<h3 id="Call_by_reference">Call by reference</h3>
+
+<div class="note">
+<p>Needs C++ reference (&amp;) and C pointer (*) description here.</p>
+</div>
+
+<h3 id="Converted_C_code">Converted C code</h3>
+
+<p>Now we can translate whole code into C syntax.</p>
+
+<pre class="brush: cpp">#include &lt;sapi.h&gt;
+
+int main(void)
+{
+    if (SUCCEEDED(CoInitialize(NULL)))
+    {
+        struct ISpVoice* pVoice = NULL;
+        HRESULT hr = CoCreateInstance(&amp;CLSID_SpVoice, NULL, CLSCTX_ALL,
+                                      &amp;IID_ISpVoice, (void**)&amp;pVoice);
+        if (SUCCEEDED(hr))
+        {
+            pVoice-&gt;lpVtbl-&gt;Speak(pVoice, L&quot;Hello, Firefox!&quot;, 0, NULL);
+
+            pVoice-&gt;lpVtbl-&gt;Release(pVoice);
+        }
+    }
+
+    // MSDN documentation says that even if CoInitalize fails, CoUnitialize
+    // must be called
+    CoUninitialize();
+
+    return 0;
+}
+</pre>
+
+<p>To run the code, save it as <code>test.c</code>, and run following command in the directory.</p>
+
+<pre class="brush: cpp">$ cl ole32.lib test.c
+</pre>
+
+<h3 id="C_code_with_pseudo_struct">C code with pseudo struct</h3>
+
+<div class="note">
+<p>Needs pseudo struct description here.</p>
+</div>
+
+<pre class="brush: cpp">#include &lt;sapi.h&gt;
+
+struct MyISpVoiceVtbl;
+struct MyISpVoice {
+    struct MyISpVoiceVtbl* lpVtbl;
+};
+struct MyISpVoiceVtbl {
+    /* start inherit from IUnknown */
+    void* QueryInterface;
+    void* AddRef;
+    ULONG (__stdcall *Release)(struct MyISpVoice*);
+    /* end inherit from IUnknown */
+    /* start inherit from ISpNotifySource */
+    void* SetNotifySink;
+    void* SetNotifyWindowMessage;
+    void* SetNotifyCallbackFunction;
+    void* SetNotifyCallbackInterface;
+    void* SetNotifyWin32Event;
+    void* WaitForNotifyEvent;
+    void* GetNotifyEventHandle;
+    /* end inherit from ISpNotifySource */
+    /* start inherit from ISpEventSource */
+    void* SetInterest;
+    void* GetEvents;
+    void* GetInfo;
+    /* end inherit from ISpEventSource */
+    /* start ISpVoice */
+    void* SetOutput;
+    void* GetOutputObjectToken;
+    void* GetOutputStream;
+    void* Pause;
+    void* Resume;
+    void* SetVoice;
+    void* GetVoice;
+    HRESULT (__stdcall *Speak)(struct MyISpVoice*, LPCWSTR pwcs, DWORD dwFlags,
+                               ULONG* pulStreamNumber);
+    void* SpeakStream;
+    void* GetStatus;
+    void* Skip;
+    void* SetPriority;
+    void* GetPriority;
+    void* SetAlertBoundary;
+    void* GetAlertBoundary;
+    void* SetRate;
+    void* GetRate;
+    void* SetVolume;
+    void* GetVolume;
+    void* WaitUntilDone;
+    void* SetSyncSpeakTimeout;
+    void* GetSyncSpeakTimeout;
+    void* SpeakCompleteEvent;
+    void* IsUISupported;
+    void* DisplayUI;
+    /* end ISpVoice */
+};
+
+int main(void)
+{
+    if (SUCCEEDED(CoInitialize(NULL)))
+    {
+        struct MyISpVoice* pVoice = NULL;
+        HRESULT hr = CoCreateInstance(&amp;CLSID_SpVoice, NULL, CLSCTX_ALL,
+                                      &amp;IID_ISpVoice, (void**)&amp;pVoice);
+        if (SUCCEEDED(hr))
+        {
+            pVoice-&gt;lpVtbl-&gt;Speak(pVoice, L&quot;Hello, Firefox!&quot;, SPF_DEFAULT,
+                                  NULL);
+
+            pVoice-&gt;lpVtbl-&gt;Release(pVoice);
+        }
+    }
+
+    // MSDN documentation says that even if CoInitalize fails, CoUnitialize
+    // must be called
+    CoUninitialize();
+
+    return 0;
+}
+</pre>
+
+<h2 id="Converting_C_code_to_js-ctypes_code">Converting C code to js-ctypes code</h2>
+
+<p>Now we have working C code. It could be converted into js-ctypes in almost straightforward way.</p>
+
+<h3 id="CLSID_and_IID">CLSID and IID</h3>
+
+<div class="note">
+<p>Needs CLSID and IID of SpVoice and ISpVoice description here.</p>
+</div>
+
+<h3 id="COM_types_and_functions">COM types and functions</h3>
+
+<div class="note">
+<p>Needs COM types (GUID) and functions (CoInitialize etc) description here.</p>
+</div>
+
+<h3 id="Converted_js-ctypes_code">Converted js-ctypes code</h3>
+
+<p>Here&apos;s converted code.</p>
+
+<div class="warning">This example uses busy loop and thus Firefox won&apos;t respond until the speaking is done. If this code were used in a production add-on, then to avoid Firefox locking up,  run this code from a <a href="/en-US/docs/Web/API/ChromeWorker">ChromeWorker</a>.</div>
+
+<pre class="brush: js">let { ctypes } = Components.utils.import(&quot;resource://gre/modules/ctypes.jsm&quot;, {});
+
+// SOME GROUNDWORK
+let is64bit;
+if (ctypes.voidptr_t.size == 4 /* 32-bit */) {
+    is64bit = false;
+} else if (ctypes.voidptr_t.size == 8 /* 64-bit */) {
+    is64bit = true;
+}
+let WINABI = is64bit ? ctypes.default_abi : ctypes.winapi_abi;
+let CALLBACK_ABI = is64bit ? ctypes.default_abi : ctypes.stdcall_abi;
+
+// LIBRARIES
+let lib = ctypes.open(&apos;ole32.dll&apos;);
+
+// TYPES
+// Simple Types
+let BYTE = ctypes.unsigned_char;
+let DWORD = ctypes.unsigned_long;
+let LONG = ctypes.long;
+let LPVOID = ctypes.voidptr_t;
+let VOID = ctypes.void_t;
+let ULONG = ctypes.unsigned_long;
+let USHORT = ctypes.unsigned_short;
+let WCHAR = ctypes.jschar;
+
+// Advanced Types - based on simple types
+let HRESULT = LONG;
+let LPCWSTR = WCHAR.ptr;
+
+// Guess Types - these just work I couldnt find a proper defintion for it
+let LPUNKNOWN = ctypes.voidptr_t;
+
+// STRUCTURES
+// Simple Structures
+let GUID = ctypes.StructType(&apos;GUID&apos;, [
+  { &apos;Data1&apos;: ULONG },
+  { &apos;Data2&apos;: USHORT },
+  { &apos;Data3&apos;: USHORT },
+  { &apos;Data4&apos;: BYTE.array(8) }
+]);
+
+// Advanced Structures
+let CLSID = GUID;
+let IID = GUID;
+
+// Super Advanced Structures
+let REFIID = IID.ptr;
+let REFCLSID = CLSID.ptr;
+
+// VTABLES
+let ISpVoiceVtbl = ctypes.StructType(&apos;ISpVoiceVtbl&apos;);
+let ISpVoice = ctypes.StructType(&apos;ISpVoice&apos;, [{
+    &apos;lpVtbl&apos;: ISpVoiceVtbl.ptr
+}]);
+ISpVoiceVtbl.define([
+    // start inherit from IUnknown
+    { &apos;QueryInterface&apos;: ctypes.voidptr_t },
+    { &apos;AddRef&apos;: ctypes.voidptr_t },
+    { &apos;Release&apos;: ctypes.FunctionType(CALLBACK_ABI,
+        ULONG,            // return
+        [
+            ISpVoice.ptr
+        ]).ptr
+    },
+    // end inherit from IUnknown
+    // start inherit from ISpNotifySource
+    // can set to ctypes.voidptr_t if arent going to use it
+    { &apos;SetNotifySink&apos;: ctypes.voidptr_t },
+    { &apos;SetNotifyWindowMessage&apos;: ctypes.voidptr_t },
+    { &apos;SetNotifyCallbackFunction&apos;: ctypes.voidptr_t },
+    { &apos;SetNotifyCallbackInterface&apos;: ctypes.voidptr_t },
+    { &apos;SetNotifyWin32Event&apos;: ctypes.voidptr_t },
+    { &apos;WaitForNotifyEvent&apos;: ctypes.voidptr_t },
+    { &apos;GetNotifyEventHandle&apos;: ctypes.voidptr_t },
+    // end inherit from ISpNotifySource
+    // start inherit from ISpEventSource
+    { &apos;SetInterest&apos;: ctypes.voidptr_t },
+    { &apos;GetEvents&apos;: ctypes.voidptr_t },
+    { &apos;GetInfo&apos;: ctypes.voidptr_t },
+    // end inherit from ISpEventSource
+    // start ISpVoice
+    { &apos;SetOutput&apos;: ctypes.voidptr_t },
+    { &apos;GetOutputObjectToken&apos;: ctypes.voidptr_t },
+    { &apos;GetOutputStream&apos;: ctypes.voidptr_t },
+    { &apos;Pause&apos;: ctypes.voidptr_t },
+    { &apos;Resume&apos;: ctypes.voidptr_t },
+    { &apos;SetVoice&apos;: ctypes.voidptr_t },
+    { &apos;GetVoice&apos;: ctypes.voidptr_t },
+    { &apos;Speak&apos;: ctypes.FunctionType(CALLBACK_ABI,
+        HRESULT,            // return
+        [
+            ISpVoice.ptr,
+            LPCWSTR,        // *pwcs
+            DWORD,          // dwFlags
+            ULONG           // *pulStreamNumber
+        ]).ptr
+    },
+    { &apos;SpeakStream&apos;: ctypes.voidptr_t },
+    { &apos;GetStatus&apos;: ctypes.voidptr_t },
+    { &apos;Skip&apos;: ctypes.voidptr_t },
+    { &apos;SetPriority&apos;: ctypes.voidptr_t },
+    { &apos;GetPriority&apos;: ctypes.voidptr_t },
+    { &apos;SetAlertBoundary&apos;: ctypes.voidptr_t },
+    { &apos;GetAlertBoundary&apos;: ctypes.voidptr_t },
+    { &apos;SetRate&apos;: ctypes.voidptr_t },
+    { &apos;GetRate&apos;: ctypes.voidptr_t },
+    { &apos;SetVolume&apos;: ctypes.voidptr_t },
+    { &apos;GetVolume&apos;: ctypes.voidptr_t },
+    { &apos;WaitUntilDone&apos;: ctypes.voidptr_t },
+    { &apos;SetSyncSpeakTimeout&apos;: ctypes.voidptr_t },
+    { &apos;GetSyncSpeakTimeout&apos;: ctypes.voidptr_t },
+    { &apos;SpeakCompleteEvent&apos;: ctypes.voidptr_t },
+    { &apos;IsUISupported&apos;: ctypes.voidptr_t },
+    { &apos;DisplayUI&apos;: ctypes.voidptr_t }
+    // end ISpVoice
+]);
+
+// FUNCTIONS
+// http://msdn.microsoft.com/en-us/library/windows/desktop/ms695279%28v=vs.85%29.aspx
+let CoInitializeEx = lib.declare(&apos;CoInitializeEx&apos;, WINABI,
+    HRESULT,    // result
+    LPVOID,     // pvReserved
+    DWORD       // dwCoInit
+);
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/ms688715%28v=vs.85%29.aspx
+let CoUninitialize = lib.declare(&apos;CoUninitialize&apos;, WINABI,
+    VOID    // return
+);
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/ms686615%28v=vs.85%29.aspx
+let CoCreateInstance = lib.declare(&apos;CoCreateInstance&apos;, WINABI,
+    HRESULT,        // return
+    REFCLSID,       // rclsid
+    LPUNKNOWN,      // pUnkOuter
+    DWORD,          // dwClsContext
+    REFIID,         // riid
+    LPVOID          // *ppv
+);
+
+// HELPER FUNCTIONS
+function checkHRESULT(hr /*primative HRESULT*/, funcName /*jsStr*/) {
+    // primative because thats what is returned by declared functions that
+    // return HRESULT
+    hr = hr.toString(); // makes it primative
+    if (hr &lt; 0) {
+        console.error(&apos;HRESULT&apos;, hr, &apos;returned from function &apos;, funcName
+                      /*, &apos;getStrOfResult:&apos;, getStrOfResult(hr)*/);
+        throw new Error(&apos;HRESULT &apos; + hr + &apos; returned from function &apos; + funcName);
+    }
+}
+
+let CLSIDFromArr = IIDFromArr = function(jsArr_pieces) {
+    let guid = GUID(); // CLSID and IID are same they are GUID
+
+    guid.Data1 = parseInt(jsArr_pieces[0], 16);
+    guid.Data2 = parseInt(jsArr_pieces[1], 16);
+    guid.Data3 = parseInt(jsArr_pieces[2], 16);
+
+    let j = 2;
+    for (let i=0; i&lt;8; i++) {
+        j++;
+        guid.Data4[i] = parseInt(jsArr_pieces[j], 16);
+    };
+
+    return guid;
+}
+
+// CONSTANTS
+let COINIT_MULTITHREADED = 0;
+let COINIT_APARTMENTTHREADED = 2;
+let CLSCTX_ALL = 0x17;
+let CLSID_SpVoice = CLSIDFromArr([&apos;0x96749377&apos;, &apos;0x3391&apos;, &apos;0x11D2&apos;,
+                                  &apos;0x9E&apos;, &apos;0xE3&apos;, &apos;0x00&apos;, &apos;0xC0&apos;,
+                                  &apos;0x4F&apos;, &apos;0x79&apos;, &apos;0x73&apos;, &apos;0x96&apos;]);
+let IID_ISpVoice = IIDFromArr([&apos;0x6C44DF74&apos;, &apos;0x72B9&apos;, &apos;0x4992&apos;,
+                               &apos;0xA1&apos;, &apos;0xEC&apos;, &apos;0xEF&apos;, &apos;0x99&apos;,
+                               &apos;0x6E&apos;, &apos;0x04&apos;, &apos;0x22&apos;, &apos;0xD4&apos;]);
+let SPF_DEFAULT = 0;
+
+function main() {
+    let spVoice;
+    let spVoicePtr;
+    try {
+        // MSDN Docs tell us ot use CoInitEx instead of CoInit, and default is 0
+        // which is COINIT_MULTITHREADED but it wouldnt work so I used
+        // COINIT_APARTMENTTHREADED and it worked checkHRESULT would throw a bad
+        // HRESULT of RPC_E_CHANGED_MODE which is 0x80010106 which is
+        // -2147417850.
+        primative_hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED);
+        checkHRESULT(primative_hr, &quot;CoInitializeEx&quot;);
+
+        spVoicePtr = ISpVoice.ptr();
+        primative_hr = CoCreateInstance(CLSID_SpVoice.address(), null,
+                                        CLSCTX_ALL, IID_ISpVoice.address(),
+                                        spVoicePtr.address());
+        checkHRESULT(primative_hr, &quot;CoCreateInstance&quot;);
+        spVoice = spVoicePtr.contents.lpVtbl.contents;
+
+        let aText = &apos;Hello Firefox!&apos;;
+        let aFlags = SPF_DEFAULT;
+        primative_hr = spVoice.Speak(spVoicePtr, aText, aFlags, 0);
+        checkHRESULT(primative_hr, &quot;CoCreateInstance&quot;);
+
+    } catch (ex) {
+        console.error(&apos;ex occured:&apos;, ex);
+    } finally {
+        if (spVoice) {
+            spVoice.Release(spVoicePtr);
+        }
+        CoUninitialize();
+    }
+}
+main();
+
+lib.close();</pre>
+
+<h2 id="Other_Examples">Other Examples</h2>
+
+<ul>
+ <li><code><a href="http://stackoverflow.com/a/27892227/1828637">SHGetPropertyStoreForWindow </a></code>- This examples shows that CoInit is not needed, some WinAPI functions return the interface. This example uses <code>IPropertyStore::SetValue</code> to change the System.UserModelApp.ID of an open Firefox window.</li>
+ <li><code><a href="https://github.com/FunkMonkey/Loomo/blob/06a5881a4f520ede092059a4115bf117568b914f/Loomo/chrome/content/modules/Utils/COM/IShellItem.jsm">IShellItem</a></code></li>
+ <li><code><a href="https://github.com/FunkMonkey/Loomo/blob/06a5881a4f520ede092059a4115bf117568b914f/Loomo/chrome/content/modules/Utils/COM/IFileOperation.jsm">IFileOperation</a></code></li>
+ <li><code>IShellLink</code> &amp; <code>IPersistFile</code> - Create shortcut files.
+  <ul>
+   <li><a href="https://github.com/west-mt/ssbrowser/blob/452e21d728706945ad00f696f84c2f52e8638d08/chrome/content/modules/WindowsShortcutService.jsm#L251">Example A</a> - Based on <a href="https://bug738501.bugzilla.mozilla.org/attachment.cgi?id=608538">Bugzilla :: Bug 738501 - Attachement 608538</a></li>
+   <li><a href="https://github.com/Noitidart/_scratchpad/blob/e5b61dda3f8c4e8554138690f5b3142a8c8d677e/IShellLink%20IPersistFile%20VTBL%20and%20COM.js">Exmaple B</a> - Based on Example A</li>
+  </ul>
+ </li>
+ <li><a href="https://github.com/Noitidart/_scratchpad/blob/45d16d1b9cfb8253858ca9a2b200d252070d429d/IShellLink%20IPersistFile%20WITH%20IPropertyStore%20ctypes.js"><code>IShellLink</code> &amp; <code>IPersistFile</code> &amp; <code>IPropertyStore</code></a> - Uses IPropertyStore to set and get the System.UserModelApp.ID on shortcut files.</li>
+</ul>

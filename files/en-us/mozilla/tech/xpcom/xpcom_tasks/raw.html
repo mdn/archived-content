@@ -1,0 +1,57 @@
+<p></p><div class="blockIndicator warning">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It was last edited in 2003 and is probably of historical interest only.</p>
+</div>
+<p></p>
+<h4 id="The_Role_of_XPCOM" name="The_Role_of_XPCOM"> The Role of XPCOM </h4>
+<p>The XPCOM module roughly parallels the C/C++ standard libraries. It overlaps them significantly, but goes beyond them in capabilities. XPCOM sits above the standard libraries. Its role is to extend them with facilities tailored to XPCOM development in general, and specifically the needs of Mozilla. Like the standard libraries, XPCOM must be a fairly self-contained library, so as not to encumber clients with any unnecessary external dependencies.
+</p>
+<h4 id="Changes_to_the_Build_Hierarchy" name="Changes_to_the_Build_Hierarchy"> Changes to the Build Hierarchy </h4>
+<p>There are things in XPCOM that don't belong there. There is likely to be code outside of XPCOM that should be in it. There is code above XPCOM that should be below it.
+</p>
+<ul><li> <span class="editor-note">P3</span> I/O functionality (except for the filespec facility) probably <i>doesn't</i> belong in XPCOM; perhaps it should be moved to netwerk
+</li><li> <span class="editor-note">P3</span> The `Twips' units routines (or perhaps all routines) in "nsUnitConversion.h" probably belong in layout.
+</li><li> <span class="editor-note">P3</span> <code>nsStringTokenizer</code> probably belongs in the parser.
+</li><li> <span class="editor-note">5.1</span> 3rd party code that doesn't use any services from our tree should be below XPCOM; particularly, code XPCOM could exploit, e.g.,
+<ul><li> expat
+</li><li> Berkeley db
+</li></ul>
+</li></ul>
+<h4 id="Changes_to_APIs.2C_Functionality.2C_and_Implementations" name="Changes_to_APIs.2C_Functionality.2C_and_Implementations"> Changes to APIs, Functionality, and Implementations </h4>
+<p>The following items are listed (very) roughly in their order of importance, i.e., fixing observers is the first thing I want to do.
+</p>
+<ul><li> <span class="editor-note">P1</span> Various threading issues, e.g.,
+<ul><li> Too many locks. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=13009" title="service manager has too many locks">bug 13009</a>.
+</li><li> Not enough locks. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=5795" title="THREADING: CreateInstance critical section not protected">bug 5795</a>, <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=12755" title="Atom table needs to be thread safe.">bug 12755</a>, and <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=12755" title="Atom table needs to be thread safe.">bug 12755</a>.
+</li></ul>
+</li><li> <span class="editor-note">P1</span> We would like to move to a scheme where no one writes <code>QueryInterface</code>, and we save code-space with a table driven implementation. A first step is moving all QI implementations to the table-like macros already in place (and some slight modifications to those macros). See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=23737" title="Need table driven implementation of |QueryInterface|">bug 23737</a> <span class="editor-note"> Work is progressing on this. See in particular, the new <code>NS_INTERFACE_MAP_...</code> macros in <a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/base/nsISupportsUtils.h">"nsISupportsUtils.h"</a>. </span>
+</li><li> <span class="editor-note">P1</span> We need to use <code>NS_GET_IID</code> instead of <code>NS_DEFINE_IID</code>. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=25886" title="|NS_DEFINE_IID| is bad; use |NS_GET_IID| instead">bug 25886</a>. <span class="editor-note"> Work is progressing on this. </span>
+</li><li> <span class="editor-note">P2</span> Classes that parallel Standard Library classes should have compatible APIs, i.e.,
+<ul><li> nsDeque <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=18505" title="FIXED: rename nsDeque::Peek() to nsDeque::PeekFront()">bug 18505</a>
+</li><li> nsString
+</li><li> nsAVLTree
+</li><li> nsHashtable
+</li><li> our various array classes In some cases, this might initially be provided by additional interfaces. In all cases, we want to transition the primary APIs toward the standard.
+</li></ul>
+</li><li> <span class="editor-note">P2</span> Our various enumerator classes should be made compatible with the enumerators from the Standard C Library, so that we can apply the standard algorithms to our containers. This is probably best done with a C wrapper around an XPCOM enumerator.
+</li><li> <span class="editor-note">P2</span> Do we still require our own version of QuickSort? And if so, can we narrow it to only those platforms that need it?
+</li><li> <span class="editor-note">P3</span> We need to check for aggregation in <code>CreateInstance()</code>. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=16763" title="CreateInstance implementation does not check for aggregation">bug 16763</a>
+</li><li> <span class="editor-note">P3</span> Improve the performance of the registry. Explore the idea of using a separate registry.
+</li><li> <span class="editor-note">5.1</span> If the build hierarchy were fixed, the Registry could exploit expat and dbm. It could avoid implementing its own file format and io; and in many cases, possibly avoid calling into components for registration. In any case, the process of registration can, I think, be simplified.
+</li><li> <span class="editor-note">5.1</span> Should we provide type-safe templatized containers, e.g., over <code>nsISupportsArray</code>?
+</li><li> <span class="editor-note">5.1</span> We want to provide some mechanism for user-specific components in a multi-user environment.
+</li><li> <span class="editor-note">5.1</span> Fix the shutdown issues that complicate life for embedding applications.
+</li></ul>
+<h4 id="Things_we_need_to_evangelize" name="Things_we_need_to_evangelize"> Things we need to evangelize </h4>
+<p>We need to keep up-to-date documentation, samples, and have brown-bags to keep people informed. We've been doing this, but it should be in the plan.
+</p>
+<ul><li> General XPCOM guidelines. See, e.g., <a class="external" href="http://lxr.mozilla.org/mozilla/source/xpcom/doc/xpcom-code-faq.html">XPCOM Code FAQ</a>, <a class="external" href="http://www.mozilla.org/scriptable/xpidl/idl-authors-guide/index.html">IDL Author's Guide</a>, and <a href="en/Implementing_QueryInterface">Implementing QueryInterface</a>.
+</li><li> Writing and using components and modules.
+</li><li> Building ownership models that work (see <a href="en/XPCOM_ownership_guidelines">XPCOM ownership guidelines</a>), using raw pointers, <code>nsCOMPtr</code> (see <a class="external" href="http://www.mozilla.org/projects/xpcom/nsCOMPtr.html">The <code>nsCOMPtr</code> User's Manual</a>), <code>nsIWeakReference</code> (see <a class="external" href="http://www.mozilla.org/projects/xpcom/weak_references.html"><code>nsIWeakReference</code></a>), <code>nsCWeakReference</code>, and (across threads) proxies (see <a href="en/NsISupports_proxies">nsISupports proxies</a>).
+</li></ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author(s): unknown
+</li><li> Last Updated Date: May 8, 2003
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

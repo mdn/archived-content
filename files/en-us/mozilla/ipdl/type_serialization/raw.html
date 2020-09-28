@@ -1,0 +1,68 @@
+<p>All types used in IPDL must be serializable. This is accomplished through type specialization of a C++ traits class.</p>
+
+<p>Types are serialized and deserialized from an IPC::Message type declared in <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/ipc/chromium/src/chrome/common/ipc_message.h" title="http://mxr.mozilla.org/projects-central/source/electrolysis/ipc/chromium/src/chrome/common/ipc_message.h">ipc_message.h</a>. Each type specializes IPC::ParamTraits as follows:</p>
+
+<pre class="brush: cpp">namespace IPC {
+
+template &lt;&gt;
+struct ParamTraits&lt;MyType&gt;
+{
+  typedef MyType paramType;
+
+  static void Write(Message* aMsg, const paramType&amp; aParam) {
+    // implement serialization here
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    // implement deserialization here. return false if deserialization failed
+  }
+};
+
+} // namespace IPC</pre>
+
+<p>The standard IPDL types (integers, floats, and XPCOM strings) already have serializers. Other types need to have serializers written for them explicitly.</p>
+
+<p>In many cases a serializer can be written by combining existing serializers. Most structures can be serialized in this manner:</p>
+
+<pre class="brush: cpp">struct ExampleStruct
+{
+  int i;
+  nsCString j;
+  int k[4];
+};
+
+namespace IPC {
+
+template &lt;&gt;
+struct ParamTraits&lt;ExampleStruct&gt;
+{
+  typedef ExampleStruct paramType;
+
+  static void Write(Message* aMsg, const paramType&amp; aParam)
+  {
+    WriteParam(aMsg, aParam.i);
+    WriteParam(aMsg, aParam.j);
+    for (int i = 0; i &lt; 4; ++i)
+      WriteParam(aMsg, aParam.k[i]);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    if (!ReadParam(aMsg, aIter, &amp;(aResult-&gt;i)) ||
+        !ReadParam(aMsg, aIter, &amp;(aResult-&gt;j)))
+      return false;
+
+    for (int i = 0; i &lt; 4; ++i)
+      if (!ReadParam(aMsg, aIter, &amp;(aResult-&gt;k[i])))
+        return false;
+
+    return true;
+  }
+};
+
+} // namespace IPC</pre>
+
+<p>Once you have a serializer for a type, you can serialize a collection of it (ex: an nsTArray&lt;ExampleStruct&gt;) by simply declaring "using nsTArray&lt;ExampleStruct&gt;;' in your IPDL file, then using it in a IPC method.</p>
+
+<p>Serializers and deserializers are security-sensitive and must always receive two reviews from module owners who understand IPC serialization well. If in doubt, please ask for help! It is never acceptable to serialize/deserialize raw pointer values; if you are tempted, you probably should create a subprotocol for that data, so that IPDL can check the values and lifetime.</p>

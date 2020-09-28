@@ -1,0 +1,86 @@
+<p>This is preliminary documentation of the changes introduced to Mozilla as part of the BiDi support contributed by IBM (a.k.a. IBMBIDI), written by Simon Montagu and posted to the mozilla-layout mailing list. While it was published in 2001 and might not be totally accurate, it does help understanding the internals of the BiDi code.
+</p>
+<h2 id="Overview_of_BiDi_processing" name="Overview_of_BiDi_processing">Overview of BiDi processing</h2>
+<p> Bidi text is reordered according to the Unicode Bidi Algorithm
+(UBA). The implementation is based on IBM's International Components
+for Unicode (ICU), which was chosen after comparing and testing the
+available open-source implementations. As far as we could discover,
+ICU is the only one which is 100% compatible with UBA, including
+support for explicit directional controls (LRO, RLO, etc, and their
+HTML equivalents). </p>
+<p>Bidi processing for a given HTML document will only take place if
+one of the following is true:</p>
+<ul>
+<li>The page includes a Hebrew or Arabic character or a Hindi digit. This is determined in <code>nsTextFragment::SetTo</code></li>
+<li>The page includes a element with the attribute dir=rtl, either explicitly (<code>nsGenericHTMLElement::MapCommonAttributesInto</code>), or as a consequence of a style rule (<code>MapDeclarationTextInto</code> in nsCSSStyleRule.cpp)</li> </ul> <p>All these cases use <code>nsDocument::EnableBidi</code> to set the
+flag <code>mBidiEnabled</code>. In a Bidi-enabled document, the
+following things happen:</p> <ul>
+<li>During a reflow, <code>nsBidiPresUtils::Resolve</code> is called. This method uses the UBA to determine the directional properties of the text and reorder frames if necessary. If necessary, text frames are split so that every frame has the same directionality. <code> FrameManager::SetFrameProperty</code> is used to set the following flags and pointers (for terminology see <a class="external" href="http://www.unicode.org/unicode/reports/tr9/">the specification of the UBA</a>): <ul>
+<li>embeddingLevel: the embedding level of the frame</li>
+<li>textClass: the text class of the frame.</li>
+<li>baseLevel: the base level (direction) of the paragraph.</li><li>nextBidi: when a frame has been split, this points
+to the next frame (in logical order). It is an <code>nsContinuingTextFrame</code>.</li></ul></li>
+<li>"Reordering" of frames is accomplished by setting the appropriate frame coordinates. The order of the frames in the content model is not affected, so frames that are adjacent in the content model can be far apart visually. A new frame iterator, <code>nsVisualIterator</code> (in nsFrameTraversal.cpp) provides visual frame navigation capability.</li>
+<li>Details of rendering are dependent on user preferences and system capabilities. Where the system is capable of tasks such as reversing and shaping text, symmetric swapping, numeric translation, etc., no special text rendering is needed, though there may be a call to a native API to set the base text direction (for example <code>SetTextAlign</code> on Windows). For systems without Bidi capabilities, the methods in nsIUBidiUtils are used.<br> Note that we are not affected by buggy Bidi implementations on specific platforms, since the platform never sees a text fragment with mixed directionality, and is not expected to do anything more complicated than displaying left-to-right text from left to right or right-to-left text from right to left. </li>
+<li>In some circumstances, even on a platform with Bidi capability, the layout code has to reverse text fragments or to allow for the fact that they are displayed in reverse. In general, this happens whenever we are dealing with less than a whole frame. Examples of this are in <code>nsTextFrame::PaintTextSlowly</code>; <code>nsTextFrame::PaintUnicodeText</code> when a selection is displayed; <code>nsTextFrame::GetPosition</code>; <code>nsTextFrame::GetPointFromOffset</code>. <br> Text in Visual mode must also be reversed before display on a Bidi platform.</li> </ul>
+<h2 id="Text_fields_and_Composer" name="Text_fields_and_Composer">Text fields and Composer</h2>
+<p>The specification of the Bidi changes to <i>composer</i> was posted in the editor and i18n newsgroups, and responses there were taken into
+account. The implementation is mostly in layout code, especially in nsSelection.cpp and nsCaret.cpp.
+</p>
+<h2 id="Other_BiDi_functionality" name="Other_BiDi_functionality">Other BiDi functionality</h2>
+<ul>
+<li><b>Clipboard</b>: based on Bidi Options in Preferences, the Text Mode of the clipboard may be "Logical", "Visual" or "As Source". <ul><li>In "As Source" mode, the text copied into the clipboard is exactly the same (from a Bidi point of view) as the original source. The text pasted from the clipboard (to the composer or to an edit field) is pasted as is.</li>
+<li>In "Visual" mode, the text copied into the clipboard is exactly the displayed text. The text pasted from the clipboard is converted (if needed) so that Mozilla displays it (from a Bidi point of view) as it would be displayed by a visual clipboard viewer.</li>
+<li>In "Logical" mode, the text copied into the clipboard is converted (if needed) so that a Logical application will display it (from a Bidi point of view) as it is displayed by Mozilla. Text pasted from the clipboard is treated exactly as if it came from a Logical source.</li></ul></li>
+<li><b>Form controls</b>: based on Bidi Options in Preferences, the text mode of form controls may be "Logical", "Visual" or "Like Containing Document". We have also tested behaviour of all controls with <code>dir=rtl</code> and added support where necessary.</li>
+<li>Some support added for alignment
+in tables and lists, and fixes for problems with different combinations of <code>dir</code> and <code>align</code>.</li>
+<li>Improvements
+to lists with Hebrew and Arabic <code>list-style-type</code></li> </ul>
+<h2 id="Summary_of_New_Classes" name="Summary_of_New_Classes">Summary of New Classes</h2>
+<table>
+<tbody><tr>
+<th>Class Name</th>
+<th>XPCOM interface (if applicable)</th>
+<th>Implementation</th>
+<th>Comments</th>
+</tr>
+<tr>
+<td>nsIBidi <span title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span></td>
+<td>intl\unicharutil\public\nsIBidi.h</td>
+<td>intl\unicharutil\src\nsBidiImp.cpp</td>
+<td>Implementation
+of the Unicode Bidi algorithm</td></tr><tr>
+<td>nsIUBidiUtils <span title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span></td>
+<td>intl\unicharutil\public\nsIUBidiUtils.h</td>
+<td>intl\unicharutil\src\nsBidiUtilsImp.cpp</td>
+<td>Utilities for Bidi processing, including: <ul><li>Character classification</li> <li>Symmetric swapping</li> <li>Reordering</li> <li>Shaping</li> <li>Numeric translation</li> <li>Conversion to/from presentation forms</li>
+</ul></td>
+</tr>
+<tr>
+<td>nsBidiPresUtils</td>
+<td>
+</td><td><code><a href="https://dxr.mozilla.org/mozilla-central/source/layout/base/nsBidiPresUtils.cpp" rel="custom">layout/base/nsBidiPresUtils.cpp</a></code></td>
+<td>Utilities for the layout engine including: <ul><li>Resolve frames by Bidi level</li> <li>Split frames</li><li>Reorder frames</li> <li>Format Bidi text</li> <li>Support for deletion and insertion of frames by editor</li></ul>
+</td>
+</tr>
+<tr>
+<td>nsBidiTextFrame</td>
+<td>
+</td><td><code><a href="https://dxr.mozilla.org/mozilla-central/source/layout/generic/nsBidiFrames.cpp" rel="custom">layout/generic/nsBidiFrames.cpp</a></code></td>
+<td>subclass of nsFrame with additional method <code>SetOffsets</code>, to adjust <code>mContentOffset</code> and <code>mContentLength</code> during Bidi processing</td>
+</tr>
+<tr>
+<td>nsDirectionalFrame</td>
+<td>
+</td><td><code><a href="https://dxr.mozilla.org/mozilla-central/source/layout/generic/nsBidiFrames.cpp" rel="custom">layout/generic/nsBidiFrames.cpp</a></code></td>
+<td>subclass of nsFrame<br>This is a special frame which represents a Bidi control. It is created when resolving text containing a Unicode Bidi control character, a <code>BDO</code> tag, or right-to-left alignment caused by a <code>dir</code> tag or CSS.</td>
+</tr>
+<tr>
+<td><a href="en/NsIBidiKeyboard">nsIBidiKeyboard</a></td>
+<td><code><a href="https://dxr.mozilla.org/mozilla-central/source/widget/public/nsIBidiKeyboard.idl" rel="custom">widget/public/nsIBidiKeyboard.idl</a></code></td>
+<td><a href="http://mxr.mozilla.org/mozilla-central/find?string=nsBidiKeyboard.cpp">widget/src/<b>%platform%</b>/nsBidiKeyboard.cpp</a></td>
+<td>Sets and queries the directionality of the current keyboard language.
+</td>
+</tr>
+</tbody></table>

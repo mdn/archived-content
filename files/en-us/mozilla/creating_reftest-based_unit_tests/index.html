@@ -1,0 +1,207 @@
+---
+title: Creating reftest-based unit tests
+slug: Mozilla/Creating_reftest-based_unit_tests
+tags:
+  - Automated testing
+  - Developing Mozilla
+---
+<p>The reftest harness compares the display of two Web pages. If the bitmaps resulting from displaying the two files in an 800x1000 window are identical, the test passes. If they differ, the test fails.  Or, alternatively, the conditions can be reversed (a != test rather than an == test). The power of the tool comes from the fact that there is more than one way to achieve any given visual effect in a browser. So, if the effect of complex markup is being tested, put that complex markup into a page and create another page that uses simple markup to achieve the same visual effect. Reftest will then compare them and verify whether they produce the same bitmap.</p>
+
+<p>This idea can seem odd when first encountered. Automated testing usually compares output against an invariant, a "gold standard", that is determined to be correct. If one has software that multiplies numbers, one wants a regression test to show that 2 * 2 continues to be calculated to be 4, not something similar to but not quite exactly 4. But an operating system does change with time. It is not invariant. And a browser may change the visual effect produced by a tag while still being compliant with relevant standards. For example, the HTML 4.01 specification at the W3C specifies that text inside of a <code>&lt;blockquote&gt;</code> will be indented, but it does not specify the number of pixels of the indentation. If a browser changes the depth of the indenting and the visual construct is tested against an invariant, the test would appear to fail. But the test should not fail, unless the <code>"&lt;blockquote&gt;"</code> element did not cause any indentation at all. If a regression test harness has false failures, it makes the harness not trustworthy and the harness will not be used.</p>
+
+<h2 id="Running_reftest-based_unit_tests">Running reftest-based unit tests</h2>
+
+<div class="note">
+<p>Note: <code>mach</code> is a Python2 script. If your use Python3 as default you must edit the first line of <code>mach</code>.</p>
+</div>
+
+<p>To run all the reftests, go to the directory where you save Firefox's source code and run:</p>
+
+<pre>./mach reftest
+</pre>
+
+<p>If you want to run a particular set of reftests, pass the path as an argument:</p>
+
+<pre>./mach reftest path/from/sourcedir/reftest.list
+</pre>
+
+<p>And to run a single reftest just pass the path to the test file (<strong>not</strong> the reference file):</p>
+
+<pre>./mach reftest path/from/sourcedir/reftest-name.html</pre>
+
+<p>There is no reftest equivalent to <code>mach mochitest --keep-open</code>, but temporarily adding the <code>reftest-wait</code> class to a test (or disabling the script that removes it) will keep it open longer.</p>
+
+<h3 id="Running_IPC_reftests">Running IPC reftests</h3>
+
+<p>Reftests can also be run in a separate process, which can differ from same-process rendering in significant ways. Currently, IPC reftests are only being run on Linux. To run:</p>
+
+<pre>MOZ_LAYERS_FORCE_SHMEM_SURFACES=1 make -C $(OBJDIR) reftest-ipc
+</pre>
+
+<div class="note">Note: Right now, automation currently only runs <code>layout/reftests/reftest-sanity/reftest.list</code>! If you try to run the full suite, you may experience stalls or other issues.</div>
+
+<h2 class="first" id="Creating_reftest-based_unit_tests">Creating reftest-based unit tests </h2>
+
+<h3 id="Your_first_reftest" name="Your_first_reftest">Your first reftest</h3>
+
+<p>It is a silly example, but this will step you through creating your first reftest.</p>
+
+<dl>
+ <dt>Step 1</dt>
+ <dd>For now you must check out and build the browser in order to run the tests. See the <a href="/En/Developer_Guide/Build_Instructions" title="En/Developer_Guide/Build_Instructions">Build Documentation</a> for details on doing that. Sorry about this, but the released builds and the nightly builds are built with the <code>"--disable-tests"</code> option and reftest will not work - see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=369809" title="need nightly builds with tests enabled">bug 369809</a>.</dd>
+ <dt>Step 2</dt>
+ <dd>Open a terminal window. Create a directory (inside Firefox's source code tree) and make that your current directory (i.e. move to that directory).</dd>
+ <dt>Step 3</dt>
+ <dd>Create a file named <code>foo.html</code> with the following:</dd>
+</dl>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;reftest0001&lt;/title&gt;
+&lt;body&gt;&lt;strong&gt;Hello!&lt;/strong&gt;&lt;/body&gt;
+&lt;/html&gt;
+</pre>
+
+<dl>
+ <dt>Step 4</dt>
+ <dd>Create a file named <code>bar.html</code> with the following:</dd>
+</dl>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;reftest0001&lt;/title&gt;
+&lt;body&gt;&lt;b&gt;Hello!&lt;/b&gt;&lt;/body&gt;
+&lt;/html&gt;
+</pre>
+
+<dl>
+ <dt>Step 5</dt>
+ <dd>Create a file named <code>reftest.list</code> with the following:</dd>
+</dl>
+
+<pre class="eval">== foo.html bar.html
+</pre>
+
+<dl>
+ <dd>You are now ready to run the test (but first you must go back to the root of Firefox's source code tree):</dd>
+</dl>
+
+<pre class="eval">$ ./mach reftest path/to/reftest.list 2&gt;&amp;1 | grep REFTEST
+REFTEST PASS: <a class="external" rel="freelink">file:///Users/ray/mozilla-central/path/to/foo.html</a>
+$
+</pre>
+
+<p>Congratulations! You have just created your first reftest!</p>
+
+<p>The re-direct and the <code>grep</code> reduce the amount of excess output from the browser. If you built a debug version of the browser, there can be a lot of extra console output. The <code>reftest.list</code> file can be named whatever you want, not necessarily <code>reftest.list</code> (but it has to end with <code>.list</code>).</p>
+
+<h3 id="More_to_do" name="More_to_do">More to do</h3>
+
+<p>Create more reftests. New tests can be added to the <code>reftest.list</code> file, which can contain any number of tests. The file can include other things, but it does not get very complicated. Keep in mind new tests should fit a 600x600 window so we can test on mobile platforms easier. Here is an example.</p>
+
+<pre class="eval">include ../other.list
+== foo.html bar.html
+!= aaa.html bbb.html
+</pre>
+
+<p>The first line, as one might expect, includes another manifest. The second line should look familiar. It says that <code>foo.html</code> and <code>bar.html</code> should produce visually identical output. The third line says that <code>aaa.html</code> and <code>bbb.html</code> should <strong>NOT</strong> produce visually identical output. More information on this file can be found in the README.txt referenced below, which was written by the creator of the reftest tool.</p>
+
+<p>There is one thing about automated tests that may not be obvious. There is really no way to construct a test that is too small. If you want to check something, and it seems trivial, that is ok. The cost of adding a new test to an automated suite is very, very low. For tests that are run manually, this is not true. The cost of thinking about and managing the execution of a manual test is fairly high. This is why manual tests tend to get longer, include more steps and ultimately become a long list that actually tests a lot of things.</p>
+
+<p>So, create small tests. For example, it occurs to me that we assume that spaces between a element name and an attribute name have no effect, but do we know this is true? Who checks this? It is completely trivial, but so what. I can create 50 or 100 test files that have spaces between the element name and the attribute of a element for a bunch of different elements, add those to the list of tests to be run, and it causes no problems for anyone. Maybe it will actually take 500 test files to actually check this behavior. It really does not matter.</p>
+
+<p>So, my point is, if you have an idea then create a test. Really. It would be better to have more tests than we need than too few.</p>
+
+<h3 id="Your_second_and_third_reftest" name="Your_second_and_third_reftest">Your second and third reftest</h3>
+
+<p>For these tests create the following files:</p>
+
+<p>spaces1.html:</p>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;spaces1&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+X X
+&lt;/body&gt;&lt;/html&gt;
+</pre>
+
+<p>spaces2.html:</p>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;spaces2&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+X&amp;nbsp;X
+&lt;/body&gt;&lt;/html&gt;
+</pre>
+
+<p>spaces3.html:</p>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;spaces3&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+X&amp;nbsp;&amp;nbsp;X
+&lt;/body&gt;&lt;/html&gt;
+</pre>
+
+<p>spaces4.html:</p>
+
+<pre class="eval">&lt;html&gt;&lt;head&gt;&lt;title&gt;spaces4&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+X  X
+&lt;/body&gt;&lt;/html&gt;
+</pre>
+
+<p>reftests.txt:</p>
+
+<pre class="eval">== spaces1.html spaces2.html
+!= spaces3.html spaces4.html
+</pre>
+
+<p>The first two files, <code>spaces1.html</code> and <code>spaces2.html</code>, are confirming only that a space (the character equal to 0x20 in ASCII) creates the same visual construct as the HTML entity for a non-breaking space. The second pair of files, <code>spaces3.html</code> and <code>spaces4.html</code>, confirms that two regular spaces do <strong>NOT</strong> produce the same visual construct as two non-breaking spaces.</p>
+
+<p>When we run them, we see:</p>
+
+<pre class="eval">$ ./mach reftest path/to/reftest.txt 2&gt;&amp;1 | grep REFTEST
+REFTEST PASS: <a class="external" rel="freelink">file:///Users/ray/mo/spaces1.html</a>
+REFTEST PASS: (!=) <a class="external" rel="freelink">file:///Users/ray/mo/spaces3.html</a>
+$
+</pre>
+
+<p>Fabulous!</p>
+
+<h3 id="Other_comparisons" name="Other_comparisons">Other comparisons</h3>
+
+<p>Note that it should also be possible to create a reftest that tests markup against an actual graphic image of the visual construct that should result. This is probably going to be a more fragile test, for the reasons described above. But it may be necessary.</p>
+
+<p>For example, say that certain markup should produce a certain Sanskrit glyph. How does one test that? One should be able to "snap a picture" of the glyph as it should be displayed and then the reference page would include that graphic in an <code>&lt;img&gt;</code> element.</p>
+
+<p>More investigation into whether this will work is definitely warranted. Experiments with this have shown it to be not as easy as one would hope. We'll see.</p>
+
+<p>Here is a list of <a href="/en/reftest_opportunities_files" title="en/reftest_opportunities_files">reftest opportunities files</a> in the source. These are files that have been checked in to be tested. Presumably, one was supposed to open the pages with a browser and look at them and see if they look right. It is hard to tell how many of these will be usable as reftests. If the file is associated with a bug, the bug should be examined. I have seen a case where the html file in the bug had a problem, but the checked-in version was "cleaned up" and not valid for testing.</p>
+
+<p>Mozilla has used HTML generation tools in the past. The <s> <a href="https://dxr.mozilla.org/mozilla-central/source/parser/htmlparser/tests/htmlgen/htmlgen.html" rel="custom">htmlgen</a> </s> tool is an example of this. Tools like this may be more useful now that we have reftest to exercise the files. It would also be useful to generate files that combine HTML and CSS in interesting or unusual ways. </p>
+
+<h3 id="Reftests_and_elevated_privileges" name="Reftests_and_elevated_privileges">Reftests and preferences</h3>
+
+<p>In order to use preferences that are not listed in the browser's built-in preferences files such as all.js (in other words, preferences that will not show up in about:config) it is necessary to add the preference to <span style="background-color: #ffffff; color: #1d1c1d; display: inline !important; float: none; font-family: Slack-Lato,appleLogo,sans-serif; font-size: 15px; font-style: normal; font-weight: 400; letter-spacing: normal; text-align: start; text-decoration-style: initial; text-indent: 0px; text-transform: none; white-space: normal;">testing/profiles/reftest/user.js.</span></p>
+
+<h3 id="Reftests_and_elevated_privileges" name="Reftests_and_elevated_privileges">Reftests and elevated privileges</h3>
+
+<p>In general, reftests that you intend to check-in must not rely on behaviour that requires elevated privileges. The build process runs reftests in a profile that does not automatically grant elevated privileges: requesting them will cause the standard security alert to display, which will likely cause the machine running the test to hang or timeout.</p>
+
+<p>Any tests that require such privileges to work correctly should be testing chrome only pieces of UI. You can accomplish this by either:</p>
+
+<ol>
+ <li>Rewrite them as <a href="/en/Mochitest" title="en/Mochitest">Mochitests</a>. The helper functions <code>snapshotWindow</code> and <code>compareSnapshots</code> are available in <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/WindowSnapshot.js" title="http://mxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/WindowSnapshot.js">testing/mochitest/tests/SimpleTest/WindowSnapshot.js</a>.</li>
+ <li>Register them in the chrome package in <a href="https://searchfox.org/mozilla-central/source/layout/tools/reftest/jar.mn">layout/tools/reftest/jar.mn</a>, and reference the chrome URIs in the manifest file (see <a href="https://searchfox.org/mozilla-central/rev/00f3836a87b844b5e4bc82f698c559b9966e4be2/toolkit/themes/osx/reftests/reftest.list">an example</a>).</li>
+</ol>
+
+<h3 id="References" name="References">Testing invalidation</h3>
+
+<p>Testing that a document displays correctly once it has loaded is only one part of testing rendering. Another part is testing invalidation - testing that when a document is changed <em>after</em> it has finished loading and displaying, that the browser correctly "invalidates" the parts of the screen that should change so that the screen displays the correct output the next time it is repainted. Invalidation tests check both that the internal state of the document has been updated correctly, and that the browser then correctly invalidates and repaints the appropriate parts of the screen.</p>
+
+<p>In order to test invalidation it is important that invalidation tests let the document <em>completely</em> finish loading and displaying <em>before</em> making the changes for which invalidation and repainting is to be tested. Making the changes before the document has completely finished loading and painting would mean that the test may not actually test the browser's invalidation logic, since the changed parts of the document may end up displaying correctly purely due to a pending post-load paint.</p>
+
+<p>To write an invalidation reftest requires three extra steps. First you need to add class="reftest-wait" to the root element in the test to tell the reftest framework not to check the rendering as soon as the test finishes loading and moving on to the next test. Next you need to add a listener for the 'MozReftestInvalidate' event, and only make the changes you want to test invalidation for after that event has fired. Third, you need to remove 'reftest-wait' from the root element's 'class' attribute to tell the reftest framework that the test is now ready to have its rendering tested.</p>
+
+<p>The reason for using the 'MozReftestInvalidate' event is because a document's initial painting is not typically finished when the 'load' event fires. It would be possible to try and wait for the initial rendering to be done using a setTimeout, but that would be unreliable, and just as bad, it can increase the time it takes to run a test many times over (which when you're running thousands of tests can really slow things down). The 'MozReftestInvalidate' event is designed to fire as soon after the initial rendering of the document is finished as possible, but never before. The reftest framework fires one MozReftestInvalidate event at the document root element for a reftest-wait test when it is safe to make changes that should test invalidation. The event bubbles up to the document and window so you can set listeners there too.</p>
+
+<h3 id="References" name="References">References</h3>
+
+<ul>
+ <li><a class="external" href="http://old.nabble.com/Please-add-%22in-testsuite-%22-to-layout-bugs-when-resolving-them!-td7787412.html" rel="freelink">http://old.nabble.com/Please-add-%22in-testsuite-%22-to-layout-bugs-when-resolving-them!-td7787412.html</a></li>
+ <li>Further documentation: <code><a href="https://dxr.mozilla.org/mozilla-central/source/layout/tools/reftest/README.txt" rel="custom">layout/tools/reftest/README.txt</a></code></li>
+</ul>

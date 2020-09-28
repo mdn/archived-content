@@ -1,0 +1,25 @@
+<div>
+ <p>A <em>compartment</em> is a new concept with SpiderMonkey 1.8.5. Compartments are used to create multiple JavaScript memory heaps, which avoids having one heap for all JavaScript objects. Each compartment is a separate JavaScript heap.</p>
+ <p>In previous versions of SpiderMonkey, the garbage collector would walk the entire heap of all JavaScript objects when garbage collection was needed. With compartments, garbage collection can run per compartment. This can result in significant performance improvements in some applications.</p>
+ <p>An object in one compartment cannot touch an object in another compartment, except through a cross-compartment wrapper.</p>
+ <h2 id="Compartment_Example">Compartment Example</h2>
+ <p>The Firefox browser embeds SpiderMonkey. In Firefox 4 and above, compartments are used and all JavaScript objects that belong to a certain origin (such as "<a class="external" href="http://mail.google.com/" rel="freelink">http://mail.google.com/</a>" or "<a class="external" href="http://www.bank.com/" rel="freelink">http://www.bank.com/</a>") are placed in a separate compartment. This has some important implications:</p>
+ <ul>
+  <li>All objects created by a website reside in the same compartment and hence are located in the same memory region. This improves cache utilization by reducing false sharing of cache lines. False sharing occurs when we are trying to operate on an object and we have to read an entire cache line of data into the CPU cache. In the old model, JavaScript objects could be co-located with arbitrary other JavaScript objects from other origins. Such cross-origin objects are used together very infrequently, which reduces the number of cache hits we get. In the new model most objects touched by a website are tightly packed next to each other in memory, with no cross-origin objects in between.</li>
+  <li>JavaScript objects (including JavaScript functions, which are objects also) are only allowed to touch objects in the same compartment. This invariant is very useful for security purposes. The JavaScript engine enforces this requirement at a very low level. It means that a "google.com" object can never accidentally leak into an untrusted website such as "evil.com". Only a special object type can cross the compartment boundaries. We call these objects cross-compartment wrappers. SpiderMonkey tracks the creation of these cross-compartment wrappers and thus it knows at all times what objects from a compartment are kept alive by outside references (through cross-compartment wrappers). This allows the garbage collecting of individual compartments, in addition to global collection. SpiderMonkey simply assumes that all objects referenced from outside the compartment are live, and then walks the object graph inside the compartment. Objects that are found to be disconnected from the graph are discarded. With this new per-compartment garbage collection we shortcut having to walk unrelated heap areas of a window or tab that triggered a garbage collection.</li>
+ </ul>
+ <h2 id="​See_also">​See also</h2>
+ <ul>
+  <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewCompartmentAndGlobalObject" title="https://developer.mozilla.org/en/SpiderMonkey/JSAPI_Reference/JS_NewCompartmentAndGlobalObject">JS_NewCompartmentAndGlobalObject()</a></li>
+  <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EnterCrossCompartmentCall" title="https://developer.mozilla.org/en/SpiderMonkey/JSAPI_Reference/JS_EnterCrossCompartmentCall">JS_EnterCrossCompartmentCall()</a></li>
+  <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveCrossCompartmentCall" title="https://developer.mozilla.org/en/SpiderMonkey/JSAPI_Reference/JS_LeaveCrossCompartmentCall">JS_LeaveCrossCompartmentCall()</a></li>
+  <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSAutoCompartment">JSAutoCompartment</a></li>
+  <li><a href="/En/SpiderMonkey/Internals/Invariants#Compartments" title="https://developer.mozilla.org/En/SpiderMonkey/Internals/Invariants#Compartments">Invariants</a></li>
+  <li><a href="/En/SpiderMonkey/Internals/Thread_Safety" title="https://developer.mozilla.org/En/SpiderMonkey/Internals/Thread_Safety">SpiderMonkey Internals: Thread Safety</a></li>
+  <li><a class="external" href="http://andreasgal.com/2010/10/13/compartments/" title="http://andreasgal.com/2010/10/13/compartments/">Andreas Gal blog post</a></li>
+  <li><a href="http://bholley.wordpress.com/2012/05/04/at-long-last-compartment-per-global/">Bobby Holley blog post</a></li>
+  <li><a href="https://wiki.mozilla.org/Sfink/Contexts_and_Compartments">Sfink/Contexts_and_Compartments</a></li>
+  <li><a href="/en-US/docs/Mozilla/XPConnect/XPConnect_security_membranes">XPConnect security membranes</a></li>
+ </ul>
+</div>
+<p> </p>

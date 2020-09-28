@@ -1,0 +1,49 @@
+<div>{{SpiderMonkeySidebar("Internals")}}</div>
+
+<div class="summary">
+<p>Since Firefox 17, SpiderMonkey has the ability to self-host built-in functions in JavaScript. These docs describe the current state as of Nightly 45.</p>
+</div>
+
+<h2 id="Differences_from_normal_JavaScript">Differences from normal JavaScript</h2>
+
+<p>All self-hosted code is strict, so self-hosted functions invoked in a <code>null</code> or <code>undefined</code> scope won't be run in the scope of the global object.</p>
+
+<p>Self-hosted code has access to some functionality that's not available to normal JS code. Most importantly, it's possible to invoke any function within the scope of any object using the syntax <code>callFunction(fun, receiver, ...args)</code> (or <code>callContentFunction</code>, see below), which causes <code>fun</code> to be called within the scope of <code>receiver</code> with <code>...args</code> as its arguments. In contrast to <code>Function.prototype.call</code>, this syntax makes it impossible for other code to interfere and gets compiled to bytecode that doesn't have any overhead compared to a normal function invocation.</p>
+
+<p>OTOH, normal method calls are forbidden in self-hosted code. So instead of <code>receiver.fun(arg1, ..., argN)</code> you have to use <code>callFunction(fun, receiver, arg1, ... argN)</code>. This restriction was added because otherwise it's extremely easy to accidentally call methods that have been changed by content, changing the behavior from what was expected.</p>
+
+<p>If the fun can potentially be a <code>content</code>-provided function, <code>callContentFunction</code> has to be used. This is to prevent accidentally calling content functions when assuming that content can't interfere with behavior. E.g., if <code>receiver</code> is an object that content has access to, then <code>callFunction(receiver.fun, receiver)</code> wouldn't be guaranteed to work, because content might have changed the value of <code>receiver.fun</code>, so <code>callContentFunction(receiver.fun, receiver)</code> has to be used.</p>
+
+<p>Self-hosted functions by default are not constructors and do not have a prototype property, so that they meet the requirements for standard built-in functions as described in the <a href="http://ecma-international.org/ecma-262/5.1/#sec-15" title="http://ecma-international.org/ecma-262/5.1/#sec-15">ECMAScript Language Specification 5.1, clause 15</a>. To make a self-hosted function a constructor, call <code>MakeConstructible(<em>FunctionName</em>)</code> after the function declaration. A prototype property can be added from the self-hosted code itself.</p>
+
+<p>All self-hosted functions have direct access to each other and can rely on references being stable, i.e. not changeable by client JS code.</p>
+
+<p>OTOH, self-hosted code doesn't have access to most of the C++-implemented builtins. You can not, for example, use <code>Function.prototype.apply</code> directly. A select set of C++-implemented builtins is installed via <a href="http://mxr.mozilla.org/mozilla-central/ident?i=intrinsic_functions">the <code>intrinsic_functions</code> array in SelfHosting.cpp</a>, as described below. Using the same mechanism, C++-implemented helper functions are made available to self-hosted code. Some general-purpose functions provided in this way are:</p>
+
+<ul>
+ <li>The abstract operations <code>ToObject</code>, <code>ToInteger</code>, and <code>IsCallable</code> specified in the ECMAScript Language Specification.</li>
+ <li><code>ThrowTypeError</code>, <code>ThrowRangeError, ThrowSyntaxError</code>, which self-hosted code should use instead of <code>throw</code> so that the error message is specified in <a href="http://mxr.mozilla.org/mozilla-central/source/js/src/js.msg" title="http://mxr.mozilla.org/mozilla-central/source/js/src/js.msg">js.msg</a> and can be localized.</li>
+ <li>The <code>MakeConstructible</code> function described above.</li>
+</ul>
+
+<p>The file <a href="http://mxr.mozilla.org/mozilla-central/source/js/src/builtin/Utilities.js" title="http://mxr.mozilla.org/mozilla-central/source/js/src/builtin/Utilities.js">Utilities.js</a> provides some additional, JS-implemented helper functions. Of note, it provides implementations of <code>List</code> and <code>Record</code>, types defined in the ECMAScript specifications that are similar to Array and Object, but can't be modified by application code.</p>
+
+<p>The <a href="http://mxr.mozilla.org/mozilla-central/source/js/src/builtin/SelfHostingDefines.h">SelfHostingDefines.h</a> header contains</p>
+
+<h2 id="Adding_self-hosted_functions_to_host_objects">Adding self-hosted functions to host objects</h2>
+
+<p>First, the code has to be embedded into SpiderMonkey. The easiest way to accomplish that is to add the code to a pre-existing <code>.js</code> file in <a href="http://mxr.mozilla.org/mozilla-central/source/js/src/builtin/">builtin/</a>. If it doesn't fit into any of those, create a new <code>.js</code> file in that directory and add it to the selfhosted.inputs list in <a href="http://mxr.mozilla.org/mozilla-central/source/js/src/moz.build">moz.build</a>.</p>
+
+<p>To add a self-hosted function as a method to a host object, add it to that host object's <code>JSFunctionSpec</code> array using the <code>JS_SELF_HOSTED_FN</code> macro. Example:</p>
+
+<pre>JS_SELF_HOSTED_FN("forEach",     "ArrayForEach",     1,0)</pre>
+
+<p>This causes the self-hosted function <code>ArrayForEach</code> to be installed as the host object's method <code>forEach</code>.</p>
+
+<h2 id="Making_JSNatives_available_to_self-hosted_code">Making JSNatives available to self-hosted code</h2>
+
+<p>For a <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSNative" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSNative">JSNative</a> to be available to self-hosted code, add it to the <a href="http://mxr.mozilla.org/mozilla-central/ident?i=intrinsic_functions" title="http://mxr.mozilla.org/mozilla-central/ident?i=intrinsic_functions">intrinsic_functions JSFunctionSpec array in SelfHosting.cpp</a>.</p>
+
+<h2 id="Debugging_self-hosted_code">Debugging self-hosted code</h2>
+
+<p>Self-hosted code by default is hidden from client JavaScript code; in particular, self-hosted frames will be filtered out of the stack traces of exceptions. To include self-hosted frames in stack traces (in debug builds only), set the environment variable <code>MOZ_SHOW_ALL_JS_FRAMES</code>.</p>

@@ -1,0 +1,247 @@
+<p></p>
+
+<p>The annotation service, provided by the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAnnotationService" title="">nsIAnnotationService</a></code> interface, is designed to store arbitrary data about a web page or about an item in the Places database in Firefox 3. It is usable from trusted Firefox code such as extensions, but not from web pages.</p>
+
+<p>For an overview of the Places database design, see <a href="/en/The_Places_database" title="en/The_Places_database">The Places database</a>.</p>
+
+<p>Most methods in the service are duplicated with one method labeled as a 'Page Annotation' taking an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> and the others labeled as an 'Item Annotation' and taking the id of an item in the places database. Which one to use is usually dictated by the application. URI's are easier to use for services that want to annotate a web page loaded in the browser, while ID's are easier to use for services already working with the places database. Id's also offer the ability to add annotations to containers and queries of the database.</p>
+
+<h3 id="Creating_the_annotation_service" name="Creating_the_annotation_service">Creating the annotation service</h3>
+
+<p>The annotation contract ID is <code>@mozilla.org/browser/annotation-service;1</code></p>
+
+<pre>var annotationService = Components.classes["@mozilla.org/browser/annotation-service;1"]
+                                  .getService(Components.interfaces.nsIAnnotationService);
+</pre>
+
+<p>Note that the annotation service is <em>not</em> thread-safe. You should only use it from the main thread.</p>
+
+<h3 id="Naming_your_annotations" name="Naming_your_annotations">Naming your annotations</h3>
+
+<p>For your annotation name, you should use the format <em>&lt;namespace&gt;</em>/<em>&lt;name&gt;</em>. For example, "my_extension/page_state". The annotation service does not currently enforce the annotation name format, but this may change in the future. Also, we may add functions to get all of "your" annotations matching a given namespace.</p>
+
+<p>You should not use any characters in your annotation names that are not valid as part of an HTML path. This includes colons, spaces, most punctuation, and non-ASCII characters.</p>
+
+<p>You should try to have relatively few annotation names. The service stores these names in a separate table, and the fewer names there are, the more efficient retrieving names will be. You should not design your service so that you require hundreds of unique annotation names.</p>
+
+<h3 id="Setting_an_annotation" name="Setting_an_annotation">Setting an annotation</h3>
+
+<p>The annotation provides a variety of scriptable and non-scriptable setters for annotations on both pages and on items in the <a href="/en/Places" title="en/Places">Places</a> database (see <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/components/places/public/nsIAnnotationService.idl" rel="custom">nsIAnnotationService.idl</a> for the exact declarations). From C++ you must use the setter for the explicit data type being saved:</p>
+
+<ul>
+ <li><code>setPageAnnotationString(aURI, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setPageAnnotationInt32(aURI, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setPageAnnotationInt64(aURI, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setPageAnnotationDouble(aURI, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setPageAnnotationBinary(aURI, aName, aData, aDataLen, aFlags, aExpiration);</code></li>
+</ul>
+
+<p>And likewise for items in the <a href="/en/Places" title="en/Places">Places</a> database:</p>
+
+<ul>
+ <li><code>setItemAnnotationString(aItemId, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setItemAnnotationInt32(aItemId, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setItemAnnotationInt64(aItemId, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setItemAnnotationDouble(aItemId, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setItemAnnotationBinary(aItemId, aName, aValue, aDataLen, aFlags, aExpiration);</code></li>
+</ul>
+
+<p>From JavaScript there are two simple function to perform all of these operations:</p>
+
+<ul>
+ <li><code>setPageAnnotation(aURI, aName, aValue, aFlags, aExpiration);</code></li>
+ <li><code>setItemAnnotation(aItemId, aName, aValue, aFlags, aExpiration);</code></li>
+</ul>
+
+<p>These annotations all take similar parameters:</p>
+
+<ul>
+ <li>URI or ItemID: This is the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIURI" title="">nsIURI</a></code> of the page to annotate, or for items in the places database, the id of the item.</li>
+ <li>name: This is the name of the annotation. See the section on naming above.</li>
+ <li>value: The value of the annotation.</li>
+ <li>flags: Currently unused. Should be 0.</li>
+ <li>expiration: The expiration time for the annotation (see "Lifetime of annotations" below).</li>
+</ul>
+
+<pre>var ioservice = Components.classes["@mozilla.org/network/io-service;1"]
+                          .getService(Components.interfaces.nsIIOService);
+var uri = ioservice.newURI("http://www.mozilla.org/", null, null);
+
+annotationService.setPageAnnotation(uri, "my_extension/some_annotation",
+  "This is the annotation value", 0, 0);
+</pre>
+
+<h3 id="Retrieving_annotations" name="Retrieving_annotations">Retrieving annotations</h3>
+
+<p>There are corresponding getters for the setters above (see <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/components/places/public/nsIAnnotationService.idl" rel="custom">nsIAnnotationService.idl</a> for the exact declarations):</p>
+
+<p>From C++:</p>
+
+<ul>
+ <li><code>getPageAnnotationString(aURI, aName);</code></li>
+ <li><code>getPageAnnotationInt32(aURI, aName);</code></li>
+ <li><code>getPageAnnotationInt64(aURI, aName);</code></li>
+ <li><code>getPageAnnotationDouble(aURI, aName);</code></li>
+ <li><code>getPageAnnotationBinary(aURI, aName, aData, aDataLen, aMimeType);</code></li>
+</ul>
+
+<ul>
+ <li><code>getItemAnnotationString(aItemId, aName);</code></li>
+ <li><code>getItemAnnotationInt32(aItemId, aName);</code></li>
+ <li><code>getItemAnnotationInt64(aItemId, aName);</code></li>
+ <li><code>getItemAnnotationDouble(aItemId, aName);</code></li>
+ <li><code>getItemAnnotationBinary(aItemId, aName, aData, aDataLen, aMimeType);</code></li>
+</ul>
+
+<p>From JavaScript:</p>
+
+<ul>
+ <li><code>getPageAnnotation(aURI, aName);</code></li>
+ <li><code>getItemAnnotation(aItemId, aName);</code></li>
+</ul>
+
+<p><strong>These functions will return/throw <code>NS_ERROR_NOT_AVAILABLE</code> if the annotation requested does not exist.</strong> You can use the Annotations Service's <code>hasAnnotation</code> method to determine in advance if the page has the requested annotation. However, it is more efficient to just try to do the operation and catch the exception; the extra check requires an additional database lookup (which has higher overhead). But then again you won't know if the exception meant that the annotation did not exist or something else is broken.</p>
+
+<p>The getter functions return only the value of the annotation (with the exception of the C++ <code>getPageAnnotationBinary</code> and <code>getItemAnnotationBinary</code> methods which return the mimetype as well). Four functions are provided to get this information:</p>
+
+<ul>
+ <li><code>getPageAnnotationInfo(aURI, aName, aFlags, aExpiration, aMimeType, aType)</code></li>
+ <li><code>getItemAnnotationInfo(aItemId, aName, aFlags, aExpiration, aMimeType, aType)</code></li>
+ <li><code>getPageAnnotationType(aURI, aName);</code></li>
+ <li><code>getItemAnnotationType(aItemId, aName);</code></li>
+</ul>
+
+<p>The returned type will be one of the VALUE_TYPE constants in <a href="https://dxr.mozilla.org/mozilla-central/source/storage/public/mozIStorageValueArray.idl" rel="custom">mozIStorageValueArray.idl</a>:</p>
+
+<p>After <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=377066" title="FIXED: GetAnnotationInfo always returns VALUE_TYPE_TEXT as the annotation type">bug 377066</a> the VALUE_TYPE_* type handling was changed to this:</p>
+
+<ul>
+ <li>TYPE_INT32 = 1</li>
+ <li>TYPE_DOUBLE = 2</li>
+ <li>TYPE_STRING = 3</li>
+ <li>TYPE_BINARY = 4</li>
+ <li>TYPE_INT64 = 5</li>
+</ul>
+
+<pre>try {
+  var value = annotationService.getPageAnnotation(uri, "my_extension/some_annotation");
+} catch(e) {
+  // annotation does not exist
+}
+</pre>
+
+<h3 id="Other_functions" name="Other_functions">Other functions</h3>
+
+<ul>
+ <li><code>getPagesWithAnnotation(aName, resultCount, results);</code></li>
+ <li><code>getItemsWithAnnotation(aName, resultCount, results);</code></li>
+</ul>
+
+<dl>
+ <dd>Retrieves a list of all pages/items with the given annotation. C++ callers will want to use <code>GetPagesWithAnnotationCOMArray</code> which returns a COM array, making memory management much easier and reducing the chance of leaks.</dd>
+</dl>
+
+<ul>
+ <li><code>getPageAnnotationNames(aURI, count, result);</code></li>
+ <li><code>getItemAnnotationNames(aItem, count, result);</code></li>
+</ul>
+
+<dl>
+ <dd>Retrieves a list of all the annotations on a given URI or id. C++ callers will want to use <strong>GetPageAnnotationNamesTArray</strong> which returns a COM array, making memory management much easier and reducing the chance of leaks.</dd>
+</dl>
+
+<ul>
+ <li><code>pageHasAnnotation(aURI, aName);</code></li>
+ <li><code>itemHasAnnotation(aItemId, aName);</code></li>
+</ul>
+
+<dl>
+ <dd>Returns <code>true</code> if the page/item has an annotation with the given name.</dd>
+</dl>
+
+<ul>
+ <li><code>removePageAnnotation(aURI, aName);</code></li>
+ <li><code>removeItemAnnotation(aItemId, aName);</code></li>
+</ul>
+
+<dl>
+ <dd>Removes a given annotation from a page/item.</dd>
+</dl>
+
+<ul>
+ <li><code>removePageAnnotations(aURI);</code></li>
+ <li><code>removeItemAnnotations(aItemId);</code></li>
+</ul>
+
+<dl>
+ <dd>Removes all the annotations from a given page/item.</dd>
+</dl>
+
+<ul>
+ <li><code>copyPageAnnotations(aSourceURI, aDestURI, aOverwriteDest);</code></li>
+ <li><code>copyItemAnnotations(aSourceItemId, aDestItemId, aOverwriteDest);</code></li>
+</ul>
+
+<dl>
+ <dd>Copies all the annotations from one page/item to another. You can specify whether you want to preserve or replace the destination annotations in case of collisions.</dd>
+</dl>
+
+<h3 id="The_annotation_protocol" name="The_annotation_protocol">The annotation protocol</h3>
+
+<p>The annotation service provides a protocol handler for the "moz-anno:" protocol. This allows you to link directly to data stored in the annotation service. You can get an annotation URI for a given URI/name pair by calling:</p>
+
+<ul>
+ <li><code>getAnnotationURI(aURI, aName);</code></li>
+</ul>
+
+<p>In order for the annotation protocol to work, the annotation in question must have been declared with a MIME type. Annotations with no MIME type will not work.</p>
+
+<p>The annotation service also provides special-case handling of favicons. When the annotation name is "favicon," the annotation protocol handler will pass the request through to the favicon service for handling. To get a favicon annotation URI for a given favicon, use <strong>nsIFaviconService.getFaviconLinkForIcon</strong> and to get the favicon annotation URI for a given page, use <strong>nsIFaviconService.getFaviconLinkForPage</strong>. It is important that you use these functions and not make up your own URIs, because these functions will efficiently default to the default page favicon when it does not exist. See <a href="/en/Using_the_Places_favicon_service" title="en/Using_the_Places_favicon_service">Using the Places favicon service</a> for more information.</p>
+
+<h3 id="Lifetime_of_annotations" name="Lifetime_of_annotations">Lifetime of annotations</h3>
+
+<p>Annotation expiration can be explicitly stated when the annotation is created. If no expiration is specified, the annotation is expired when the number of visits to the url is set to zero.</p>
+
+<p>Valid values for expiration are:</p>
+
+<ul>
+ <li>EXPIRE_WITH_HISTORY : <strong>Default</strong>. Annotations live as long as the URI is in history (eg: Has &gt;0 visits).</li>
+ <li>EXPIRE_NEVER : Never expire. Must be explictly removed.</li>
+ <li>EXPIRE_SESSION : Removed at application exit.</li>
+ <li>EXPIRE_DAYS : Removed at 7 days.</li>
+ <li>EXPIRE_WEEKS : Removed at 30 days.</li>
+ <li>EXPIRE_MONTHS : Removed at 180 days.</li>
+</ul>
+
+<pre>annotationService.setPageAnnotation(uri, "my_extension/some_annotation",
+  "This is the annotation value", 0, annotationService.EXPIRE_NEVER);
+</pre>
+
+<h3 id="Annotation_Observers" name="Annotation_Observers">Annotation Observers</h3>
+
+<p>Observers can also be added to the service to watch for changes to annotations. To add or remove an observer use the methods:</p>
+
+<ul>
+ <li><code>addObserver(aObserver);</code></li>
+ <li><code>removeObserver(aObserver);</code></li>
+</ul>
+
+<p>where aObserver is an object implementing the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAnnotationObserver" title="">nsIAnnotationObserver</a></code> interface. The objects must implement four methods, which are called when an annotation is set/removed on a URI or item respectively:</p>
+
+<ul>
+ <li>onPageAnnotationSet(aURI, aName);</li>
+ <li>onItemAnnotationSet(aItemId, aName);</li>
+ <li>onPageAnnotationRemoved(aURI, aName);</li>
+ <li>onItemAnnotationRemoved(aItemId, aName);</li>
+</ul>
+
+<pre>var observer = {
+  onPageAnnotationSet : function(aURI, aName) { },
+  onItemAnnotationSet : function(aItemId, aName) { },
+  onPageAnnotationRemoved : function(aURI, aName) { },
+  onItemAnnotationRemoved: function(aItemId, aName) { }
+}
+
+annotationService.addObserver(observer);
+}
+</pre>

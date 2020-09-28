@@ -1,0 +1,156 @@
+<p>{{Obsolete_Header}}</p>
+
+<div class="blcokIndicator warning">
+<p>Quite <strong>a lot</strong> has happened since this article was written. E. g. in Firefox 3, a cycle collector was introduced and refined in later versions, and Mozilla is currently working on a generational garbage collector for JS.</p>
+
+<p>This article <strong>needs to be updated</strong> to reflect the changes and the cases where they help. Take every information on this site with a grain of salt, although most concepts and best practices still apply.</p>
+</div>
+
+<p>Using <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> in <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a> (also known as <a href="/en/XPConnect" title="en/XPConnect">XPConnect</a>) is an environment where memory management issues are not obvious. There are no calls to <code>malloc</code> and <code>free</code> and no reference counting. Despite this, it's easy to write JavaScript code that leaks. It's easy to write leaky code in any garbage-collected language. But it's even easier in this environment because some of the objects you're dealing with are reference-counted behind the scenes.</p>
+
+<p><span class="seoSummary">Programmers writing and reviewing JavaScript code in Mozilla should understand how code using XPCOM in JavaScript can leak so that they can avoid leaks. This document attempts to help them do so, first by explaining the underlying concepts, and second by describing a number of common JavaScript patterns that cause leaks.</span></p>
+
+<h3 id="Basics_of_memory_management" name="Basics_of_memory_management">Basics of memory management</h3>
+
+<p>Creating objects that are not a fixed size for the lifetime of the program (global variables) or a fixed size for the lifetime of a function (stack variables) requires a system for dynamic memory allocation: a system that allocates memory from a space called the heap. The requirements for such a memory allocation system are:</p>
+
+<ol>
+ <li>Memory should be returned to the heap when the program no longer needs it (or soon thereafter) so that the amount of memory consumed by the program does not increase.</li>
+ <li>Programs should not dereference pointers pointing to memory that has been returned to the heap (and potentially reused).</li>
+</ol>
+
+<p>Meeting both requirements at the same time can be tricky. Many programming languages guarantee a solution for (2) and handle all the heap management for the programmer. However, this doesn't mean that (1) is also solved.</p>
+
+<p>The most common strategies for managing heap allocation are the following:</p>
+
+<h4 id="malloc_and_free_.28or_new_and_delete.29" name="malloc_and_free_.28or_new_and_delete.29"><code>malloc</code> and <code>free</code> (or <code>new</code> and <code>delete</code>)</h4>
+
+<p>The simplest strategy for heap allocation is that the programmer makes one function call to request memory from the heap and another one to return it. In C, these are <code>malloc</code> and <code>free</code>. In C++, they're <code>new</code> and <code>delete</code>. If the programmer forgets to return the memory to the heap, it leaks. If the programmer accesses the memory after returning it to the heap, the program will access whatever happens to be at that location, and will likely either behave nondeterministically or crash. With this strategy, a single pointer to the object is considered the "owner" of the object and the object is deleted through that pointer. It's difficult to use this strategy when there are multiple pointers to a given object and it's uncertain which one will need to last the longest.</p>
+
+<h4 id="Reference_counting" name="Reference_counting">Reference counting</h4>
+
+<p>Reference counting is a simple solution to the problem of allowing multiple owners to influence the lifetime of an object. In this strategy, the object has a member that is the number of other objects that "own" it. When this count goes to zero, the object destroys itself.</p>
+
+<p>This is the strategy used by XPCOM, partly because it can be used through a very simple API, <code>AddRef</code> and <code>Release</code>. In C++, we use <code>nsCOMPtr</code> to help manage ownership, and we use <a class="external" href="http://lxr.mozilla.org/seamonkey/source/xpcom/glue/nsISupportsImpl.h">macros</a> to implement <code>AddRef</code> and <code>Release</code>. The major problem with reference counting is that it can cause leaks through ownership cycles. If object A owns object B, and object B owns object A, then neither one will ever be destroyed. This tends to be solved in one of two ways: either break the cycle at some point or ensure that the cycle is never created in the first place by making one of the pointers not own a reference (which carries the potential for crashes just like <code>malloc</code> and <code>free</code>). The potential causes of leaks with garbage collection (the next strategy) also apply to reference counting as well.</p>
+
+<h4 id="Garbage_collection" name="Garbage_collection">Garbage collection</h4>
+
+<p>Garbage collection is generally used to refer to algorithms that (1) determine which objects are still needed by starting from a set of roots and finding all objects reachable from those objects and (2) returning all remaining objects to the heap. The roots include things like global variables and variables on the current call stack. Mozilla's JavaScript engine uses one of the most common garbage collection algorithms, mark and sweep, in which the garbage collector clears the mark bit on each object, sets the mark bits on all roots and all objects reachable from them, and then finalizes all objects not marked and returns the memory they used to the heap.</p>
+
+<p>Garbage collection (at least when the term is not used to refer to lesser algorithms like reference counting) is pretty good at freeing memory that should be freed. However, in a fully garbage-collected system the programmer can still create leaks by leaving objects reachable that are no longer needed. For example, if an object's constructor adds the object to a list that is reachable from a global variable and nothing ever removes it from the list, the object will never be destroyed since it is always reachable from the list.</p>
+
+<h3 id="Memory_management_in_XPCOM_and_JavaScript" name="Memory_management_in_XPCOM_and_JavaScript">Memory management in XPCOM and JavaScript</h3>
+
+<p>JavaScript code that uses XPCOM through XPConnect uses two different memory management models. JavaScript uses garbage collection. XPCOM uses reference counting. Authors of JavaScript code that uses XPCOM objects can't depend on all of the benefits of garbage collection. They face some of the disadvantages of reference counting. Understanding how memory management works in XPConnect helps understand why this is the case.</p>
+
+<p>XPConnect basically provides two features. It allows JavaScript code to access XPCOM objects (i.e., it wraps native XPCOM objects for JavaScript) and it allows JavaScript code to implement XPCOM interfaces (i.e., it wraps JavaScript objects for XPCOM).</p>
+
+<p>For JavaScript objects that implement XPCOM interfaces, the interface between reference counting and garbage collection is quite simple. (The implementation is slightly more complicated, but only to optimize for speed and reduce creation and destruction of wrapper objects.) The wrapper object is reference counted, and as long as it exists, it makes the JavaScript object that it wraps be one of the roots used by the JavaScript garbage collector's mark phase.</p>
+
+<p>One might think that the wrappers of native XPCOM objects (to allow them to be used from JavaScript) would just work the other way around. And in the simple case, they do. The wrapper owns a reference to the native object that it wraps, and the wrapper object is kept alive by the JavaScript garbage collector.</p>
+
+<p><strong>This problem is only in versions of Mozilla prior to Mozilla 1.8.</strong> However, it's not quite that simple, because of the convention that DOM nodes can have <em>arbitrary</em> JavaScript properties added to them by the programmer. These properties have to be preserved across garbage collections, even if the wrapper is not reachable from any garbage collection root, since the JavaScript programmer could access the DOM node again the same way he did the first time, and would then expect the added properties to still be there. We currently implement this by making the wrapper a root in the JavaScript garbage collector once somebody sets a JavaScript property on a DOM node. (This is roughly equivalent to making all the properties roots, but simpler.) <em>Once this happens, it remains a root until the document stops being displayed.</em> This means that neither the element nor any of the properties nor any of the objects reachable from those properties can be freed until the document is no longer displayed.</p>
+
+<p>You might think that it's unusual to set arbitrary properties on DOM nodes. And in many cases it is. But in one important case it's not: XBL. XBL fields are implemented as JavaScript properties on the bound element's wrapper, so they have all the hazards of JavaScript properties.</p>
+
+<p>(On wrapped objects other that DOM nodes, we allow JavaScript programmers to set properties, but we don't do anything to protect them from garbage collection. This makes program behavior depend on when garbage collection happens, which means the API is nondeterministic, which is really bad. This situation may improve at some point in the future. The situation with JavaScript properties on DOM nodes may also improve—see {{bug(283129)}}—but it requires substantial changes.)</p>
+
+<h3 id="Things_not_to_do" name="Things_not_to_do">Things not to do</h3>
+
+<p>Everybody writing, reviewing, or checking in JavaScript code to Mozilla CVS should understand why these things are bad.</p>
+
+<h4 id="Don.27t_store_temporary_objects_permanently_in_global_variables" name="Don.27t_store_temporary_objects_permanently_in_global_variables">Don't store temporary objects permanently in global variables</h4>
+
+<p>Storing temporary objects permanently in global variables will leak memory in garbage-collected languages. That it leaks in the XPCOM+JavaScript world isn't at all special.</p>
+
+<p>The most common way this is done in JavaScript is on implementations of observer interfaces like <code>nsIObserver</code> in JavaScript. If you implement <code>nsIObserver</code> in JavaScript and register that observer (without using weak references) with a service (for example, with the observer service {{bug(239833)}} or with the pref service {{bug(256822)}}), the service will do exactly what you tell it to do: notify the observer you just created until you unregister the observer. <strong>If you don't unregister the observer</strong>, the observer, the JavaScript global object for the context in which it was created, and a bunch of associated objects will all leak for the lifetime of the application.</p>
+
+<p>It's also worth noting that failing to unregister an observer that's attached to something temporary (such as a controller or event listener) can cause the garbage collector to take an extra cycle to clean up everything that was associated with a document if the temporary object itself is destroyed as a result of garbage collection. See <a class="link-https" href="https://bugzilla.mozilla.org/attachment.cgi?id=139368">one of the patches</a> in {{bug(231384)}} for some examples.</p>
+
+<h4 id="Don.27t_create_cycles_through_XPCOM" name="Don.27t_create_cycles_through_XPCOM">Don't create cycles through XPCOM</h4>
+
+<p>In a garbage-collected system, reference cycles aren't a problem. If A has a pointer to B and B has a pointer to A, but neither is reachable from anything else, they are both freed when garbage collection happens. In a reference-counted system, reference cycles are a problem, and neither object will be freed. <em>In the hybrid system that we use, a reference cycle in which some of the objects are reference counted has the same problem as a reference cycle in a reference-counted system.</em> Consider the example where J is implemented in JavaScript and N is implemented in C++. J has a pointer to N, so the wrapper wrapping N owns a reference to N as long as J is reachable from a garbage collection root. N has a pointer to J, so the wrapper wrapping J exists as long as N doesn't release the pointer, and creates a garbage collection root that roots J. Thus J is always reachable from a garbage collection root, and we have a cycle.</p>
+
+<p>I actually can't find an example of this simple leak pattern that occurred in Mozilla's codebase. But it certainly could.</p>
+
+<p>However, it's easy to inadvertently create this same type of leak when using closures. In JavaScript, as in many interpreted languages, functions have access to the variables that are in scope where they are created. A closure is a code × environment pair: function objects are not just the code; they're also the environment. Since all the variables in that environment are reachable from the function object, the objects referenced by those variables are reachable from the function.</p>
+
+<p>To understand closures a little better before examining how they can cause leaks, consider the following example, in which there are two pairs of function objects, and each <em>pair</em> has an instance of the <code>private_data</code> variable:</p>
+
+<pre class="eval">// This function returns an array containing two functions.
+function function_array() {
+    // Once this function is done running, this variable is still
+    // accessible to the functions created here.
+    var private_data = 0;
+
+    var result = new Array();
+    result[0] = function() { return (private_data += 1); }
+    result[1] = function() { return (private_data *= 2); }
+    return result;
+}
+
+// This function returns the string "Results: 1, 2, 4, 0, 5, 1, 10."
+function test() {
+    var fns1 = function_array();
+    var fns2 = function_array();
+    return "Results: " +
+           fns1[0]() + ", " + // increments first  private_data to 1
+           fns1[1]() + ", " + // doubles    first  private_data to 2
+           fns1[1]() + ", " + // doubles    first  private_data to 4
+           fns2[1]() + ", " + // doubles    second private_data to 0
+           fns1[0]() + ", " + // increments first  private_data to 5
+           fns2[0]() + ", " + // increments second private_data to 1
+           fns1[1]() + ".";   // doubles    first  private_data to 10
+}
+</pre>
+
+<p>This shows that closures are quite powerful. But it's also easy to accidentally use that power when it's not needed. Consider this example from {{bug(285065)}}:</p>
+
+<pre class="eval">           function _filterRadioGroup(aNode) {
+             switch (aNode.localName) {
+               case "radio": return NodeFilter.FILTER_ACCEPT;
+               case "template":
+               case "radiogroup": return NodeFilter.FILTER_REJECT;
+               default: return NodeFilter.FILTER_SKIP;
+             }
+           }
+           var iterator = this.ownerDocument.createTreeWalker(this, NodeFilter.SHOW_ELEMENT, _filterRadioGroup, true);
+           while (iterator.nextNode())
+             radioChildren.push(iterator.currentNode);
+
+           return this.mRadioChildren = radioChildren;
+</pre>
+
+<p>In this example, the <code>iterator</code> object is an XPCOM object that is wrapped so the JavaScript code can use it. The <code>_filterRadioGroup</code> object is a JavaScript function that is wrapped so that XPCOM code can use it. The reason closures matter here is that the <code>_filterRadioGroup</code> function has access to the <code>iterator</code> variable. (<code>var</code> declarations inside JavaScript functions are function-scope, including the part of the function before the declaration.) This means that the value of <code>iterator</code>, the wrapper for the native tree walker, is reachable from the function. But the tree walker owns a reference to the wrapper for that function, so the wrapper maintains a garbage collection root to keep the function from being destroyed, so we have a cycle that prevents both objects from being freed.</p>
+
+<p>Simply assigning <code>iterator = null</code> before the <code>return</code> is sufficient to fix the leak. However, a better fix is to move the filter function outside of the function, since the power of closures is not necessary in this case (and there's also no need to create a new function object for the filter each time this code is executed).</p>
+
+<p>This same problem can also happen if the function is inside of an object. Consider the example of {{bug(170022)}} (which also demonstrates a leak via a global variable, fixed later in {{bug(231266)}}):</p>
+
+<pre class="eval">const observer = {
+  observe: function(subject, topic, data)
+  {
+    if (topic != "open-new-tab-request" || subject != window)
+      return;
+
+    delayedOpenTab(data);
+  }
+};
+const service = Components.classes["@mozilla.org/observer-service;1"]
+  .getService(Components.interfaces.nsIObserverService);
+service.addObserver(observer, "open-new-tab-request", false);
+</pre>
+
+<p>In this example, there is a similar cycle between <code>observe</code> and <code>service</code>. (But since <code>service</code> is a global variable, just fixing the cycle doesn't fix the leak.)</p>
+
+<h4 id="Don.27t_store_short-lived_objects_as_JavaScript_properties_of_short-lived_DOM_nodes" name="Don.27t_store_short-lived_objects_as_JavaScript_properties_of_short-lived_DOM_nodes">Don't store short-lived objects as JavaScript properties of short-lived DOM nodes</h4>
+
+<p>I mentioned earlier that, in versions of Mozilla before 1.8, setting arbitrary JavaScript properties on elements (or using XBL fields) causes that element's JavaScript wrapper to be rooted until the document stops being displayed. This can be a problem if there are large objects reachable from that wrapper that should go away before the document stops being displayed.</p>
+
+<p>The worst example of this problem is tabbrowser. <a class="external" href="http://lxr.mozilla.org/mozilla/source/toolkit/content/widgets/tabbrowser.xml">Tabbrowser</a> is an XBL binding that wraps browsers in tabs, creating and destroying them as needed. But the browsers are themselves <a class="external" href="http://lxr.mozilla.org/mozilla/source/toolkit/content/widgets/browser.xml">XBL bindings</a>, and much of the memory associated with the page displayed in the tab is reachable from the JavaScript properties of the browser element. This means that without some workaround, all of the browsers will remain in memory until the parent window is closed. The workaround is simple: we have a <code>destroy</code> method on browser that tabbrowser can call when it's done with a browser. This destroy method assigns null to the problematic properties so that the large objects are no longer reachable from the wrapper of the browser element (which will still leak until the window containing the tabbrowser is closed, but it's a much smaller leak).</p>
+
+<h3 id="Further_reading" name="Further_reading">Further reading</h3>
+
+<ul>
+ <li>{{interwiki('wikimo', 'Performance:Leak_Tools', 'Finding leaks in Mozilla')}} - How to debug leaks when they do occur.</li>
+</ul>

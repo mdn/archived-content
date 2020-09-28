@@ -1,0 +1,129 @@
+---
+title: Monitoring plugins
+slug: Archive/Plugins/Monitoring_plugins
+tags:
+  - Add-ons
+  - Firefox 3
+  - Plugins
+---
+<p></p>
+
+<h3 id="Summary" name="Summary">Summary</h3>
+
+<p>A new component of the plugin system is now available to measure how long it takes plugins (e.g., Adobe Flash) to execute their calls. This component then reports the plugin runtime using the <a href="en/NsIObserverService">observer service</a> to anyone registered to receive the notifications. This article discusses how developers can make use of this new feature.</p>
+
+<h3 id="Runtime_Data" name="Runtime_Data">Runtime Data</h3>
+
+<p>The runtime information reported is always in fractions of a second. Because the component measures the wall clock time it takes for blocking plugin calls to execute, the value includes both CPU time, the wait time between allocation of CPU time to the process as well as any disk I/O time. It is therefore technically incorrect to say that the runtime is a measure of CPU use, however, it is a good representation of overall resources being consumed by the plugin.</p>
+
+<h3 id="Usage" name="Usage">Usage</h3>
+
+<p>To make use of the new component you must register to receive its runtime notifications using the <a href="en/NsIObserverService">observer service</a>. The notification's topic is <code>experimental-notify-plugin-call</code>. If you are new to the Mozilla observer service, you may want to familiarize yourself with it before proceeding further. You can find more information on the observer service <a href="en/NsIObserverService"> here</a> and <a href="en/NsIObserver"> here</a>.</p>
+
+<p>Below are a number of JavaScript snippets that would be useful to developers trying to use this feature:</p>
+
+<h4 id="Registration" name="Registration">Registration</h4>
+
+<p>To register for runtime notifications with the observer service you must create a class with an <code>observe</code> method which receives 3 parameters (<code>subject</code>, <code>topic</code> and <code>data</code>) as well as a <code>register</code> method that contains the following code:</p>
+
+<p> </p>
+
+<pre class="eval">var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                        .getService (Components.interfaces.nsIObserverService);
+observerService.addObserver(this, "experimental-notify-plugin-call", false);
+</pre>
+
+<p> </p>
+
+<p> </p>
+
+<h4 id="Observing" name="Observing">Observing</h4>
+
+<p>As discussed above, to specify what you want done when a notification arrives your class must have an <code>observe</code> method, receiving 3 parameters (<code>subject</code>, <code>topic</code> and <code>data</code>). The <code>topic</code> contains the notification's topic - <code>experimental-notify-plugin-call</code> in this case, the <code>data</code> is the runtime in milliseconds and the <code>subject</code> is always <code>null</code> and should not be used.</p>
+
+<p>Here is an example that shows the runtime in an alert box to the user if the runtime exceeds half a second in length:</p>
+
+<p> </p>
+
+<pre class="eval"> observe: function(subject, topic, data) {
+   if (topic == "experimental-notify-plugin-call" ) {
+     if (data &gt; 0.500) {
+       alert("Runtime is: " + data);
+     }
+   }
+ }
+</pre>
+
+<p> </p>
+
+<p><strong>NOTE: This is just a simplified example and the use of <code>alert()</code> is discouraged as the component can send hundreds of notifications each second and could potentially cause your browser to crash if an excessive number of alert boxes are displayed.</strong></p>
+
+<p>Also note that in the example above an if statement first checks to see that the arriving notification's topic is the correct one. This is useful in cases where your class is registered to receive notifications for more than one topic with the observer service.</p>
+
+<h4 id="Clean_Up" name="Clean_Up">Clean Up</h4>
+
+<p>To unregister your class with the observer service - when you no longer want to be listening to runtime notifications - your class must include an <code>unregister</code> method that contains the following code:</p>
+
+<p> </p>
+
+<pre class="eval">var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                       .getService(Components.interfaces.nsIObserverService);
+observerService.removeObserver(this, "experimental-notify-plugin-call");
+</pre>
+
+<p> </p>
+
+<p> </p>
+
+<h4 id="Skeleton_Observer_Class" name="Skeleton_Observer_Class">Skeleton Observer Class</h4>
+
+<p>Below is a skeleton class that you may use to listen to runtime notifications:</p>
+
+<p> </p>
+
+<pre class="eval"> function PluginObserver() {
+   this.registered = false;
+   this.register();	//takes care of registering this class with observer services as an observer for plugin runtime notifications
+ }
+
+ PluginWatcherObserver.prototype = {
+   observe: function(subject, topic, data) {
+
+     if (topic == "experimental-notify-plugin-call") //In case your class is registered to listen to other topics
+       //This gets executed each time a runtime notification arrives
+       // --YOUR CODE GOES HERE--
+     }
+
+
+   },
+   //Takes care of registering the observer services for the "experimental-notify-plugin-call" topic
+   register: function() {
+     if (this.registered == false) { //This check prevents double registration -- something you want to avoid!!
+       var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                       .getService(Components.interfaces.nsIObserverService);
+       observerService.addObserver(this, "experimental-notify-plugin-call", false);
+       this.registered = true;
+     }
+   },
+   //Unregisters from the observer services
+   unregister: function() {
+     if (this.registered == true) {
+       var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                       .getService(Components.interfaces.nsIObserverService);
+       observerService.removeObserver(this, "experimental-notify-plugin-call");
+       this.registered = false;
+     }
+   }
+ }
+</pre>
+
+<p> </p>
+
+<h3 id="Additional_Resources" name="Additional_Resources">Additional Resources</h3>
+
+<p>More information on the observer service:</p>
+
+<ul>
+ <li><a href="en/NsIObserverService">nsIObserverService</a></li>
+ <li><a href="en/NsIObserver">nsIObserver</a></li>
+</ul>

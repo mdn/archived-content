@@ -1,0 +1,91 @@
+<p>There are a variety of ways you can install <a href="/en/Toolkit_API/extIExtension" title="en/Toolkit_API/extIExtension">extensions</a> and <a href="/en/Themes" title="en/Themes">themes</a> from web pages, including direct linking to the XPI files and using the <a href="/en/XPInstall_API_Reference/InstallTrigger_Object" title="en/XPInstall_API_Reference/InstallTrigger_Object">InstallTrigger</a> object.</p>
+
+<p>Extension and web authors are encouraged to use the method described below to install XPIs, as it provides the best experience to users.</p>
+
+<h3 id="Web_Script_Example" name="Web_Script_Example">Web Script Example</h3>
+
+<pre class="eval">&lt;script type="application/javascript"&gt;
+&lt;!--
+function install (aEvent)
+{
+  for (var a = aEvent.target; a.href === undefined;) a = a.parentNode;
+  var params = {
+    "Foo": { URL: aEvent.target.href,
+             IconURL: aEvent.target.getAttribute("iconURL"),
+             Hash: aEvent.target.getAttribute("hash"),
+             toString: function () { return this.URL; }
+    }
+  };
+  InstallTrigger.install(params);
+
+  return false;
+}
+//--&gt;
+&lt;/script&gt;
+
+&lt;a href="<a class="external" href="http://www.example.com/foo.xpi" rel="freelink">http://www.example.com/foo.xpi</a>"
+  iconURL="<a class="external" href="http://www.example.com/foo.png" rel="freelink">http://www.example.com/foo.png</a>"
+  hash="sha1:28857e60d043447c5f4550853f2d40770b326a13"
+  onclick="return install(event);"&gt;Install Extension!&lt;/a&gt;
+</pre>
+
+<p>Let's go through this piece by piece. The HTML &lt;a&gt; is the install link. The href attribute contains a direct link to the extension XPI file, this is what will show in the location bar when the link is moused over. Users can save the XPI file to disk easily by right clicking on the link and choosing "Save Link As..."</p>
+
+<p>When the link is clicked it calls the function <code>install</code> passing the event object as the parameter.</p>
+
+<p>The install first creates a parameter block:</p>
+
+<pre class="eval">var params = {
+  "Foo": { URL: aEvent.target.href,
+           IconURL: aEvent.target.getAttribute("iconURL"),
+           Hash: aEvent.target.getAttribute("hash"),
+           toString: function () { return this.URL; }
+};
+</pre>
+
+<p>This specifies the display name (Foo) for use in the confirmation dialog, the URL to the extension (which is the link <code>href</code>, recall), the Icon URL to display in the confirmation dialog, a hash of the xpi file contents (to protect against corrupted downloads), and a <code>toString</code> function which will allow this code to work with versions of Firefox 0.8 and earlier. You could also use the old style parameter block (<code>{ "Foo": aEvent.target.href }</code>) if you wanted - and didn't have an Icon to use for the confirmation dialog.</p>
+
+<p><code>InstallTrigger.install</code> is then called to install the item with the parameter block.</p>
+
+<pre class="eval">return false;
+</pre>
+
+<p>This last part is the most important - the install function must return <code>false</code> so that when the link is clicked, only the script is run, and the link href is not navigated to. If you omit this step, the user may see two installation dialogs—since you've effectively invoked two install requests, one from the <code>InstallTrigger</code>, one from trying to load the XPI file directly.</p>
+
+<h3 id="Available_Parameters_for_the_install_object" name="Available_Parameters_for_the_install_object">Available Parameters for the install object</h3>
+
+<p>The <code>InstallTrigger.install</code> method accepts a JavaScript object as a parameter, with several properties on that object used to affect the install.</p>
+
+<h4 id="URL" name="URL">URL</h4>
+
+<p>The <code>URL</code> property specifies the URL of the XPI to install. This property is required.</p>
+
+<h4 id="IconURL" name="IconURL">IconURL</h4>
+
+<p>The <code>IconURL</code> property specifies an icon to be displayed in the installation dialog. This property is optional. If you do not specify an icon, the default icon will be used, usually a green puzzle piece. The icon can be any image format supported by Firefox, and should be 32x32 pixels in size.</p>
+
+<h4 id="Hash" name="Hash">Hash</h4>
+
+<p>The <code>Hash</code> property specifies a cryptographic hash of the XPI file contents. This is used to verify the downloaded file, to protect against a corrupted file being served by a mirror download server, for example. You can use any hash function supported by <a href="/en/nsICryptoHash" title="en/nsICryptoHash">nsICryptoHash</a>. The hash is specified as <code>hash function:hash value</code>, for example, <code>sha1:28857e60d043447c5f4550853f2d40770b326a13</code>.</p>
+
+<h4 id="toString.28.29" name="toString.28.29">toString()</h4>
+
+<p>The <code>toString()</code> property should return the XPI URL, for compatibility with Firefox browsers older than version 1.0, and other applications such as Seamonkey.</p>
+
+<h3 id="Themes" name="Themes">Themes</h3>
+
+<p>Pretty much everything I've described applies to themes too, except you'll use the <code>installChrome</code> function. Because so many sites installed extensions by direct-linking the XPI file and relying on content handling to invoke the confirmation UI, many sites are (incorrectly) doing so for theme JAR files too and wondering why they aren't auto-detected and installed. Well, XPI is a Mozilla-specific extension and so we can have special handling for it, but JAR is not - not all .jar files are Firefox themes, so if you click on a .jar link you'll be shown the Save As decision dialog. For this reason you should always use the <code>InstallTrigger</code> API to install themes.</p>
+
+<h3 id="A_Note_on_updateEnabled.28.29" name="A_Note_on_updateEnabled.28.29">A Note on updateEnabled()</h3>
+
+<p><code>InstallTrigger</code> exposes a function called <code>updateEnabled</code> that some of you may be calling before you call <code>InstallTrigger.install</code>. This is not necessary as install calls <code>updateEnabled</code> itself internally. Furthermore, calling <code>updateEnabled</code> may lead to problems if your distribution site is not in the user's whitelist, because Firefox only displays the "Installation Blocked" message when install or <code>installChrome</code> are called, or when a XPI file is loaded. So, if you have code that looks like this:</p>
+
+<pre class="eval">if (InstallTrigger.updateEnabled())
+  InstallTrigger.install({"Foo": "foo.xpi"});
+</pre>
+
+<p>... and your site is not in the whitelist, when the user invokes that code, <code>updateEnabled</code> will return <code>false</code> because your site isn't whitelisted, and since it was <code>updateEnabled</code> that discovered this, not a call to install, there will be no notification to the user.</p>
+
+<p>Thus you should only use <code>updateEnabled</code> to display content in the page to alert the user that software installation is disabled, or your site is not in the whitelist—do not place it in the install code path.</p>
+
+<p>(* by all means don't let this stop you from developing more ambitious install systems, I am providing this documentation only as a guide that I hope most extension distributors will use since it handles most cases well)</p>

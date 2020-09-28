@@ -1,0 +1,133 @@
+---
+title: Adding Event Handlers
+slug: Archive/Mozilla/XUL/Tutorial/Adding_Event_Handlers
+tags:
+  - Tutorials
+  - XUL
+  - XUL_Tutorial
+---
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Scrolling_Menus" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/More_Event_Handlers">Next  »</a></p>
+</div>
+
+<p>The find files dialog so far looks quite good. We haven't cleaned it up much but we have created a simple user interface easily. Next, we will show how to add scripts to it.</p>
+
+<h3 id="Using_Scripts" name="Using_Scripts">Using Scripts</h3>
+
+<p>To make the find files dialog functional, we need to add some scripts which will execute when the user interacts with the dialog. We would want to add a script to handle the Find button, the Cancel button and to handle each menu command. We write this using <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a> functions much in the same way as <a href="/en/HTML" title="en/HTML">HTML</a>.</p>
+
+<p>You can use the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/script" title="script">script</a></code></code> element to include scripts in XUL files. You can embed the script code directly in the XUL file in between the opening and closing <code>script</code> tags but it is much better to include code in a separate file as the XUL window will load slightly faster. The <code><code id="a-src"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/src">src</a></code></code> attribute is used to link in an external script file.</p>
+
+<div class="highlight">
+<h5 id="Our_find_files_example" name="Our_find_files_example">Our find files example</h5>
+
+<p>Let's add a script to the find file dialog. Although it does not matter what the script file is called, usually it would be the same as the XUL file with a .js extension. In this case, findfile.js will be used. Add the line below just after the opening <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/window" title="window">window</a></code></code> tag and BEFORE any elements.</p>
+
+<pre class="eval"><span class="highlightred">&lt;script src="findfile.js"/&gt;</span>
+</pre>
+
+<p>We'll create the script file later when we know what we want to put in it. We'll define some functions in the file and we can call them in event handlers.</p>
+</div>
+
+<p>You can include multiple scripts in a XUL file by using multiple <code>script</code> tags, each pointing to a different script. You may use relative or absolute URLs. For example, you may use URLs of the following form:</p>
+
+<pre class="eval">&lt;script src="findfile.js"/&gt;
+&lt;script src="<a class="external" rel="freelink">chrome://findfiles/content/help.js</a>"/&gt;
+&lt;script src="<span class="nowiki">http://www.example.com/js/items.js</span>"/&gt;
+</pre>
+
+<p>This tutorial does not attempt to describe how to use JavaScript (except as related to event handling) as this is a fairly large topic and there are plenty of other resources that are available for this.</p>
+
+<div class="note">By default the JavaScript console only shows errors from web content. To show errors in chrome JavaScript, it is necessary to change the preference <code>javascript.options.showInConsole</code> to true. You can also change the preference <code>javascript.options.strict</code> for debugging. By setting this value to true, non-standard, poorly written, or syntax prone to cause logic errors are logged to the JavaScript console.</div>
+
+<h3 id="Responding_to_Events" name="Responding_to_Events">Responding to Events</h3>
+
+<p>The script will contain code which responds to various events triggered by the user or other situations. There are about thirty or so different events that may be handled in several different ways. A typical event is the user pressing a mouse button or pressing a key. Each XUL element has the ability to trigger certain events in different situations. Some events are triggered only by certain elements.</p>
+
+<p>Each event has a name, for example, 'mousemove' is the name of the event that is triggered when the user moves the mouse over a UI element. XUL uses the same event mechanism as defined by <a class="external" href="http://www.w3.org/TR/DOM-Level-2-Events/">DOM Events</a>. When an action occurs that would trigger an event, such as the user moving the mouse, an event object is created corresponding to that event type. Various properties are set on the event object such as the mouse position, the key that was pressed, and so forth.</p>
+
+<p>The event is then sent to the XUL in phases.</p>
+
+<ul>
+ <li>In the capturing phase, the event is first sent to the window, then to the document, followed by each ancestor of the XUL element where the event occured downwards until it reaches that element.</li>
+ <li>In the target phase, the event is sent to the target XUL element.</li>
+ <li>In the bubbling phase, the event is sent to each element back upwards until it reaches the window again.</li>
+</ul>
+
+<p>You can respond to an event during either the capturing or bubbling phase. Once the event has finished propagating, any default action will occur, which is the built in behaviour of the element.</p>
+
+<p>For example, when the mouse is moved over a button that is inside a box, a 'mousemove' event is generated, and sent first to the window, followed by the document, and then the box. That completes the capturing phase. Next, the 'mousemove' event is sent to the button. Finally, the bubbling phase causes the event to be sent to the box, document and window. The bubbling phase is essentially the reverse of the capturing phase. Note that some events don't do the bubbling phase.</p>
+
+<p>You can attach listeners to each element to listen to the events during each step of event propagation. Due to the way a single event is passed to all the ancestors, you may attach a listener to a specific element or to an element higher in the hierarchy. Naturally, an event attached to an element higher up will receive notification of all elements inside it, whereas an event attached to a button will only receive events pertaining to that button. This is useful if there are several elements you would like to handle using the same or similar code.</p>
+
+<p>The most common event used is the 'command' event. The command event is fired when a user activates an element, for example by pressing a button, changing a checkbox or selecting an item from a menu. The command event is a useful event since it automatically handles different ways of activating the element. For example, the command event will occur regardless of whether the user uses the mouse to click a button, or presses the Enter key.</p>
+
+<p>There are two ways to attach an event listener to an element. First, by using an attribute with a script as its value. Second, by calling an element's addEventListener method. The former may only handle bubbling events but tends to be simpler to write. The latter can handle events at any phase and may also be used to attach multiple listeners for an event to an element. Using the attribute form is more common for most events.</p>
+
+<h3 id="Attribute_Event_Listeners" name="Attribute_Event_Listeners">Attribute Event Listeners</h3>
+
+<p>To use the attribute form, place an attribute on the element where you want the event listener to be, the name of which should be the event name preceded by the word 'on'. For example, the corresponding attribute for the 'command' event is 'oncommand'. The value of the attribute should be some script that should be executed when the event occurs. Typically, this code will be short or just call a function defined in a separate script. An example of responding to a button being pressed:</p>
+
+<p><span id="Example_1"><a id="Example_1"></a><strong>Example 1</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_1.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_1.xul">View</a></p>
+
+<pre class="eval">&lt;button label="OK" oncommand="alert('Button was pressed!');"/&gt;
+</pre>
+
+<p>Since the command event will bubble, it is also possible to place the event listener on an enclosing element. In the example below, the listener has been placed on a box and will receive events for both elements.</p>
+
+<p><span id="Example_2"><a id="Example_2"></a><strong>Example 2</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_2.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_2.xul">View</a></p>
+
+<pre class="eval">&lt;vbox oncommand="alert(event.target.tagName);"&gt;
+  &lt;button label="OK"/&gt;
+  &lt;checkbox label="Show images"/&gt;
+&lt;/vbox&gt;
+</pre>
+
+<p>In this example, the command event will bubble up from the button or checkbox to the vbox, where it is handled. If a second listener (the <code>oncommand</code> attribute) were placed on the button, its code will be called first, followed by the handler on the vbox. Event handlers are passed the event object as an implied argument called 'event'. This is used to get specific information about the event. One commonly used property is the 'target' property of the event, which holds the element where the event actually occured. In the example we display an alert containing the target's tag name. The target is useful when using a bubbling event so that you could have a set of buttons which are all handled by a single script.</p>
+
+<p>You might notice that the attribute syntax is similar to that used for events in HTML documents. In fact, both HTML and XUL share the same event mechanism. One important difference is that while the 'click' event (or the <code>onclick</code> attribute) is used in HTML to respond to buttons, in XUL the command event should be used instead. XUL does have a click event, but it only responds to mouse clicks, not to keyboard usage. Thus, the click event should be avoided in XUL, unless you have a reason to have an element that can only be handled with a mouse. In addition, whereas the command event will not be sent if an element is disabled, the click event will be sent regardless of whether the element is disabled or not.</p>
+
+<div class="highlight">
+<h5 id="Our__find_files_example" name="Our__find_files_example">Our find files example</h5>
+
+<p>A command handler can be placed on the Find and Cancel buttons in the find files dialog. Pressing the Find button should start the search. Because we aren't going to implement this part yet, we'll leave it out for now. However, pressing the Cancel button should close the window. The code below shows how to do this. While we're at it, let's add the same code to the Close menu item.</p>
+
+<pre class="eval">&lt;menuitem label="Close" accesskey="c" <span class="highlightred">oncommand="window.close();"</span>/&gt;
+...
+
+&lt;button id="cancel-button" label="Cancel"
+     <span class="highlightred">oncommand="window.close();</span>"/&gt;
+</pre>
+
+<p>Two handlers have been added here. The <code>oncommand</code> attribute was added to the Close menu item. By using this handler, the user will be able to close the window by clicking the menu item with the mouse or by selecting it with the keyboard. The <code>oncommand</code> handler was also added to the Cancel button.</p>
+</div>
+
+<h3 id="DOM_Event_Listeners" name="DOM_Event_Listeners">DOM Event Listeners</h3>
+
+<p>The second way to add an event handler is to call an element's addEventListener method. This allows you to attach an event listener dynamically and listen for events during the capturing phase. The syntax is as follows:</p>
+
+<p><span id="Example_3"><a id="Example_3"></a><strong>Example 3</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_3.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_events_3.xul">View</a></p>
+
+<pre>&lt;button id="okbutton" label="OK"/&gt;
+
+&lt;script&gt;
+function buttonPressed(event){
+  alert('Button was pressed!');
+}
+
+var button = document.getElementById("okbutton");
+button.addEventListener('command', buttonPressed, true);
+&lt;/script&gt;
+</pre>
+
+<p>The <code><a href="/en/DOM/document.getElementById" title="en/DOM/document.getElementById">getElementById()</a></code> function returns the element with a given id, in this case the button. The <code><a href="/en/DOM/element.addEventListener" title="en/DOM/element.addEventListener">addEventListener()</a></code> function is called to add a new capturing event listener. The first argument is the name of the event to listen to. The second argument is the event listener function which will be called when the event occurs. Finally, the last argument should be <code>true</code> for capturing listeners. You can also listen during the bubbling phase by setting the last argument to false. The event listener function passed as the second argument should take one argument, the event object, as shown in the declaration for the <code>buttonPressed</code> function above.</p>
+
+<div class="highlight"><span id="Find_files_example_so_far"><a id="Find_files_example_so_far"></a><strong>Find files example so far</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/findfile/findfile-events.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/findfile/findfile-events.xul">View</a></div>
+
+<p> </p>
+
+<p>Next, we'll look at some more details about the <a href="/en/XUL_Tutorial/More_Event_Handlers" title="en/XUL_Tutorial/More_Event_Handlers">event object</a>.</p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Scrolling_Menus" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/More_Event_Handlers">Next  »</a></p>
+</div>

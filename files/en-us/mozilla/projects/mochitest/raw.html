@@ -1,0 +1,545 @@
+<h2 id="Mochitest">Mochitest</h2>
+
+<p>Mochitest is an <a class="internal" href="/en-US/docs/Mozilla/QA/Automated_testing" title="En/Mozilla automated testing">automated testing framework</a> built on top of the <a class="external" href="http://mochi.github.io/mochikit/">MochiKit</a> JavaScript libraries. It is an automated regression testing framework used by Mozilla to report success or failure to the test harness using JavaScript function calls.</p>
+
+<p>Mochitest's use of JavaScript function calls to communicate test success or failure can be unsuitable for certain types of test. Only things that can be tested using JavaScript (with chrome privileges!) can be tested with this framework. Given some creativity, that's actually much more than you might first think, but it's not possible to write Mochitest tests to directly test a non-scripted C++ component, for example.  (Use a compiled-code test to do that.)</p>
+
+<h2 id="Running_tests" name="Running_tests">Running tests</h2>
+
+<p>The Mozilla build machines run Mochitest as part of the build and test process, so we get to know pretty quickly if someone commits a change to the source code that breaks something. However, you should still run Mochitest yourself before you commit any new code. You don't want to be the one who wastes everyone's time by breaking the tree if you can help it. :-)</p>
+
+<h3 id="Running_the_whole_test_suite" name="Running_the_whole_test_suite">Running the whole test suite</h3>
+
+<p>To run Mochitest, <a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions" title="en/Build_Documentation">build Mozilla</a> with your changes; then run</p>
+
+<pre class="brush: bash notranslate">./mach mochitest
+</pre>
+
+<p><img alt="Image:Mochitest.png" class="internal" src="/@api/deki/files/269/=Mochitest.png"></p>
+
+<div class="note">
+<p><strong>Note:</strong> Keep focus on the browser window while the tests are being run, as some may fail otherwise (like the one for <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=330705" title="FIXED: Using blur() on some unfocused element also blurs the focused element">bug 330705</a> for example). Linux users can avoid this inconvenience by using a dummy X server (see <a href="#Diverting_X_output">Diverting X output</a> below).</p>
+</div>
+
+<p>This runs every flavor and subsuite (see <a href="#">Running flavors and subsuites</a> below) of Mochitest, which will take a very long time. Often it is not necessary to run the entire suite locally as the tests require focus. A good compromise is to run tests that you suspect are affected by the changes you made, such as tests in the same directory as the code you touched, locally. If that passes, you can then run the full suite of tests if you think it is necessary.</p>
+
+<h3 id="Running_select_tests" name="Running_select_tests">Running select tests</h3>
+
+<p>To run a single test (perhaps a new test you just added) or a subset of the entire Mochitest suite, pass a path parameter to the <code>mach</code> command. For example, to run only the test <a href="https://dxr.mozilla.org/mozilla-central/source/dom/security/test/cors/test_CrossSiteXHR.html" rel="custom">test_CrossSiteXHR.html</a> in the Mozilla source tree, you would run this command:</p>
+
+<pre class="brush: bash notranslate"><code>./mach </code><code>mochitest </code>dom/security/test/cors/test_CrossSiteXHR.html
+</pre>
+
+<p>To run all the tests in <code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/svg/" rel="custom">dom/svg/</a></code>, this command would work:</p>
+
+<pre class="brush: bash notranslate">./mach <code>mochitest dom</code>/svg/
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> The path specified is the path to the test or directory within the Mozilla source tree. If the path is a directory, the tests in that directory and all of its subdirectories are loaded.</p>
+</div>
+
+<h3 id="Running_flavors_and_subsuites" name="Running_flavors_and_subsuites">Running flavors and subsuites</h3>
+
+<p>Flavors are variations of the default configuration used to run Mochitest. For example, a flavor might have a slightly different set of prefs set for it, a custom extension installed or even run in a completely different scope. The Mochitest flavors are:</p>
+
+<ul>
+ <li><strong>plain</strong> - The most basic and common Mochitest. They run in content scope, but can access certain whitelisted privleged APIs with<a href="/en-US/docs/SpecialPowers"> SpecialPowers</a>.</li>
+ <li><strong>browser</strong> - These often test the browser UI itself and run in chrome scope. More information can be found <a href="/en-US/docs/Browser_chrome_tests">here</a>.</li>
+ <li><strong>chrome</strong> - These run in chrome scope and are typically used for testing privileged JavaScript APIs. More information can be found <a href="/en-US/docs/Chrome_tests">here</a>.</li>
+ <li><strong>a11y</strong> - These test the accessibility interfaces. They can be found under the top 'accessible' directory.</li>
+ <li><strong>jetpack-addon</strong>- Test jetpack addon (more info needed).</li>
+ <li><strong>jetpack-package</strong> - Test jetpack package (more info needed).</li>
+</ul>
+
+<p>A subsuite is similar to a flavor, except that it has an identical configuration. It is just logically separated from the "default" subsuite for display purposes. For example, <em>devtools</em> is a subsuite of the <em>browser</em> flavor. There is no difference in how these two jobs are run. It exists so that the devtools team can easily see and run their tests.</p>
+
+<div class="note">
+<p><strong>Note</strong>: There are also tags, which are similar to Subsuites. Although they both are used to logically group related sets of tests, they behave differently. For example, applying a subsuite to a test <strong>removes</strong> that test from the default set, whereas, a tag  does not remove it.</p>
+</div>
+
+<p>By default, <code>mach</code> finds and runs every test in the given subdirectory (or topscrdir if none specified) no matter which flavor or subsuite it belongs to. But sometimes, you might only want to run a specific flavor or subsuite. This can be accomplished using the <code>--flavor</code> (or <code>-f</code>) and <code>--subsuite</code> options respectively. For example:</p>
+
+<pre class="notranslate">./mach mochitest -f plain                        # runs all plain tests
+./mach mochitest -f browser --subsuite devtools  # runs all browser tests in the devtools subsuite
+./mach mochitest -f chrome dom/indexedDB         # runs all chrome tests in the dom/indexedDB subdirectory
+</pre>
+
+<p>In many cases, it won't be necessary to filter by flavor or subsuite as running specific directories will do it implicitly. For example running:</p>
+
+<pre class="notranslate">./mach mochitest browser/devtools
+</pre>
+
+<p>is a rough equivalent to running the <code>devtools</code> subsuite. There might be situations where you might want to run tests that <em>don't</em> belong to any subsuite. To do this, use:</p>
+
+<pre class="notranslate">./mach mochitest --subsuite default
+</pre>
+
+<div class="note">
+<p><strong>Note</strong>: Before June 1st 2015 each flavor had its own specific mach command (e.g mach mochitest-plain). These have been removed and replaced by --flavor.</p>
+</div>
+
+<h3 id="Running_specific_chunks">Running specific chunks</h3>
+
+<p>The entire Mochitest suite takes a long time, so to get results in automation faster, they are split up into groups called "chunks". On desktop, mochitest is grouped into 5 different chunks. You can easily run <code>mochitest-1</code> through <code>mochitest-5</code> like so:</p>
+
+<pre class="brush: bash notranslate">./mach test mochitest-1
+</pre>
+
+<p>On other platforms, Mochitest can be grouped in to more or fewer chunks. To mimic this, you can pass in <code>--total-chunks</code> and <code>--this-chunk</code>. For example, if the platform has 9 chunks and you want to run the 3rd one:</p>
+
+<pre class="brush: bash notranslate">./mach mochitest -f plain --total-chunks 9 --this-chunk 3
+</pre>
+
+<h3 id="Running_tests_on_comm-central_Thunderbird_SeaMonkey">Running tests on comm-central (Thunderbird, SeaMonkey)</h3>
+
+<p>Currently (as of August 2013) you cannot use <code>mach</code> to run tests in comm-central applications. You need to run the "old" <code>pymake</code> commands inside the <code>obj-dir</code> (if you use one). See <code><a href="/en-US/docs/pymake" title="/en-US/docs/pymake">pymake</a></code> for how to use <code>pymake</code> on Windows. For example, to run only the test <a href="https://dxr.mozilla.org/mozilla-central/source/content/base/test/test_CrossSiteXHR.html" rel="custom">test_CrossSiteXHR.html</a> in the Mozilla source tree, you would run this command:</p>
+
+<pre class="notranslate"><code>TEST_PATH=content/base/test/test_CrossSiteXHR.html make -C $(OBJDIR) mochitest-plain</code>
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> <code>mochitest-plain</code> is an example. There are multiple categories of mochitests. Depending on the test you want to run, use either <code>mochitest-plain</code>, <code>mochitest-chrome</code>, <code>mochitest-browser-chrome</code>, <code>mochitest-a11y</code> or <code>mochitest-ipcplugins</code>.</p>
+</div>
+
+<p>To run all the tests in <a href="https://dxr.mozilla.org/comm-central/source/testing/mochitest">https://dxr.mozilla.org/comm-central/source/testing/mochitest</a>, use this command:</p>
+
+<pre class="eval notranslate">TEST_PATH=suite/common/ <code>make -C $(OBJDIR) mochitest-chrome</code>
+</pre>
+
+<div class="warning">
+<p>Due to <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=907434" title="Running any kind of mochitest in comm-central builds is not possible anymore (mozbuild.base.ObjdirMismatchException)">bug 907434</a>, you should not specify any <code>objdir</code> in your <code>.mozconfig</code>. Use the default one instead to be able to run tests! If you don't like the default choice, use symbolic links (also works on Windows, see the bug for details) to redirect the <code>objdir</code> to another folder.</p>
+</div>
+
+<h3 id="Running_mochitests_under_Electrolysis_e10s_for_Fennec">Running mochitests under Electrolysis (e10s) for Fennec</h3>
+
+<p>To run your Mochitest in a child tab process, run it in a tree that's built for fennec, i.e. was configured with</p>
+
+<pre class="notranslate"><code>ac_add_options --enable-application=mobile</code>
+</pre>
+
+<p>This works fennec builds on Linux, and also Windows and Android builds.  OSX may vary depending on the state of our e10s implementation there.</p>
+
+<p>On Mac, it is necessary to patch <code>automation.py</code> to remove the unconditional "<code>-bin</code>" appended to the appname, and run mochitests with the following setting:</p>
+
+<pre class="brush: bash notranslate"><code>EXTRA_TEST_ARGS="--appname=dist/FennecDebug.app/Contents/MacOS/fennec"</code>
+</pre>
+
+<h3 id="Running_mochitests_without_Electrolysis_e10s_for_desktop_builds.">Running mochitests without Electrolysis (e10s) for desktop builds.</h3>
+
+<p>Mochitests run with electrolysis by default. But you can disable it by passing in the <code>--disable-e10s</code> option to mach's <code>mochitest</code> command (eg, <code>./mach mochitest -f browser --disable-e10s ...</code>).  This will cause the profile created for testing to have the preference, <code>browser.tabs.remote</code> set to <code>false</code> before starting the test suite.</p>
+
+<h3 id="Running_and_debugging_mochitests_on_Android">Running and debugging mochitests on Android</h3>
+
+<p>Instructions on how to <a href="https://wiki.mozilla.org/Mobile/Fennec/Android/Testing" title="https://wiki.mozilla.org/Mobile/Fennec/Android#Mochitests">run Mochitests in Firefox Mobile (Fennec) on Android</a> are available on wiki.mozilla.org, as are instruction on <a href="https://wiki.mozilla.org/Mobile/Fennec/Android/GDB" title="https://wiki.mozilla.org/Mobile/Fennec/Android/GDB">how to use remote debugging to debug Mochitests on Firefox Mobile (Fennec) on Android</a>.</p>
+
+<h3 id="Running_failed_tests">Running failed tests</h3>
+
+<p>After running mochitests, you might have some errors. If you do, you can run <code>make mochitest-plain-rerun-failures</code> to run just the tests that failed:</p>
+
+<pre class="notranslate"><code>make mochitest-plain
+make mochitest-plain-rerun-failures</code>
+</pre>
+
+<p>You could also maintain the <code>failures.json</code> file at the root of the mochitest directory (<code>$(objdir)/_tests/testing/mochitest</code>) during the first run.  When rerunning the failures, it uses the <code>--run-only-tests</code> flag to run the tests in the <code>failures.json</code> file.</p>
+
+<div class="note">
+<p><strong>Note</strong>: This functionality was broken in <code>mach</code>, bug 1155231 tracks re-implenting it.</p>
+</div>
+
+<h3 id="Debugging_individual_tests">Debugging individual tests</h3>
+
+<p>If you need to debug an individual test, you could reload the page containing the test with the debugger attached.  If attaching a debugger before the problem shows up is hard (for example, if the browser crashes as the test is loading), you can specify a debugger when you run mochitest:</p>
+
+<pre class="brush: bash notranslate">./mach mochitest --debugger=gdb ...
+</pre>
+
+<p>See also the <code>--debugger-args</code> and <code>--debugger-interactive</code> arguments.</p>
+
+<p>You can also use the <code>--jsdebugger</code> argument to debug JavaScript.</p>
+
+<h3 id="Finding_errors" name="Finding_errors">Finding errors</h3>
+
+<p>Search for the string <code>"TEST-UNEXPECTED-FAIL"</code> to find unexpected failures. You can also search for <code>"SimpleTest FINISHED"</code> to see the final test summary. This is particularly useful when viewing full Tinderbox logs, since the Mochitest output isn't necessarily at the end of the combined log.</p>
+
+<h3 id="Logging_results" name="Logging_results">Logging results</h3>
+
+<p>The output from a test run can be sent to the console and/or a file (by default the results are only displayed in the browser). There are several levels of detail to choose from. The levels are <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code> and <code>CRITICAL</code>, where <code>DEBUG</code> produces the highest detail (everything), and <code>CRITICAL</code> produces the least.</p>
+
+<p>Mochitest uses structured logging. This means that you can use <a href="https://firefox-source-docs.mozilla.org/mozbase/mozlog.html">a set of command line arguments</a> to configure the log output. To log to stdout using the <code>mach</code> formatter and log to a file in JSON format, you can use <code>--log-mach=-</code> <code>--log-raw=mochitest.log</code>. By default the file logging level for all your formatters is <code>INFO</code> but you can change this using <code>--log-mach-level=LEVEL</code>.</p>
+
+<p>To turn on logging to the console use <code>--console-level=LEVEL</code>.</p>
+
+<p>For example, to log test run output with the default (tbpl) formatter to the file <code>~/mochitest.log</code> at <code>DEBUG</code> level detail you would use:</p>
+
+<pre class="eval notranslate">./mach mochitest --log-tbpl=~/mochitest.log --log-tbpl-level=DEBUG
+</pre>
+
+<h3 id="Diverting_X_output" name="Diverting_X_output">Diverting X output</h3>
+
+<p>The tests must run in a focused window, which effectively prevents any other user activity on the engaged computer. Linux users can reclaim their boxes by telling the suite to use a hidden virtual desktop. If <a class="external" href="https://en.wikipedia.org/wiki/Xvfb">xvfb</a> is or can be installed, the following command launches the tests without blocking the active session:</p>
+
+<pre class="brush: bash notranslate">nice xvfb-run mach mochitest ...
+</pre>
+
+<p>Other possible configurations have also been discussed in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=434365" title="Add a commandline option to run Mochitest in a separate X server on Linux">bug 434365</a>.</p>
+
+<h3 id="Running_tests_without_mach">Running tests without mach</h3>
+
+<p>You can also run tests without a build environment or <code>mach</code>.  The easiest way to do this is to download the tests.zip file corresponding to your platform, and extract it. Assuming that you have both pip and <a href="/en-US/docs/Python/Virtualenv">virtualenv </a>installed, the following commands should help you get started.</p>
+
+<pre class="notranslate">cd $tests_zip
+virtualenv venv # create your virtualenv
+source venv/bin/activate # activate your virtualenv
+cd config
+pip install -r mozbase_requirements.txt
+cd ../mochitest
+python runtests.py --help
+</pre>
+
+<h3 id="Other_.27runtests.27_options" name="Other_.27runtests.27_options">Other <code>runtests.py</code> options</h3>
+
+<p>The <code>runtests.py</code> script recognizes several other options, to see the full list of options run:</p>
+
+<pre class="notranslate">./mach mochitest --help
+</pre>
+
+<p>Other resources:</p>
+
+<ul>
+ <li><a class="external" href="https://ehsanakhgari.org/blog/2011-03-28/running-firefox-tests-extensions-installed" title="http://ehsanakhgari.org/blog/2011-03-28/running-firefox-tests-extensions-installed">Running a test with extensions installed</a></li>
+</ul>
+
+<h2 id="Writing_tests" name="Writing_tests">Writing tests</h2>
+
+<p>A Mochitest test is simply an HTML, XHTML or XUL file that contains some JavaScript to test for some condition(s).</p>
+
+<p>You can use <a class="external" href="http://ted.mielczarek.org/code/mozilla/mochitest-maker/">Mochitest maker</a> to run most tests without having to build Mozilla.</p>
+
+<h3 id="Try_to_avoid_Mochitest" name="Try_to_avoid_Mochitest">Try to avoid Mochitest</h3>
+
+<p>Yes, really. For many things Mochitest is overkill. In general you should always try to use one of the lighter-weight testing frameworks. For example, if you only want to test a single XPCOM component, you should use <a href="/en-US/docs/Mozilla/QA/Writing_xpcshell-based_unit_tests" title="en/Writing_xpcshell-based_unit_tests">xpcshell</a>. On the other hand, there are some things that Mochitest cannot do, or isn't designed to do. For example, for visual output tests you should try to use the <a href="/en-US/docs/Mozilla/Creating_reftest-based_unit_tests" title="en/Creating_reftest-based_unit_tests">reftest</a> framework. For more information on the different types of automated testing frameworks see <a href="/en-US/docs/Mozilla/QA/Automated_testing" title="en/Mozilla_automated_testing">Mozilla automated testing</a>.</p>
+
+<h3 id="Best_practices">Best practices</h3>
+
+<p>Please follow the tips for <a href="/en-US/docs/Mozilla/QA/Avoiding_intermittent_oranges">Avoiding intermittent test failures</a> when writing tests.</p>
+
+<h3 id="Test_templates" name="Test_templates">Test templates</h3>
+
+<p>You can avoid typing out boilerplate by using the <a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/gen_template.pl" rel="custom">gen_template.pl</a> perl script to generate a test template. This script takes two optional arguments:</p>
+
+<ol>
+ <li><code>-b</code> : a bug number</li>
+ <li><code>-type</code> : template type. {<code>html</code>|<code>xhtml</code>|<code>xul</code>|<code>chrome</code>}. defaults to <code>html</code>.</li>
+</ol>
+
+<p>For example:</p>
+
+<pre class="brush: bash notranslate">cd testing/mochitest/
+perl gen_template.pl -b=123456 --type=plain &gt; path/to/test_bug123456.html
+perl gen_template.pl -b=123456 --type=xul &gt; path/to/test_bug123456.xul
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> Mochitest requires the file name of all tests to begin with the string "test_", while mochitest-browser-chrome tests must begin with "browser_". See the section below for help on deciding where your tests should go in the tree.</p>
+</div>
+
+<p>In addition to Mochitest boilerplate code, the script generates an element with the id, 'content', and an element with the id, 'display'. Your test may manipulate these elements as well as other elements you add to the page.</p>
+
+<h3 id="Asynchronous_Tests" name="Asynchronous_Tests">Asynchronous Tests</h3>
+
+<p>Sometimes tests involve asynchronous patterns, such as waiting for events or observers. In these cases, you will need to call <code><var>waitForExplicitFinish</var></code> and <code><var>finish</var></code> like so:</p>
+
+<pre class="brush: js notranslate">SimpleTest.waitForExplicitFinish();
+addEventListener("keypress", function() {
+  // ... run test ...
+  SimpleTest.finish();
+}, false);
+// ... simulate key press ...
+</pre>
+
+<p>If you need more time, <code>requestLongerTimeout(number)</code> can be quite useful.  <code>requestLongerTimeout()</code> takes an integer factor that is a multiplier for the the default 45 seconds timeout. So a factor of 2 means: "Wait for at last 90s (2*45s)". This is really useful if you want to pause exection to do a little debugging.</p>
+
+<h3 id="Test_functions" name="Test_functions">Test functions</h3>
+
+<p>Each test must contain some JavaScript that will run and tell Mochitest whether the test has passed or failed. <a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/SimpleTest.js" rel="custom">SimpleTest.js</a> provides a number of functions for the test to use, to communicate the results back to Mochitest. These include:</p>
+
+<ul>
+ <li><code>ok(<var>expressionThatShouldBeTrue</var>, "<var>Description of the check</var>")</code> -- tests a value for its truthfulness</li>
+ <li><code>is(<var>actualValue</var>, <var>expectedValue</var>, "<var>Description of the check</var>")</code> -- compares two values (using Object.is)</li>
+ <li><code>isnot(<var>actualValue</var>, <var>unexpectedValue</var>, "<var>Description of the check</var>")</code> -- opposite of is()</li>
+</ul>
+
+<p>If you want to include a test for something that currently fails, don't just comment it out!  Instead, use one of the "todo" equivalents so Tinderbox can notice if it suddenly starts passing (at which point the test can be reenabled):</p>
+
+<ul>
+ <li><code>todo(<var>falseButShouldBeTrue</var>, "<code><var>Description of the check</var></code>")</code></li>
+ <li><code>todo_is(<var>actualValue</var>, <var>expectedValue</var>, "<code><var>Description of the check</var></code>")</code></li>
+ <li><code>todo_isnot(<var>actualValue</var>, <var>unexpectedValue</var>, "<code><var>Description of the check</var></code>")</code></li>
+</ul>
+
+<p>Tests can call a function <code>info("Message string")</code> to write a message to the test log.</p>
+
+<h3 id="Helper_functions" name="Helper_functions">Helper functions</h3>
+
+<p>Right now, useful helpers derived from MochiKit are available in <code><a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/SimpleTest.js" rel="custom">testing/mochitest/tests/SimpleTest/SimpleTest.js</a></code>. Although all of Mochikit is available at <code><a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/MochiKit" rel="custom">testing/mochitest/MochiKit</a></code>, only include files that you require to minimize test load times. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=367569" title="FIXED: [FIX]Add some utility methods for firing key events to mochitest">bug 367569</a> added <code>sendChar</code>, <code>sendKey</code>, and <code>sendString</code> helpers. These are available in <code><a href="https://dxr.mozilla.org/mozilla-central/source/testing/mochitest/tests/SimpleTest/EventUtils.js" rel="custom">testing/mochitest/tests/SimpleTest/EventUtils.js</a></code>.</p>
+
+<p>If you need to access some data files from your mochitest, you can get an URI for them by using <code><a href="http://mxr.mozilla.org/mozilla-central/ident?i=SimpleTest">SimpleTest</a>.getTestFileURL("relative/path/to/data.file")</code> . Then you can eventually fetch their content by using XMLHttpRequest.</p>
+
+<h2 id="Adding_tests_to_the_tree" name="Adding_tests_to_the_tree">Adding tests to the tree</h2>
+
+<p>Once you've written a new test you need to add it to the Mozilla source tree and tell the build system about it so that the Mozilla tinderboxes will run it automatically.</p>
+
+<h3 id="Choosing_a_location" name="Choosing_a_location">Choosing a location</h3>
+
+<p>New Mochitest tests should go somewhere close to the code they are testing, hopefully in the same module, so that ownership of the test cases is clear. For example, if you create a new test for some HTML feature, you probably want to put the test in <code><a href="https://dxr.mozilla.org/mozilla-central/source/content/html/content/test" rel="custom">content/html/content/test</a></code> or <code><a href="https://dxr.mozilla.org/mozilla-central/source/content/html/document/test" rel="custom">content/html/document/test</a></code>. If a test directory does not exist near the code you are testing, you can add a new test directory as the patch in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=368531" title="FIXED: add content/html/document/test to the automatic run">bug 368531</a> demonstrates.</p>
+
+<h3 id="Add_an_entry_to_mochitest.ini" name="Add_an_entry_to_mochitest.ini">Add an entry to <code>mochitest.ini</code></h3>
+
+<p>To tell the build system about your new test you need to add your test file to the <code>mochitest.ini</code> in your test's directory. For example, let's say you are adding a new test called 'test_new_feature.html'. Simply edit the <code>mochitest.ini</code> (or <code>chrome.ini</code> etc. depending on the mochitest flavor) in the same directory and add a new line:</p>
+
+<pre class="notranslate">[test_new_feature.html]
+</pre>
+
+<p>Optionally, you can specify metadata for your test, like whether to skip the test on certain platforms:</p>
+
+<pre class="notranslate">[test_new_feature.html]
+skip-if = os == 'win'
+</pre>
+
+<p>The <a href="https://firefox-source-docs.mozilla.org/build/buildsystem/test_manifests.html">mochitest.ini format</a>, which is recognized by the parser, defines a long list of metadata.</p>
+
+<h3 id="Adding_a_new_mochitest.ini_or_chrome.ini_file">Adding a new mochitest.ini or chrome.ini file</h3>
+
+<p>If a <code>manifest.ini</code> or <code>chrome.ini</code> file does not exist in the test directory where you want to add a test, add them and update the <code>moz.build</code> file in the directory for your test. For example, in gfx/layers/moz.build, we add these two manifest files:</p>
+
+<pre class="brush: bash notranslate">MOCHITEST_MANIFESTS += ['apz/test/mochitest.ini']
+MOCHITEST_CHROME_MANIFESTS += ['apz/test/chrome.ini']
+</pre>
+
+<h3 id="Building_and_running_new_tests" name="Building_and_running_new_tests">Building and running new tests</h3>
+
+<p>Before committing a new test you should check that the <code>Makefile.in</code> changes are correct and that your tests pass as you expect them to. To check your test, first export it to the Mochitest directory by running the command:</p>
+
+<pre class="brush: bash notranslate">./mach build path
+</pre>
+
+<p>giving the path of the directory that contains the test file. Now run Mochitest as explained above.</p>
+
+<h2 id="SSL" name="SSL">SSL and <code>https</code>-enabled tests</h2>
+
+<p>Mochitests must be run from <code><span class="nowiki">http://mochi.test/</span></code> to succeed however, some tests may require use of additional protocols, hosts, or ports to test cross-origin functionality. The Mochitest harness addresses this need by <em>mirroring</em> all content of the original server onto a variety of other servers through the magic of proxy autoconfig and SSL tunneling. The full list of schemes, hosts, and ports on which tests are served, is specified in <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/server-locations.txt" rel="custom">build/pgo/server-locations.txt</a></code>.  The origins described there are not the same, as some of them specify particular SSL certificates for testing purposes, while some allow pages on that server to request elevated privileges; read the file for full details.</p>
+
+<h3 id="How_it_works">How it works</h3>
+
+<p>The Mochitest harness includes preference values which cause the browser to use <a class="external" href="https://en.wikipedia.org/wiki/Proxy_auto-config" title="http://en.wikipedia.org/wiki/Proxy_auto-config">proxy autoconfig</a> to match requested URLs with servers.  The <code>network.proxy.autoconfig_url</code> preference is set to a <code>data:</code> URL that encodes the JavaScript function, <code>FindProxyForURL</code>, which determines the host of the given URL.  In the case of SSL sites to be mirrored, the function maps them to an SSL tunnel, which transparently forwards the traffic to the actual server, as per the description of the <code>CONNECT</code> method given in <a class="external" href="https://www.ietf.org/rfc/rfc2817.txt" title="http://www.ietf.org/rfc/rfc2817.txt">RFC 2817</a>.  In this manner a single HTTP server at <code><a class="external" href="http://127.0.0.1:8888" rel="freelink">http://127.0.0.1:8888</a></code> can successfully emulate dozens of servers at distinct locations.</p>
+
+<p>For further details on Mochitest SSL functionality and how to modify it to change a certificate or add a new https server, see <a class="internal" href="/Mozilla/Projects/Mochitest/Modifying_Mochitest_SSL_behavior" title="En/Modifying Mochitest SSL behavior">Modifying Mochitest SSL behavior</a>.</p>
+
+<h2 id="stacks" name="stacks">Getting Stack Traces</h2>
+
+<p>To get stack when Mochitest crashes:</p>
+
+<ol>
+ <li>Get a <code>minidump_stackwalk</code> binary for your platform from <code><a class="external" href="http://hg.mozilla.org/build/tools/file/tip/breakpad/" rel="freelink">http://hg.mozilla.org/build/tools/file/tip/breakpad/</a></code></li>
+ <li>Set the <code>MINIDUMP_STACKWALK</code> environment variable to point to the absolute path of the binary.</li>
+</ol>
+
+<p>If the resulting stack trace doesn't have line numbers, run <code>mach buildsymbols</code> to generate the requisite symbol files.  See <a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Building_Firefox_with_Debug_Symbols" title="en/Building Firefox with Debug Symbols">Building Firefox with Debug Symbols</a> for more information.</p>
+
+<h2 id="FAQ" name="FAQ">FAQ</h2>
+
+<h3 id="What_if_my_tests_aren.27t_done_when_onload_fires.3F" name="What_if_my_tests_aren.27t_done_when_onload_fires.3F">What if my tests aren't done when onload fires?</h3>
+
+<p>Call <code>SimpleTest.waitForExplicitFinish()</code> before onload fires. Then, when you're done, call <code>SimpleTest.finish()</code>.</p>
+
+<h3 id="How_can_I_get_the_full_log_output_for_my_test_in_automation_for_debugging">How can I get the full log output for my test in automation for debugging?</h3>
+
+<p>Add the following to your test:</p>
+
+<pre class="notranslate"><code>SimpleTest.requestCompleteLog();</code>
+</pre>
+
+<h3 id="What_if_I_need_to_change_a_preference_to_run_my_test.3F" name="What_if_I_need_to_change_a_preference_to_run_my_test.3F">What if I need to change a preference to run my test?</h3>
+
+<p>The <code><a href="/en/SpecialPowers" title="en/SpecialPowers">SpecialPowers</a></code> object provides APIs to get and set preferences.</p>
+
+<pre class="brush: js notranslate">var oldVal = SpecialPowers.getIntPref("dom.max_script_run_time");
+SpecialPowers.setIntPref("dom.max_script_run_time", 0);
+
+// do what you need
+
+SpecialPowers.setIntPref("dom.max_script_run_time", oldVal);
+</pre>
+
+<p>If you need to change a pref when running a test locally, you can set the environment variable <code>EXTRA_TEST_ARGS</code> when running the <code>mochitest</code> make target.</p>
+
+<pre class="notranslate">./mach mochitest --setpref="javascript.options.jit.chrome=false" somePath/someTestFile.html
+</pre>
+
+<p>Equally, if you need to change a string pref:</p>
+
+<pre class="notranslate">./mach mochitest --setpref="webgl.osmesa=string with whitespace" somePath/someTestFile.html
+</pre>
+
+<h3 id="Can_tests_be_run_under_a_chrome_URL.3F" name="Can_tests_be_run_under_a_chrome_URL.3F">Can tests be run under a chrome URL?</h3>
+
+<p>Yes, use <code>./mach mochitest-chrome</code>. Keep in mind that the <a href="/en-US/docs/Mozilla/QA/Writing_xpcshell-based_unit_tests" title="en/Writing_xpcshell-based_unit_tests">xpcshell test harness</a> should be your first choice for XPCOM testing. Only use mochitest if you need events, browser features, networking, and so on.</p>
+
+<h3 id="How_can_I_get_around_the_error_.22Permission_denied_to_get_property_XPCComponents.classes.22.3F" name="How_can_I_get_around_the_error_.22Permission_denied_to_get_property_XPCComponents.classes.22.3F">How can I get around the error "Permission denied to get property XPCComponents.classes"?</h3>
+
+<p>If your test needs to perform very specific privileged actions, you should either use one of the existing <a href="/en-US/docs/Mozilla/Projects/Mochitest/SpecialPowers" title="en/SpecialPowers">SpecialPowers</a> APIs, or see if you can add a new API to the SpecialPowers object. If your test needs to use a wide variety of privileged objects and APIs, you should write your test as a <a href="/en/Chrome_tests" title="en/Chrome tests">Chrome Mochitest</a> instead.</p>
+
+<div class="warning">Do not use <code>enablePrivilege</code> in new tests. It will be removed in a future version of Gecko.</div>
+
+<h3 id="How_do_I_change_the_HTTP_headers_or_status_sent_with_a_file_used_in_a_Mochitest.3F" name="How_do_I_change_the_HTTP_headers_or_status_sent_with_a_file_used_in_a_Mochitest.3F">How do I change the HTTP headers or status sent with a file used in a Mochitest?</h3>
+
+<p>Create a text file next to the file whose headers you want to modify. The name of the text file should be the name of the file whose headers you're modifying followed by <code>^headers^</code>. For example, if you have a file <code>foo.jpg</code>, the text file should be named <code>foo.jpg^headers^</code>. (Don't try to actually use the headers file in any other way in the test, because the HTTP server's hidden-file functionality prevents any file ending in exactly one <code>^</code> from being served.) Edit the file to contain the headers and/or status you want to set, like so:</p>
+
+<pre class="eval notranslate">HTTP 404 Not Found
+Content-Type: text/html
+Random-Header-of-Doom: 17
+</pre>
+
+<p>The first line sets the HTTP status and a description (optional) associated with the file. This line is optional; you don't need it if you're fine with the normal response status and description. Any other lines in the file describe additional headers which you want to add or overwrite (most typically the Content-Type header, for the latter case) on the response. The format follows the conventions of HTTP, except that you don't need to have HTTP line endings and you can't use a header more than once (the last line for a particular header wins). The file may end with at most one blank line to match Unix text file conventions, but the trailing newline isn't strictly necessary.</p>
+
+<h3 id="How_do_I_test_issues_which_only_show_up_when_tests_are_run_across_domains.3F" name="How_do_I_test_issues_which_only_show_up_when_tests_are_run_across_domains.3F">How do I test issues which only show up when tests are run across domains?</h3>
+
+<p>The Mochitest harness runs one web server to serve tests, but through the magic of proxy autoconfig, all test files are available on a variety of different domains and ports. The full list of domains and ports on which tests are served, all of which serve exactly the same content as <code><span class="nowiki">http://mochi.test/</span></code>, is specified in <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/server-locations.txt" rel="custom">build/pgo/server-locations.txt</a></code>. If your test needs to violate cross-origin security to test something, consult with a Mochitest peer about your options, as they are still in development.</p>
+
+<div class="warning">Do not use <code>enablePrivilege</code> in new tests. It will be removed in a future version of Gecko.</div>
+
+<h3 id="How_do_I_write_tests_that_check_header_values.2C_method_types.2C_etc._of_HTTP_requests.3F" name="How_do_I_write_tests_that_check_header_values.2C_method_types.2C_etc._of_HTTP_requests.3F">How do I write tests that check header values, method types, etc. of HTTP requests?</h3>
+
+<p>To write such a test, you simply need to write an SJS (server-side JavaScript) for it. An SJS is simply a JavaScript file with the extension <code>.sjs</code> which is loaded in a sandbox. <strong>Don't forget to reference it from your "mochitest.ini" file too!</strong></p>
+
+<pre class="eval notranslate">[DEFAULT]
+  support-files =
+    test_file.sjs
+</pre>
+
+<p>The global property <code>handleRequest</code> defined by the script is then executed with request and response objects, and the script populates the response based on the information in the request.</p>
+
+<p>Here's an example of a simple SJS:</p>
+
+<pre class="brush: js notranslate">function handleRequest(request, response) {
+  //Allow cross-origin, so you can XHR to it!
+  response.setHeader("Access-Control-Allow-Origin", "*", false); <code> </code>
+  // avoid confusing cache behaviors
+  response.setHeader("Cache-Control", "no-cache", false);
+  response.setHeader("Content-Type", "text/plain", false);
+  response.write("Hello world!");
+}
+</pre>
+
+<p>The file is run, for example, at etiher <code>http://mochi.test:8888/tests/PATH/TO/YOUR/test_file.sjs</code>,  <code><strong>http://</strong>{server-location}<strong>/tests</strong>/PATH/TO/YOUR/test_file.sjs</code> - see <code><a href="https://dxr.mozilla.org/mozilla-central/source/build/pgo/server-locations.txt" rel="custom">build/pgo/server-locations.txt</a></code> for server locations! Note the <code>"<strong>test/tests</strong>"</code> bit at the front of the URL. If you want to actually execute the file, you need to reference it somehow. For instance, you can XHR to it OR you could use a HTML element:</p>
+
+<pre class="brush: js notranslate">var xhr = new XMLHttpRequest();
+xhr.open("GET", "http://test/tests/dom/manifest/test/test_file.sjs");
+xhr.onload = function(e){ console.log("loaded!", this.responseText)}
+xhr.send();
+</pre>
+
+<p>The exact properties of the request and response parameters are defined in the <code>nsIHttpRequestMetadata</code> and <code>nsIHttpResponse</code> interfaces in <code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/test/httpserver/nsIHttpServer.idl" rel="custom">nsIHttpServer.idl</a></code>. However, here are a few useful ones:</p>
+
+<h4 id="Properties_and_methods_of_Request_object">Properties and methods of <code>Request</code> object</h4>
+
+<dl>
+ <dt>.scheme</dt>
+ <dd>string, the scheme of the request.</dd>
+ <dt>.host</dt>
+ <dd>string, the host of the request</dd>
+ <dt>.port</dt>
+ <dd>string, the port of the request.</dd>
+ <dt>.method</dt>
+ <dd>string, the HTTP method.</dd>
+ <dt>.httpVersion</dt>
+ <dd>string, the protocol version, typically "1.1".</dd>
+ <dt>.path</dt>
+ <dd>string, path of the request,</dd>
+ <dt>.headers</dt>
+ <dd>object, name and values representing the headers.</dd>
+ <dt>.queryString</dt>
+ <dd>string, the query string of the requested URL.</dd>
+ <dt>.bodyInputStream</dt>
+ <dd>??</dd>
+ <dt>.getHeader( name )</dt>
+ <dd>Gets a request header by name.</dd>
+ <dt>.hasHeader( name )</dt>
+ <dd>Boolean, checks if a header was provided with the request.</dd>
+</dl>
+
+<div class="note">
+<p><strong>Note</strong>: The browser is free to cache responses generated by your script. If you ever want an SJS to return different data for multiple requests to the same URL, you should add a <code>Cache-Control: no-cache</code> header to the response to prevent the test from accidentally failing, especially if it's manually run multiple times in the same Mochitest session.</p>
+</div>
+
+<h3 id="How_do_I_keep_state_across_loads_of_different_server-side_scripts.3F" name="How_do_I_keep_state_across_loads_of_different_server-side_scripts.3F">How do I keep state across loads of different server-side scripts?</h3>
+
+<p>Server-side scripts in Mochitest are run inside sandboxes, with a new sandbox created for each new load.  Consequently, any variables set in a handler don't persist across loads.  To support state storage, use the <code>getState(k)</code> and <code>setState(k, v)</code> methods defined on the global object.  These methods expose a key-value storage mechanism for the server, with keys and values as strings.  (Use JSON to store objects and other structured data.)  The myriad servers in Mochitest are in reality a single server with some proxying and tunnelling magic, so a stored state is the same in all servers at all times.</p>
+
+<p>The <code>getState</code> and <code>setState</code> methods are scoped to the path being loaded.  For example, the absolute URLs <code>/foo/bar/baz</code>,  <code>/foo/bar/baz?quux</code>, and <code>/foo/bar/baz#fnord</code> all share the same state; the state for <code>/foo/bar</code> is entirely separate.  You should use per-path state whenever possible to avoid inter-test dependencies and bugs.  However, in rare cases it may be necessary for two scripts to collaborate in some manner, and it may not be possible to use a custom query string to request divergent behaviors from the script.  <em>For this use case only</em> you should use the <code>getSharedState(k, v)</code> and <code>setSharedState(k, v)</code> methods defined on the global object.  No restrictions are placed on access to this whole-server shared state, and any script may add new state that any other script may delete.  To avoid conflicts, you should use a key within a faux namespace so as to avoid accidental conflicts. For example, if you needed shared state for an HTML5 video test, you might use a key like <span style="font-family: monospace;">dom.media.video</span><code>:sharedState</code>.</p>
+
+<p>A further form of state storage is provided by the <code>getObjectState(k)</code> and <code>setObjectState(k, v)</code> methods, which will store any <code>nsISupports</code> object.  These methods reside on the <code>nsIHttpServer</code> interface, but a limitation of the sandbox object used by the server to process SJS responses means that the former is present in the SJS request handler's global environment with the signature <code>getObjectState(k, callback)</code>, where <code>callback</code> is a function to be invoked by <code>getObjectState</code> with the object corresponding to the provided key as the sole argument.  Note that this value mapping requires the value to be an XPCOM object; an arbitrary JavaScript object with no <code>QueryInterface</code> method is insufficient.  If you wish to store a JavaScript object, you may find it useful to provide the object with a <code>QueryInterface</code> implementation and then make use of <a class="internal" href="/en/wrappedJSObject" title="en/wrappedJSObject">wrappedJSObject</a> to reveal the actual JavaScript object through the wrapping performed by XPConnect.</p>
+
+<p>For further details on state-saving mechanisms provided by httpd.js, see <code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/test/httpserver/nsIHttpServer.idl" rel="custom">netwerk/test/httpserver/nsIHttpServer.idl</a></code> and the <code>nsIHttpServer.get(Shared|Object)?State</code> methods.</p>
+
+<h3 id="How_do_I_write_a_SJS_script_that_responds_asynchronously">How do I write a SJS script that responds asynchronously</h3>
+
+<p>Sometimes you need to respond to a request asynchronously, for example after waiting for a short period of time. You can do this by using the <code>processAsync()</code> and <code>finish()</code> functions on the <code>response</code> object passed to the <code>handleRequest()</code> function.</p>
+
+<p><code>processAsync()</code> must be called before returning from <code>handleRequest()</code>. Once called, you can at any point call methods on the request object to send more of the response. Once you are done, call the <code>finish()</code> function. For example you can use the <code>setState()</code>/<code>getState()</code> functions described above to store a request and later retrieve and finish it. However be aware that the browser often reorders requests and so your code must be resilient to that to avoid intermittent failures.</p>
+
+<pre class="brush: js notranslate">var timer = null;
+
+function handleRequest(request, response)
+{
+  response.processAsync();
+  response.setHeader("Content-Type", "text/plain", false);
+  response.write("hello...");
+
+  timer = Components.classes["@mozilla.org/timer;1"].createInstance(Components.interfaces.nsITimer);
+  timer.initWithCallback(function()
+  {
+    response.write("world!");
+    response.finish();
+  }, 5 * 1000 /* milliseconds */, Components.interfaces.nsITimer.TYPE_ONE_SHOT);
+}
+</pre>
+
+<p>For more details, see the <code>processAsync()</code> function documentation in <code><a href="https://dxr.mozilla.org/mozilla-central/source/netwerk/test/httpserver/nsIHttpServer.idl" rel="custom">netwerk/test/httpserver/nsIHttpServer.idl</a></code>.</p>
+
+<h3 id="How_do_I_change_the_HTTP_headers_or_status_sent_with_a_file_used_in_a_Mochitest.3F" name="How_do_I_change_the_HTTP_headers_or_status_sent_with_a_file_used_in_a_Mochitest.3F">How do I get access to the files on the server as XPCOM objects from an SJS script? (1.9.3 or later)</h3>
+
+<p>If you need access to a file, because it's easier to store image data in a file than directly in an SJS script, use the presupplied <code>SERVER_ROOT</code> object state available to SJS scripts running in Mochitest:</p>
+
+<pre class="brush: js notranslate">function handleRequest(req, res)
+{
+  var file;
+  getObjectState("SERVER_ROOT", function(serverRoot)
+  {
+    file = serverRoot.getFile("tests/content/media/test/320x240.ogv");
+  });
+
+  // file is now an XPCOM object referring to the given file
+  res.write("file: " + file);
+}
+</pre>
+
+<p>The path you specify is used as a path relative to the root directory served by httpd.js , and an <code>nsIFile</code> corresponding to the file at that location is returned.  Beware of typos: the file you specify doesn't actually have to exist because file objects are mere encapsulations of string paths.</p>
+
+<h3 id="Diagnosing_and_fixing_leakcheck_failures" name="Diagnosing_and_fixing_leakcheck_failures">Diagnosing and fixing leakcheck failures</h3>
+
+<p>Mochitests output a log of the windows and docshells that are created during the test during debug builds. At the end of the test, the test runner runs a leakcheck analysis to determine if any of them did not get cleaned up before the test was ended.</p>
+
+<p>Leaks can happen for a variety of reasons. One common one is that a JavaScript event listener is retaining a reference that keeps the window alive.</p>
+
+<pre class="brush: js notranslate">// Add an observer.
+Services.obs.addObserver(myObserver, "event-name");
+
+// Make sure and clean it up, or it may leak!
+Services.obs.removeObserver(myObserver, "event-name");
+</pre>
+
+<p>Other sources of issues include accidentally leaving a window, or iframe attached to the DOM, or setting an iframe's src to a blank string (creating an about:blank page), rather than removing the iframe.</p>
+
+<p>Finding the leak can be difficult, but the first step is to reproduce it locally. Ensure you are on a debug build and the `MOZ_QUIET` environment flag is not enabled. The leakcheck test analyzes the test output. After reproducing the leak in the test, start commenting out code until the leak goes away. Then once the leak stop reproducing, find the exact location where it is happening.</p>

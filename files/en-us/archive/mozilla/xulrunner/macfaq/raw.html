@@ -1,0 +1,77 @@
+
+<p>(Note this document has NOT been reviewed for accuracy or completeness.)</p>
+<h3 id="Special_Build_Notes" name="Special_Build_Notes">Special Build Notes</h3>
+<ul> <li>Enable LibXUL.</li>
+</ul>
+<p>In your .mozconfig for custom builds of XULRunner, add <code>--enable-libxul</code>.</p>
+<ul> <li>If you've completed a XULRunner build, you should copy or symlink the dist/XUL.framework directory to /Library/Frameworks. Note that in order to copy the framework while keeping the relative soft-links in the framework, do something like: <ul> <li><code>% ( cd dist ; gnutar cf - XUL.framework | ( cd /Library/Frameworks ; gnutar xf - ))</code></li> </ul> </li>
+</ul>
+<h3 id="Installing_Your_Application" name="Installing_Your_Application">Installing Your Application</h3>
+<p>Your application must be installed as a XULRunner app before you can open it. To do this, type:</p>
+<p><code>xulrunner-bin --install-app /path/to/appdir</code></p>
+<p>Note the path to your application must end with the directory containing application.ini; you should NOT reference application.ini in this command.</p>
+<p>This command will place a copy of your application in /Applications/(Vendor)/(Name) , where (Vendor) is the Vendor field in your application.ini and (Name) is the Name field.</p>
+<h3 id="Opening_Your_Application" name="Opening_Your_Application">Opening Your Application</h3>
+<p>For ordinary work, you can just navigate via Finder to /Applications/(Vendor)/(Name).app and open the application.</p>
+<p>For command-line work, you would call on:</p>
+<p><code>/Applications/(Vendor)/(Name).app/Contents/MacOS/xulrunner</code></p>
+<h3 id="UI_notes" name="UI_notes">UI notes</h3>
+<ul> <li>Menus <ul> <li>To enable your application quit command to work with the application menu (the one to the right of the blue apple), you need to give your quit menu item an ID of "menu_FileQuitItem".</li> <li>To enable the Mac "About" menu make sure that you use "aboutName" as the id for your menu item</li> <li>To enable the Mac "Preferences" menu make sure that you use "menu_preferences" as the id for your options/preferences menu item</li> </ul> </li> <li>Toolbars <ul> <li>Mac windows have a small "jelly bean" button in the top right corner. This button is used to show/hide the toolbar. The toolkit will automatically enable this behavior if you add <code>class="chromeclass-toolbar"</code> to your <code>&lt;toolbar&gt;</code> element.</li> </ul> </li>
+</ul>
+<h3 id="Commandline_Support" name="Commandline_Support">Commandline Support</h3>
+<p>Commandline handlers work great on the Mac IF it's a cold start. Here's how to implement command-line trapping when the app is already running, without getting into AppleEvents or c++ code. This is implemented in a pseudo "hidden window" technique and parsing the window arguments instead of command-line handlers and some of the toolkit singleton window code.</p>
+<ul> <li>Taking advantage of the core code "OpenURL" from "nsCommandLineServiceMac.cpp", you'll see that it looks for "browser.chromeURL" before defaulting to navigator.xul, and this IS called when an XULRunner app is already running, so:</li>
+</ul>
+<ul> <li>create a default preference of "browser.chromeURL" that points to your new "hiddenWindow" as such: "<a class=" external" rel="freelink">chrome://myXUL/content/hiddenWindow.xul</a>"</li>
+</ul>
+<ul> <li>next take the code below and drop it in, to create the hiddenWindow.xul</li>
+</ul>
+<p>(Note: the debug function and nsICommandLine try/catch can be removed, all you need is the window.arguments[0])</p>
+<pre>&lt;?xml version="1.0"?&gt;
+
+&lt;window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        id="myXUL_hidden" windowtype="myXUL:hiddenwindow"
+        title="" width="0" height="0"
+        persist="screenX screenY width height sizemode" &gt;
+
+  &lt;!-- Load the Mozilla helpers --&gt;
+  &lt;script type="application/javascript" src="chrome://global/content/nsUserSettings.js" /&gt;
+
+  &lt;script&gt;&lt;![CDATA[
+    function debug(aLogString) {
+      var mConsoleService = Components.classes["@mozilla.org/consoleservice;1"]
+                              .getService(Components.interfaces.nsIConsoleService)
+
+      mConsoleService.logStringMessage("myXUL: " + aLogString + "\n");
+    }
+
+    function checkOtherWindows() {
+      var singletonWindowType = nsPreferences.copyUnicharPref("toolkit.singletonWindowType");
+      var windowMediator = Components.classes["@mozilla.org/appshell/window-mediator;1"]
+                             .getService(Components.interfaces.nsIWindowMediator);
+      var win = windowMediator.getMostRecentWindow(singletonWindowType);
+      if (win) {
+         window.close();
+         win.focus();
+      }
+    }
+
+    if (window.arguments &amp;&amp; window.arguments[0]){
+      try {
+        var cmdLine = window.arguments[0]
+                          .QueryInterface(Components.interfaces.nsICommandLine);
+        for (var i = 0; i &lt; cmdLine.length; ++i) {
+          debug(cmdLine.getArgument(i))
+        }
+      } catch(ex) {
+        debug(window.arguments[0])
+        // Do something with window.arguments[0]
+        //nsPreferences.setUnicharPref("myXUL.cmdLineValue", window.arguments[0])
+      }
+
+      window.addEventListener("load", checkOtherWindows , false);
+    }
+  ]]&gt;&lt;/script&gt;
+
+&lt;/window&gt;
+</pre>

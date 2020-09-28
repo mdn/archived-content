@@ -1,0 +1,48 @@
+<p>Waives <a href="/en-US/docs/Xray_vision">Xray vision</a> for an object, giving the caller a transparent wrapper to the underlying object.</p>
+<p>When privileged JavaScript in Gecko accesses objects belonging to less-privileged code (such as untrusted web content), it does so, by default, with "Xray vision": a mechanism that filters out certain changes to the objects that could cause them to behave in unexpected ways. For example, privileged code using an Xray to a DOM object sees only  the original, native version of the DOM object. Any <a href="https://developer.mozilla.org/en-US/docs/Glossary/Expando">expando</a> properties are not visible, and if any native properties have been redefined, this has no effect.</p>
+<p>Xray vision is designed to make most simple operations safe. However, in some cases it can be too restrictive: for example, if you need to see an expando property on a DOM object. In these cases you can use <code>waiveXrays</code> to remove Xray vision for the object.</p>
+<p>Waiving Xrays is transitive, so waiving it for an object automatically waives it for any properties of that object (and their properties, and so on).</p>
+<p>If you waive Xray vision, you can no longer trust that any of the object's properties are what you expect: any of them, including prototypes and accessors, could have been redefined by the less-privileged code.</p>
+<p>To undo <code>waiveXrays</code> and get Xray vision back, call <a href="/en-US/docs/Components.utils.unwaiveXrays"><code>Components.utils.unwaiveXrays</code></a> on the object.</p>
+<p>The result of <code>waiveXrays</code> is just like the <code>wrappedJSObject</code> property for Xrayed objects, but it's more useful because you can call it on primitives or objects that aren't Xrays, in which case it just returns the argument you passed in. This means you don't have to care whether the initial object is an Xray or not.</p>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="eval">waived = Components.utils.waiveXrays(<em>obj</em>);
+</pre>
+<h3 id="Parameters" name="Parameters">Parameters</h3>
+<dl>
+ <dt>
+  <code>obj</code></dt>
+ <dd>
+  The object for which we wish to waive Xrays.</dd>
+</dl>
+<h3 id="Returns">Returns</h3>
+<p>If the argument <code>obj</code> is an Xray, this function returns a wrapper that transitively waives Xray behavior on the underlying object and anything that comes off the object. If <code>obj</code> is not an Xray, this function just returns <code>obj</code>.</p>
+<h2 id="Example" name="Example">Example</h2>
+<p>Suppose a page script adds an expando to its global window:</p>
+<pre class="brush: js">// page script
+
+foo = "I'm an expando";
+</pre>
+<p>By default, chrome code won't see <code>foo</code>, because it sees the content window with Xray vision, but the chrome code can waive Xray protection:</p>
+<pre class="brush: js">// chrome code
+
+// contentWindow is an Xray
+var isXray = Components.utils.isXrayWrapper(gBrowser.contentWindow);  // true
+
+// expandos are not visible in Xrays
+var foo = gBrowser.contentWindow.foo;                                 // undefined
+
+// you can waive Xray vision for an object
+var waived = Components.utils.waiveXrays(gBrowser.contentWindow);
+isXray = Components.utils.isXrayWrapper(waived);                      // false
+foo = waived.foo;                                                     // "I'm an expando"
+
+// waiving is transitive
+isXray = Components.utils.isXrayWrapper(waived.document);             // false</pre>
+<p> </p>
+<h2 id="See_also">See also</h2>
+<ul>
+ <li><a href="/en-US/docs/Xray_vision">Xray vision</a></li>
+ <li><a href="/en-US/docs/Components.utils.unwaiveXrays"><code>Components.utils.unwaiveXrays</code></a></li>
+ <li><a href="/en-US/docs/Components.utils.isXrayWrapper"><code>Components.utils.isXrayWrapper</code></a></li>
+</ul>

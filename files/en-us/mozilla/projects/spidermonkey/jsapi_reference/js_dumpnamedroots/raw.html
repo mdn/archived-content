@@ -1,0 +1,92 @@
+<div>
+ {{SpiderMonkeySidebar("JSAPI")}}</div>
+<p>{{ obsolete_header("jsapi19") }}</p>
+<div class="summary">
+ <p>Enumerate all the {{jsapixref("JS_AddRoot", "named roots")}} in a runtime.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">void
+JS_DumpNamedRoots(JSRuntime *rt,
+    void (*dump)(const char *name, void *rp, void *data),
+    void *data);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>rt</code></td>
+   <td>{{jsapixref("JSRuntime", "JSRuntime *")}}</td>
+   <td>Pointer to a <code>JSRuntime</code> from which to dump named roots.</td>
+  </tr>
+  <tr>
+   <td><code>dump</code></td>
+   <td><code>void (*)(const char *, void *, void *)</code></td>
+   <td>Pointer to function that actually dumps the named roots. This may not be <code>NULL</code>.</td>
+  </tr>
+  <tr>
+   <td><code>data</code></td>
+   <td><code>void *</code></td>
+   <td>A pointer that is passed to <code>dump</code> each time it is called. The JavaScript engine does not read from or write to this pointer at all. It is passed to the <code>dump</code> function unchanged. It may be <code>NULL</code>.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p>Each call to {{jsapixref("JS_AddRoot", "JS_AddNamedRoot")}} creates a record in a table of named roots maintained by the garbage collector. <strong><code>JS_DumpNamedRoots</code></strong> provides a way for the application to access the contents of that table. It calls the <code>dump</code> function once for each named root in the given runtime <code>rt</code>. In pseudocode:</p>
+<pre class="brush: cpp">/* pseudocode explanation of what JS_DumpNamedRoots does */
+void JS_DumpNamedRoots(JSRuntime *rt, DumpFn dump, void *data)
+{
+    for each (root in rt-&gt;namedRoots)
+        dump(root.name, root.address, data);
+}
+</pre>
+<h2 id="Callback_syntax">Callback syntax</h2>
+<p><code>dump</code> is a pointer to a function provided by the application. When <code>JS_DumpNamedRoots</code> calls it, it passes three arguments:</p>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Argument</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>name</code></td>
+   <td><code>const char *</code></td>
+   <td>The name of the named root.</td>
+  </tr>
+  <tr>
+   <td><code>rp</code></td>
+   <td><code>void *</code></td>
+   <td>A pointer to the rooted variable, array element, or field. This is the pointer that the application passed to {{jsapixref("JS_AddRoot", "JS_AddNamedRoot")}}. It points to a variable, array element, or field of type <code>jsval</code>, <code>JSObject *</code>, <code>JSString *</code>, or <code>jsdouble *</code>.</td>
+  </tr>
+  <tr>
+   <td><code>data</code></td>
+   <td><code>void *</code></td>
+   <td>The <code>data</code> argument that the application passed to <code>JS_DumpNamedRoots</code>.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Example">Example</h2>
+<pre class="brush: cpp">static void dumpRoot(const char *name, void *addr, void *data)
+{
+    /* The application may use `data` for anything.  In this
+       example, we use it to pass the desired output file. */
+    FILE *f = (FILE *) data;
+
+    fprintf(f, "There is a root named '%s' at %p\n", name, addr);
+}
+
+int main()
+{
+    ...
+    JS_DumpNamedRoots(rt, dumpRoot, stderr);
+    ...
+}
+</pre>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+ <li>{{bug(803907)}}</li>
+</ul>

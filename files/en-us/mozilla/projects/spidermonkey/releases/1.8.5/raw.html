@@ -1,0 +1,259 @@
+<div>
+ {{SpiderMonkeySidebar("Releases")}}</div>
+<div class="warning">
+ <p>Note that version 1.8.5 is outdated. The latest version of SpiderMonkey can always be found on the <a href="https://developer.mozilla.org/en-US/docs/SpiderMonkey/Getting_SpiderMonkey_source_code">source download page</a>.</p>
+</div>
+<div class="note" style="color: black;">
+ <p>The Mozilla JavaScript team is pleased to announce the release of <strong>SpiderMonkey 1.8.5</strong>. You can download full source code here: <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/js/js185-1.0.0.tar.gz" title="http://ftp.mozilla.org/pub/mozilla.org/js/js185-1.0.0.tar.gz">http://ftp.mozilla.org/pub/mozilla.org/js/js185-1.0.0.tar.gz</a> (MD5 checksum: <code>a4574365938222adca0a6bd33329cb32</code>).</p>
+ <p>SpiderMonkey 1.8.5 is the JavaScript engine that shipped in Firefox 4.0. It is much faster than SpiderMonkey 1.8, implements ES-5 (<a class="external" href="http://people.mozilla.org/~jorendorff/es5.html" title="http://people.mozilla.org/~jorendorff/es5.html">ECMA 262, 5th Edition</a>), and contains many new language and API features, described in detail below.</p>
+ <p>Please let us know about your experiences with this release by posting in the <a class="link-news" href="news://news.mozilla.org/mozilla.dev.tech.js-engine">mozilla.dev.tech.js-engine newsgroup</a>. Or, file bugs at <a class="link-https" href="https://bugzilla.mozilla.org/">bugzilla.mozilla.org</a> under Product: Core, Component: JavaScript engine.</p>
+ <p>—22 March 2011</p>
+</div>
+<h2 id="Platform_support">Platform support</h2>
+<p>SpiderMonkey 1.8.5 is supported on all the platforms where Firefox 4 runs.</p>
+<p>SpiderMonkey 1.8.5 includes a just-in-time compiler (JIT) (several, actually) that compiles JavaScript to machine code, for a significant speed increase. It is supported only on x86, x86_64 and ARM architectures. On other platforms, the JIT is simply disabled; JavaScript code runs in an interpreter, as in previous versions. It's the same language, just not as fast.</p>
+<h2 id="Migrating_to_SpiderMonkey_1.8">Migrating to SpiderMonkey 1.8</h2>
+<p>The following features in earlier versions of SpiderMonkey have been dropped.</p>
+<ul>
+ <li>Support for extended class methods (in particular, JSEqualityOp) has been removed.</li>
+ <li>Multithreaded JS programs that race against the same objects are now explicitly not supported. Multithreaded programs are allowed, but each thread must operate on objects in a separate compartment, isolated from the other threads.</li>
+ <li>The old build system (using Makefile.ref) is no longer supported. SpiderMonkey 1.8.5 includes a new <code>configure</code>-based build system, introduced shortly after active development on the engine moved from CVS to Mercurial.</li>
+</ul>
+<p>SpiderMonkey 1.8.5 is not binary-compatible with previous releases, nor is it source-code compatible. Many JSAPI types, functions, and callback signatures have changed, though most of them still have the same names and do the same things. Applications will need significant changes, but most of those changes will be detected by the C/C++ compiler, so they are easy to detect and updating the code is a fairly straightforward job. Here is a list of the most significant changes.</p>
+<ul>
+ <li>Previous versions of SpiderMonkey supported two types of native functions: JSNative and JSFastNative. All support for the slow native function type has been removed, and the fast signature has been renamed to JSNative. Embeddings that defined JSNatives in previous versions must update all those functions to the new signature.</li>
+ <li>Getters and setters of type JSPropertyOp took an id parameter of type jsval. The type of the parameter has been changed to jsid. Many getters and setters simply ignore the id anyway; if the value is needed, use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_IdToValue" title="en/SpiderMonkey/JSAPI Reference/JS IdToValue">JS_IdToValue</a>.</li>
+ <li>The type of setters has changed from <a href="/en/SpiderMonkey/JSAPI_Reference/JSPropertyOp" title="en/SpiderMonkey/JSAPI Reference/JSPropertyOp">JSPropertyOp</a> to JSStrictPropertyOp (to accomodate ES5 strict mode). To migrate, simply add a <code>JSBool strict</code> parameter to each setter function. It is safe for the setter to ignore the value of the argument.</li>
+ <li>The rooting APIs (JS_AddRoot, JS_RemoveRoot, etc.) have been replaced with a family of type-safe functions (<a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS AddRoot">JS_AddStringRoot</a>, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_RemoveRoot" title="en/SpiderMonkey/JSAPI Reference/JS RemoveRoot">JS_RemoveStringRoot</a>, etc.) that are easier to use correctly.</li>
+ <li>JS_NewDouble, JS_NewDoubleValue, and JS_NewNumberValue are gone. Instead use DOUBLE_TO_JSVAL, INT_TO_JSVAL, and UINT_TO_JSVAL, which are faster and can't fail.</li>
+ <li>JS_GetStringBytes and JS_GetStringChars are gone. There is no longer an infallible way to examine string characters. Applications must use JS_GetStringCharsAndLength or JS_EncodeString/JS_free and check for errors.</li>
+</ul>
+<p>These and other changes are explained in detail below.</p>
+<h2 id="New_JavaScript_language_features">New JavaScript language features</h2>
+<p>JavaScript 1.8.5 adds support for ECMAScript Edition 5, including ES5 strict mode. For details, see <a class="internal" href="/en/JavaScript/New_in_JavaScript/1.8.5" title="en/JavaScript/New in JavaScript/1.8.5">New in JavaScript 1.8.5</a>.  Note that there are a very small number of incompatibilities between ES5 and and ES3, the version of ECMAScript supported by SpiderMonkey versions 1.5 through 1.8. These are discussed in Annex E of the ES5 specification.</p>
+<p>SpiderMonkey 1.8.5 also ships with <a href="/en/Mozilla/js-ctypes" title="https://developer.mozilla.org/en/js-ctypes">js-ctypes</a>, a foreign-function interface for privileged JavaScript. To enable js-ctypes in your embedding, you must configure with the --enable-ctypes option and choose one of the configuration options to enable NSPR (e.g. <code>--with-system-nspr</code>).</p>
+<h2 id="Garbage_Collection">Garbage Collection</h2>
+<p>SpiderMonkey 1.8.5 introduces a conservative stack-scanning garbage collector. Unlike the exact garbage collector, the new garbage collector will scan the C stack and registers in your embedding, looking for bits that it can treat as potential GC roots. The approach eliminates the need for the JS_EnterLocalRootScope API, and in many cases the need to explicitly root GC things or use the "root as you go" approach popular with earlier SpiderMonkey releases.  Since this is a conservative collector, it will often find "garbage" addresses which can trigger warnings from certain code analysis tools.  If you are running valgrind on your embedding, be sure to build SpiderMonkey with the --enable-valgrind option to suppress superflous error messages triggered by the garbage collector.  This also means that objects will be finalized in a non-deterministic order in SpiderMonkey 1.8.5. This is not a bug, and, any embedding which depends upon deterministic finalization is fatally flawed.</p>
+<h4 id="Typed_Rooting_API">Typed Rooting API</h4>
+<p>The rooting API has been changed from an error-prone void ** interface to an interface which accepts pointers to specific types.  JS_AddRoot has been replaced by JS_AddObjectRoot, JS_AddValueRoot and JS_AddStringRoot; similar changes were made for JS_AddNamedRoot and JS_RemoveRoot.  Since jsdoubles are now stored in the jsval, instead of on the heap, we no longer need to define roots for them.</p>
+<h2 id="Compartments">Compartments</h2>
+<p>SpiderMonkey 1.8.5 introduces the concept of compartments. A compartment is a global object, a context, and a set of related objects with no outside references (CrossCompartment wrappers excepted). The new garbage collector can perform per-container garbage collection, which can be a significant performance improvement for certain workloads.  No compartment may execute JS code or call into JSAPI on two OS threads at the same time. For more information, see <a href="/en/SpiderMonkey/SpiderMonkey_compartments" title="https://developer.mozilla.org/en/SpiderMonkey/spidermonkey_compartments">SpiderMonkey compartments</a>.</p>
+<h2 id="Type_Changes">Type Changes</h2>
+<h4 id="jsval">jsval</h4>
+<p>The base data type, jsval, which represents all possible values in JavaScript, has changed from 32- to 64-bits wide, and the underlying representation has changed from a C integer type to a C struct. This change to a struct means that certain tricks, such as writing switch statements in C with jsval cases are no longer legal. Additionally, because not all fields are used by all jsvals, it is no longer safe to compare jsvals as though they were C values. Instead, jsvals should be converted to their C equivalents with the appropriate JSVAL_TO_* macro and then compared.</p>
+<p>JSAPI no longer represents floating-point numbers (and integers more than 31 bits long) as pointers to jsdouble; instead, the jsdouble value is directly stored in the jsval.  This affects macros like DOUBLE_TO_JSVAL and JSVAL_TO_DOUBLE, which now operate directly on jsdouble rather than jsdouble pointers.</p>
+<p>Previous SpiderMonkey versions usually represented integer values smaller than 2^31 as jsvals encoding jsint; e.g. so that JSVAL_IS_INT was true. While this was never specified behaviour, it is no longer true; numeric values which are integers are frequently encoded as jsdouble inside the jsval.  Embedders must be careful when converting numbers from jsvals into C. Note also that SpiderMonkey can now fit a full 32-bit integer (jsint) inside a jsval without promoting to a jsdouble.</p>
+<h4 id="JSExtendedClass">JSExtendedClass</h4>
+<p>JSExtendedClass has been removed from the API entirely.</p>
+<h4 id="jsid">jsid</h4>
+<p>Previous SpiderMonkey versions could freely interchange jsid and jsval. They are no longer compatible; using  JS_ValueToId and JS_IdToValue to convert between the two is mandatory.</p>
+<h4 id="JSNative_JSFastNative">JSNative, JSFastNative</h4>
+<p>Previous versions of JSAPI supported two types of native functions -- JSNative and JSFastNative.  The so-called "Slow Natives" are no longer supported; as such JSFastNative has been renamed to JSNative and relevant interfaces have been updated accordingly. Embedders converting functions from old-JSNative to new-JSNative (JSFastNative) should study the <a href="/en/SpiderMonkey/JSAPI_Reference/JSFastNative" title="https://developer.mozilla.org/en/JSFastNative">JSFastNative</a> documentation thoroughly, and pay particular that they do not reference negative indices of argv in SpiderMonkey 1.8.5; the JS_CALLEE, JS_THIS, etc. macros must be used instead. See {{ Bug("581263") }}.</p>
+<h2 id="Global_Objects">Global Objects</h2>
+<p>Global objects have been specialized, and must be be created with either <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewGlobalObject" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_NewGlobalObject">JS_NewGlobalObject</a> or <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewCompartmentAndGlobalObject" title="/en/SpiderMonkey/JSAPI_Reference/JS_NewCompartmentAndGlobalObject">JS_NewCompartmentAndGlobalObject</a>.  <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewObject" title="https://developer.mozilla.org/En/JS_NewObject">JS_NewObject</a> and <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewObject" title="https://developer.mozilla.org/En/JS_NewObject">JS_NewObjectWithGivenProto</a> remain the correct APIs for creating other objects. Global objects must also have the <a href="/en/SpiderMonkey/JSAPI_Reference/JSClass.flags" title="https://developer.mozilla.org/en/SpiderMonkey/JSAPI_Reference/JSClass.flags">JSCLASS_GLOBAL_FLAGS</a> flag set. Merely setting JSCLASS_IS_GLOBAL is insufficient.</p>
+<h2 id="New_C_APIs" style="position: static;">New C APIs</h2>
+<ul style="">
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ASSERT_STRING_IS_FLAT" title="en/SpiderMonkey/JSAPI Reference/JS ASSERT_STRING_IS_FLAT"><code>JS_ASSERT_STRING_IS_FLAT</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddGCThingRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddNamedGCThingRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddNamedObjectRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddNamedStringRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddNamedValueRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddObjectRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddStringRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="https://developer.mozilla.org/En/JS_AddRoot"><code>JS_AddValueRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AlreadyHasOwnProperty" title="en/SpiderMonkey/JSAPI Reference/JS AlreadyHasOwnPropertyById"><code>JS_AlreadyHasOwnPropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AnchorPtr" title="en/SpiderMonkey/JSAPI Reference/JS AnchorPtr"><code>JS_AnchorPtr</code></a></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginJSONParse" title="en/SpiderMonkey/JSAPI Reference/JS BeginJSONParse">JS_BeginJSONParse</a> (removed in future releases, replaced with <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ParseJSON" title="en/SpiderMonkey/JSAPI Reference/JS ParseJSON">JS_ParseJSON</a>)</code></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFileHandleForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileFileHandleForPrincipalsVersion"><code>JS_CompileFileHandleForPrincipalsVersion</code></a></li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Reference/JS_CompileScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileScriptForPrincipalsVersion"><code>JS_CompileScriptForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCFunctionForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCFunctionForPrincipalsVersion"><code>JS_CompileUCFunctionForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCScriptForPrincipalsVersion"><code>JS_CompileUCScriptForPrincipalsVersion</code></a></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ConsumeJSONText" title="en/SpiderMonkey/JSAPI Reference/JS ConsumeJSONText">JS_ConsumeJSONText</a> (removed in future releases, replaced with <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ParseJSON" title="en/SpiderMonkey/JSAPI Reference/JS ParseJSON">JS_ParseJSON</a>)</code></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DecompileScriptObject" title="en/SpiderMonkey/JSAPI Reference/JS DecompileScriptObject"><code>JS_DecompileScriptObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DeepFreezeObject" title="en/SpiderMonkey/JSAPI Reference/JS DeepFreezeObject"><code>JS_DeepFreezeObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineFunctionById" title="en/SpiderMonkey/JSAPI Reference/JS DefineFunctionById"><code>JS_DefineFunctionById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineOwnProperty" title="en/SpiderMonkey/JSAPI Reference/JS DefineOwnProperty"><code>JS_DefineOwnProperty</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineProperty" title="en/SpiderMonkey/JSAPI Reference/JS DefinePropertyById"><code>JS_DefinePropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DeleteProperty" title="en/SpiderMonkey/JSAPI Reference/JS DeletePropertyById"><code>JS_DeletePropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DeleteProperty2" title="en/SpiderMonkey/JSAPI Reference/JS DeletePropertyById2"><code>JS_DeletePropertyById2</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DoubleIsInt32" title="en/SpiderMonkey/JSAPI Reference/JS DoubleIsInt32"><code>JS_DoubleIsInt32</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="https://developer.mozilla.org/en/JS_GetStringBytes"><code>JS_EncodeStringToBuffer</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EnterCrossCompartmentCall" title="en/SpiderMonkey/JSAPI Reference/JS EnterCrossCompartmentCall"><code>JS_EnterCrossCompartmentCall</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EvaluateScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS EvaluateScriptForPrincipalsVersion"><code>JS_EvaluateScriptForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EvaluateUCScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS EvaluateUCScriptForPrincipalsVersion"><code>JS_EvaluateUCScriptForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteRegExp" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteRegExp"><code>JS_ExecuteRegExp</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteRegExpNoStatics" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteRegExpNoStatics"><code>JS_ExecuteRegExpNoStatics</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteScriptVersion" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteScriptVersion"><code>JS_ExecuteScriptVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FORGET_STRING_FLATNESS" title="en/SpiderMonkey/JSAPI Reference/JS FORGET_STRING_FLATNESS"><code>JS_FORGET_STRING_FLATNESS</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FileEscapedString" title="en/SpiderMonkey/JSAPI Reference/JS FileEscapedString"><code>JS_FileEscapedString</code></a></li>
+ <li><code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FinishJSONParse" title="en/SpiderMonkey/JSAPI Reference/JS FinishJSONParse">JS_FinishJSONParse</a> (removed in future releases, replaced with <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ParseJSON" title="en/SpiderMonkey/JSAPI Reference/JS ParseJSON">JS_ParseJSON</a>)</code></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FlatStringEqualsAscii" title="en/SpiderMonkey/JSAPI Reference/JS FlatStringEqualsAscii"><code>JS_FlatStringEqualsAscii</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FlattenString" title="en/SpiderMonkey/JSAPI Reference/JS FlattenString"><code>JS_FlattenString</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FlushCaches" title="en/SpiderMonkey/JSAPI Reference/JS FlushCaches"><code>JS_FlushCaches</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_FreezeObject" title="en/SpiderMonkey/JSAPI Reference/JS FreezeObject"><code>JS_FreezeObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetCompartmentPrivate" title="en/SpiderMonkey/JSAPI Reference/JS GetCompartmentPrivate"><code>JS_GetCompartmentPrivate</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetEmptyString" title="en/SpiderMonkey/JSAPI Reference/JS GetEmptyString"><code>JS_GetEmptyString</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetFlatStringChars" title="en/SpiderMonkey/JSAPI Reference/JS GetFlatStringChars"><code>JS_GetFlatStringChars</code></a></li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Reference/JS_GetGCParameter" title="en/SpiderMonkey/JSAPI Reference/JS GetGCParameter"><code>JS_GetGCParameter</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetGCParameterForThread" title="en/SpiderMonkey/JSAPI Reference/JS GetGCParameterForThread"><code>JS_GetGCParameterForThread</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalForScopeChain" title="en/SpiderMonkey/JSAPI Reference/JS GetGlobalForScopeChain"><code>JS_GetGlobalForScopeChain</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetInternedStringChars" title="en/SpiderMonkey/JSAPI Reference/JS GetInternedStringChars"><code>JS_GetInternedStringChars</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetInternedStringCharsAndLength" title="en/SpiderMonkey/JSAPI Reference/JS GetInternedStringCharsAndLength"><code>JS_GetInternedStringCharsAndLength</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetOwnPropertyDescriptor" title="en/SpiderMonkey/JSAPI Reference/JS GetOwnPropertyDescriptor"><code>JS_GetOwnPropertyDescriptor</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetPropertyAttrsGetterAndSetter" title="en/SpiderMonkey/JSAPI Reference/JS GetPropertyAttrsGetterAndSetterById"><code>JS_GetPropertyAttrsGetterAndSetterById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetProperty" title="en/SpiderMonkey/JSAPI Reference/JS GetPropertyById"><code>JS_GetPropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetPropertyByIdDefault" title="en/SpiderMonkey/JSAPI Reference/JS GetPropertyByIdDefault"><code>JS_GetPropertyByIdDefault</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetPropertyDefault" title="en/SpiderMonkey/JSAPI Reference/JS GetPropertyDefault"><code>JS_GetPropertyDefault</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetPropertyDescriptorById" title="en/SpiderMonkey/JSAPI Reference/JS GetPropertyDescriptorById"><code>JS_GetPropertyDescriptorById</code></a></li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Reference/JS_GetSecurityCallbacks" title="en/SpiderMonkey/JSAPI Reference/JS GetRuntimeSecurityCallbacks"><code>JS_GetRuntimeSecurityCallbacks</code></a></li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Reference/JS_GetSecurityCallbacks" title="en/SpiderMonkey/JSAPI Reference/JS GetSecurityCallbacks"><code>JS_GetSecurityCallbacks</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringCharsAndLength" title="en/SpiderMonkey/JSAPI Reference/JS GetStringCharsAndLength"><code>JS_GetStringCharsAndLength</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringCharsZ" title="en/SpiderMonkey/JSAPI Reference/JS GetStringCharsZ"><code>JS_GetStringCharsZ</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringCharsZAndLength" title="en/SpiderMonkey/JSAPI Reference/JS GetStringCharsZAndLength"><code>JS_GetStringCharsZAndLength</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringEncodingLength" title="en/SpiderMonkey/JSAPI Reference/JS GetStringEncodingLength"><code>JS_GetStringEncodingLength</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_HasProperty" title="en/SpiderMonkey/JSAPI Reference/JS HasPropertyById"><code>JS_HasPropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_InitCTypesClass" title="en/SpiderMonkey/JSAPI Reference/JS InitCTypesClass"><code>JS_InitCTypesClass</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_InternJSString" title="en/SpiderMonkey/JSAPI Reference/JS InternJSString"><code>JS_InternJSString</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_IsConstructing_PossiblyWithGivenThisObject" title="en/SpiderMonkey/JSAPI Reference/JS IsConstructing_PossiblyWithGivenThisObject"><code>JS_IsConstructing_PossiblyWithGivenThisObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_IsExtensible" title="en/SpiderMonkey/JSAPI Reference/JS IsExtensible"><code>JS_IsExtensible</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_IsInRequest" title="en/SpiderMonkey/JSAPI Reference/JS IsInRequest"><code>JS_IsInRequest</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveCrossCompartmentCall" title="en/SpiderMonkey/JSAPI Reference/JS LeaveCrossCompartmentCall"><code>JS_LeaveCrossCompartmentCall</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LookupProperty" title="en/SpiderMonkey/JSAPI Reference/JS LookupPropertyById"><code>JS_LookupPropertyById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LookupProperty" title="en/SpiderMonkey/JSAPI Reference/JS LookupPropertyWithFlagsById"><code>JS_LookupPropertyWithFlagsById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_New" title="en/SpiderMonkey/JSAPI Reference/JS New"><code>JS_New</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewCompartmentAndGlobalObject" title="en/SpiderMonkey/JSAPI Reference/JS NewCompartmentAndGlobalObject"><code>JS_NewCompartmentAndGlobalObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDateObject" title="en/SpiderMonkey/JSAPI Reference/JS NewDateObject"><code>JS_NewDateObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDateObjectMsec" title="en/SpiderMonkey/JSAPI Reference/JS NewDateObjectMsec"><code>JS_NewDateObjectMsec</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewFunctionById" title="en/SpiderMonkey/JSAPI Reference/JS NewFunctionById"><code>JS_NewFunctionById</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Re%3C/body" title="en/SpiderMonkey/JSAPI Reference/JS NewGlobalObject">body</a></li>
+</ul>
+<h2 id="New_C_helpers">New C++ helpers</h2>
+<p>While JSAPI remains a C API, the engine is now implemented in C++. Some C++ helpers have been introduced into the API, to help embedders writing C++ projects.  Please note that SpiderMonkey reserves the JS:: namespace for itself.</p>
+<ul>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JSAutoRequest" title="en/SpiderMonkey/JSAPI Reference/JSAutoRequest"><code>JSAutoRequest</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JSAutoSuspendRequest" title="en/SpiderMonkey/JSAPI Reference/JSAutoSuspendRequest"><code>JSAutoSuspendRequest</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JSAutoCheckRequest" title="en/SpiderMonkey/JSAPI Reference/JSAutoCheckRequest"><code>JSAutoCheckRequest</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JSAutoEnterCompartment" title="en/SpiderMonkey/JSAPI Reference/JSAutoEnterCompartment"><code>JSAutoEnterCompartment</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS::Anchor%3C%3E" title="en/SpiderMonkey/JSAPI Reference/JS::Anchor&lt;>"><code>JS::Anchor&lt;&gt;</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS::Call" title="en/SpiderMonkey/JSAPI Reference/JS::Call"><code>JS::Call</code></a></li>
+</ul>
+<h2 id="Obsolete_APIs">Obsolete APIs</h2>
+<ul>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearNewbornRoots" title="en/SpiderMonkey/JSAPI Reference/JS ClearNewbornRoots"><code>JS_ClearNewbornRoots</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EnterLocalRootScope" title="en/SpiderMonkey/JSAPI Reference/JS EnterLocalRootScope"><code>JS_EnterLocalRootScope</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveLocalRootScope" title="en/SpiderMonkey/JSAPI Reference/JS LeaveLocalRootScope"><code>JS_LeaveLocalRootScope</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveLocalRootScopeWithResult" title="en/SpiderMonkey/JSAPI Reference/JS LeaveLocalRootScopeWithResult"><code>JS_LeaveLocalRootScopeWithResult</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ForgetLocalRoot" title="en/SpiderMonkey/JSAPI Reference/JS ForgetLocalRoot"><code>JS_ForgetLocalRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewGrowableString" title="en/SpiderMonkey/JSAPI Reference/JS NewGrowableString"><code>JS_NewGrowableString</code></a></li>
+</ul>
+<h2 id="Deleted_APIs">Deleted APIs</h2>
+<ul style="">
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS AddNamedRoot"><code>JS_AddNamedRoot</code></a> – use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS Add*Root">JS_Add*Root</a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS AddNamedRootRT"><code>JS_AddNamedRootRT</code></a> – use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS Add*Root">JS_Add*Root</a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS AddRoot"><code>JS_AddRoot</code></a> – use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_AddRoot" title="en/SpiderMonkey/JSAPI Reference/JS Add*Root">JS_Add*Root</a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearNewbornRoots" title="en/SpiderMonkey/JSAPI Reference/JS ClearNewbornRoots"><code>JS_ClearNewbornRoots</code></a> – no longer needed</li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOperationCallback" title="en/SpiderMonkey/JSAPI Reference/JS ClearOperationCallback"><code>JS_ClearOperationCallback</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearRegExpRoots" title="en/SpiderMonkey/JSAPI Reference/JS ClearRegExpRoots"><code>JS_ClearRegExpRoots</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DecompileScript" title="en/SpiderMonkey/JSAPI Reference/JS DecompileScript"><code>JS_DecompileScript</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DestroyScript" title="en/SpiderMonkey/JSAPI Reference/JS DestroyScript"><code>JS_DestroyScript</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_EnterLocalRootScope" title="en/SpiderMonkey/JSAPI Reference/JS EnterLocalRootScope"><code>JS_EnterLocalRootScope</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteScriptPart" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteScriptPart"><code>JS_ExecuteScriptPart</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ForgetLocalRoot" title="en/SpiderMonkey/JSAPI Reference/JS ForgetLocalRoot"><code>JS_ForgetLocalRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetFunctionName" title="en/SpiderMonkey/JSAPI Reference/JS GetFunctionName"><code>JS_GetFunctionName</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOperationCallback" title="en/SpiderMonkey/JSAPI Reference/JS GetOperationLimit"><code>JS_GetOperationLimit</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetScriptObject" title="en/SpiderMonkey/JSAPI Reference/JS GetScriptObject"><code>JS_GetScriptObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="en/SpiderMonkey/JSAPI Reference/JS GetStringBytes"><code>JS_GetStringBytes</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringChars" title="en/SpiderMonkey/JSAPI Reference/JS GetStringChars"><code>JS_GetStringChars</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_IsAssigning" title="en/SpiderMonkey/JSAPI Reference/JS IsAssigning"><code>JS_IsAssigning</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveLocalRootScope" title="en/SpiderMonkey/JSAPI Reference/JS LeaveLocalRootScope"><code>JS_LeaveLocalRootScope</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_LeaveLocalRootScopeWithResult" title="en/SpiderMonkey/JSAPI Reference/JS LeaveLocalRootScopeWithResult"><code>JS_LeaveLocalRootScopeWithResult</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDouble" title="en/SpiderMonkey/JSAPI Reference/JS NewDouble"><code>JS_NewDouble</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDoubleValue" title="en/SpiderMonkey/JSAPI Reference/JS NewDoubleValue"><code>JS_NewDoubleValue</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewScriptObject" title="en/SpiderMonkey/JSAPI Reference/JS NewScriptObject"><code>JS_NewScriptObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewString" title="en/SpiderMonkey/JSAPI Reference/JS NewString"><code>JS_NewString</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_PopArguments" title="en/SpiderMonkey/JSAPI Reference/JS PopArguments"><code>JS_PopArguments</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_PushArguments" title="en/SpiderMonkey/JSAPI Reference/JS PushArguments"><code>JS_PushArguments</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_PushArgumentsVA" title="en/SpiderMonkey/JSAPI Reference/JS PushArgumentsVA"><code>JS_PushArgumentsVA</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_RemoveRoot" title="en/SpiderMonkey/JSAPI Reference/JS RemoveRoot"><code>JS_RemoveRoot</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_RemoveRootRT" title="en/SpiderMonkey/JSAPI Reference/JS RemoveRootRT"><code>JS_RemoveRootRT</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SealObject" title="en/SpiderMonkey/JSAPI Reference/JS SealObject"><code>JS_SealObject</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetBranchCallback" title="en/SpiderMonkey/JSAPI Reference/JS SetBranchCallback"><code>JS_SetBranchCallback</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetCallReturnValue2" title="en/SpiderMonkey/JSAPI Reference/JS SetCallReturnValue2"><code>JS_SetCallReturnValue2</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetCheckObjectAccessCallback" title="en/SpiderMonkey/JSAPI Reference/JS SetCheckObjectAccessCallback"><code>JS_SetCheckObjectAccessCallback</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetObjectPrincipalsFinder" title="en/SpiderMonkey/JSAPI Reference/JS SetObjectPrincipalsFinder"><code>JS_SetObjectPrincipalsFinder</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOperationCallback" title="en/SpiderMonkey/JSAPI Reference/JS SetOperationLimit"><code>JS_SetOperationLimit</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetPrincipalsTranscoder" title="en/SpiderMonkey/JSAPI Reference/JS SetPrincipalsTranscoder"><code>JS_SetPrincipalsTranscoder</code></a></li>
+</ul>
+<h2 id="API_changes">API changes</h2>
+<h4 id="Operation_callback">Operation callback</h4>
+<p><a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOperationCallback" title="en/SpiderMonkey/JSAPI Reference/JS SetOperationCallback"><code>JS_SetOperationCallback</code></a> was introduced in JS 1.8.0, replacing the branch callback, in anticipation of the addition of the tracing JIT (TraceMonkey). The interface was finalized only after JS 1.8.0 shipped, with {{ Bug("477187") }}. The primary change in this interface is that it no longer counts operations; embedders are expected find another mechanism (such as a watchdog thread) to trigger regular callbacks, via <a href="/en/SpiderMonkey/JSAPI_Reference/JS_TriggerOperationCallback" title="en/SpiderMonkey/JSAPI Reference/JS TriggerOperationCallback"><code>JS_TriggerOperationCallback</code></a>.</p>
+<h4 id="RegExp_APIs">RegExp APIs</h4>
+<p><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearRegExpStatics" title="en/SpiderMonkey/JSAPI Reference/JS ClearRegExpStatics"><code>JS_ClearRegExpStatics</code></a>, <a href="/En/SpiderMonkey/JSAPI_Reference/JS_NewRegExpObject" title="en/SpiderMonkey/JSAPI Reference/JS NewRegExpObject"><code>JS_NewRegExpObject</code></a>, <a href="/En/SpiderMonkey/JSAPI_Reference/JS_NewRegExpObject" title="en/SpiderMonkey/JSAPI Reference/JS NewUCRegExpObject"><code>JS_NewRegUCExpObject</code></a>, and <a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetRegExpInput" title="en/SpiderMonkey/JSAPI Reference/JS SetRegExpInput"><code>JS_SetRegExpInput</code></a> now receive a pointer to the global object. This change was made in {{ Bug("571355") }} to move the regexp statics out of the context, to simplify cross compartment wrappers.</p>
+<h4 id="Property_accessors">Property accessors</h4>
+<p><a href="/en/SpiderMonkey/JSAPI_Reference/JS_PropertyStub" title="en/SpiderMonkey/JSAPI Reference/JS PropertyStub"><code>JS_PropertyStub</code></a>, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ResolveStub" title="en/SpiderMonkey/JSAPI Reference/JS ResolveStub"><code>JS_ResolveStub</code></a>, and user-defined functions of type <a href="/En/SpiderMonkey/JSAPI_Reference/JSPropertyOp" title="en/SpiderMonkey/JSAPI Reference/JSPropertyOp"><code>JSPropertyOp</code></a> (e.g. getters and setters) changed from passing <a href="/En/SpiderMonkey/JSAPI_Reference/Jsval" title="en/SpiderMonkey/JSAPI Reference/jsval"><code>jsval</code></a>s to passing <a href="/en/SpiderMonkey/JSAPI_Reference/jsid" title="en/SpiderMonkey/JSAPI Reference/jsid"><code>jsid</code></a> as part of {{ Bug("549143") }}. This bug introduced "fat" (64-bit) unboxed valued into the engine.</p>
+<h4 id="Garbage_collection">Garbage collection</h4>
+<p><a href="/en/SpiderMonkey/JSAPI_Reference/JS_MarkGCThing" title="en/SpiderMonkey/JSAPI Reference/JS MarkGCThing"><code>JS_MarkGCThing</code></a> was changed in {{ Bug("549143") }} to mark <a href="/En/SpiderMonkey/JSAPI_Reference/Jsval" title="en/SpiderMonkey/JSAPI Reference/jsval"><code>jsval</code></a>s rather than void pointers (GC root addresses), improving the typed rooting API which was introduced in {{ Bug("565157") }}. A conservative stack-scanning collector was also added for SpiderMonkey 1.8.5, making the *LocalRootScope APIs obsolete; they are now NOPs. {{ Bug("614138") }} introduces a C++ <a href="/en/SpiderMonkey/JSAPI_Reference/JS::Anchor%3C%3E" title="en/SpiderMonkey/JSAPI Reference/JS::Anchor&lt;>"><code>JS::Anchor&lt;&gt;</code></a> template class to help tie lexical scope to the conservative GC for cases where the compiler might optimize away important stack/register roots (such as when we access the jschars in a JSString). A C analogue, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_AnchorPtr" title="en/SpiderMonkey/JSAPI Reference/JS AnchorPtr"><code>JS_AnchorPtr</code></a>, was introduced with {{ Bug("630209") }}.<a href="/en/SpiderMonkey/JSAPI_Reference/JS_BEGIN_EXTERN_C" title="en/SpiderMonkey/JSAPI Reference/JS BEGIN_EXTERN_C"><code> </code></a></p>
+<p>{{ Bug("630209") }} also removed the need for <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewScriptObject" title="en/SpiderMonkey/JSAPI Reference/JS NewScriptObject"><code>JS_NewScriptObject</code></a>, by modifying the script compilation interfaces to handle the creation and management of the object wrapper directly; similarly, the script execution interfaces now accept a JSObject pointer than a pointer to JSScript. Affected interfaces are:</p>
+<ul style="">
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileScript" title="en/SpiderMonkey/JSAPI Reference/JS CompileScript"><code>JS_CompileScript</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileScriptForPrincipals" title="en/SpiderMonkey/JSAPI Reference/JS CompileScriptForPrincipals"><code>JS_CompileScriptForPrincipals</code></a></li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Reference/JS_CompileScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileScriptForPrincipalsVersion"><code>JS_CompileScriptForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCScript" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCScript"><code>JS_CompileUCScript</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCScriptForPrincipals" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCScriptForPrincipals"><code>JS_CompileUCScriptForPrincipals</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCScriptForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCScriptForPrincipalsVersion"><code>JS_CompileUCScriptForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFile" title="en/SpiderMonkey/JSAPI Reference/JS CompileFile"><code>JS_CompileFile</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFileHandle" title="en/SpiderMonkey/JSAPI Reference/JS CompileFileHandle"><code>JS_CompileFileHandle</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFileHandleForPrincipals" title="en/SpiderMonkey/JSAPI Reference/JS CompileFileHandleForPrincipals"><code>JS_CompileFileHandleForPrincipals</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFileHandleForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileFileHandleForPrincipalsVersion"><code>JS_CompileFileHandleForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFunction" title="en/SpiderMonkey/JSAPI Reference/JS CompileFunction"><code>JS_CompileFunction</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileFunctionForPrincipals" title="en/SpiderMonkey/JSAPI Reference/JS CompileFunctionForPrincipals"><code>JS_CompileFunctionForPrincipals</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompileUCFunctionForPrincipalsVersion" title="en/SpiderMonkey/JSAPI Reference/JS CompileUCFunctionForPrincipalsVersion"><code>JS_CompileUCFunctionForPrincipalsVersion</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteScript" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteScript"><code>JS_ExecuteScript</code></a></li>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_ExecuteScriptVersion" title="en/SpiderMonkey/JSAPI Reference/JS ExecuteScriptVersion"><code>JS_ExecuteScriptVersion</code></a></li>
+</ul>
+<h4 id="Native_functions">Native functions</h4>
+<p><code>JSNative</code>s now use the "fast native" calling convention; see {{ Bug("581263") }}. The <a href="/En/SpiderMonkey/JSAPI_Reference/JS_FS" title="en/SpiderMonkey/JSAPI Reference/JS FS"><code>JS_FS</code></a> macro has been adjusted, losing its third (unused) argument. <a href="/en/SpiderMonkey/JSAPI_Reference/JS_IsConstructing" title="en/SpiderMonkey/JSAPI Reference/JS IsConstructing"><code>JS_IsConstructing</code></a>, used to differentiate between calls to native constructors with and without the new keyword, now takes a pointer to the native's <code>vp</code>, along with the native's context pointer, to figure out how the function was called.</p>
+<h4 id="Strings">Strings</h4>
+<p><a href="/en/SpiderMonkey/JSAPI_Reference/JS_CompareStrings" title="en/SpiderMonkey/JSAPI Reference/JS CompareStrings"><code>JS_CompareStrings</code></a> received a new function signature with {{ Bug("609440") }}, allowing us to correctly propagate exceptions when the underlying functions to retrieve the characters in the string failed. Additionally, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewString" title="en/SpiderMonkey/JSAPI Reference/JS NewString"><code>JS_NewString</code></a>, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="en/SpiderMonkey/JSAPI Reference/JS GetStringBytes"><code>JS_GetStringBytes</code></a>, and <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringChars" title="en/SpiderMonkey/JSAPI Reference/JS GetStringChars"><code>JS_GetStringChars</code></a> were removed, replaced by fallible interfaces like <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringCharsZAndLength" title="en/SpiderMonkey/JSAPI Reference/JS GetStringCharsZAndLength"><code>JS_GetStringCharsZAndLength</code></a> and <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="https://developer.mozilla.org/en/JS_GetStringBytes"><code>JS_EncodeStringToBuffer</code></a> (not an exhaustive list). </p>
+<h4 id="Numbers">Numbers</h4>
+<p>SpiderMonkey 1.8.5 now stores integers up to 32-bits in the jsval. This means that the <a href="/en/SpiderMonkey/JSAPI_Reference/INT_FITS_IN_JSVAL" title="En/SpiderMonkey/JSAPI Reference/INT FITS IN JSVAL"><code>INT_FITS_IN_JSVAL</code></a> macro is always returns true (be careful to only use this macro with <a href="/en/SpiderMonkey/JSAPI_Reference/jsint" title="En/SpiderMonkey/JSAPI Reference/jsint"><code>jsint</code></a><code>s</code>, not 64-bit integers). The jsval now also stores <a href="/en/SpiderMonkey/JSAPI_Reference/jsdouble" title="En/SpiderMonkey/JSAPI Reference/jsdouble"><code>jsdouble</code></a><code>s</code> directly, rather than storing them on the heap. The <a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_DOUBLE" title="En/SpiderMonkey/JSAPI Reference/JSVAL TO DOUBLE"><code>JSVAL_TO_DOUBLE</code></a> and <a href="/en/SpiderMonkey/JSAPI_Reference/DOUBLE_TO_JSVAL" title="En/SpiderMonkey/JSAPI Reference/DOUBLE TO JSVAL"><code>DOUBLE_TO_JSVAL</code></a> macros have been updated to work directly on <a href="/en/SpiderMonkey/JSAPI_Reference/jsdouble" title="En/SpiderMonkey/JSAPI Reference/jsdouble"><code>jsdouble</code></a><code>s</code> rather than their pointers, and the <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDoubleValue" title="en/SpiderMonkey/JSAPI Reference/JS NewDoubleValue"><code>JS_NewDoubleValue</code></a> and <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDouble" title="en/SpiderMonkey/JSAPI Reference/JS NewDouble"><code>JS_NewDouble</code></a> interfaces have been removed.</p>
+<h2 id="JavaScript_shell_changes">JavaScript shell changes</h2>
+<p>There are many new <a class="internal" href="/En/SpiderMonkey/Introduction_to_the_JavaScript_shell#Built-in_functions" title="En/SpiderMonkey/Introduction_to_the_JavaScript_shell#Built-in_functions">built-in functions in the JavaScript shell</a>, mostly useful for testing SpiderMonkey. The <code>scatter</code> function has been removed, and a shell worker class (similar to HTML DOM Workers) has been added.</p>
+<h2 id="Known_Issues">Known Issues</h2>
+<h4 id="Mac_OS_X_10.5_(Leopard)_and_XCode_3.2">Mac OS X 10.5 (Leopard) and XCode 3.2</h4>
+<p>SpiderMonkey will not build with certain builds of Apple's GCC 4.2 C++ compiler. To check what version you are running, issue the command /usr/bin/g++-4.2 -v from a Terminal window. The following builds are known to not work:</p>
+<ul>
+ <li>i686-apple-darwin9-g++-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5574)</li>
+</ul>
+<p>To work around this issue, either upgrade your XCode or use an alternate version of GCC, such as the one that shipped with Leopard. To select an alternate C++ compiler, invoke configure thus:</p>
+<p style="margin-left: 40px;"><code>CXX=/usr/bin/g++-4.0 /path/configure --my-configuration-options</code></p>
+<h4 id="js-config">js-config</h4>
+<p>The new configure-based build system does not correctly generate the js-config script on many platforms, nor when js-ctypes are enabled. If you are building your project with a GNU-make based build system, the following workaround can be integrated into your build system to generate the correct LDFLAGS, with a strong likelihood that it will work with future versions when js-config is fixed:</p>
+<p><code>JS_CONFIG        ?= /path/to/js-config<br>
+ UNAME_SYSTEM      = $(shell uname -s)<br>
+ JSAPI_LDFLAGS     = $(shell $(JS_CONFIG) --libs)<br>
+ ifeq ($(UNAME_SYSTEM),Darwin)<br>
+ JSAPI_LDFLAGS    := $(filter -l%,$(JSAPI_LDFLAGS)) $(filter -L%,$(JSAPI_LDFLAGS))\<br>
+         $(filter -%_namespace,$(JSAPI_LDFLAGS))\<br>
+         $(filter -Wl%,$(JSAPI_LDFLAGS))<br>
+ JSAPI_LDFLAGS    := $(filter-out $(MOZJS_INSTALL_NAME_OPT),$(JSAPI_LDFLAGS))<br>
+ endif<br>
+ JSAPI_LDFLAGS    := $(filter-out %libffi.a,$(JSAPI_LDFLAGS))<br>
+ LDFLAGS          += $(JSAPI_LDFLAGS)</code></p>
+<h2 id="Future_Direction">Future Direction</h2>
+<p>The SpiderMonkey 1.8.5 source release includes an experimental library versioning scheme. This versioning scheme will not be rolled back into the upstream Mozilla source tree(s), and may not be used in future source releases. Comments in {{ Bug("628723") }} with regard to its usefulness are appreciated. Bugs with the source release tar ball should be copied to <code>wes</code><em>@</em><code>page.ca</code>.</p>
+<p>SpiderMonkey embedders should also be aware that</p>
+<ul>
+ <li>Mozilla has no plans to keep the JSAPI, nor the JSDBGAPI stable for embedders. We have chosen to concentrate on performance and correctness as primary concerns instead.</li>
+ <li>The team is considering the removal of TinyIDs</li>
+ <li>JS_THREADSAFE is going away, with future versions supporting only thread-safe builds</li>
+ <li>A new debugging API is on the way to replace JSD.</li>
+</ul>
+<h2 id="Release_Notes_Errata">Release Notes Errata</h2>
+<p>This is a list of changes which need to be made to the release notes ASAP. Feel free to fix any problems you spot -- this is a Wiki!</p>
+<ul>
+ <li>jsxdrapi changes were missed</li>
+ <li>JSStrictPropertyOp for setters (affects JSClass) - maybe general notes about ES5 strict mode changes in JSAPI</li>
+ <li>Tricks like argv[-2] not guaranteed to work any more; is JS_CALLEE or similar instead</li>
+</ul>

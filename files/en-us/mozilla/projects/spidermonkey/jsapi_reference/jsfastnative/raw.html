@@ -1,0 +1,105 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("js1.8.5") }}</p>
+
+<p>{{ jsapi_minversion_header("1.8") }}</p>
+
+<div class="summary">
+<p><strong><code>JSFastNative</code></strong> is the type of fast native functions in the JSAPI. APIs such as {{jsapixref("JS_InitClass")}} and {{jsapixref("JS_DefineFunctions")}} can create custom methods that are implemented as C/C++ functions of this type, instead of {{jsapixref("JSNative")}}.</p>
+
+<p>The term "native" here refers to C/C++ code as opposed to JavaScript code.</p>
+</div>
+
+<div class="note">
+<p>{{ jsapi_minversion_inline("1.8.1") }} <code>JSFastNative</code> has been renamed to <code>JSNative</code>.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef JSBool
+(*JSFastNative)(JSContext *cx, unsigned int argc, jsval *vp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which the fast native is being called. Provides request. <em>In <code><a href="/en-US/docs/JS_THREADSAFE#Requests">JS_THREADSAFE</a></code> builds, the JavaScript engine calls this callback only from within an active request on <code>cx</code>.  The callback does not need to call <code>JS_BeginRequest()</code>).</em></td>
+  </tr>
+  <tr>
+   <td><code>argc</code></td>
+   <td>{{jsapixref("jsint", "unsigned int")}}</td>
+   <td>The number of arguments supplied to the function by the caller (as opposed to, say, the number of arguments the function is specified to take in its {{jsapixref("JSFunctionSpec")}}).</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("Jsval", "jsval *")}}</td>
+   <td>The arguments, including the <code>this</code> argument, the return-value slot, and the callee <code>Function</code> object are accessible through this pointer using macros described below.</td>
+  </tr>
+ </tbody>
+</table>
+
+
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>The callback should use the following macros to access the fields of <code>vp</code>:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Macro name</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code><strong>JS_CALLEE</strong>(cx, vp)</code></td>
+   <td>Returns the <code>Function</code> object that was called, as a <code>jsval</code>.
+    <p>Native methods must not call <code>JS_CALLEE</code> after calling <code>JS_SET_RVAL</code>. (The return value and the callee are stored in the same stack slot.)</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code><strong>JS_THIS</strong>(cx, vp)</code></td>
+   <td>Returns the <code>this</code> argument as a <code>jsval</code>, or <code>JSVAL_NULL</code> on error.
+    <p>Native methods must not call <code>JS_THIS</code> after calling <code>JS_SET_RVAL</code>. (<code>JS_THIS</code> may call <code>JS_CALLEE</code>.)</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code><strong>JS_THIS_OBJECT</strong>(cx, vp)</code></td>
+   <td>Returns the <code>this</code> argument as a <code>JSObject *</code>, or <code>NULL</code> on error.
+    <p>Native methods must not call <code>JS_THIS_OBJECT</code> after calling <code>JS_SET_RVAL</code>. (<code>JS_THIS_OBJECT</code> may call <code>JS_CALLEE</code>.)</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code><strong>JS_ARGV</strong>(cx, vp)</code></td>
+   <td>Returns the <code>argv</code> pointer. This points to element 0 of an array of <code>argc</code> <code>jsval</code>s, the arguments supplied by the caller.</td>
+  </tr>
+  <tr>
+   <td><code><strong>JS_RVAL</strong>(cx, vp)</code></td>
+   <td>Returns the <code>jsval</code> that is currently in the return-value slot.</td>
+  </tr>
+  <tr>
+   <td><code><strong>JS_SET_RVAL</strong>(cx, vp, value)</code></td>
+   <td>Sets the return value of the native function. It is safe to call this multiple times within a single call to a <code>JSFastNative</code>. If the <code>JSFastNative</code> returns <code>JS_TRUE</code>, the last <code>value</code> passed to this macro will be returned to the caller.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>On success, the callback must call <code>JS_SET_RVAL</code> (at least once) and return <code>JS_TRUE</code>. On error or exception, it must return <code>JS_FALSE</code>.</p>
+
+<p>To create a {{jsapixref("JSFunctionSpec")}} that points to a <code>JSFastNative</code>, use {{jsapixref("JS_FS", "JS_FN")}}.</p>
+
+<div class="warning">
+<p>When a <code>JSFastNative</code> is called, no {{jsapixref("JSStackFrame")}} is generated. This is what makes a fast native fast. However, it causes the function not to appear on the stack in JavaScript debuggers. It also means that applications that use SpiderMonkey's security features, particularly those that implement {{jsapixref("JSCheckAccessOp")}} or {{jsapixref("JSCheckAccessIdOp")}} in terms of APIs such as {{jsapixref("JS_FrameIterator")}} and {{jsapixref("JS_StackFramePrincipals")}}, must take extra care, as the native function's principals will be missing from the stack.</p>
+</div>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{jsapixref("JSNative")}}</li>
+</ul>

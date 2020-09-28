@@ -1,0 +1,55 @@
+<h2 id="Overview">Overview</h2>
+
+<p>Each time a garbage collection occurs, SpiderMonkey keeps track of how long each phase of the collection took, along with some related data. There are several ways to get access to this data:</p>
+
+<ul>
+ <li>The environment variable <code><strong>MOZ_GCTIMER </strong></code>controls text dumping of GC stats. <code><strong>MOZ_GCTIMER</strong></code> may be <strong>none</strong>, <strong>stderr</strong>, <strong>stdout</strong>, or a filename. If a filename is given, data is appended to that file.<br>
+  When logging to a file is used in combination with multi-process firefox (e10s) it is necessary to set <code>security.sandbox.content.level = 0</code>, otherwise the content process will crash.</li>
+ <li>The browser preference<strong> <code>javascript.options.mem.log</code></strong> controls dumping of human-readable GC stats messages to the developer console.</li>
+ <li>The browser preference <code><strong>javascript.options.mem.notify</strong></code> controls emission of JSON encoded GC stats to an observer interface.</li>
+</ul>
+
+<h2 id="JSON_API">JSON API</h2>
+
+<p>Addons can obtain the complete data in JSON format via an observer. The following adds an observer using the JetPack framework.</p>
+
+<pre>var prefs = require("api-utils/preferences-service");
+Components.utils.import('resource://gre/modules/Services.jsm');
+
+function observer(subject, topic, json)
+{
+    var data = JSON.parse(json);
+    // process the data
+}
+
+prefs.set("javascript.options.mem.notify", true);
+Services.obs.addObserver(observer, "garbage-collection-statistics", false);</pre>
+
+<p>The toplevel JSON object contains these fields:</p>
+
+<ul>
+ <li><strong>timestamp</strong>: <code>integer</code> (microseconds) - Time at which the GC ended, measured from epoch.</li>
+ <li><strong>total_time</strong>: <code>number</code> (milliseconds) - The amount of wall time that this GC consumed.  Note: this is the sum of all the slice durations, not end time - start time.</li>
+ <li><strong>compartments_collected</strong>: <code>integer</code> - The number of compartments that were collected by the GC.</li>
+ <li><strong>compartment_count</strong>: <code>integer</code> - The number of compartments that were present in the system at the end of the GC.</li>
+ <li><strong>max_pause</strong>: <code>number</code> (milliseconds) - Longest duration pause during the GC.</li>
+ <li><strong>nonincremental_reason</strong>: <code>string</code> - A string representing the reason that an incremental GC was aborted or forced to finish in a single slice. If the incremental GC completed normally, this will be "none".</li>
+ <li><strong>allocated</strong>: <code>integer</code> (MB) - Size of the JavaScript heap in MiB at the start of the GC.</li>
+ <li><strong>slices</strong>: <code>array of Objects</code> - A list of objects describing each slice in detail.</li>
+ <li><strong>times</strong>: <code>Object</code> - A map from phase names to the total time taken by each phase: the sum of each field of the map from the slices.</li>
+</ul>
+
+<p>The last two fields require a bit of elaboration. GC work can be divided into <em>phases</em>, such as marking or sweeping. The division into phases is hierarchical, so a phase can be split into subphases. For example, the sweep phase includes the time for the sweep_atoms, sweep_tables, sweep_compartments phases and so on. The <strong>times</strong> object gives how much time was spent in each phase of the GC, in milliseconds.</p>
+
+<p>Additionally, an incremental GC is divided into a series of slices (the division into slices is completely separate from the division into phases; neither one is a refinment of the other). A little bit of GC work is done in each slice. In between slices, other browser code is allowed to run. The slices array describes how long each slice took and what work was done during the slice. Each element of the <strong>slices</strong> array is an object with these fields:</p>
+
+<ul>
+ <li><strong>slice</strong>: <code>integer</code> - The slice index, starting at 0.</li>
+ <li><strong>pause</strong>: <code>number</code> (milliseconds) - The slice duration.</li>
+ <li><strong>when</strong>: <code>number</code> (milliseconds) - The time this slice started, relative to the first slice's start time.</li>
+ <li><strong>reason</strong>: <code>string</code> - A string describing the API that initiated this GC slice.</li>
+ <li><strong>page_faults</strong>: <code>integer</code> - Number of page faults incurred during the processing of this slice.</li>
+ <li><strong>start_timestamp</strong>: <code>integer</code> (microseconds) - Time of slice start from epoch.</li>
+ <li><strong>end_timestamp</strong>: <code>integer</code> (microseconds) - Time of slice end from epoch.</li>
+ <li><strong>times</strong>: <code>Object</code> - A map from phase names to the total time taken by that phase during this slice.</li>
+</ul>

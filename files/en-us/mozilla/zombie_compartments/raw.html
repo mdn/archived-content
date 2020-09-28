@@ -1,0 +1,141 @@
+<p>This page tells you how to detect and avoid <em>zombie compartments</em>, which are a particular kind of memory leak.  They can be caused by bugs in Firefox itself, or by bugs in Firefox add-ons.</p>
+
+<h2 id="Compartments">Compartments</h2>
+
+<p>Firefox’s JavaScript memory is segregated into zones and <em><a class="external" href="https://andreasgal.com/2010/10/13/compartments/">compartments</a></em>.  Roughly speaking, all memory used by JavaScript code that is from a particular origin (i.e. website) goes into its own compartment.  Firefox’s own JavaScript code also gets one or more compartments and so do add-on scripts.  Multiple compartments can share a zone, where a zone keeps track of things that can easily and securely be shared between related compartments such as string data and type information.</p>
+
+<h3 id="Viewing_live_compartments">Viewing live compartments</h3>
+
+<p>If you want to see a list of live compartments, type "about:memory" into the address bar and click on the <em>Measure</em> button. In the results, you'll find a <code>js-main-runtime-compartments</code> tree (whcih you may need to expand further) that lists all <code>system</code> (Firefox and add-ons) and <code>user</code> (website) compartments, These compartments are also listed in more detail in the <em>Explicit Allocations</em> section. That more fine-graned representation may look like this</p>
+
+<pre>│  ├───28.45 MB (05.71%) -- top(https://www.google.de/, id=141)
+│  │   ├──13.66 MB (02.74%) -- active/window(https://www.google.de/)
+│  │   │  ├───7.83 MB (01.57%) -- js-compartment(https://www.google.de/)
+│  │   │  │   ├──3.56 MB (00.71%) -- objects
+│  │   │  │   │  ├──3.04 MB (00.61%) ++ gc-heap
+│  │   │  │   │  ├──0.51 MB (00.10%) ++ malloc-heap
+│  │   │  │   │  └──0.00 MB (00.00%) ── non-heap/code/asm.js
+│  │   │  │   ├──2.43 MB (00.49%) -- shapes
+│  │   │  │   │  ├──1.47 MB (00.29%) ++ gc-heap
+│  │   │  │   │  └──0.96 MB (00.19%) ++ malloc-heap
+│  │   │  │   ├──1.03 MB (00.21%) -- scripts
+│  │   │  │   │  ├──0.72 MB (00.14%) ── gc-heap [2]
+│  │   │  │   │  └──0.31 MB (00.06%) ── malloc-heap/data [2]
+│  │   │  │   ├──0.80 MB (00.16%) -- type-inference
+│  │   │  │   │  ├──0.66 MB (00.13%) ── type-scripts [2]
+│  │   │  │   │  ├──0.13 MB (00.03%) ── allocation-site-tables [2]
+│  │   │  │   │  └──0.02 MB (00.00%) ── object-type-tables [2]
+│  │   │  │   └──0.01 MB (00.00%) -- sundries
+│  │   │  │      ├──0.01 MB (00.00%) ── malloc-heap [2]
+│  │   │  │      └──0.00 MB (00.00%) ── gc-heap [2]
+│  │   │  └───5.83 MB (01.17%) -- (4 tiny)
+│  │   │      ├──4.19 MB (00.84%) ++ layout
+│  │   │      ├──1.03 MB (00.21%) ── style-sheets [2]
+│  │   │      ├──0.60 MB (00.12%) ++ dom
+│  │   │      └──0.01 MB (00.00%) ── property-tables [2]
+│  │   ├───8.86 MB (01.78%) -- cached/window(https://www.google.de/?gws_rd=ssl)
+│  │   │   ├──4.23 MB (00.85%) -- layout
+│  │   │   │  ├──3.80 MB (00.76%) ── style-sets
+│  │   │   │  ├──0.29 MB (00.06%) ── pres-shell
+│  │   │   │  ├──0.05 MB (00.01%) ── rule-nodes
+│  │   │   │  ├──0.04 MB (00.01%) ── style-contexts
+│  │   │   │  ├──0.03 MB (00.01%) -- frames
+│  │   │   │  │  ├──0.02 MB (00.00%) ── sundries
+│  │   │   │  │  └──0.01 MB (00.00%) ── nsBlockFrame
+│  │   │   │  ├──0.01 MB (00.00%) ── pres-contexts
+│  │   │   │  ├──0.01 MB (00.00%) ── line-boxes
+│  │   │   │  └──0.00 MB (00.00%) ── text-runs
+│  │   │   ├──3.78 MB (00.76%) ++ js-compartment(https://www.google.de/?gws_rd=ssl)
+│  │   │   ├──0.51 MB (00.10%) ── style-sheets
+│  │   │   ├──0.33 MB (00.07%) -- dom
+│  │   │   │  ├──0.17 MB (00.04%) ── text-nodes
+│  │   │   │  ├──0.13 MB (00.03%) ── element-nodes
+│  │   │   │  ├──0.02 MB (00.00%) ── other
+│  │   │   │  ├──0.01 MB (00.00%) ── orphan-nodes
+│  │   │   │  └──0.00 MB (00.00%) ── event-targets
+│  │   │   └──0.00 MB (00.00%) ── property-tables
+│  │   └───5.93 MB (01.19%) -- js-zone(0x13ffa0000)
+│  │       ├──1.92 MB (00.39%) ── unused-gc-things
+│  │       ├──1.28 MB (00.26%) -- lazy-scripts
+│  │       │  ├──1.03 MB (00.21%) ── gc-heap
+│  │       │  └──0.25 MB (00.05%) ── malloc-heap
+│  │       ├──1.24 MB (00.25%) ── type-pool
+│  │       ├──1.07 MB (00.21%) -- type-objects
+│  │       │  ├──1.04 MB (00.21%) ── gc-heap
+│  │       │  └──0.03 MB (00.01%) ── malloc-heap
+│  │       ├──0.23 MB (00.05%) ++ strings
+│  │       └──0.18 MB (00.04%) ── gc-heap-arena-admin
+</pre>
+
+<p>The first line says that the window from <code>www.google.de</code> is taking up 28.45 MB and futher breaks it down into zones, compartments, DOM etc.</p>
+
+<h3 id="When_are_compartments_created">When are compartments created?</h3>
+
+<p>Any compartments with the following forms are created by Firefox for its own internal use, and can usually be ignored when looking for zombie compartments.</p>
+
+<ul>
+ <li><code>js-compartment([System Principal], 0x7f10f1250000)</code></li>
+ <li><code>compartment(atoms)</code></li>
+ <li><code>js-compartment(about:home)</code></li>
+ <li><code>js-compartment(about:blank)</code></li>
+ <li><code>compartment([System Principal], resource://gre/modules/addons/XPIProvider.jsm)</code></li>
+</ul>
+
+<p>When looking at user compartments there are a couple of things to be aware of.  First, many sites utilize scripts from other sites to provide advertisements, "like" and "+1" buttons, Twitter feeds, etc.  So it's common for multiple compartments to be created for a single web page.  For example, if I open www.techcrunch.com the following compartments are created.</p>
+
+<ul>
+ <li><code>compartment(<a class="external" href="http://techcrunch.com/" rel="freelink">http://techcrunch.com/</a>)</code></li>
+ <li><code>compartment(<a class="external" href="http://www.facebook.com/plugins/like.php?..." rel="freelink">http://www.facebook.com/plugins/like.php?...</a>)</code></li>
+ <li><code>compartment(<a class="link-https" href="https://plusone.google.com/_/+1/fastbutton?..." rel="freelink">https://plusone.google.com/_/+1/fastbutton?...</a>)</code></li>
+ <li><code>compartment(<a class="external" href="http://platform.twitter.com/widgets/tweet_button.html?..." rel="freelink">http://platform.twitter.com/widgets/...utton.html?...</a>)</code></li>
+ <li><code>compartment(<a class="external" href="http://cdn.at.atwola.com/_media/uac/tcode3.html" rel="freelink">http://cdn.at.atwola.com/_media/uac/tcode3.html</a>)</code></li>
+ <li><code>compartment(<a class="link-https" href="https://s-static.ak.fbcdn.net/connect/xd_proxy.php?..." rel="freelink">https://s-static.ak.fbcdn.net/connec..._proxy.php?...</a>)</code></li>
+ <li><code>compartment(<a class="external" href="http://ads.tw.adsonar.com/adserving/getAds.jsp?..." rel="freelink">http://ads.tw.adsonar.com/adserving/getAds.jsp?...</a>)</code></li>
+</ul>
+
+<p>(Some of those compartment URLs are long and have been truncated.)</p>
+
+<p>Another thing to beware is each compartment is created for an origin (e.g. <a class="external" href="https://www.facebook.com/" rel="freelink">https://www.facebook.com/</a>), but the name of the compartment includes all the trailing gunk (e.g. "plugins/like.php?...").  This trailing gunk can be misleading and you shouldn't pay too much attention to it.  For example, if I open <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=668871" rel="freelink">https://bugzilla.mozilla.org/show_bug.cgi?id=668871</a> in one tab, then <code>compartment(<a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=668871" rel="freelink">https://bugzilla.mozilla.org/show_bug.cgi?id=668871</a>)</code> will show up in about:memory.  If I then open <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=700547" rel="freelink">https://bugzilla.mozilla.org/show_bug.cgi?id=700547</a> and close the first tab, the same compartment will continue to be used.  So I'll end up with a compartment whose name doesn't match the only page open from that origin.  This can be confusing at first, so be ready for it.</p>
+
+<h3 id="When_are_compartments_destroyed">When are compartments destroyed?</h3>
+
+<p>Compartments are destroyed when they are garbage collected.  This happens some time after the last reference to them disappears.  This means there can be a delay between a page being closed and its compartments disappearing. Explicitly minimizing the memory (a couple of times), i.e. running the garbage collector, with the corresponding <code>about:memory</code> button will help.</p>
+
+<h2 id="Zombie_compartments">Zombie compartments</h2>
+
+<p>Sometimes, due to bugs in Firefox, the Add-on SDK and/or add-ons, compartments are created that are never destroyed.  These are a particular kind of memory leak, and they cause Firefox's memory usage to increase gradually over time, slowing it down and making it more likely to crash.</p>
+
+<h3 id="Reactive_checking">Reactive checking</h3>
+
+<p>If you look at <code>about:memory</code> and you see a compartment for <code>www.foo.com</code>, but you closed your last <code>www.foo.com</code> tab a while ago, there's a good chance you're seeing a zombie compartment.  Follow these steps to make a more conclusive diagnosis.</p>
+
+<ul>
+ <li>Restart the browser.</li>
+ <li>Open the page that you think might cause a zombie compartment.</li>
+ <li>Open <code>about:memory</code> in another tab to confirm that the relevant compartment is present.</li>
+ <li>Close the first page.</li>
+ <li>Minimize memory usage and remeasure in <code>about:memory</code>.  It might be worth refreshing multiple times just to be sure.</li>
+ <li>If the compartment is still present in about:memory, that's very suspicious.  You could try waiting 20 minutes or so, then reload about:memory again.  Some zombie compartments stick around for a limited time before disappearing, others are immortal, and it's useful to know which is which.  If you see any `ghost-windows` (at the bottom of about:memory) that is also suspicious, as they are similar to zombie compartments.</li>
+ <li>Some zombie compartments are caused by add-ons.  If you have add-ons enabled, please try to reproduce in <a class="external" href="https://support.mozilla.org/en-US/kb/troubleshoot-firefox-issues-using-safe-mode">safe mode</a>, which disables them.  If you can identify, by disabling them one at a time, a single add-on that is responsible, that is extremely helpful.</li>
+ <li>If you're confident you've found a zombie compartment, please file a bug that includes all the information you've gathered, add “[MemShrink]” to its whiteboard, and mark it as blocking <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=668871">bug 668871</a>.  Attaching the full contents of about:memory?verbose is very helpful (and you can just cut and paste the page contents, there's no need to take a screenshot).  See <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=669545">bug 669545</a> for an example.  If the zombie compartment is caused by an add-on, please mark the bug as also blocking <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=700547" title="https://bugzilla.mozilla.org/show_bug.cgi?id=700547">bug 700547</a>.</li>
+</ul>
+
+<p>It really is best to follow these instructions.  In particular, if you have multiple tabs open it's easy to mis-identify whether a compartment should still be alive.  If you only have about:memory open, things are much simpler.</p>
+
+<h3 id="Proactive_checking_of_add-ons">Proactive checking of add-ons</h3>
+
+<p>It's not uncommon for add-ons to cause zombie compartments, see <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=700547" title="https://bugzilla.mozilla.org/show_bug.cgi?id=700547">bug 700547</a> for examples.  Follow these steps to do some basic checking of an add-on.</p>
+
+<ul>
+ <li>Create a new profile.  Install and enable the add-on.</li>
+ <li>Restart the browser.</li>
+ <li>Browse one or more pages and do something that exercises the add-on.  For example, for an add-on that remembers passwords, visit a site that requires a password;  for an add-on that performs an operation involving a specific page element such as an image or a chunk of text, perform that operation.  The more you exercise the add-on, the more thorough the testing will be, but in practice a lot of problems show up quickly.</li>
+ <li>Open <code>about:memory</code> and close all other pages.</li>
+ <li>Return to about:memory and minimize memory and remeasure, multiple times if necessary.</li>
+ <li>If only system compartments are present, and there are no ghost windows, congratulations!  That's a good sign that the add-on doesn't cause zombie compartments.  Otherwise, please file a bug (using the "Tech Evangelism" product and the "Add-ons" component), add "[MemShrink]" to its whiteboard, and mark it as blocking <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=668871">bug 668871</a> and <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=700547" title="https://bugzilla.mozilla.org/show_bug.cgi?id=700547">bug 700547</a>.</li>
+ <li>Restartless add-ons should also take special care that all their compartments get destroyed after disabling or uninstalling the add-on. (Please note that you may need to close the about:addons UI before changes are made).</li>
+</ul>
+
+<h3 id="Avoiding_zombie_compartments_in_add-ons">Avoiding zombie compartments in add-ons</h3>
+
+<p>Once you know that an add-on causes a zombie compartment, the only way to identify the cause is to read the add-on's code.  See <a href="/en-US/docs/Extensions/Common_causes_of_memory_leaks_in_extensions" rel="internal" title="/en/Extensions/Common_causes_of_memory_leaks_in_extensions">Common causes of memory leaks in extensions</a> for things to avoid.</p>

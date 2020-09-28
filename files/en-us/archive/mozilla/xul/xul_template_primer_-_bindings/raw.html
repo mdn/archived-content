@@ -1,0 +1,152 @@
+<div class="blockIndicator warning">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> See <a href="/en-US/docs/Mozilla/Tech/XUL/Template_Guide">XUL:Template Guide</a> for up to date documentation.</p>
+</div>
+
+<h2 id="Overview" name="Overview">Overview</h2>
+
+<p>This document expands on the <a href="https://www.mozilla.org/docs/xul/xulnotes/template-primer.html">XUL Template Primer</a> by introducing the <code>&lt;bindings&gt;</code> element in the <em>extended XUL template syntax</em>.</p>
+
+<p>The <code>&lt;bindings&gt;</code> element is used to create additional,<em>optional</em> variable bindings, in addition to those that are specified in a rule's <code>&lt;conditions&gt;</code>. This is different from the variables specified in the rule's conditions, where a value <em>must</em> be found for each variable for the rule to match. If a <code>&lt;binding&gt;</code> can't be matched, the rule will still fire.</p>
+
+<h2 id="Example" name="Example">Example</h2>
+
+<p>To illustrate how <code>&lt;bindings&gt;</code> work, we'll examine this <a href="https://www.mozilla.org/sample.xul">XUL document</a>, which builds a simple content model an RDF/XML file.</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+
+&lt;?xml-stylesheet href="chrome://global/skin" type="text/css"?&gt;
+
+&lt;window xmlns:html="http://www.w3.org/1999/xhtml" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" align="vertical"&gt;
+  &lt;vbox datasources="friends.rdf" ref="urn:root"&gt;
+    &lt;template&gt;
+      &lt;rule&gt;
+        &lt;conditions&gt;
+          &lt;content uri="?uri"/&gt;
+          &lt;triple subject="?uri"
+                predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#friends</span>"
+                   object="?friends"/&gt;
+          &lt;member container="?friends" child="?friend"/&gt;
+          &lt;triple subject="?friend"
+                predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#name</span>"
+                   object="?name"/&gt;
+        &lt;/conditions&gt;
+        &lt;bindings&gt;
+          &lt;binding subject="?friend"
+                 predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#address</span>"
+                    object="?addr"/&gt;
+          &lt;binding subject="?addr"
+                 predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#street</span>"
+                    object="?street"/&gt;
+        &lt;/bindings&gt;
+        &lt;action&gt;
+          &lt;hbox uri="?friend"&gt;
+            &lt;label value="?name"/&gt;
+            &lt;label value="?street"/&gt;
+          &lt;/hbox&gt;
+        &lt;/action&gt;
+      &lt;/rule&gt;
+    &lt;/template&gt;
+  &lt;/vbox&gt;
+&lt;/window&gt;
+</pre>
+
+<p>The XUL Template Primer covers the <code>&lt;conditions&gt;</code> and <code>&lt;action&gt;</code> elements, so we won't discuss those here.</p>
+
+<p>We'll use a the following data model to illustrate how bindings work. See the RDF/XML file <code>friends.rdf</code>, below, a simple database with name and address information for some of my good friends.</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+
+&lt;rdf:RDF xmlns:rdf="<span class="nowiki">http://www.w3.org/1999/02/22-rdf-syntax-ns#</span>" xmlns:nc="<span class="nowiki">http://home.netscape.com/NC-rdf#</span>"&gt;
+  &lt;rdf:Description about="urn:root"&gt;
+    &lt;nc:friends&gt;
+      &lt;rdf:Seq&gt;
+        &lt;rdf:li&gt;
+          &lt;rdf:Description nc:name="Alison Appel"&gt;
+            &lt;nc:address resource="#home"/&gt;
+          &lt;/rdf:Description&gt;
+        &lt;/rdf:li&gt;
+        &lt;rdf:li&gt;
+          &lt;rdf:Description nc:name="Jack"&gt;
+            &lt;nc:address resource="#doghouse"/&gt;
+          &lt;/rdf:Description&gt;
+        &lt;/rdf:li&gt;
+        &lt;rdf:li&gt;
+          &lt;rdf:Description nc:name="Lumpy"/&gt;
+        &lt;/rdf:li&gt;
+      &lt;/rdf:Seq&gt;
+    &lt;/nc:friends&gt;
+  &lt;/rdf:Description&gt;
+  &lt;rdf:Description ID="home" nc:street="437 Hoffman"/&gt;
+  &lt;rdf:Description ID="doghouse" nc:street="435 Hoffman"/&gt;
+&lt;/rdf:RDF&gt;
+</pre>
+
+<p><br>
+ The RDF model that this file creates can be represented with the following graph.</p>
+
+<p><img alt="RDF Data Model"></p>
+
+<p>When displayed in Mozilla, something like this appears:</p>
+
+<p><img alt="Screenshot"></p>
+
+<p>Note that even though poor Lumpy has no <code><em>nc</em><span class="nowiki">:address</span></code> property, he still appears in the content model! Unlike the <code>&lt;conditions&gt;</code>, bindings do not affect whether or not a rule matches: they just "pull through" additional information if it is available.</p>
+
+<h2 id="The_.3Cbindings.3E_element" name="The_.3Cbindings.3E_element">The <code>&lt;bindings&gt;</code> element</h2>
+
+<p>The <code>&lt;bindings&gt;</code> element is optional in a XUL template, but if present, must appear as a sibling of the <code>&lt;conditions&gt;</code> and <code>&lt;action&gt;</code> elements in a rule.</p>
+
+<h2 id="The_.3Cbinding.3E_element" name="The_.3Cbinding.3E_element">The <code>&lt;binding&gt;</code> element</h2>
+
+<p>The <code>&lt;bindings&gt;</code> element (plural) may contain any number of <code>&lt;binding&gt;</code> (singular) elements.</p>
+
+<pre class="eval">&lt;bindings&gt;
+  &lt;binding subject="?friend"
+         predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#address</span>"
+            object="?addr"/&gt;
+  &lt;binding subject="?addr"
+         predicate="<span class="nowiki">http://home.netscape.com/NC-rdf#street</span>"
+            object="?street"/&gt;
+&lt;/bindings&gt;
+</pre>
+
+<p>The &lt;binding&gt; element is very much like the <code>&lt;triple&gt;</code> <a href="https://www.mozilla.org/docs/xul/xulnotes/template-primer.html#conditions">condition</a><span class="nowiki">: it must have a </span>subject, predicate, and object attribute. These refer to the subject, predicate, and object of a statement in the RDF model.</p>
+
+<p>At least one of the <code>&lt;binding&gt;</code> elements must have a <code>subject</code> variable that appears in the <code>&lt;conditions&gt;</code><span class="nowiki">: this variable is the "hook" that is used to bootstrap the binding. In our example, the </span><code>?friend</code> variable serves this purpose in the first <code>&lt;binding&gt;</code> element.</p>
+
+<p>The subject may refer to any variable that has been computed in the <code>&lt;conditions&gt;</code>, or it may refer to another <code>&lt;binding&gt;</code>'s <code>object</code> variable.<sup><a href="#footnote-1">[1]</a></sup> In our example, the second <code>&lt;binding&gt;</code>'s <code>subject</code> does this: the value for the <code>?addr</code> variable is computed by the first <code>&lt;binding&gt;</code></p>
+
+<p>The <code>predicate</code> must name the URI of an RDF property, in this case, <code><em>nc</em><span class="nowiki">:address</span></code>.</p>
+
+<p>The <code>object</code> must name a variable. The value of the <code>object</code>'s variable will be computed by invoking the <code>GetTarget()</code> method using the <code>object</code>'s value as the <code>aSource</code> argument, and the <code>predicate</code>'s resource as the <code>aProperty</code> argument. (See the <a class="external" href="https://lxr.mozilla.org/mozilla/source/rdf/base/idl/nsIRDFDataSource.idl"><code>nsIRDFDataSource</code></a> interface for more details.)</p>
+
+<p>In our example, the <code>&lt;rule&gt;</code> will be instantiated <em>three times</em><span class="nowiki">: once each for Alison, Jack, and Lumpy. However, in Lumpy's case, we won't be able to bind the </span><code>?addr</code> variable because Lumpy has no home! (Well, there are no statements with Lumpy as the subject and a <code><em>nc</em><span class="nowiki">:address</span></code> as the predicate, anyway.) Nevertheless, <em>the rule still matches</em>.</p>
+
+<p>In the content that's built for Lumpy's <code>&lt;hbox&gt;</code>, the second <code>&lt;label&gt;</code>'s <code>value</code> attribute (which should contain the value of <code>?street</code>) is just left blank.</p>
+
+<h2 id="Related_Documents" name="Related_Documents">Related Documents</h2>
+
+<dl>
+ <dt><a class="external" href="https://www.mozilla.org/docs/xul/xulnotes/template-primer.html">XUL Template Primer</a></dt>
+ <dd>XUL template basics.</dd>
+ <dt><a class="external" href="https://www.mozilla.org/docs/xul/xulnotes/template-multi.html">XUL Template Primer - Multiple Rules</a></dt>
+ <dd>Illustrates how to write templates with multiple <code>&lt;rule&gt;</code> elements.</dd>
+ <dt><a class="external" href="https://www.mozilla.org/docs/xul/xulnotes/template-nested.html">XUL Template Primer - Nested Content</a></dt>
+ <dd>Illustrates how a template can be used recursively to build <em>nested content</em>.</dd>
+ <dt><a class="external" href="https://www.mozilla.org/docs/xul/xulnotes/template-outliner.html">XUL Template Primer - Outliner</a></dt>
+ <dd>Illustrates how a template can be used as a view for a XUL outliner.</dd>
+ <dt><a class="external" href="https://www.mozilla.org/rdf/doc/xul-template-reference.html">XUL Template Reference</a></dt>
+ <dd>Describes the <em>simple XUL template syntax</em> in detail.</dd>
+</dl>
+
+<h2 id="Notes" name="Notes">Notes</h2>
+
+<p><a id="footnote-1" name="footnote-1">1.</a> As of this writing, it is necessary to order <code>&lt;binding&gt;</code> elements carefully. Specifically, if a binding depends on a variable in another binding, it must appear <em>after</em> the binding it depends on. For example, the sample in this document wouldn't work if the two <code>&lt;binding&gt;</code> elements were reversed, because of the dependency on the <code>?addr</code> variable. Fortunately, this is the natural way one would write bindings, so in practice this should not be a burden.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: Chris Waterson</li>
+</ul>
+</div>

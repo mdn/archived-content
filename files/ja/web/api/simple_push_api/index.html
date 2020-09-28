@@ -1,0 +1,679 @@
+---
+title: Simple Push
+slug: Web/API/Simple_Push_API
+tags:
+  - API
+  - B2G
+  - Firefox OS
+  - Non-standard
+  - Simple Push API
+  - WebAPI
+translation_of: Archive/B2G_OS/API/Simple_Push_API
+---
+<p></p><div class="blockIndicator nonStandard nonStandardHeader">
+      <p><strong><span class="icon-only-inline" title="この API は標準化されていません。"><i class="icon-warning-sign"> </i></span> 非標準</strong><br>
+      この機能は現在 W3C の標準化のプロセスに乗っていませんが、Firefox OS プラットフォームではサポートされています。将来は動作が変わるかもしれませんし、他のブラウザーで広くサポートされているわけでもありませんが、Firefox OS アプリ専用のコードで使うには適しています。</p>
+      </div><p></p>
+
+<p><strong>Simple Push API</strong>、別名プッシュ通知 API はウェイクアップして通知を受け取る能力をアプリにもたらします。Simple Push は同期メカニズムとしても、あるいはサードパーティのサーバーから最新データを取得する方法としても利用できます。</p>
+
+<p>「プッシュ」とはリモートサーバーから送られてくるイベントに過ぎません。これは以下のようにして動作します。アプリは Simple Push API を使ってエンドポイントと呼ばれる特殊なユニーク URL をリクエストします。このリクエストは、Mozilla がこの目的のために管理する既存のサーバー（これは「プッシュサーバー」と呼ばれます）へ送られます。プッシュサーバーから返されるエンドポイントをアプリが受け取ると、アプリは自身のサーバー（あなたのアプリサーバーです）へエンドポイントを送信します。アプリサーバーはこのエンドポイントを保存します。その後、アプリをウェイクアップしたいと思った時にバージョン番号付きでエンドポイントを呼び出し、プッシュサーバーはアプリにそのバージョン番号通知を連絡します。アプリは通知を受け取った時に、それを無視することも含め何らかのこと行うことができます。</p>
+
+<p>Simple Push APIは <a href="/ja/docs/Web/API/Window/navigator" title="navigator オブジェクトへの参照を返します。 navigator オブジェクトを用いることで、スクリプトを実行しているアプリケーションについての情報を得ることができます。"><code>window.navigator</code></a> を拡張して <a href="/ja/docs/Web/API/PushManager" title="Push API の PushManager インターフェースは、3rd パーティーのサーバーからの通知だけではなく、プッシュ通知へのリクエスト URL を取得するための方法を提供します。"><code>PushManager</code></a> オブジェクトを保持する <span style="font-family: Consolas, Monaco, 'Andale Mono', monospace;"><code>push</code> </span>プロパティを持たせ、またプッシュの状態を監視するために受け取れる新しいイベントをいくつか追加します。</p>
+
+<h2 id="基本を説明する例">基本を説明する例</h2>
+
+<p>Simple Push の使い方はいくつかあります。この例では基本的な使い方を取り上げます。例は以下の一般的な手順からなります。各手順の完全な情報についてはその後のセクションをご覧ください。</p>
+
+<ol>
+ <li><a href="#1._.E3.82.A2.E3.83.97.E3.83.AA.E3.81.AE.E3.83.9E.E3.83.8B.E3.83.95.E3.82.A7.E3.82.B9.E3.83.88.E3.83.95.E3.82.A1.E3.82.A4.E3.83.AB.E3.81.AB_push_.E3.81.AE.E8.A8.AD.E5.AE.9A.E3.82.92.E8.BF.BD.E5.8A.A0.E3.81.99.E3.82.8B">アプリのマニフェストファイルに <code>push</code> の設定を追加する</a></li>
+ <li><a href="#2._PushManager.register()_.E3.82.92.E5.91.BC.E3.82.93.E3.81.A7.E3.82.A8.E3.83.B3.E3.83.89.E3.83.9D.E3.82.A4.E3.83.B3.E3.83.88.E3.82.92.E3.83.AA.E3.82.AF.E3.82.A8.E3.82.B9.E3.83.88.E3.81.99.E3.82.8B"><code>PushManager.register</code> を呼んでエンドポイントをリクエストする</a></li>
+ <li><a href="#3._.E3.82.A8.E3.83.B3.E3.83.89.E3.83.9D.E3.82.A4.E3.83.B3.E3.83.88.E3.82.92.E3.82.B5.E3.83.BC.E3.83.90.E3.83.BC.E3.81.AB.E9.80.81.E4.BF.A1.E3.81.99.E3.82.8B">エンドポイントをサーバーに送信する</a></li>
+ <li><a href="#4._.E3.82.A2.E3.83.97.E3.83.AA.E3.81.AB_push_.E9.80.9A.E7.9F.A5.E7.94.A8.E3.81.AE.E3.83.A1.E3.83.83.E3.82.BB.E3.83.BC.E3.82.B8.E3.83.8F.E3.83.B3.E3.83.89.E3.83.A9.E3.83.BC.E3.82.92.E8.BF.BD.E5.8A.A0.E3.81.99.E3.82.8B">アプリにプッシュ通知用のメッセージハンドラーを追加する</a></li>
+ <li><a href="#5._.E3.82.A8.E3.83.B3.E3.83.89.E3.83.9D.E3.82.A4.E3.83.B3.E3.83.88.E3.82.92.E4.BD.BF.E3.81.A3.E3.81.A6.E3.82.B5.E3.83.BC.E3.83.90.E3.83.BC.E3.81.8B.E3.82.89.E9.80.9A.E7.9F.A5.E3.82.92.E9.80.81.E4.BF.A1.E3.81.99.E3.82.8B">エンドポイントを使ってサーバーから通知を送信する</a></li>
+</ol>
+
+<h2 id="1._アプリのマニフェストファイルに_push_の設定を追加する">1. アプリのマニフェストファイルに push の設定を追加する</h2>
+
+<p>Sinple Push を使えるようにするため、マニフェストファイルで二か所変更が必要です。</p>
+
+<ol>
+ <li><a href="/docs/Web/Apps/Manifest#messages" title="https://developer.mozilla.org/en-US/docs/Web/Apps/Manifest?redirectlocale=en-US&amp;redirectslug=Apps%2FManifest#messages"><code>messages</code> フィールド</a> - <code>push</code> と <code>push-register</code> メッセージを追加。<br>
+  これはアプリの（<code>push</code> と <code>push-register</code> の）各イベントを受け取るページを示します。この例ではどちらも同じ「/index.html」ページへ進みますが、異なるページを使っても構いません。より詳細な各イベントの情報は後述します。</li>
+ <li><a href="/docs/Web/Apps/Manifest#permissions" title="https://developer.mozilla.org/en-US/docs/Web/Apps/Manifest?redirectlocale=en-US&amp;redirectslug=Apps%2FManifest#permissions"><code>permissions</code> フィールド</a> - アプリがプッシュ通知受け取りを要求することを追加。<br>
+  なぜ push 権限が必要なのか、エンドユーザーが理解できるように明確な説明を提供するのはいい考えです。</li>
+</ol>
+
+<pre class="brush: js"><span class="s2">"messages"</span><span class="o">:</span> <span class="cp">[</span>
+   <span class="p">{</span> <span class="s2">"push"</span><span class="p">:</span> <span class="s2">"/index.html"</span><span class="p">},</span>
+   <span class="p">{</span> <span class="s2">"push-register"</span><span class="p">:</span> <span class="s2">"/index.html"</span><span class="p">}</span>
+<span class="cp">]</span><span class="o">,</span>
+<span class="s2">"permissions"</span><span class="o">:</span> <span class="p">{</span>
+  <span class="s2">"push"</span><span class="o">:</span> <span class="err">{
+    </span>"description": "サッカーの試合中にゴールが決まるたび更新を受け取るのに必須",<span class="err">
+</span><span class="p">  }</span>
+<span class="err">}</span></pre>
+
+<h2 id="2._PushManager.register()_を呼んでエンドポイントをリクエストする">2. PushManager.register() を呼んでエンドポイントをリクエストする</h2>
+
+<p>アプリは <a href="/ja/docs/Web/API/PushManager/register" title="この項目についての文書はまだ書かれていません。書いてみませんか？"><code>PushManager.register</code></a> を呼び出してエンドポイントをリクエストする必要があります。いつ呼び出すかはあなたが決めなければなりません。ユーザーがログインした時やサッカーの試合を観戦することに決めた時など何らかの時点でエンドポイントを呼び出せます。以下のコードがそのための一例です。</p>
+
+<pre class="brush: js  language-js"><code class="language-js"><span class="token keyword">if</span> <span class="token punctuation">(</span>navigator<span class="token punctuation">.</span>push<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+ <span class="token comment"> // エンドポイントをリクエストします。PushManager.register() を使います。
+</span>  <span class="token keyword">var</span> req <span class="token operator">=</span> navigator<span class="token punctuation">.</span>push<span class="token punctuation">.</span><span class="token function">register<span class="token punctuation">(</span></span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  req<span class="token punctuation">.</span>onsuccess <span class="token operator">=</span> <span class="token keyword">function</span><span class="token punctuation">(</span>e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">var</span> endpoint <span class="token operator">=</span> req<span class="token punctuation">.</span>result<span class="token punctuation">;</span>
+      console<span class="token punctuation">.</span><span class="token function">log<span class="token punctuation">(</span></span><span class="token string">"新しいエンドポイント："</span> <span class="token operator">+</span> endpoint <span class="token punctuation">)</span><span class="token punctuation">;</span>
+     <span class="token comment"> // ここであなたのサーバーにエンドポイントを送信するため、何らかの呼び出しを使用します。
+</span>     <span class="token comment"> // 例えばこうです。
+</span>      <span class="token comment">/*
+      var post = XMLHTTPRequest();
+      post.open("POST", "https://your.server.here/registerEndpoint");
+      post.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      post.send("endpoint=" + encodeURIComponents( endpoint ) );
+      */</span>
+<span class="token comment">      // 明らかに .onload と .onerror ハンドラー、及びユーザー ID の情報や
+      // その他エンドポイントとユーザーを関連付ける必要のある何らかの情報を追加したくなるでしょう。
+</span>    <span class="token punctuation">}</span>
+
+   req<span class="token punctuation">.</span>onerror <span class="token operator">=</span> <span class="token keyword">function</span><span class="token punctuation">(</span>e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+     console<span class="token punctuation">.</span><span class="token function">error<span class="token punctuation">(</span></span><span class="token string">"新しいエンドポイント取得に関するエラー："</span> <span class="token operator">+</span> JSON<span class="token punctuation">.</span><span class="token function">stringify<span class="token punctuation">(</span></span>e<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+   <span class="token punctuation">}</span>
+<span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+ <span class="token comment"> // DOM 上で push が使用できないためそれ以外のことをします。
+</span><span class="token punctuation">}</span></code></pre>
+
+<h2 id="3._エンドポイントをサーバーに送信する">3. エンドポイントをサーバーに送信する</h2>
+
+<p>エンドポイントを取得したらそれをアプリケーションのサーバーに送る必要があります。方法は一つではありません。例えばメール送信や POST、PUT、果ては GET を使った送信など好きな方法で送ることができます。エンドポイントは、アプリケーションから送られるクッキーやユーザー名、その他エンドポイントとユーザーの組を特定する時に使う何らかのユーザーデータとともに保存することを推奨します。</p>
+
+<p>とは言え、サーバーに送信するのであれば以下の優れたプラクティスに従うことを推奨します。</p>
+
+<ol>
+ <li>XMLHttpRequest で送信する。</li>
+ <li>常に HTTPS を使う。さもなくば何者かがエンドポイントを傍受してアプリに通知を送り始めるかも知れない。</li>
+ <li>クッキーなど、ユーザー（やインストールしたアプリケーション）をもとにエンドポイントを照合できる物を使用する。</li>
+ <li>エンドポイントを安全に保つこと！　エンドポイントがあれば、顧客のバッテリーの浪費やサーバーとの不要な接続など迷惑なことを引き起こせます。いつでもクライアントに新しいエンドポイントを取得して古い物を捨てさせることができますが、あなたのサーバーがその変更を検知できるようにしなければならないことを覚えておいてください。</li>
+</ol>
+
+<h2 id="4._アプリに_push_通知用のメッセージハンドラーを追加する">4. アプリに push 通知用のメッセージハンドラーを追加する</h2>
+
+<p>これまでの手順でエンドポイントを設定したらようやく、アプリがメッセージハンドラーを使って <code>push</code> と <code>push-register の</code>メッセージの待ち受けを開始できます。</p>
+
+<h3 id="push_メッセージハンドラーを追加する"><code>push</code> メッセージハンドラーを追加する</h3>
+
+<p><code>push メッセージハンドラー</code>は <code>index.html</code> ファイル内や <code>main.js</code> のスクリプト内で登録することもできますが、そのスクリプトだけを持った特別な <code>push-message.html</code> ファイル内で登録することもできます。これは <code>push</code> メッセージを受け取った時にアプリが閉じている場合に便利でしょう。サイズの小さい部分的な HTML/JavaScript コードだけををロードして、アプリ全体を開く必要があるのかバックグラウンドで何かを行う必要があるのか決められるからです。<code>push メッセージハンドラーをどこに置くことに決めたにせよ、マニフェストファイルが正しい場所を示すようにしてください（前述の最初の手順参照）。</code>そうしないとアプリが更新を受け取れません。<code>push メッセージハンドラーの例は以下の通りです。</code></p>
+
+<pre class="brush: js"><span class="k">if</span> <span class="p">(</span><span class="nb">window</span><span class="p">.</span><span class="nx">navigator</span><span class="p">.</span><span class="nx">mozSetMessageHandler</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nb">window</span><span class="p">.</span><span class="nx">navigator</span><span class="p">.</span><span class="nx">mozSetMessageHandler</span><span class="p">(</span><span class="s1">'push'</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+    console.log<span class="p">(</span><span class="s1">'エンドポイントは '</span> <span class="o">+</span> <span class="nx">e</span><span class="p">.</span><span class="nx">pushEndpoint</span><span class="p">);</span>
+    console.log<span class="p">(</span><span class="s1">'新しいバージョンは '</span> <span class="o">+</span>  <span class="nx">e</span><span class="p">.</span><span class="nx">version</span><span class="p">);</span>
+    <span class="c1">//複数の pushEndpoint がある場合、ここで処理できることを</span>
+    <span class="c1">//憶えておいてください</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">pushEndpoint</span> <span class="o">===</span> <span class="nx">emailEndpoint</span><span class="p">)</span> <span class="p">{</span>
+      <span class="nx">emailHandler</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">version</span><span class="p">);</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">pushEndpoint</span> <span class="o">===</span> <span class="nx">imEndpoint</span><span class="p">)</span> <span class="p">{</span>
+      <span class="nx">imHandler</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">version</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">});</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+  <span class="c1">// メッセージハンドラーなし</span>
+<span class="p">}</span></pre>
+
+<h3 id="push-register_メッセージハンドラーを追加する"><code>push-register</code> メッセージハンドラーを追加する</h3>
+
+<div class="note">
+<p><strong>注：</strong>忘れずにこのハンドラーを追加して動作することを確認してください。アプリがこのメッセージを受け取った時にエンドポイントを再登録しないと、これ以上プッシュ通知を受け取れ<strong>なくなります</strong></p>
+</div>
+
+<p>デバイスの （UAID または User Agent Identifierと呼ばれる）内部的な iDが変わった時は、全アプリに <code>push-register</code> メッセージが送信されます。これは、プッシュサーバーが変わった、サーバーがダウンして復旧が必要、その他の事情が原因となり得ます。こうしたうちの一つが発生すると、過去のエンドポイントは不適合となるため、全エンドポイントを再登録し<strong>なければならない</strong>ことを意味します。そのため、<code>アプリは push-register</code> メッセージハンドラーを実装する必要があります。以下のサンプルコードを参照してください。</p>
+
+<pre class="brush: js"><span class="k">if</span> <span class="p">(</span><span class="nb">window</span><span class="p">.</span><span class="nx">navigator</span><span class="p">.</span><span class="nx">mozSetMessageHandler</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nb">window</span><span class="p">.</span><span class="nx">navigator</span><span class="p">.</span><span class="nx">mozSetMessageHandler</span><span class="p">(</span><span class="s1">'push-register'</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+    console.log<span class="p">(</span><span class="s1">'push-register を受信、再度エンドポイントを登録する必要あり！'</span><span class="p">);</span>
+
+<span class="c1">    <span class="kd">var</span> <span class="nx">req</span> <span class="o">=</span> <span class="nx">navigator</span><span class="p">.</span><span class="nx">push</span><span class="p">.</span><span class="nx">register</span><span class="p">();</span>
+  <span class="nx">  req</span><span class="p">.</span><span class="brush: js">onsuccess</span> <span class="o">=</span> <span class="kd">function</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">  var</span> <span class="nx">endpoint</span> <span class="o">=</span> <span class="nx">req</span><span class="p">.</span><span class="nx">result</span><span class="p">;</span>
+      console.log<span class="p">(</span><span class="s2">"新しいエンドポイント："</span> <span class="o">+</span> <span class="nx">endpoint</span> <span class="p">);
+      localStorage.endpoint = endpoint;</span>
+    <span class="p">}</span>
+
+   <span class="nx"> req</span><span class="p">.</span><span class="nx">onerror</span> <span class="o">=</span> <span class="kd">function</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+      console.error<span class="p">(</span><span class="s2">"新しいエンドポイント取得に関するエラー："</span> <span class="o">+</span> <span class="nx">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">(</span><span class="nx">e</span><span class="p">));</span>
+   <span class="p"> }</span></span>
+  <span class="p">});</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+  <span class="c1">// メッセージハンドラーなし</span>
+<span class="p">}</span></pre>
+
+<h2 id="5._エンドポイントを使ってサーバーから通知を送信する">5. エンドポイントを使ってサーバーから通知を送信する</h2>
+
+<p>一旦あなたのサーバーにエンドポイントを保持すれば、ボディを <code><span style="font-family: Consolas, Monaco, 'Andale Mono', monospace;">version=&lt;version&gt;</span></code> にした <code>HTTP PUT</code> リクエストをエンドポイントに送るだけで通知を送れます。例えばエンドポイントが</p>
+
+<pre class="language-html"><code class="language-html">https://updates.push.services.mozilla.com/update/abcdef01234567890abcdefabcdef01234567890abcdef</code></pre>
+
+<p>という URL で、バージョンが 5</p>
+
+<pre class="language-html"><code class="language-html">version=5</code></pre>
+
+<p>だとしましょう。curl を使う場合、通知はこのようにして確認します。</p>
+
+<pre class="language-html"><code class="language-html">curl -X PUT -d "version=5" https://updates.push.services.mozilla.com/update/abcdef01234567890abcdefabcdef01234567890abcdef</code></pre>
+
+<p>プッシュサーバーが正しく動いていれば、ステータスが <code>200</code>（<code>OK</code>）でボディが <code>{}</code> となっているレスポンスを受け取ります。また、メッセージは受け入れられたけれど代わりのシステムを使って処理できるということを示すステータス 202 を受け取るかも知れません。そうでなければエラーを説明する JSON つきの妥当な HTTP エラーレスポンスが返ります。</p>
+
+<div class="note">
+<p><strong>お忘れなく：</strong>Simple Push がメッセージを受け取ったというだけでそのメッセージがアプリにうまく届いたということが保証されるわけではありません。デバイスがオフラインであることから様々なネットワーク障害まで、多くの要素が通知の配信の妨げとなり得ます。わたしたちも最善を尽くしていますが、ときおり宇宙は思い通りにならないものです。</p>
+</div>
+
+<p><code>version の値</code>は増加する整数になるはずだということを覚えておいてください。もし新しいバージョンがサーバーやデバイスに保存しているものよりも低い場合は、アプリケーションは新しい通知を受け取り<em>ません</em>。バージョンは、アプリが本当に確認しておくべきなのに「見逃された」イベントがないかを表すのに便利かも知れません。また、実際のバージョンの値がそれほど重要でない場合には現在の UTC（1970 年 １ 月 1 日の真夜中からの経過秒数。GMT）を使うだけでもいいでしょう。</p>
+
+<h3 id="エンドポイントを登録解除する">エンドポイントを登録解除する</h3>
+
+<p>エンドポイントを使い終えてこれ以上通知を受けとりたくなくなった場合は、<a href="/ja/docs/Web/API/PushManager/unregister" title="この項目についての文書はまだ書かれていません。書いてみませんか？"><code>PushManager.unregister</code></a> を使って古いエンドポイントを登録解除するようお願いします。これによりデバイスがプッシュサーバーに送信する多量のデータを一掃でき、また使用しない通知をアプリに送信しないことでバッテリー使用量を抑えることにもなります。</p>
+
+<h2 id="仕様">仕様</h2>
+
+<p></p><table class="standard-table">
+ <tbody>
+  <tr>
+   <th scope="col">仕様</th>
+   <th scope="col">状態</th>
+   <th scope="col">コメント</th>
+  </tr>
+  <tr>
+   <td><a lang="en" href="https://w3c.github.io/push-api/#pushmanager-interface" class="external" hreflang="en">Push API<br><small lang="ja">PushManager の定義</small></a></td>
+   <td><span class="spec-WD">草案</span></td>
+   <td>初期定義。</td>
+  </tr>
+ </tbody>
+</table><p></p>
+
+<h2 id="ブラウザー互換性">ブラウザー互換性</h2>
+
+<p></p><div>
+<div class="hidden">このページの互換性テーブルは構造化データから作成されています。データに貢献したい場合、<a href="https://github.com/mdn/browser-compat-data">https://github.com/mdn/browser-compat-data</a> をチェックし、プルリクエストを送ってください。</div>
+
+<p></p><div class="bc-data"><a href="https://github.com/mdn/browser-compat-data" class="bc-github-link">Update compatibility data on GitHub</a><table class="bc-table bc-table-web"><thead><tr class="bc-platforms"><td></td><th colspan="6" class="bc-platform-desktop"><span>デスクトップ</span></th><th colspan="7" class="bc-platform-mobile"><span>モバイル</span></th></tr><tr class="bc-browsers"><td></td><th class="bc-browser-chrome"><span class="bc-head-txt-label bc-head-icon-chrome">Chrome</span></th><th class="bc-browser-edge"><span class="bc-head-txt-label bc-head-icon-edge">Edge</span></th><th class="bc-browser-firefox"><span class="bc-head-txt-label bc-head-icon-firefox">Firefox</span></th><th class="bc-browser-ie"><span class="bc-head-txt-label bc-head-icon-ie">Internet Explorer</span></th><th class="bc-browser-opera"><span class="bc-head-txt-label bc-head-icon-opera">Opera</span></th><th class="bc-browser-safari"><span class="bc-head-txt-label bc-head-icon-safari">Safari</span></th><th class="bc-browser-webview_android"><span class="bc-head-txt-label bc-head-icon-webview_android">Android webview</span></th><th class="bc-browser-chrome_android"><span class="bc-head-txt-label bc-head-icon-chrome_android">Android 版 Chrome</span></th><th class="bc-browser-edge_mobile"><span class="bc-head-txt-label bc-head-icon-edge_mobile">Edge Mobile</span></th><th class="bc-browser-firefox_android"><span class="bc-head-txt-label bc-head-icon-firefox_android">Android 版 Firefox</span></th><th class="bc-browser-opera_android"><span class="bc-head-txt-label bc-head-icon-opera_android">Android 版 Opera</span></th><th class="bc-browser-safari_ios"><span class="bc-head-txt-label bc-head-icon-safari_ios">iOSのSafari</span></th><th class="bc-browser-samsunginternet_android"><span class="bc-head-txt-label bc-head-icon-samsunginternet_android">Samsung Internet</span></th></tr></thead><tbody><tr><th scope="row">基本対応 <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect1"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect2"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect3"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/supportedContentEncodings"><code>supportedContentEncodings</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              60</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect4"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect5"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              47</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              60</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect6"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              47</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/getSubscription"><code>getSubscription</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect7"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect8"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect9"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/permissionState"><code>permissionState</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect10"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect11"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect12"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/subscribe"><code>subscribe</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome bc-has-history"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect13"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> The <code>options</code> parameter with a <code>applicationServerKey</code> value is required.</dd></dl></section></td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect14"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect15"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect16"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/hasPermission"><code>hasPermission</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect17"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect18"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect19"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/register"><code>register</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect20"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect21"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect22"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/registrations"><code>registrations</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect23"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect24"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect25"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr><tr><th scope="row"><a href="/docs/Web/API/PushManager/unregister"><code>unregister</code></a> <div class="bc-icons"><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的</span><i class="ic-experimental"></i></abbr></div></th><td class="bc-supports-yes bc-browser-chrome"><span class="bc-browser-name">Chrome</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge bc-has-history"><span class="bc-browser-name">Edge</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div><section class="bc-history" id="sect26"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              16<div class="bc-icons"><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> </div></dt><dd><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>無効</span><i class="ic-disabled"></i></abbr> From version 16: this feature is behind the <code>Enable service workers</code> preference.</dd><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              17<div class="bc-icons"></div></dt><dd></dd></dl></section></td><td class="bc-supports-yes bc-browser-firefox bc-has-history"><span class="bc-browser-name">Firefox</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect27"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              44<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Service workers (and <a href="https://developer.mozilla.org/docs/Web/API/Push_API">Push</a>) have been disabled in the <a href="https://www.mozilla.org/en-US/firefox/organizations/">Firefox 45 and 52 Extended Support Releases</a> (ESR.)</dd></dl></section></td><td class="bc-supports-no bc-browser-ie"><span class="bc-browser-name">IE</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-opera"><span class="bc-browser-name">Opera</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari"><span class="bc-browser-name">Safari</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-no bc-browser-webview_android"><span class="bc-browser-name">WebView Android</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-chrome_android"><span class="bc-browser-name">Chrome Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              42</td><td class="bc-supports-yes bc-browser-edge_mobile"><span class="bc-browser-name">Edge Mobile</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              あり</td><td class="bc-supports-yes bc-browser-firefox_android bc-has-history"><span class="bc-browser-name">Firefox Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div><section class="bc-history" id="sect28"><dl><dt class="bc-supports-yes bc-supports"><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              48<div class="bc-icons"><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> </div></dt><dd><abbr class="only-icon" title="実装ノートを参照してください"><span>補足</span><i class="ic-footnote"></i></abbr> Push enabled by default.</dd></dl></section></td><td class="bc-supports-yes bc-browser-opera_android"><span class="bc-browser-name">Opera Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              29</td><td class="bc-supports-no bc-browser-safari_ios"><span class="bc-browser-name">Safari iOS</span><abbr class="bc-level-no only-icon" title="未対応">
+                <span>未対応</span>
+              </abbr>
+              なし</td><td class="bc-supports-yes bc-browser-samsunginternet_android"><span class="bc-browser-name">Samsung Internet Android</span><abbr class="bc-level-yes only-icon" title="完全対応">
+                <span>完全対応</span>
+              </abbr>
+              4.0</td></tr></tbody></table><section class="bc-legend" id="sect29"><h3 class="offscreen" id="凡例">凡例</h3><dl><dt><span class="bc-supports-yes bc-supports">
+                <abbr class="bc-level bc-level-yes only-icon" title="完全対応">
+                 <span>完全対応</span>
+
+                </abbr></span></dt><dd>完全対応</dd><dt><span class="bc-supports-no bc-supports">
+                <abbr class="bc-level bc-level-no only-icon" title="未対応">
+                 <span>未対応</span>
+
+                </abbr></span></dt><dd>未対応</dd><dt><abbr class="only-icon" title="実験的。動作が変更される可能性があります。"><span>実験的。動作が変更される可能性があります。</span><i class="ic-experimental"></i></abbr></dt><dd>実験的。動作が変更される可能性があります。</dd><dt><abbr class="only-icon" title="実装ノートを参照してください。"><span>実装ノートを参照してください。</span><i class="ic-footnote"></i></abbr></dt><dd>実装ノートを参照してください。</dd><dt><abbr class="only-icon" title="ユーザーが明示的にこの機能を有効にしなければなりません。"><span>ユーザーが明示的にこの機能を有効にしなければなりません。</span><i class="ic-disabled"></i></abbr></dt><dd>ユーザーが明示的にこの機能を有効にしなければなりません。</dd></dl></section></div><p></p>
+</div><p></p>
+
+<h2 id="関連項目">関連項目</h2>
+
+<ul>
+ <li><a href="/ja/docs/Web/API/PushManager" title="Push API の PushManager インターフェースは、3rd パーティーのサーバーからの通知だけではなく、プッシュ通知へのリクエスト URL を取得するための方法を提供します。"><code>PushManager</code></a></li>
+ <li><a href="https://developer.mozilla.org/ja/docs/Web/API/Navigator.push">Window.navigator.push</a></li>
+ <li><a href="https://github.com/frsela/pushJSlibrary" title="https://github.com/frsela/pushJSlibrary">pushJSLibrary。この API を実装していないブラウザー向けのプッシュ shim</a></li>
+ <li><a href="https://wiki.mozilla.org/WebAPI/SimplePush">SimplePush の元々の設計と議論のページ</a>。</li>
+</ul>

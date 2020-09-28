@@ -1,0 +1,397 @@
+<p> </p>
+
+<div class="overheadIndicator draft">
+<p><strong>Draft</strong><br>
+ This page is not complete.</p>
+</div>
+
+<p> </p>
+
+<p> </p>
+
+<div class="overheadIndicator nonStandard nonStandardHeader">
+<p><strong>Non-standard</strong><br>
+ This feature is non-standard and is not on a standards track. Do not use it on production sites facing the Web: it will not work for every user. There may also be large incompatibilities between implementations and the behavior may change in the future.</p>
+</div>
+
+<p> </p>
+
+<p> </p>
+
+<div class="warning">
+<p style="text-align: center;">This API is available on <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a> for <a href="/en-US/docs/Mozilla/Firefox_OS/Security/Application_security#App_Types">internal applications</a> only.</p>
+</div>
+
+<p> </p>
+
+<h2 id="Proposal_motivation">Proposal motivation</h2>
+
+<ul>
+ <li>
+  <div>Add data usage alarms.</div>
+ </li>
+ <li>
+  <div>Add support to multiple SIMs.</div>
+ </li>
+ <li>
+  <div>Better support to time clock changes.</div>
+ </li>
+ <li>
+  <div>Allow to request stats without boundaries.</div>
+ </li>
+ <li>
+  <div>Clear stats for a given interface / SIM.</div>
+ </li>
+ <li>
+  <div>Add per-app network usage support</div>
+ </li>
+</ul>
+
+<h2 id="Summary">Summary</h2>
+
+<p>The Network Stats API allows to monitor data usage (system/per-app), exposes this data to certified applications and allows to set and manage data usage alarms. Data usage alarms can be set at a desired threshold for any available network interface.</p>
+
+<p>Data and alarms can be access through the <a href="/en-US/docs/Web/API/Window/navigator/mozNetworkStats" title="The MozNetworkStatsManager interface provides methods and properties to monitor data usage."><code>navigator.mozNetworkStats</code></a> which is an instance of the <a href="/en-US/docs/Web/API/MozNetworkStatsManager" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager</code></a> interface.</p>
+
+<h2 id="Accessing_data">Accessing data</h2>
+
+<p>Information about the volume of received and sent data are automatically stored by the system/application. The method to access internal data is <a href="/en-US/docs/Web/API/MozNetworkStatsManager/find" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.find()</code></a>. This method expects the following parameters:</p>
+
+<ul>
+ <li><code style="font-size: 14px;">start</code>: A Date object representing the beginning of data measurement.</li>
+ <li><code style="font-size: 14px;">end</code>: A Date object representing the end of data measurement.</li>
+ <li><font face="Courier New, Andale Mono, monospace"><span style="line-height: normal;">networkInterface</span></font>: The origin of the data. It can be <code style="font-size: 14px;">wifi or</code> <code style="font-size: 14px;">mobile</code>. To know in advance which kind of origin is available, the <a href="/en-US/docs/Web/API/MozNetworkStatsManager/availableInterfaces" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.availableInterfaces</code></a> property return an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Array" title="/en-US/docs/JavaScript/Reference/Global_Objects/Array"><code style="font-size: 14px;">Array</code></a> of nsIDOMNetworkStatsInterface representing each supported origin. The nsIDOMNetworkStatsInterface will determine the type of the connection (<code><code style="font-size: 14px;">wifi or</code> mobile)</code> and for mobile connections it will identify the SIM with an Id.</li>
+ <li>manifestURL: A string of a manifestURL for an application. This is an optional parameter, if manifestURL is provided, the target will be the data for the specific application. Otherwise the target is the system data.</li>
+</ul>
+
+<p>When called, this method return a <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> to handle the success or failure of the information request. In case of success the request's <code style="font-size: 14px;">result</code> is a <a href="/en-US/docs/Web/API/MozNetworkStats" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStats</code></a> object.</p>
+
+<pre class="brush: js" style="font-size: 14px;">var networkInterfaces = navigator.mozNetworkStats.availableInterfaces;
+
+var today = new Date();
+var yesterday = new Date(today.getTime() - (24 * 60 * 60 * 1000));
+
+var request = navigator.mozNetworkStats.find(networkIfaces[0], theDayBefore, today);
+
+request.onsuccess = function () {
+  console.log("Data received today: " + request.result.data[1].rxBytes + " bytes");
+  console.log("Data sent today: " + request.result.data[1].txBytes + " bytes");
+  console.log("Data received yesterday: " + request.result.data[0].rxBytes + " bytes");
+  console.log("Data sent yesterday: " + request.result.data[0].txBytes + " bytes");
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: " + request.error);
+}
+</pre>
+
+<pre class="brush: js" style="font-size: 14px;">var networkInterfaces = navigator.mozNetworkStats.availableInterfaces;
+
+var today = new Date();
+var yesterday = new Date(today.getTime() - (24 * 60 * 60 * 1000));
+
+var request = navigator.mozNetworkStats.find(networkIfaces[0], theDayBefore, today, "app://browser.gaiamobile.org/manifest.webapp");
+
+request.onsuccess = function () {
+  console.log("Data received today: " + request.result.data[1].rxBytes + " bytes");
+  console.log("Data sent today: " + request.result.data[1].txBytes + " bytes");
+  console.log("Data received yesterday: " + request.result.data[0].rxBytes + " bytes");
+  console.log("Data sent yesterday: " + request.result.data[0].txBytes + " bytes");
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: " + request.error);
+}
+</pre>
+
+<p>Note that, the application manifestURL can be retrieved from <a href="/en-US/docs/Web/API/MozApps" title="The documentation about this has not yet been written; please consider contributing!"><code>mozApps</code></a> API.</p>
+
+<h2 id="Clearing_data_stats">Clearing data stats</h2>
+
+<p>Historical data can be deleted through the method <a href="/en-US/docs/Web/API/MozNetworkStatsManager/clearStats" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.clearStats()</code></a>, which expects an optional <code>networkInterface</code> object<code> </code><a href="/en-US/docs/Web/API/NsIDOMNetworkStatsInterface" title="The documentation about this has not yet been written; please consider contributing!"><code>nsIDOMNetworkStatsInterface</code></a>. If <code>networkInterface</code> is null, the data of all network interfaces is deleted.<span style="line-height: 21px;"> </span></p>
+
+<p>When called, this method returns a <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> to handle the success or failure of the information request. In case of success the request's <code style="font-size: 14px;">result</code> is <code>true</code>.</p>
+
+<pre class="brush: js" style="font-size: 14px;">var networkInterfaces = navigator.mozNetworkStats.availableInterfaces;
+
+var request = navigator.mozNetworkStats.clearStats(networkInterfaces[0]);
+
+request.onsuccess = function () {
+  console.log("Data cleared successfully");
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: ", request.error);
+}</pre>
+
+<h2 id="Sampling_over_time">Sampling over time</h2>
+
+<p>To get a vision of the data usage over time, the information about the amount of data is stored in chunk, each chunk is a value representing the amount of data exchange since the last chunk was stored.</p>
+
+<p>When requesting for the stats, the resulting <a href="/en-US/docs/Web/API/MozNetworkStats" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStats</code></a> object contain as much data chunk as possible for the interval define between the <code style="font-size: 14px;">start</code> and <code style="font-size: 14px;">end</code> date. The total number of chunks depend on two parameters (note that those parameters are read only):</p>
+
+<ul>
+ <li><a href="/en-US/docs/Web/API/MozNetworkStatsManager/sampleRate" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.sampleRate</code></a>, which represent the time in second between two chunk.</li>
+ <li><a href="/en-US/docs/Web/API/MozNetworkStatsManager/maxStorageAge" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.maxStorageAge</code></a>, which represent the maximum number of chunk for each type of connection.</li>
+</ul>
+
+<p>Each data chunk is a <a href="/en-US/docs/Web/API/MozNetworkStatsData" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsData</code></a> object, and all the data chunks for a given time frame are available through the <a href="/en-US/docs/Web/API/MozNetworkStats/data" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStats.data</code></a> property, which is an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Array" title="/en-US/docs/JavaScript/Reference/Global_Objects/Array"><code style="font-size: 14px;">Array</code></a> of <a href="/en-US/docs/Web/API/MozNetworkStatsData" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsData</code></a> objects.</p>
+
+<pre class="brush: js" style="font-size: 14px;">var rate = navigator.mozNetworkStats.sampleRate;
+var max  = navigator.mozNetworkStats.maxStorageAge;
+
+var config = {
+  start: new Date((new Date()).getTime() - (rate * max)), // This allows to get all the available data chunks.
+  end  : new Date()
+};
+
+var request = navigator.mozNetworkStats.find(config);
+
+request.onsuccess = function () {
+  var total = {
+    receive: 0,
+    send   : 0
+  };
+
+  this.result.forEach(function (chunk) {
+    total.receive += chunk.rxBytes;
+    total.send    += chunk.txBytes;
+  });
+
+  console.log("Since: " + config.start.toString());
+  console.log("Data received: " + (total.receive / 1000).toFixed(2) + "Kb");
+  console.log("Data sent: " + (total.send / 1000).toFixed(2) + "Kb")
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: " + request.error);
+}</pre>
+
+<h2 id="Add_data_usage_alarm">Add data usage alarm</h2>
+
+<p>The API allows to set data usage alarms and receive a notification when a threshold is reached in some network interface. The <a href="/en-US/docs/Web/API/MozNetworkStatsManager/addUsageAlarm" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.addUsageAlarm()</code></a> method expects the <code>networkInterface</code> parameter of type <a href="/en-US/docs/Web/API/NsIDOMNetworkStatsInterface" title="The documentation about this has not yet been written; please consider contributing!"><code>nsIDOMNetworkStatsInterface</code></a>, the <code>threshold</code> that will trigger the alarm and a optional configuration object, which can contain the following properties:</p>
+
+<ul>
+ <li><code style="font-size: 14px;">alarmStart</code>: A Date object representing the beginning of threshold measurement. If not provided, data measurement starts counting since the last data clear or the beginning.</li>
+ <li><font face="Courier New, Andale Mono, monospace"><span style="line-height: normal;">data</span></font>: A cloneable object to pass to the callback.</li>
+</ul>
+
+<p>When called, this method return a <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> to handle the success or failure of the information request. In case of success the request's <code style="font-size: 14px;">result</code> is the id of the alarm.</p>
+
+<pre class="brush: js" style="font-size: 14px;">var networkIfaces = navigator.mozNetworkStats.availableInterfaces;
+
+var options = {
+  alarmStart: new Date((new Date()).getTime() - 24 * 60 * 60 * 1000)
+};
+
+var request = navigator.mozNetworkStats.addUsageAlarm(config[0], 10000, options);
+
+request.onsuccess = function () {
+  console.log("Alarm id: " + request.result);
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: " + request.error);
+}</pre>
+
+<p>Once the alarm is set, when the threshold is reached a notification is sent via system message containing a <a href="/en-US/docs/Web/API/NsIDOMMozUsageAlarm" title="The documentation about this has not yet been written; please consider contributing!"><code>nsIDOMMozUsageAlarm</code></a> object. The system message type is <code>networkstats-alarm</code> and requires the <code style="font-size: 14px;">networkstats-manage permission.</code></p>
+
+<h2 id="Remove_data_usage_alarms">Remove data usage alarms</h2>
+
+<p>To remove data usage alarms the <a href="/en-US/docs/Web/API/MozNetworkStatsManager/removeUsageAlarms" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.removeUsageAlarms()</code></a> method expects the <code>id</code> of the alarm to remove. If the <code>id</code> is not provided then all the alarms for the <strong>caller origin</strong> are removed.</p>
+
+<p>When called, this method return a <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> to handle the success or failure of the information request. In case of success the request's <code style="font-size: 14px;">result</code> is <code>true</code>.</p>
+
+<h2 id="Get_data_usage_alarms">Get data usage alarms</h2>
+
+<p>To get all data usage alarms the <a href="/en-US/docs/Web/API/MozNetworkStatsManager/getAllUsageAlarms" title="The documentation about this has not yet been written; please consider contributing!"><code>mozNetworkStatsManager.getAllUsageAlarms()</code></a> method expects the optional <code style="font-size: 14px;">networkInterface</code> parameter of type <a href="/en-US/docs/Web/API/NsIDOMNetworkStatsInterface" title="The documentation about this has not yet been written; please consider contributing!"><code>nsIDOMNetworkStatsInterface</code></a> to retrieve the alarms for one network interface. If no parameter is passed all alarms are returned for the requester origin.</p>
+
+<p>When called, this method return a <a href="/en-US/docs/Web/API/DOMRequest" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMRequest</code></a> to handle the success or failure of the information request. In case of success the request's <code style="font-size: 14px;">result</code> is an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Array" title="/en-US/docs/JavaScript/Reference/Global_Objects/Array"><code style="font-size: 14px;">Array</code></a> of <a href="/en-US/docs/Web/API/NsIDOMMozUsageAlarm" title="The documentation about this has not yet been written; please consider contributing!"><code>nsIDOMMozUsageAlarm</code></a> objects.</p>
+
+<pre class="brush: js" style="font-size: 14px;">var request = navigator.mozNetworkStats.getUsageAlarms();
+
+request.onsuccess = function () {
+  for (var i = 0; i &lt; request.result.length; i++) {
+    var alarm = request.result[i];
+    console.log("Alarm " + alarm.id + " for connection " + alarm.iface + " at " + alarm.threshold);
+  }
+}
+
+request.onerror = function () {
+  console.log("Something goes wrong: " + request.error);
+}</pre>
+
+<h2 id="IDLs">IDLs</h2>
+
+<h3 id="nsIDOMMozNetworkStatsManager">nsIDOMMozNetworkStatsManager</h3>
+
+<pre class="brush: js" style="font-size: 14px;">/**
+ * NetworkStats API registers transmitted and received bytes per each interface:
+ * at the current moment wi-fi or mobile.
+ *
+ * Different mobile statistics and alarms are hold per different interfaces
+ * in order to support SIM switching and multi SIM scenarios.
+ */
+
+dictionary AlarmUsageOptions
+{
+  jsval alarmStart;              // date
+  jsval data;
+};
+
+[scriptable,  uuid(46526afc-a120-4fd5-87b6-f8134b071106)]
+interface nsIDOMMozNetworkStatsManager : nsISupports
+{
+
+  /**
+   * Constants for known interface types
+   */
+  const long WIFI = 1;
+  const long MOBILE = 2;
+
+  /**
+   * Find samples between two dates start and end.
+   *
+   * Find method get samples with userTimestamp between start and end,
+   * both included.
+   *
+   * If manifestURL is provided, Find method will retrieve per-app usage,
+   * otherwise the target will be system usage.
+   *
+   * If success, the request result will be an nsIDOMMozNetworkStats object.
+   */
+  nsIDOMDOMRequest find(in nsIDOMNetworkStatsInterfaces networkInterface,
+                        in jsval start,
+                        in jsval end
+                        [optional] in DOMString manifestURL);
+
+  /**
+   * Remove all stats related with the provided interface from DB.
+   * If interface is not provided, data of those interfaces returned by
+   * availableInterfaces is cleared.
+   */
+  nsIDOMDOMRequest clearStats([optional] in nsIDOMNetworkStatsInterface networkInterface);
+
+  /**
+   * Install an usage alarm on an interface. The interface must be in
+   * availableInterfaces or an InvalidInterface error is passed in the
+   * onError of the DOMRequest.
+   *
+   * When total data usage reaches threshold bytes, a system message is
+   * sent to the application. Optional parameter data must be a cloneable
+   * object and it is included inside the alarm system message.
+   *
+   * If success, the result field of the request keeps the alarm Id.
+   *
+   * Optional parameter options allows to set a validity interval for the
+   * alarm and to include optional data that will be passed to the message handler.
+   */
+  nsIDOMDOMRequest               addUsageAlarm(in nsIDOMNetworkStatsInterface networkInterface,
+                                               in long threshold,
+                                               [optional] in jsval options /* AlarmUsageOptions */);
+
+  /**
+   * Obtain all alarms for those interfaces in availableInterfaces.
+   * If an interface is provided, only retrieves the alarms
+   * for that interface. The interface must be one of those in
+   * availableInterfaces or an InvalidInterface error is passed in the
+   * onError of the DOMRequest.
+   *
+   * If success, the request result will be an nsIDOMMozUsageAlarm object.
+   */
+  nsIDOMDOMRequest               getAllUsageAlarms([optional] in nsIDOMNetworkStatsInterface networkIface);
+
+  /**
+   * Remove all usage alarms. If an alarmId is provided, then only that
+   * alarm is removed.
+   */
+  nsIDOMDOMRequest               removeUsageAlarms([optional] in long alarmId);
+
+  /**
+   * Return currently available interfaces.
+   */
+  readonly attribute jsval availableInterfaces; // array of nsIDOMNetworkStatsInterface
+
+  /**
+   * Minimum time in milliseconds between samples stored in the database.
+   */
+  readonly attribute long  sampleRate;
+
+  /**
+   * Time in milliseconds recorded by the API until present time. All samples
+   * older than maxStorageAge from now are deleted.
+   */
+  readonly attribute long  maxStorageAge;
+};
+</pre>
+
+<h3 id="nsIDOMMozUsageAlarm">nsIDOMMozUsageAlarm</h3>
+
+<pre class="brush: js" style="font-size: 14px;">[scriptable, builtinclass, uuid(2dcd5394-ad90-45d0-a755-3da80095f22f)]
+interface nsIDOMMozUsageAlarm : nsISupports
+{
+  readonly attribute unsigned long   alarmId;
+  readonly attribute DOMString       iface;
+  readonly attribute long            threshold;
+  readonly attribute jsval           data;
+  readonly attribute jsval           alarmStart;
+};
+</pre>
+
+<h3 id="nsIDOMMozNetworkStatsInterface">nsIDOMMozNetworkStatsInterface</h3>
+
+<pre class="brush: js" style="font-size: 14px;">/**
+ * Represents a data interface for which the manager is recording statistics.
+ */
+[scriptable, uuid(f540615b-d803-43ff-8200-2a9d145a5645)]
+interface nsIDOMNetworkStatsInterface : nsISupports
+{
+  attribute long      type;
+  attribute long      id;
+};
+</pre>
+
+<h3 id="nsIDOMMozNetworkStatsData">nsIDOMMozNetworkStatsData</h3>
+
+<pre class="brush: js" style="font-size: 14px;">[scriptable, builtinclass, uuid(3b16fe17-5583-483a-b486-b64a3243221c)]
+interface nsIDOMMozNetworkStatsData : nsISupports
+{
+  readonly attribute unsigned long   rxBytes;   // Received bytes.
+  readonly attribute unsigned long   txBytes;   // Sent bytes.
+  readonly attribute jsval           date;      // Date.
+};
+</pre>
+
+<h3 id="nsIDOMMozNetworkStats">nsIDOMMozNetworkStats</h3>
+
+<pre class="brush: js" style="font-size: 14px;">[scriptable, builtinclass, uuid(037435a6-f563-48f3-99b3-a0106d8ba5bd)]
+interface nsIDOMMozNetworkStats : nsISupports
+{
+  /**
+   * Interface for which the returned data belongs to.
+   */
+  readonly attribute nsIDOMNetworkStatsInterface          networkInterface;
+
+  /**
+   * Stats for the interface. Samples are sorted by timestamp, increasing.
+   */
+  readonly attribute jsval              data; // array of NetworkStatsData.
+
+  /**
+   * Application ManifestURL
+   */
+  readonly attribute DOMString manifestURL;
+
+  /**
+   * Timestamp of the boundaries.
+   */
+  readonly attribute jsval   start;
+  readonly attribute jsval   end;
+};
+</pre>
+
+<h2 id="Specification">Specification</h2>
+
+<p>Not part of any specification.</p>
+
+<p> </p>

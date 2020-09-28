@@ -1,0 +1,154 @@
+<p>
+</p>
+<h3 id="Introduction"> Introduction </h3>
+<p>I've grown frustrated with CVS; specifically, I want to be able to have local branches where I can checkpoint large patches, I want to be able to do fast/disconnected diffs, and I want some notion of an atomic changeset instead of random sets of files.
+</p><p>I experimented with a bunch of version control systems (svk, arch/baz, darcs) and so far <a class="external" href="http://www.venge.net/monotone/">monotone</a> seems to be a good fit for a VCS to use locally in conjunction with CVS. This page describes the particular setup that I use; some familiarity with the monotone tutorial and documentation at the above URL would be useful.
+</p>
+<h3 id="Overview"> Overview </h3>
+<p>The basic idea is to set up a pristine tree that you use for CVS pulls and checkins, and that you also check in to your local monotone repository. This tree/branch becomes the gateway between CVS and monotone.
+</p><p>Start a fresh Mozilla tree pull somewhere; for this document we'll use &lt;tt&gt;pristine-cvs/mozilla&lt;/tt&gt;. Include all the MOZ_CO_PROJECTs you're likely to use (it's easy to add new ones later); I'd suggest "mail,browser,calendar,xulrunner". Let that run while you do the next setup step. I have a script called &lt;tt&gt;pull_all&lt;/tt&gt; that I place the options in as well as the make -f client.mk bit, because you'll be running this command often to update the CVS tree.
+</p>
+<h3 id="Monotone_Setup"> Monotone Setup </h3>
+<p>This section will go over the initial setup of monotone, getting you to a point where you can create local working trees from your monotone repository.
+</p><p>Download and install monotone from <a class="external" href="http://www.venge.net/monotone/">the monotone web site</a>. You really want 0.21 or newer, as it includes patches to the diff output that make it recognizable by bugzilla.
+</p><p>Note that for this document, I'll assume you have an &lt;tt&gt;alias mtn=monotone&lt;/tt&gt; set up, because the long version is 5 characters too many to type often.
+</p>
+<h4 id="Repository_Creation"> Repository Creation </h4>
+<p>Set up a monotone database to hold your Mozilla repository:
+</p>
+<pre class="eval">% mtn --db=~/monotone/mozilla.db db init
+</pre>
+<p>You can use any path you'd like for the .db file.
+</p><p>Generate a key you'll use for yourself in this database:
+</p>
+<pre class="eval">% mtn --db=~/monotone/mozilla.db genkey <a class=" link-mailto" href="mailto:vladimir@pobox.com">vladimir@pobox.com</a>
+monotone: generating key-pair <a class=" link-mailto" href="mailto:'vladimir@pobox.com">'vladimir@pobox.com</a>'
+enter passphrase for key ID [<a class=" link-mailto" href="mailto:vladimir@pobox.com">vladimir@pobox.com</a>]:
+confirm passphrase for key ID [<a class=" link-mailto" href="mailto:vladimir@pobox.com">vladimir@pobox.com</a>]:
+monotone: storing key-pair <a class=" link-mailto" href="mailto:'vladimir@pobox.com">'vladimir@pobox.com</a>' in database
+</pre>
+<p>Don't use a very secure passphrase, since to aovid having to type it every time you do something to the repository, you'll add it to &lt;tt&gt;~/.monotone/monotonerc&lt;/tt&gt;. Add the following lines to that file:
+</p>
+<pre class="eval">function get_passphrase(keypair_id)
+  return "myphrase"
+end
+
+function use_inodeprints()
+  return true
+end
+</pre>
+<p>The &lt;tt&gt;use_inodeprints&lt;/tt&gt; bit tells monotone to use a faster way of deciding whether a file may have been modified, instead of always computing the full SHA1 hash for each file. (Note that &lt;tt&gt;monotonerc&lt;/tt&gt; is a lua file; see the monotone documentation for more things that you can use.)
+</p>
+<h4 id="Tree_Import"> Tree Import </h4>
+<p>By this point, your CVS pull should be finished; if it isn't, wait for it to finish before continuing. We're about to put the entire tree you just pulled into monotone. First, set up that directory for use as a monotone working copy:
+</p>
+<pre class="eval">% cd ~/pristine-cvs/mozilla
+% mtn --db=~/monotone/mozilla.db setup --branch="org.mozilla.cvs"
+</pre>
+<p>Here --branch specifies a branch in the database where to hold CVS syncs. I suggest you use &lt;tt&gt;org.mozilla.cvs&lt;/tt&gt; as the branch name to hold the trunk of Mozilla's CVS.
+</p><p>Now we need to add everything into the monotone repository. Note that after a working copy is set up, you no longer need to tell monotone the --db; it's stored inside the MT directory at the top level of your repository. Monotone will ignore CVS directories, so we just want to add everything in this directory recursively
+</p>
+<pre class="eval">% mtn add -R . &gt;&amp; /dev/null
+</pre>
+<p>It'll print a line for every file added, so you'll want to redirect both stdout and stderr to either a file that you can examine for errors or to /dev/null; the way to do that is dependant upon your shell (the above is the zsh syntax).
+</p><p>Now we need to commit this data; </p>
+<pre class="eval">% mtn ci -m "CVS sync"
+monotone: beginning commit on branch 'org.mozilla.cvs'
+monotone: committed revision d0b53ac023f57f97cd6d86e21438c05e4c3485ef
+</pre>
+<h4 id="Setting_up_a_working_copy"> Setting up a working copy </h4>
+<p>Now you need to pull from the &lt;tt&gt;org.mozilla.cvs&lt;/tt&gt; branch you just created to another location; we'll use &lt;tt&gt;~/work/mozilla&lt;/tt&gt;
+</p>
+<pre class="eval">% cd ~/work
+% mtn --db=~/monotone/mozilla.db co --branch=org.mozilla.cvs mozilla
+...
+% cd mozilla
+</pre>
+<p>You'll notice now that the mozilla/ directory has a MT directory and no CVS directories. This is where you'll do your development. Note that this tree is still on the org.mozilla.cvs branch; we'll want to change that to another branch name. There isn't any way to commit a branch with no changes right now, so you'll have to make some change in your tree first (this is a bit annoying, yes). When you do, commit to a new branch.
+</p><p>I suggest that you use &lt;tt&gt;org.mozilla.cvs.username&lt;/tt&gt; so that if people ever set up a monotone server, their branch names won't collide (other than org.mozilla.cvs, which everyone should be pulling from the same source anyway), For any other branches, use &lt;tt&gt;org.mozilla.cvs.username.feature1&lt;/tt&gt; and similar.
+</p>
+<pre class="eval">% mtn ci --branch=org.mozilla.cvs.vladimir -m "Branch start"
+monotone: beginning commit on branch 'org.mozilla.cvs.vladimir'
+monotone: committed revision da7404c9545106691d9e35df66795579b3a71a12
+</pre>
+<h3 id="Merging_changes_from_CVS"> Merging changes from CVS </h3>
+<p>To update from CVS, you'll follow a similar pattern as the initial pristine tree import. First, you need to update your tree from CVS via &lt;tt&gt;pull_all&lt;/tt&gt;. However, as some files may have been deleted in CVS, you need to tell monotone about those files. After that, you need to tell monotone about any newly-added files, and finally commit:
+</p>
+<pre class="eval">% cd ~/pristine-cvs/mozilla
+% pull_all
+% mtn drop `mtn list missing`
+% mtn add .
+% mtn ci -m "CVS sync"
+</pre>
+<p>Now your CVS tree and the &lt;tt&gt;org.mozilla.cvs&lt;/tt&gt; branch are up to date, but your working branches don't have the new information. You need to propagate the new changes to your working branch(es):
+</p>
+<pre class="eval">% mtn propagate org.mozilla.cvs org.mozilla.cvs.username
+</pre>
+<p>That'll churn for a while, and prompt you to resolve conflicts between the two branches. For resolving conflicts, monotone will try to execute <a class="external" href="http://meld.sf.net/">meld</a>, <a class="external" href="http://xxdiff.sf.net/">xxdiff</a>, and then either emacs ediff merge mode or vim merge mode, in that order. I suggest you install either meld or xxdiff (or try both -- meld lets you edit files in-place, but it doesn't let monotone specify the display name to use for the files, so it gets a little confusing which one you need to edit/save; xxdiff seems a bit more robust, but it doesn't let you edit files).
+</p><p>Note that this operates on data already in the repository; it does not merge with uncommitted work in your working copy. To do that, you need to run update:
+</p>
+<pre class="eval">% cd ~/work/mozilla
+% mtn update
+</pre>
+<p>This will bring your tree up to date with respect to the new &lt;tt&gt;org.mozilla.cvs.username&lt;/tt&gt; branch, which has the new changes from &lt;tt&gt;org.mozilla.cvs&lt;/tt&gt;.
+</p>
+<h3 id="Merging_changes_to_CVS"> Merging changes to CVS </h3>
+<p>I suggest that before you do this, you pull from CVS, to avoid any out-of-date errors when doing the CVS commit.
+</p>
+<h4 id="Using_propagate"> Using propagate </h4>
+<p>Moving your changes the other way is essentially the inverse of the other operation. First, make sure that all the changes that you want are committed to your org.mozilla.cvs.username branch. Note that this will propagate the entire branch, which may not be what you want if you have multiple independent changes in one tree:
+</p>
+<pre class="eval">% mtn propagate org.mozilla.cvs.username org.mozilla.cvs
+% cd ~/pristine-cvs/mozilla
+% mtn update
+</pre>
+<h4 id="Using_diffpatch"> Using diff/patch </h4>
+<p>If you want to move just a small change, it may be simpler to just make a diff and patch it into your CVS tree. Since monotone works with file contents and not some attached version, you won't confuse monotone in doing this. Note that this won't preserve files added or dropped; I hope to have some patches to monotone to do this at some point.
+</p>
+<pre class="eval">% cd ~/work/mozilla
+% mtn diff layout &gt; ../layout.patch
+% cd ~/pristine-cvs/mozilla
+% patch -p0 &lt; ~/work/layout.patch
+% mtn ci -m "added layout.patch"
+</pre>
+<h4 id="Committing_to_CVS"> Committing to CVS </h4>
+<p>This gets a bit convoluted; if you didn't delete or add any files, then you can just cvs commit at this point. If you did add files, then you need to tell cvs about those. <a class="external" href="http://rig.vlad1.com/~vladimir/misc/mtn2cvs">mtn2cvs</a> does the opposite of cvs2mtn (albeit much more slowly -- it does one cvs add or remove per file, which can be really slow; it should combine its arguments into one large add or remove command). As input, it wants a monotone revision file. You can obtain one in this manner:
+</p>
+<pre class="eval">% cd ~/pristine-cvs/mozilla
+% mtn cat revision
+new_manifest [ca1ea8d5db9e7d127614e0c039d4102199b36d6d]
+
+old_revision [29b1e06227cf384754459fe8be3ad1c785f9f4cf]
+old_manifest [ca1ea8d5db9e7d127614e0c039d4102199b36d6d]
+</pre>
+<p>Note that this is the revision file for the current working copy with respect to the &lt;tt&gt;org.mozilla.cvs&lt;/tt&gt; branch. There are no changes in the working copy. We want the old_revision:
+</p>
+<pre class="eval">% mtn cat revision 29b1
+monotone: expanded selector '29b' -&gt; 'i:29b'
+monotone: expanding selection '29b'
+monotone: expanded to '29b1e06227cf384754459fe8be3ad1c785f9f4cf'
+new_manifest [ca1ea8d5db9e7d127614e0c039d4102199b36d6d]
+
+old_revision [da7404c9545106691d9e35df66795579b3a71a12]
+old_manifest [fdc6d008e635a2bf60d15f8e6f30a783ef6c5bd9]
+
+delete_file "def"
+
+add_file "foo"
+
+patch "foo"
+ from []
+   to [da39a3ee5e6b4b0d3255bfef95601890afd80709]
+</pre>
+<p>So, you can run:
+</p>
+<pre class="eval">% mtn cat revision 29b1 | mtn2cvs
+</pre>
+<p>And finally
+</p>
+<pre class="eval">% cvs commit -m "b=12345, fix layout stuff, r=lumpy"
+</pre>
+<h3 id="Future_Enhancements"> Future Enhancements </h3>
+<p>There's an experimental &lt;tt&gt;cvssync&lt;/tt&gt; branch of monotone that can sync directly to/from CVS repositories. It can't be used with the mozilla repository yet because of the way we merge together a dozen different subdirectories into the mozilla dir (unless you want to check out the entire "mozilla" directory). I haven't done much with it yet, but it could be a good solution.
+</p><p>The &lt;tt&gt;cvs2mtn&lt;/tt&gt; and &lt;tt&gt;mtn2cvs&lt;/tt&gt; scripts could use a lot of enhancements; monotone has an automation facility that can provide the information that it needs (e.g. mtn2cvs could automatically fetch the old revision) in a less error-prone way.
+</p>

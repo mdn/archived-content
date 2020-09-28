@@ -1,0 +1,72 @@
+<div class="blockIndicator warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+</div>
+
+<p>{{LegacyAddonsNotice}}</p>
+
+<h3 id="Getting_the_directory_where_your_add-on_is_located">Getting the directory where your add-on is located</h3>
+
+<p>If you need to determine the directory in which your add-on is installed, code like the following will do the trick. Simply replace <code>YOUREXTENSIONID</code> with your add-on's ID.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/<code><a href="/en-US/Add-ons/Add-on_Manager" title="Add-on Manager">AddonManager.jsm</a></code>");
+
+<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager" title="AddonManager">AddonManager</a></code>.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#getAddonByID()" title="AddonManager.getAddonByID()">getAddonByID</a></code>("YOUREXTENSIONID", function(addon) {
+  var addonLocation = addon.<code><a href="/en-US/Add-ons/Add-on_Manager/Addon#getResourceURI()" title="Addon.getResourceURI()">getResourceURI</a></code>("").QueryInterface(Components.interfaces.{{ Interface( "nsIFileURL" ) }}).file.path;
+});
+</pre>
+
+<h3 id="Accessing_file_and_version_information">Accessing file and version information</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/<code><a href="/en-US/Add-ons/Add-on_Manager" title="Add-on Manager">AddonManager.jsm</a></code>");
+
+<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager" title="AddonManager">AddonManager</a></code>.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#getAddonByID()" title="AddonManager.getAddonByID()">getAddonByID</a></code>("my-addon@foo.com", function(addon) {
+  alert("My extension's version is " + addon.version);
+  alert("Did I remember to include that file.txt file in my XPI? " +
+        addon.<code><a href="/en-US/Add-ons/Add-on_Manager/Addon#hasResource()" title="Addon.hasResource()">hasResource</a></code>("file.txt") ? "YES!" : "No");
+  alert("Let's pretend I did, it's available from the URL " + addon.<code><a href="/en-US/Add-ons/Add-on_Manager/Addon#getResourceURI()" title="Addon.getResourceURI()">getResourceURI</a></code>("file.txt").spec);
+});
+</pre>
+
+<h3 id="Uninstall_an_addon" name="Uninstall_an_addon">Uninstall an add-on</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/<code><a href="/en-US/Add-ons/Add-on_Manager" title="Add-on Manager">AddonManager.jsm</a></code>");
+
+<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager" title="AddonManager">AddonManager</a></code>.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#getAddonByID()" title="AddonManager.getAddonByID()">getAddonByID</a></code>("youraddon@youraddon.com", function(addon) {
+  addon.<code><a href="/en-US/Add-ons/Add-on_Manager/Addon#uninstall()" title="Addon.uninstall()">uninstall</a></code>();
+});
+</pre>
+
+<h3 id="Disable_an_addon" name="Disable_an_addon">Disable an add-on</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/<code><a href="/en-US/Add-ons/Add-on_Manager" title="Add-on Manager">AddonManager.jsm</a></code>");
+
+<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager" title="AddonManager">AddonManager</a></code>.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#getAddonByID()" title="AddonManager.getAddonByID()">getAddonByID</a></code>("youraddon@youraddon.com", function(addon) {
+  if (addon.isActive) addon.userDisabled = addon.isActive;
+});
+</pre>
+
+<h3 id="Listening_for_addon_uninstall" name="Listening_for_addon_uninstall">Listening for add-on uninstall</h3>
+
+<p>This example sets a variable <code>beingUninstalled</code> that you can check when you get a profile-before-change message to do cleanup for your add-on on uninstall.</p>
+
+<pre class="brush: js">var beingUninstalled;
+
+let listener = {
+  onUninstalling: function(addon) {
+    if (addon.id == "youraddon@youraddon.com") {
+      beingUninstalled = true;
+    }
+  },
+  onOperationCancelled: function(addon) {
+    if (addon.id == "youraddon@youraddon.com") {
+      beingUninstalled = (addon.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#Pending_operations" title="Addon.pendingOperations">pendingOperations</a></code> &amp; AddonManager.PENDING_UNINSTALL) != 0;
+    }
+  }
+}
+
+try {
+  Components.utils.import("resource://gre/modules/<code><a href="/en-US/Add-ons/Add-on_Manager" title="Add-on Manager">AddonManager.jsm</a></code>");
+
+  <code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager" title="AddonManager">AddonManager</a></code>.<code><a href="/en-US/Add-ons/Add-on_Manager/AddonManager#addAddonListener()" title="AddonManager.addAddonListener()">addAddonListener</a></code>(listener);
+} catch (ex) {}
+</pre>

@@ -1,0 +1,257 @@
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/dom/interfaces/push/nsIPushService.idl" rel="custom">dom/interfaces/push/nsIPushService.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+A service for components to subscribe and receive push messages from remote servers.
+</span>
+
+<div style="background: #eee; padding: 2px;">
+Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code>
+<span style="text-align: right; float: right;">Last changed in Gecko 46.0 (Firefox 46.0 / Thunderbird 46.0 / SeaMonkey 2.43)</span></div>
+</div><p></p>
+
+<p>Push lets a remote server send payloads to a web site, add-on, or component running in the browser. <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushService" title="">nsIPushService</a></code> supports the <a class="external" href="https://w3c.github.io/push-api/" hreflang="en" lang="en" title="The 'Push API' specification">Push API</a> implementation in Firefox, and can be used directly from privileged code to create system subscriptions.</p>
+
+<p>Implemented by <code>@mozilla.org/push/Service;1</code> as a service:</p>
+
+<pre class="eval">const pushService = Components.classes["@mozilla.org/push/Service;1"]
+                              .getService(Components.interfaces.nsIPushService);
+</pre>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#subscribe()">subscribe</a>(in DOMString scope, in nsIPrincipal principal, in nsIPushSubscriptionCallback callback);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#getSubscription()">getSubscription</a>(in DOMString scope, in nsIPrincipal principal, in nsIPushSubscriptionCallback callback);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#unsubscribe()">unsubscribe</a>(in DOMString scope, in nsIPrincipal principal, in nsIUnsubscribeResultCallback callback);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<h3 id="subscribe()" name="subscribe()">subscribe()</h3>
+
+<p>Creates a push subscription.</p>
+
+<pre class="eval">void subscribe(
+  in DOMString scope,
+  in nsIPrincipal principal,
+  in nsIPushSubscriptionCallback callback
+);
+</pre>
+
+<h4 id="subscribe-parameters" name="subscribe-parameters">Parameters</h4>
+
+<dl>
+ <dt><code>scope</code></dt>
+ <dd>The <a href="/en-US/docs/Web/API/ServiceWorkerRegistration/scope" title="The scope read-only property of the ServiceWorkerRegistration interface returns a unique identifier for a service worker registration. The service worker must be on the same origin as the document that registers the ServiceWorker."><code>ServiceWorkerRegistration.scope</code></a> for a service worker subscription, or a unique <a class="glossaryLink" href="/en-US/docs/Glossary/URL" title="URL: Uniform Resource Locator (URL) is a text string specifying where a resource can be found on the Internet.">URL</a> (for example, <code>chrome://my-module/push</code>) for a system subscription.</dd>
+ <dt><code>principal</code></dt>
+ <dd>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrincipal" title="">nsIPrincipal</a></code> to associate with the subscription. Privileged code should pass the <a href="/en-US/docs/Mozilla/Gecko/Script_security#System_principal">system principal</a>.</dd>
+ <dt><code>callback</code></dt>
+ <dd>The callback to call when the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushSubscription" title="">nsIPushSubscription</a></code> is created.</dd>
+</dl>
+
+<div class="note">
+<p>Passing the system principal exempts the subscription from permission checks and background messages quotas, which are enforced for service worker subscriptions.</p>
+</div>
+
+<h4 id="subscribe-example" name="subscribe-example">Example</h4>
+
+<pre class="brush: javascript">const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+
+const scriptSecurityManager = Cc["@mozilla.org/scriptsecuritymanager;1"]
+                                .getService(Ci.nsIScriptSecurityManager);
+const pushService = Cc["@mozilla.org/push/Service;1"]
+                      .getService(Ci.nsIPushService);
+
+pushService.subscribe(
+  "chrome://my-module/push",
+  scriptSecurityManager.getSystemPrincipal(),
+  (code, subscription) =&gt; {
+    if (!Components.isSuccessCode(code)) {
+      Cu.reportError("Error creating subscription: " + code);
+      return;
+    }
+    // `subscription` implements `nsIPushSubscription`.
+    subscription.endpoint;
+    subscription.getKey("p256dh");
+    subscription.getKey("auth");
+  }
+);
+</pre>
+
+<h3 id="getSubscription()" name="getSubscription()">getSubscription()</h3>
+
+<p>Fetches an existing subscription.</p>
+
+<pre class="eval">void getSubscription(
+  in DOMString scope,
+  in nsIPrincipal principal,
+  in nsIPushSubscriptionCallback callback
+);
+</pre>
+
+<h4 id="getSubscription-parameters" name="getSubscription-parameters">Parameters</h4>
+
+<dl>
+ <dt><code>scope</code></dt>
+ <dd>The unique scope URL, as passed to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPushService#subscribe()">nsIPushService.subscribe()</a></code>.</dd>
+ <dt><code>principal</code></dt>
+ <dd>The subscription <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrincipal" title="">nsIPrincipal</a></code>, as passed to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPushService#subscribe()">nsIPushService.subscribe()</a></code>.</dd>
+ <dt><code>callback</code></dt>
+ <dd>The callback to call with the fetched <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushSubscription" title="">nsIPushSubscription</a></code>.</dd>
+</dl>
+
+<h4 id="getSubscription-example" name="getSubscription-example">Example</h4>
+
+<pre class="brush: javascript">pushService.getSubscription(
+  "chrome://my-module/push",
+  scriptSecurityManager.getSystemPrincipal(),
+  (code, subscription) =&gt; {
+    if (!Components.isSuccessCode(code)) {
+      Cu.reportError("Error fetching subscription: " + code);
+      return;
+    }
+    // `subscription == null` if the `(scope, principal)` pair doesn't have a
+    // push subscription. Otherwise, it's an instance of `nsIPushSubscription`.
+  }
+);
+</pre>
+
+<h3 id="unsubscribe()" name="unsubscribe()">unsubscribe()</h3>
+
+<p>Drops an existing push subscription.</p>
+
+<pre class="eval">void unsubscribe(
+  in DOMString scope,
+  in nsIPrincipal principal,
+  in nsIUnsubscribeResultCallback callback
+);
+</pre>
+
+<h4 id="unsubscribe-parameters" name="unsubscribe-parameters">Parameters</h4>
+
+<dl>
+ <dt><code>scope</code></dt>
+ <dd>The unique scope URL, as passed to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPushService#subscribe()">nsIPushService.subscribe()</a></code>.</dd>
+ <dt><code>principal</code></dt>
+ <dd>The subscription <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPrincipal" title="">nsIPrincipal</a></code>, as passed to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPushService#subscribe()">nsIPushService.subscribe()</a></code>.</dd>
+ <dt><code>callback</code></dt>
+ <dd>The callback to call when the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushSubscription" title="">nsIPushSubscription</a></code> is dropped.</dd>
+</dl>
+
+<h4 id="unsubscribe-example" name="unsubscribe-example">Example</h4>
+
+<pre class="brush: javascript">pushService.unsubscribe(
+  "chrome://my-module/push",
+  scriptSecurityManager.getSystemPrincipal(),
+  (code, ok) =&gt; {
+    if (!Components.isSuccessCode(code)) {
+      Cu.reportError("Error unsubscribing: " + code);
+      return;
+    }
+    // `ok === true` if the subscription was removed, or `false` if the
+    // `(scope, principal)` pair didn't have a subscription.
+  }
+);
+</pre>
+
+<h2 id="Receiving_Push_Messages" name="Receiving_Push_Messages">Receiving Push Messages</h2>
+
+<p>Subscriptions created from privileged code use XPCOM observer notifications instead of service worker events. You can use the global <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIObserverService" title="">nsIObserverService</a></code> to listen for these notifications.</p>
+
+<div class="warning">
+<p>Messages sent to system subscriptions are broadcasted to all <code>push-message</code> observers. Your <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIObserver" title="">nsIObserver</a></code> should ensure the <code>data</code> parameter matches your subscription scope. Otherwise, your code may try to handle messages meant for other subscriptions.</p>
+</div>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Topic</td>
+   <td class="header">Subject</td>
+   <td class="header">Data</td>
+   <td class="header">Description</td>
+   <td class="header"><a class="external" href="https://w3c.github.io/push-api/" hreflang="en" lang="en" title="The 'Push API' specification">Push API</a> Counterpart</td>
+  </tr>
+  <tr>
+   <td><code>push-message</code></td>
+   <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushMessage" title="">nsIPushMessage</a></code> if the message has a payload; <code>null</code> for blank messages.</td>
+   <td>Scope</td>
+   <td>Fired when a push message is sent to a system subscription.</td>
+   <td><a href="/en-US/docs/Web/API/ServiceWorkerGlobalScope/onpush" title="The ServiceWorkerGlobalScope.onpush event of the ServiceWorkerGlobalScope interface is fired whenever a push message is received by a service worker via a push server."><code>ServiceWorkerGlobalScope.onpush</code></a></td>
+  </tr>
+  <tr>
+   <td><code>push-subscription-change</code></td>
+   <td><code>null</code></td>
+   <td>Scope</td>
+   <td>Fired when the Push server drops a subscription, or the subscription identifier changes.</td>
+   <td><a href="/en-US/docs/Web/API/ServiceWorkerGlobalScope/onpushsubscriptionchange" title="The ServiceWorkerGlobalScope.onpushsubscriptionchange event of the ServiceWorkerGlobalScope interface is fired to indicate a change in push subscription that was triggered outside the application's control, e.g. when browser refresh the push subscription."><code>ServiceWorkerGlobalScope.onpushsubscriptionchange</code></a></td>
+  </tr>
+ </tbody>
+</table>
+
+<div class="warning">
+<p>Please make sure you listen for <code>push-subscription-change</code>. If the subscription is lost, and your code isn't listening for this notification, you won't be able to receive messages until you create a new subscription.</p>
+</div>
+
+<h3 id="receive-example" name="receive-example">Example</h3>
+
+<pre class="brush: javascript">const obsService = Cc["@mozilla.org/observer-service;1"]
+                     .getService(Ci.nsIObserverService);
+
+let pushObserver = {
+  scope: "chrome://my-module/push",
+
+  observe(subject, topic, data) {
+    // The scope is passed as the `data` argument for `push-message` and
+    // `push-subscription-change` observers. Make sure the message is meant
+    // for us.
+    if (data == this.scope) {
+      if (topic == "push-message") {
+        this.onPushMessage(subject);
+      } else if (topic == "push-subscription-change") {
+        this.onPushSubscriptionChange();
+      }
+    }
+  },
+
+  onPushMessage(maybeMessage) {
+    if (!maybeMesssage) {
+      // The subject will be `null` for messages without data.
+      return;
+    }
+    let message = maybeMesssage.QueryInterface(Ci.nsIPushMessage);
+    message.text(); // Returns the message contents as a UTF-8 string.
+    message.json(); // Parses the message as JSON.
+    message.binary(); // Returns a byte array.
+  },
+
+  onPushSubscriptionChange() {
+    // Re-subscribe if the subscription was dropped.
+    pushService.subscribe(
+      this.scope,
+      scriptSecurityManager.getSystemPrincipal(),
+      (code, subscription) =&gt; {
+        // ...
+    });
+  }
+};
+
+obsService.addObserver(pushObserver, "push-message", false);
+obsService.addObserver(pushObserver, "push-subscription-change", false);
+</pre>
+
+<h2 id="See_also" name="See_also">See also</h2>
+
+<ul>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushSubscription" title="">nsIPushSubscription</a></code></li>
+ <li><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushMessage" title="">nsIPushMessage</a></code></li>
+ <li><a href="/en-US/docs/Web/API/PushManager" title="The PushManager interface of the Push API provides a way to receive notifications from third-party servers as well as request URLs for push notifications."><code>PushManager</code></a></li>
+</ul>

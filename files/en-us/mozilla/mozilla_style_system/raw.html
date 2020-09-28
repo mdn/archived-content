@@ -1,0 +1,82 @@
+<p>The Style System is the module of Mozilla's code responsible for the loading and parsing of <a href="/en-US/docs/Web/API/CSS">CSS</a> style sheets, and the computation of <a href="en/CSS/computed_value">computed values</a> for all CSS properties. The handling of those computed values is the responsibility of other parts of the code.</p>
+
+<h3 id="Architecture" name="Architecture">Architecture</h3>
+
+<p>The style system is split in half rather neatly. In one half (the backend) are the sources of specified style data, and in the other half (the frontend) is the code that turns the specified values into computed values. The barrier between these two halves consists of three abstract interfaces, plus some smaller structures associated with some methods on each:</p>
+
+<dl>
+ <dt><a class="external" href="https://dxr.mozilla.org/seamonkey/source/layout/style/nsIStyleSheet.h">nsIStyleSheet</a> </dt>
+ <dd>nsIStyleSheet represents what one would think of as a style sheet: the in-memory representation of a CSS file or other source of style data. Some style sheets are managed by the document; some apply to all documents. The style system actually has relatively little to do with style sheets; it instead deals with style rule processors.</dd>
+</dl>
+
+<dl>
+ <dt><a class="external" href="https://dxr.mozilla.org/seamonkey/source/layout/style/nsIStyleRuleProcessor.h">nsIStyleRuleProcessor</a></dt>
+ <dd>a style rule processor represents an origin within the CSS <a class="external" href="https://www.w3.org/TR/CSS21/cascade.html#cascade">cascade</a>. Thus there is a single style rule processor for all user-agent CSS style sheets, a single style rule processor for all user CSS style sheets, and a single style rule processor for all author CSS style sheets. There is also a style rule processor for style attributes (which contain CSS declarations) and one for presentational attributes in HTML. The methods on nsIStyleRuleProcessor allow the front end to ask the back ends for the style data that applies to a given element or pseudo-element, in the form of style rules.</dd>
+</dl>
+
+<dl>
+ <dt><a class="external" href="https://dxr.mozilla.org/seamonkey/source/layout/style/nsIStyleRule.h">nsIStyleRule</a></dt>
+ <dd>an nsIStyleRule is an<em>immutable</em> set of CSS property-value pairs. For CSS style sheets, they correspond to CSS's concept of rules. However, they also exist for the other types of rule processors. When script dynamically changes the data represented by a CSS style rule, we create a new nsIStyleRule object; keeping the old one around briefly helps to determine what changed and how we need to handle that change.</dd>
+</dl>
+
+<h3 id="Computed_style_.28front_end.29" name="Computed_style_.28front_end.29">Computed style (front end)</h3>
+
+<p>The interface that the front end exposes to the rest of Mozilla consists of a single <a class="external" href="https://dxr.mozilla.org/seamonkey/source/layout/style/nsStyleSet.h">nsStyleSet</a> object and many <a class="external" href="https://dxr.mozilla.org/seamonkey/source/layout/style/nsStyleContext.h">nsStyleContext</a> objects, each of which holds the computed style for an element, pseudo-element, or text node.</p>
+
+<p>The style set provides the API managing the rule processors and for creating style contexts. The style contexts then provide the API for computed style data by allowing retrieval of a set of style structs, each of which contains the computed values of a set of CSS properties.</p>
+
+<h4 id="Style_structs" name="Style_structs">Style structs</h4>
+
+<p>The style structs are a set of structs, each of which holds computed values a group of properties. They all have names beginning with <code>nsStyle*</code>, and they should not be confused with the CSS structs (<code>nsCSS*</code>), which hold specified values.</p>
+
+<p>The grouping of properties into structs follows two rules:</p>
+
+<ol>
+ <li>any properties in the same style struct must also be in the same CSS struct</li>
+ <li>all of the properties in a style struct must be inherited or they must all be non-inherited (see <a href="/en-US/docs/Web/CSS/inheritance">inheritance</a> for an explanation of the difference)</li>
+</ol>
+
+<p>The first of these rules is no longer important (in fact, the separation of the specified values into nsCSS* structs is no longer important). However, the second of these rules is the key to many of the performance and memory-use optimizations in the style system.</p>
+
+<p>Most callers who interact with the style system do so using the style structs. The style context has a getter for each struct, and nsIFrame, which represents the concept of a CSS box (or rendering object), also has getters that forward to the frame's style context. Thus, typical calling code looks like this:</p>
+
+<pre class="eval"> if (aFrame-&gt;GetStyleDisplay()-&gt;mOpacity &lt; 1.0f)
+   return PR_TRUE;
+</pre>
+
+<p>or like this:</p>
+
+<pre class="eval"> const nsStylePosition *stylePos = aFrame-&gt;GetStylePosition();
+ if (stylePos-&gt;mWidth.GetUnit() == eStyleUnit_Coord) {
+   nscoord w = stylePos-&gt;mWidth.GetCoordValue();
+   ...
+ } else if (stylePos-&gt;mWidth.GetUnit() == eStyleUnit_Percent) {
+   ...
+</pre>
+
+<h4 id="Rule_tree" name="Rule_tree">Rule tree</h4>
+
+<h4 id="Style_data_computation" name="Style_data_computation">Style data computation</h4>
+
+<h3 id="CSS_style_sheet_backend" name="CSS_style_sheet_backend">CSS style sheet backend</h3>
+
+<h4 id="Loading" name="Loading">Loading</h4>
+
+<h4 id="Parsing" name="Parsing">Parsing</h4>
+
+<h4 id="Data_structures" name="Data_structures">Data structures</h4>
+
+<h4 id="Cascading" name="Cascading">Cascading</h4>
+
+<h3 id="HTML_Mapped_Attribute_backend" name="HTML_Mapped_Attribute_backend">HTML Mapped Attribute backend</h3>
+
+<h3 id="CSS_style_attribute_backend" name="CSS_style_attribute_backend">CSS style attribute backend</h3>
+
+<h3 id="Handling_of_dynamic_changes" name="Handling_of_dynamic_changes">Handling of dynamic changes</h3>
+
+<h3 id="See_Also" name="See_Also">See Also</h3>
+
+<ul>
+ <li><a href="en/Mozilla_Style_System_Documentation">Mozilla Style System Documentation</a> (2002)</li>
+ <li><a class="external" href="http://www.mozilla.org/newlayout/doc/style-techtalk.html">Style System Tech Talk</a> (2002)</li>
+</ul>

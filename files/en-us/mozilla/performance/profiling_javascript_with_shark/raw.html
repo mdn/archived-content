@@ -1,0 +1,78 @@
+<div class="warning">
+ <p>Xcode ceased to ship Shark in Xcode 4 (released March 14, 2011), so this documentation is largely obsolete. See (and please contribute to) the <a href="/en/Performance/Profiling_with_Instruments">Instruments documentation</a> instead. (Instruments replaced Shark in Xcode.)</p>
+</div>
+<p>{{ Fx_minversion_header(3) }} It's now possible to build a copy of Firefox that allows you to start and stop <a class="external" href="http://developer.apple.com/tools/sharkoptimize.html">Shark</a> profiles from JavaScript code. With this customized build, you can more easily locate performance problems in JavaScript libraries, web pages, or in Firefox itself. Mozilla also provides Shark-enabled development builds for you to use.</p>
+<p>Using the Shark-in-JavaScript support, you can avoid having to manually start and stop Shark, thereby taking your trigger finger out of the equation while timing operations.</p>
+<p>{{ Note("Remember, this feature is only available in a custom-built Firefox. It is not part of the standard build. In addition, you must install the latest version of CHUD, which comes with XCode nowadays, in order to use it.") }}</p>
+<h3 id="Getting_started" name="Getting_started">Getting started</h3>
+<p>The first step is to make sure you have a recent XCode installed.  If you have any problems, download and install it. Even if you think you already have it. You might be out of date.</p>
+<h4 id="Download_a_development_build">Download a development build</h4>
+<p>Mozilla produces Shark-enabled nightly builds for the <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-1.9.1/" title="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-1.9.1/">mozilla-1.9.1</a> (Firefox 3.5) <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-1.9.2/" title="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-1.9.2/">mozilla-1.9.2</a> (Firefox 3.6), <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-central/" title="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-mozilla-central/">mozilla-central</a> (trunk), and <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-tracemonkey/" title="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-tracemonkey/">TraceMonkey</a> source repositiories. You should download the build with filename ending in <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/firefox/nightly/latest-tracemonkey/firefox-3.2a1pre.en-US.mac-shark.dmg">mac-shark.dmg</a></p>
+<h4 id="Build_your_Firefox">Build your Firefox</h4>
+<p>Alternatively, you can build your own copy of Firefox. Once you've got CHUD installed, and <a href="/En/Developer_Guide/Source_Code/CVS" title="en/Mozilla_Source_Code_(CVS)">have the Firefox code</a>, you need to set up a <code><a href="/en/Configuring_Build_Options" title="en/Configuring_Build_Options">mozconfig</a></code> file that enables the <code>--enable-shark</code> option. It might look like this:</p>
+<pre class="eval">. $topsrcdir/browser/config/mozconfig
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/ff-opt-libxul
+ac_add_options --enable-optimize
+ac_add_options --enable-libxul
+ac_add_options --enable-shark
+ac_add_options --enable-debugger-info-modules
+ac_add_options --disable-install-strip
+</pre>
+<p>{{ Note("This &lt;tt&gt;mozconfig&lt;/tt&gt; file works on Intel Macintosh systems with Leopard but may not work on PowerPC and Tiger, due to libraries being moved around.") }}</p>
+<p>Then <a href="/En/Developer_Guide/Build_Instructions" title="en/Build_Documentation">build Firefox</a> as usual.</p>
+<p>If you get a compile-time error such as the following:</p>
+<pre><code>~/mozilla-central/js/src/jsdbgapi.cpp:1702:23: error: CHUD/CHUD.h: No such file or directory</code>
+</pre>
+<p style="text-align: justify;">then you need to download the CHUD headers in the standalone installer package at <a class="link-https" href="https://connect.apple.com/cgi-bin/WebObjects/MemberSite.woa/wa/getSoftware?bundleID=20332" title="https://connect.apple.com/cgi-bin/WebObjects/MemberSite.woa/wa/getSoftware?bundleID=20332">https://connect.apple.com/cgi-bin/WebObjects/MemberSite.woa/wa/getSoftware?bundleID=20332</a>.  Alternatively, from the ADC website, go to Member Site &gt; Downloads &gt; Developer Tools.  Various CHUD versions should be included in that page, and you probably want the latest version (4.6.2 as of this writing.)</p>
+<p style="text-align: justify;">Note that if installing an old CHUD version breaks your Shark (on Snow Leopard at least), you can fix it by reinstalling Xcode.</p>
+<p style="text-align: justify;"><strong>Note:</strong> As of this writing (2010/3/5), you <em>can</em> get this working in Snow Leopard on a 64-bit machine, but you need <strong>a)</strong> to install the latest Xcode and CHUD as linked just above, and <strong>b)</strong> a 32-bit build. Otherwise you'll get a linker error starting with something like:</p>
+<pre><code>ld: warning: in /System/Library/PrivateFrameworks/CHUD.framework/CHUD, missing required architecture x86_64 in file</code></pre>
+<p style="text-align: justify;">followed by a bunch of missing symbols.</p>
+<p style="text-align: justify;">To make a 32-bit build: <strong>a)</strong> make sure you have a <strong>totally fresh</strong> build directory (any extra stuff lying around from a 64-bit build will mess things up!), <strong>b)</strong> prefix your usual <code>configure</code> command with:</p>
+<pre><code>CC="gcc -m32" CXX="g++ -m32" AR=ar</code></pre>
+<p style="text-align: justify;">and <strong>c)</strong> add <code>--target=i686-apple-darwin10.0.0</code> to your <code>configure</code> options in <code>mozconfig</code>.</p>
+<h3 id="Using_Shark-in-JavaScript" name="Using_Shark-in-JavaScript">Using Shark-in-JavaScript</h3>
+<p>Once you have a build, you have access to four new global functions that let you control Shark. These functions are available to both chrome and content script:</p>
+<dl>
+ <dt>
+  <code>connectShark()</code></dt>
+ <dd>
+  Connects to Shark.</dd>
+ <dt>
+  <code>startShark()</code></dt>
+ <dd>
+  Starts profiling.</dd>
+ <dt>
+  <code>stopShark()</code></dt>
+ <dd>
+  Stops profiling.</dd>
+ <dt>
+  <code>disconnectShark()</code></dt>
+ <dd>
+  Disconnects from Shark.</dd>
+</dl>
+<p>Usually you will call these in exactly that order, like this:</p>
+<pre class="eval">&lt;script&gt;
+connectShark();
+startShark();
+
+...
+doSomethingReallySlow();
+...
+
+stopShark();
+disconnectShark();
+&lt;/script&gt;
+</pre>
+<p>For a simple sample of how this works, see Apple's <a class="external" href="http://developer.apple.com/documentation/DeveloperTools/Conceptual/SharkUserGuide/SelectingExecutiontoSampleorTrace/chapter_6_section_8.html">Towers of Hanoi example</a>.</p>
+<p>Before running your test, start the Shark utility. If the code will take less than a second or so to run, you should adjust your sample rate to 20µs. To do this, show the configuration editor:</p>
+<p><img alt="Image:Shark-config.png" class="internal" src="/@api/deki/files/360/=Shark-config.png"></p>
+<p>Then change the time sample interval as shown below:</p>
+<p><img alt="Image:Shark-sample.png" class="internal" src="/@api/deki/files/362/=Shark-sample.png"></p>
+<p>To allow your JavaScript code to control Shark, you need to put Shark into remote mode by choosing the "Programmatic (Remote)" sampling mode:</p>
+<p><img alt="Image:Shark-remote.png" class="internal" src="/@api/deki/files/361/=Shark-remote.png"></p>
+<p>Now you're ready to run your test. This will get you very clean sampling data from which to make optimization decisions.</p>
+<h2 id="See_also">See also</h2>
+<ul>
+ <li><a href="/en/Performance" title="en/Performance">Performance</a></li>
+</ul>

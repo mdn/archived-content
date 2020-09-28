@@ -1,0 +1,110 @@
+<h4 id="Function_declarations" name="Function_declarations"> Function declarations </h4>
+<p>What: Use abstract classes instead of concrete classes when passing strings across function boundaries
+</p><p>Why: using abstract classes allows the caller to choose the storage mechanism, allowing for possible sharing or more efficient handling of string fragments.
+</p><p>Old way: use nsString&amp; and nsCString&amp;
+</p>
+<pre class="eval">void MyMethod(const nsString&amp; input, nsString&amp; output);
+</pre>
+<p>New way: use nsAString&amp; and nsACString&amp;
+</p>
+<pre class="eval">void MyMethod(const nsAString&amp; input, nsAString&amp; output);
+</pre>
+<p><br>
+</p>
+<h4 id="Substrings" name="Substrings"> Substrings </h4>
+<p>What: Get direct references to string fragments
+</p><p>Why: Avoid making multiple copies of the string
+</p><p>Old way: use a bunch of nsAutoStrings, and use Left(), Right() and Mid() to grab a segment of a string:
+</p>
+<pre class="eval">// get an 8-character string starting at the 4th position
+nsAutoString leftside;
+str.Left(leftside, 12);
+nsAutoString middle;
+leftside.Right(middle, 8);
+</pre>
+<p>New way: use Substring() to grab a direct reference to those characters:
+</p>
+<pre class="eval">// get an 8-character string starting at the 4th position
+const nsAString&amp; middle = Substring(str, 4, 8);
+</pre>
+<p><br>
+</p>
+<h4 id="Unicode_literals" name="Unicode_literals"> Unicode literals </h4>
+<p>What: Use macro tricks to make wide-character literal strings.
+</p><p>Why: Avoid copying and conversion from literal char-based strings to UTF16 strings.
+</p><p>Old way: use nsAutoString and AssignWithConversion()
+</p>
+<pre class="eval">nsAutoString wideString;
+wideString.AssignWithConversion("some string");
+CallWideFunction(wideString);
+</pre>
+<pre class="eval">// use wideString again, but need a const PRUnichar*
+CallWideWithFlatString(wideString.get())
+</pre>
+<pre class="eval">nsAutoString wideString2;
+wideString2.AssignWithConversion("another string");
+CallWideFunction(wideString2);
+</pre>
+<p>New way: use NS_LITERAL_STRING or NS_NAMED_LITERAL_STRING
+</p>
+<pre class="eval">// pre-declare the variable if you'll use it multiple times
+NS_NAMED_LITERAL_STRING(wideString, "some string");
+CallWideFunction(wideString);
+</pre>
+<pre class="eval">// use wideString again, but need a const PRUnichar*
+CallWideWithFlatString(wideString.get());
+</pre>
+<pre class="eval">// inline the string with NS_LITERAL_STRING
+CallWideFunction(NS_LITERAL_STRING("another string"));
+</pre>
+<p><br>
+</p>
+<h4 id="Converting_literal_strings_to_string_objects" name="Converting_literal_strings_to_string_objects"> Converting literal strings to string objects </h4>
+<p>What: Converting from const PRUnichar*/const char* to the appropriate string type
+</p><p>Why: Avoid making extra copies of strings, just to convert between types!
+</p><p>Note: may involve changing existing APIs
+</p><p>Old way: wrap with nsCAutoString()
+</p>
+<pre class="eval">// foo is a PRUnichar* string
+// call
+// void HandleString(const nsString&amp; str);
+HandleString(nsAutoString(foo));
+</pre>
+<p>New way: wrap with nsDependentString
+</p>
+<pre class="eval">// foo is a PRUnichar* string
+// fix caller to be
+// void HandleString(const nsAString&amp; str);
+HandleString(nsDependentString(foo));
+</pre>
+<h4 id="Stack-based_strings" name="Stack-based_strings"> Stack-based strings </h4>
+<p>What: use of special stack-oriented classes
+</p><p>Why: to avoid excess heap allocations and memory leaks
+</p><p>Wrong: use nsString/nsCString or raw characters
+</p>
+<pre class="eval">// call GetStringValue(nsAString&amp; out);
+nsString value;
+GetStringValue(value);
+</pre>
+<pre class="eval">// call GetStringValue(char** out);
+char *result;
+GetStringValue(&amp;result); // don't forget to free result!
+</pre>
+<p>Right: use nsAutoString/nsCAutoString and nsXPIDLString/nsXPIDLCString
+</p>
+<pre class="eval">// call GetStringValue(nsAString&amp; out);
+nsAutoString value; // 64-character buffer on stack
+GetStringValue(value);
+// call GetStringValue(char** out);
+nsXPIDLCString result;
+GetStringValue(getter_Copies(result)); // result will free automatically
+</pre>
+<p><br>
+</p>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author: <a class="link-mailto" href="mailto:alecf@flett.org">Alec Flett</a>
+</li><li> Last Updated Date: April 30, 2003
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

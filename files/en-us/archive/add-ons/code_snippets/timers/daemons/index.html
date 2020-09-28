@@ -1,0 +1,1200 @@
+---
+title: JavaScript Daemons Management
+slug: Archive/Add-ons/Code_snippets/Timers/Daemons
+tags:
+  - DOM
+  - Guide
+  - JavaScript
+  - JavaScript timers
+  - MakeBrowserAgnostic
+---
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>In computer science a <em>daemon</em> is a task that runs as a background process, rather than being under the direct control of an interactive user. In the JavaScript programming language, <em>daemons</em> are all processes created by JavaScript timers or by a <a href="https://developer.mozilla.org/en-US/docs/DOM/Worker" title="/en-US/docs/DOM/Worker"><code>Worker</code></a> instantiation. Here are some code snippets that simplify and abstract the management of daemons.</p>
+
+<p>The following <em>daemons management framework</em> is <strong>the major version of <a href="/en-US/docs/DOM/window.setInterval#A_little_framework" title="/en-US/docs/DOM/window.setInterval#A_little_framework">setInterval – <em>A little framework</em></a></strong>.</p>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>Sometimes a page uses dozens and dozens of animations. In such a condition it is difficult and unnatural to keep track of all events started and then to stop them when appropriate through the <code>clearTimeout()</code> function. A possible approach to solve this problem is to nest all the information needed by each animation to start, stop, etc. in different objects (<em>daemons</em>) and then to create a constructor for such a class of objects (<code>Daemon</code>) in order to standardize and simplify the instantiation of them.</p>
+
+<div class="note"><strong>Note:</strong> A minimalistic version of it (<code><em>MiniDaemon</em></code>) is published <strong><a href="/en-US/docs/DOM/window.setInterval#A_little_framework" title="/en-US/docs/DOM/window.setInterval#A_little_framework">here</a></strong>. This more complex version of it is nothing but a big and scalable collection of methods for the <code><em>Daemon</em></code> constructor. But the <code><em>Daemon</em></code> constructor itself is nothing but a clone of <code><em>MiniDaemon</em></code> with an added support for <em>init</em> and <em>onstart</em> functions declarable during the instantiation of the <code><em>daemon</em></code>. <strong>So the <code><em>MiniDaemon</em></code> framework will remain the recommended way for simple animations</strong>, because <code><em>Daemon</em></code> without its collection of methods is essentially a clone of it.</div>
+
+<p>The architecture of the <code>Daemon</code> constructor explicitly avoids the use of closures. It also offers an alternative way to pass the <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object to the callback functions (see <a href="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval#The_.22this.22_problem" title="The 'this' problem">The "this" problem</a> for details).</p>
+
+<p>Advantages of this approch:</p>
+
+<ul>
+ <li>abstraction</li>
+ <li>passage of <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object to JavaScript timers (both <a href="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval" title="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval"><code>setInterval</code></a> and <a href="https://developer.mozilla.org/en-US/docs/DOM/window.setTimeout" title="https://developer.mozilla.org/en-US/docs/DOM/window.setTimeout"><code>setTimeout</code></a>)</li>
+ <li>optimisation (avoiding <a href="/en-US/docs/JavaScript/Guide/Closures" title="/en-US/docs/JavaScript/Guide/Closures">closures</a>)</li>
+ <li>modularity</li>
+</ul>
+
+<h2 id="The_code">The code</h2>
+
+<p>The code of this framework is split into three files:</p>
+
+<ul>
+ <li><strong>daemon.js</strong> (the core)</li>
+ <li><strong>daemon-safe.js</strong> (an extension of the core which <em>adds</em> a replacement of <a href="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval" title="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval"><code>setInterval</code></a> with a recursive invocation of <a href="https://developer.mozilla.org/en-US/docs/DOM/window.setTimeout" title="https://developer.mozilla.org/en-US/docs/DOM/window.setTimeout"><code>setTimeout</code></a>)</li>
+ <li><strong>daemon-methods.js</strong> (a wide and highly scalable collection of methods)</li>
+</ul>
+
+<p>The only independent module is <strong>daemon.js</strong>: both the <strong>daemon-safe.js</strong> module and the <strong>daemon-methods.js</strong> module require <strong>daemon.js</strong> to work.</p>
+
+<p>For a fast overview on the code proposed here you can git clone <a href="https://github.com/madmurphy/daemon.js.git">https://github.com/madmurphy/daemon.js.git</a>. or, at your choice, directly download <a href="https://github.com/madmurphy/daemon.js/archive/master.zip">this <em>.zip</em> file</a>.</p>
+
+<h4 id="About_the_“callback_arguments”_polyfill">About the <a href="/en-US/docs/DOM/window.setInterval#Callback_arguments" title="/en-US/docs/DOM/window.setInterval#Callback_arguments">“callback arguments” polyfill</a></h4>
+
+<p>In order to make this framework compatible with Internet Explorer (which doesn't support <a href="/en-US/docs/DOM/window.setInterval#Callback_arguments" title="/en-US/docs/DOM/window.setInterval#Callback_arguments">sending additional parameters to timers' callback function</a>, neither with <code>setTimeout()</code> or <code>setInterval()</code>) we included <a href="/en-US/docs/DOM/window.setInterval#Callback_arguments" title="/en-US/docs/DOM/window.setInterval#Callback_arguments">the <em>IE-specific</em> compatibility code</a> (commented code), which enables the HTML5 standard parameters' passage functionality in that browser for both timers (polyfill), at the end of the <strong>daemon.js</strong> module.</p>
+
+<h3 id="daemon.js">daemon.js</h3>
+
+<p>What follows is the module that declares the <code>Daemon</code> constructor (the core of this framework). The <code>Daemon</code> constructor itself is nothing but a clone of <a href="/en-US/docs/DOM/window.setInterval#A_little_framework" title="/en-US/docs/DOM/window.setInterval#A_little_framework">the little framework <code>MiniDaemon</code></a> with added support for <code>init</code> and <code>onstart</code> functions (declarable during the instantiation of the daemon). <strong>So the <code>MiniDaemon</code> framework will remain the recommended way for simple animations</strong>, because <code>Daemon</code> without its collection of methods is essentially a clone of it.</p>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: js">/*\
+|*|
+|*|      *******************************
+|*|      *          daemon.js          *
+|*|      *******************************
+|*|
+|*|  ver. 1.0 rev. 2
+|*|
+|*|  daemon.js - A JAVASCRIPT HIGHLY SCALABLE DAEMONS MANAGER.
+|*|
+|*|  https://developer.mozilla.org/en-US/docs/JavaScript/Timers/Daemons
+|*|  https://developer.mozilla.org/User:fusionchess
+|*|
+|*|  This framework is released under the GNU Public License, version 3 or later.
+|*|  http://www.gnu.org/licenses/gpl-3.0.html
+|*|
+\*/
+
+"use strict";
+
+
+  /****************************
+  *     THE DAEMON SYSTEM     *
+  ****************************/
+
+
+
+/* The global "Daemon" constructor */
+
+  function Daemon (oOwner, fTask, nRate, nLen, fInit, fOnstart) {
+    if (!(this &amp;&amp; this instanceof Daemon)) { return; }
+    if (arguments.length &lt; 2) { throw new TypeError("Daemon - not enough arguments"); }
+    if (oOwner) { this.owner = oOwner };
+    this.task = fTask;
+    if (isFinite(nRate) &amp;&amp; nRate &gt; 0) { this.rate = Math.floor(nRate); }
+    if (nLen &gt; 0) { this.length = Math.floor(nLen); }
+    if (fOnstart) { this.onstart = fOnstart; }
+    if (fInit) {
+      this.onstop = fInit;
+      fInit.call(oOwner, this.INDEX, this.length, this.BACKW);
+    }
+  }
+
+    /* Create the Daemon.blank() constructor and the global Daemon.context object */
+
+  Daemon.blank = function () {};
+  Daemon.context = Daemon.blank.prototype; /* Make love with the GC :-) */
+  Daemon.blank.prototype = /* Important! */ Daemon.prototype;
+  Daemon.context.constructor = Object;
+
+    /* These properties can be manually reconfigured after the creation of the daemon */
+
+  Daemon.prototype.owner = Daemon.context;
+  Daemon.prototype.task = null;
+  Daemon.prototype.rate = 100;
+  Daemon.prototype.length = Infinity;
+  Daemon.prototype.reversals = 0;
+  Daemon.prototype.onstart = null;
+  Daemon.prototype.onstop = null;
+
+    /* These properties should be read-only after the creation of the daemon */
+
+  Daemon.prototype.SESSION = -1;
+  Daemon.prototype.INDEX = 0;
+  Daemon.prototype.PAUSED = true;
+  Daemon.prototype.BACKW = true;
+
+
+/* SYSTEM REQUIRED Daemon global object methods */
+
+  Daemon.forceCall = function (oDmn) {
+
+    oDmn.INDEX += oDmn.BACKW ? -1 : 1;
+
+    var
+      bBreak = oDmn.task.call(oDmn.owner, oDmn.INDEX, oDmn.length, oDmn.BACKW) === false,
+      bEnd = oDmn.isAtEnd(), bInvert = oDmn.reversals &gt; 0;
+
+    if (bEnd &amp;&amp; !bInvert || bBreak) {
+      oDmn.pause();
+      return false;
+    }
+
+    if (bEnd &amp;&amp; bInvert) {
+      oDmn.BACKW = !oDmn.BACKW;
+      oDmn.reversals--;
+    }
+
+    return true;
+
+  };
+
+
+/* SYSTEM NOT REQUIRED Daemon global object methods */
+
+  /**
+  * Daemon global object optional methods (shortcuts). You could safely remove all or some of them,
+  * depending on your needs. If you want to remove them and are using the Daemon.safe subsystem you
+  * should also remove the Daemon.safe global object methods that require them.
+  **/
+
+  Daemon.construct = function (aArgs) {
+    var oDmn = new this.blank();
+    this.apply(oDmn, aArgs);
+    return oDmn;
+  };
+
+  Daemon.buildAround = function (oCtx, nRate, nLen) {
+    if (!oCtx.perform) { throw new TypeError("You cannot create a daemon around an object devoid of a \"perform\" function"); }
+    return new this(oCtx, oCtx.perform, nRate || null, nLen || null, oCtx.create || null, oCtx.prepare || null);
+  };
+
+    /* Warning! Calling Daemon.incorporate(@func) will modify the @func.prototype property! */
+
+  Daemon.incorporate = function (fConstr) {
+    var oLegacy = fConstr.prototype;
+    fConstr.prototype = new Daemon.blank();
+    fConstr.prototype.legacy = oLegacy;
+    return fConstr;
+  };
+
+
+/* SYSTEM REQUIRED Daemon instances methods */
+
+  Daemon.prototype.isAtEnd = function () {
+    return this.BACKW ? isFinite(this.length) &amp;&amp; this.INDEX &lt; 1 : this.INDEX + 1 &gt; this.length;
+  };
+
+  Daemon.prototype.synchronize = function () {
+    if (this.PAUSED) { return; }
+    clearInterval(this.SESSION);
+    this.SESSION = setInterval(Daemon.forceCall, this.rate, this);
+  };
+
+  Daemon.prototype.pause = function () {
+    clearInterval(this.SESSION);
+    this.PAUSED = true;
+  };
+
+
+/* SYSTEM NOT REQUIRED Daemon instances methods */
+
+  /**
+  * Basic user interface. You could remove this method, but your daemon will be virtually unusable.
+  * All other optional instances methods depend on this one or on the previous ones.
+  **/
+
+  Daemon.prototype.start = function (bReverse) {
+    var bBackw = Boolean(bReverse);
+    if (this.BACKW === bBackw &amp;&amp; (this.isAtEnd() || !this.PAUSED)) { return false; }
+    this.BACKW = bBackw;
+    this.PAUSED = false;
+    if (this.onstart) { this.onstart.call(this.owner, this.INDEX, this.length, this.BACKW); }
+    this.synchronize();
+    return true;
+  };
+
+  Daemon.prototype.stop = function () {
+    this.pause();
+    if (this.onstop) { this.onstop.call(this.owner, this.INDEX, this.length, this.BACKW); }
+    delete this.INDEX;
+    delete this.BACKW;
+    delete this.reversals;
+  };
+
+
+
+  /*******************************
+  *     DAEMON IS NOW READY!     *
+  *******************************/
+
+
+
+
+  /*******************************
+  *          POLYFILLS           *
+  *******************************/
+
+
+
+
+/*\
+|*|
+|*|  IE-specific polyfill which enables the passage of arbitrary arguments to the
+|*|  callback functions of JavaScript timers (HTML5 standard syntax).
+|*|
+|*|  https://developer.mozilla.org/en-US/docs/DOM/window.setInterval
+|*|
+|*|  Syntax:
+|*|  var timeoutID = window.setTimeout(func, delay, [param1, param2, ...]);
+|*|  var timeoutID = window.setTimeout(code, delay);
+|*|  var intervalID = window.setInterval(func, delay[, param1, param2, ...]);
+|*|  var intervalID = window.setInterval(code, delay);
+|*|
+\*/
+
+/*
+
+if (document.all &amp;&amp; !window.setTimeout.isPolyfill) {
+  var __nativeST__ = window.setTimeout;
+  window.setTimeout = function (vCallback, nDelay) {
+    var aArgs = Array.prototype.slice.call(arguments, 2);
+    return __nativeST__(vCallback instanceof Function ? function () {
+      vCallback.apply(null, aArgs);
+    } : vCallback, nDelay);
+  };
+  window.setTimeout.isPolyfill = true;
+}
+
+if (document.all &amp;&amp; !window.setInterval.isPolyfill) {
+  var __nativeSI__ = window.setInterval;
+  window.setInterval = function (vCallback, nDelay) {
+    var aArgs = Array.prototype.slice.call(arguments, 2);
+    return __nativeSI__(vCallback instanceof Function ? function () {
+      vCallback.apply(null, aArgs);
+    } : vCallback, nDelay);
+  };
+  window.setInterval.isPolyfill = true;
+}
+
+*/</pre>
+</div>
+
+<h3 id="daemon-safe.js">daemon-safe.js</h3>
+
+<p>What follows is the module which extends the <code>Daemon</code> constructor with a <code>Daemon.safe</code> sub-system. This library requires <strong>daemon.js</strong> to work. <strong>The <code>Daemon.safe</code> constructor is a dependent-clone of <code>Daemon</code> which uses a recursive invocation of the <code>setTimeout</code> timer rather than a single invocation of <code>setInterval</code>.</strong></p>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: js"> /*\
+|*|
+|*|      *******************************
+|*|      *        daemon-safe.js       *
+|*|      *******************************
+|*|
+|*|  ver. 1.0 rev. 2
+|*|
+|*|  daemon.js - A JAVASCRIPT HIGHLY SCALABLE DAEMONS MANAGER
+|*|
+|*|  https://developer.mozilla.org/en-US/docs/JavaScript/Timers/Daemons
+|*|  https://developer.mozilla.org/User:fusionchess
+|*|
+|*|  This framework is released under the GNU Public License, version 3 or later.
+|*|  http://www.gnu.org/licenses/gpl-3.0.html
+|*|
+\*/
+
+"use strict";
+
+
+  /**************************************
+  *     THE SAFE-DAEMON SUB-SYSTEM      *
+  **************************************/
+
+
+
+/* The "Daemon.safe" constructor */
+
+  Daemon.safe = function () { Daemon.apply(this, arguments); };
+
+    /* Create the Daemon.safe.blank() constructor and the Daemon.safe.context object */
+
+  Daemon.safe.blank = function () {};
+  Daemon.safe.context = Daemon.safe.prototype;
+  Daemon.TO_BE_DEFINED = Daemon.safe.blank.prototype; /* Make love with the GC :-) */
+  Daemon.safe.blank.prototype = /* Important! */ Daemon.safe.prototype = /* Important! */ new Daemon.blank();
+  Daemon.safe.prototype.constructor = Daemon.safe;
+  Daemon.TO_BE_DEFINED.constructor = Daemon.safe.context.constructor = Object;
+
+
+/* SYSTEM REQUIRED Daemon.safe global object methods */
+
+  Daemon.safe.forceCall = function (oDmn) {
+
+    oDmn.INDEX += oDmn.BACKW ? -1 : 1;
+
+    var
+      bBreak = oDmn.task.call(oDmn.owner, oDmn.INDEX, oDmn.length, oDmn.BACKW) === false,
+      bEnd = oDmn.isAtEnd(), bInvert = oDmn.reversals &gt; 0;
+
+    if (bEnd &amp;&amp; !bInvert || bBreak) {
+      oDmn.PAUSED = true;
+      return false;
+    }
+
+    if (bEnd &amp;&amp; bInvert) {
+      oDmn.BACKW = !oDmn.BACKW;
+      oDmn.reversals--;
+    }
+
+    oDmn.synchronize();
+
+    return true;
+
+  };
+
+
+/* SYSTEM NOT REQUIRED Daemon.safe global object methods */
+
+  /**
+  * Daemon.safe global object optional methods (shortcuts). You could safely remove all or some of
+  * them, depending on your needs.
+  **/
+
+    /* Warning: this method requires the global Daemon.construct() method */
+  Daemon.safe.construct = Daemon.construct;
+
+    /* Warning: this method requires the global Daemon.buildAround() method */
+  Daemon.safe.buildAround = Daemon.buildAround;
+
+    /* Warning: this method requires the global Daemon.incorporate() method */
+  Daemon.safe.incorporate = Daemon.incorporate;
+
+
+/* SYSTEM REQUIRED Daemon.safe instances methods */
+
+  Daemon.safe.prototype.synchronize = function () {
+    if (this.PAUSED) { return; }
+    clearTimeout(this.SESSION);
+    this.SESSION = setTimeout(Daemon.safe.forceCall, this.rate, this);
+  };
+
+  Daemon.safe.prototype.pause = function () {
+    clearTimeout(this.SESSION);
+    this.PAUSED = true;
+  };
+
+
+/* SYSTEM NOT REQUIRED Daemon.safe instances methods */
+
+  /* [inherited from Daemon.prototype] */
+
+
+
+  /****************************************
+  *     THE SAFE-DAEMON IS NOW READY!     *
+  *****************************************/</pre>
+</div>
+
+<h3 id="daemon-methods.js">daemon-methods.js</h3>
+
+<p>What follows is a module which collects a wide and scalable list of additional methods for instances of <code>Daemon</code> (and <code>Daemon.safe</code>). This module requires <strong>daemon.js</strong> to work. <strong>You can safely remove all or some of these methods, depending on your needs (modularity).</strong>  When a method requires the presence of another method (it is relatively rare), there is a comment which explains why. If there are not comments to that method it depends only on the base system.</p>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: js"> /*\
+|*|
+|*|      *******************************
+|*|      *       daemon-methods.js     *
+|*|      *******************************
+|*|
+|*|  ver. 1.0 rev. 2
+|*|
+|*|  daemon.js - A JAVASCRIPT HIGHLY SCALABLE DAEMONS MANAGER
+|*|
+|*|  https://developer.mozilla.org/en-US/docs/JavaScript/Timers/Daemons
+|*|  https://developer.mozilla.org/User:fusionchess
+|*|
+|*|  This framework is released under the GNU Public License, version 3 or later.
+|*|  http://www.gnu.org/licenses/gpl-3.0.html
+|*|
+\*/
+
+"use strict";
+
+
+/* SYSTEM NOT REQUIRED Daemon instances methods */
+
+    /* Movement */
+
+  Daemon.prototype.syncStart = function (bReverse) {
+    this.synchronize();
+    if (this.start(bReverse || false)) {
+      Daemon.forceCall(this);
+      return true;
+    }
+    return false;
+  };
+
+  Daemon.prototype.play = function (bSync) {
+    /* Warning: this method OPTIONALLY requires the Daemon.prototype.syncStart() method */
+    return this[bSync ? "start" : "syncStart"]();
+  };
+
+  Daemon.prototype.reversePlay = function (bSync) {
+    /* Warning: this method OPTIONALLY requires the Daemon.prototype.syncStart() method */
+    return this[bSync ? "start" : "syncStart"](true);
+  };
+
+  Daemon.prototype.move = function (bSync, nCycles, bDirection) {
+    /* Warning: this method OPTIONALLY requires the Daemon.prototype.syncStart() method */
+    if (arguments.length &gt; 1 &amp;&amp; !isNaN(nCycles)) { this.reversals = Number(nCycles); }
+    this[bSync ? "start" : "syncStart"](arguments.length &gt; 2 ? bDirection : this.isAtEnd() !== this.BACKW);
+  };
+
+  Daemon.prototype.turn = function (bSync) {
+    /* Warning: this method OPTIONALLY requires the Daemon.prototype.syncStart() method */
+    this[bSync ? "start" : "syncStart"](!this.BACKW);
+  };
+
+    /* Settings tools */
+
+  Daemon.prototype.makeLoop = function () {
+    this.reversals = Infinity;
+  };
+
+  Daemon.prototype.unmakeLoop = function () {
+    this.reversals = 0;
+  };
+
+  Daemon.prototype.setRate = function (vTo) {
+    var nRate = Number(vTo);
+    if (!isFinite(nRate) || nRate &lt; 1) { return; }
+    this.rate = nRate;
+    this.synchronize();
+  };
+
+  Daemon.prototype.forcePosition = function (vTo) {
+    if (isFinite(vTo)) { this.INDEX = Math.round(Math.abs(vTo)); }
+  };
+
+  Daemon.prototype.getDuration = function () {
+    return this.rate * this.length;
+  };
+
+  Daemon.prototype.getDirection = function () {
+    return this.isAtEnd() !== this.BACKW;
+  };
+
+  Daemon.prototype.getPosition = function () {
+    return this.INDEX;
+  };
+
+    /* Instantaneous movement (synchronous). */
+
+  Daemon.prototype.makeSteps = function (nHowMany, bReverse, bForce) {
+    if (nHowMany === 0) { return true; }
+    if (isNaN(nHowMany)) { return false; }
+    var nIdx = 0, nLen = Math.round(Math.abs(nHowMany)), bContinue = true, bBackw = nHowMany &gt; 0 === Boolean(bReverse);
+    this.BACKW = bBackw;
+    for (nIdx; nIdx &lt; nLen &amp;&amp; bContinue; nIdx++) {
+      if (this.BACKW === bBackw &amp;&amp; this.isAtEnd()) {
+        if (this.reversals &gt; 0) { this.BACKW = bBackw = !this.BACKW; }
+        else { break; }
+      }
+      bContinue = Daemon.forceCall(this) || bForce;
+    }
+    return nIdx === nLen;
+  };
+
+  Daemon.prototype.skipTo = function (nIdx, bForce) {
+    /* Warning: this method requires the Daemon.prototype.makeSteps() method */
+    if (nIdx === this.INDEX) { return; }
+    if (isFinite(this.length) &amp;&amp; nIdx &lt; 0 || nIdx &gt; this.length) { return; }
+
+    var
+      bDirection = (this.INDEX !== 0 &amp;&amp; this.INDEX !== this.length) === this.BACKW,
+      bSuccess = this.makeSteps(this.INDEX - nIdx, true, bForce);
+
+    if (this.INDEX !== 0 &amp;&amp; this.INDEX !== this.length) { this.BACKW = bDirection; }
+    return bSuccess;
+  };
+
+  Daemon.prototype.skipFor = function (nDelta, bForce) {
+    /* Warning: this method requires the Daemon.prototype.makeSteps() method */
+    return this.makeSteps(nDelta, this.isAtEnd() !== this.BACKW, bForce);
+  };
+
+  Daemon.prototype.close = function (bReverse, bForce) {
+    /* Warning: this method requires the Daemon.prototype.makeSteps() method */
+    if (!isFinite(this.length)) { return false; }
+    this.pause();
+    this.reversals = 0;
+    return this.makeSteps(bReverse ? this.INDEX : this.length - this.INDEX, bReverse, bForce);
+  };
+
+  Daemon.prototype.reclose = function (bForce) {
+    /* Warning: this method requires the Daemon.prototype.makeSteps() and Daemon.prototype.close() methods */
+    return this.close(this.isAtEnd() !== this.BACKW, bForce || false);
+  };
+
+  /* Others */
+
+  Daemon.prototype.restart = function () {
+    this.stop();
+    this.start();
+  };
+
+  Daemon.prototype.loopUntil = function (vDate) {
+    if (!isFinite(this.length)) { return; }
+    var nTime = vDate.constructor === Date ? vDate.getTime() : isNaN(vDate) ? Date.parse(vDate) : vDate;
+    if (isFinite(nTime) &amp;&amp; nTime &gt; Date.now()) {
+      this.reversals = Math.floor((nTime - Date.now() - (this.BACKW ? this.INDEX : this.length - this.INDEX) * this.rate) / (this.length * this.rate));
+      this.start(this.isAtEnd() !== this.BACKW);
+    }
+  };
+
+  Daemon.prototype.spread = function (nTime) {
+    if (!isFinite(this.length)) { throw new TypeError("Daemon.prototype.spread - the length is not a finite number. Use Daemon.prototype.adaptLength()."); }
+    if (nTime &gt; 0) {
+      this.rate = Math.floor(nTime / this.length);
+      this.synchronize();
+    }
+    return this.rate;
+  };
+
+  Daemon.prototype.adaptLength = function (nTime) {
+    this.length = Math.floor(nTime / this.rate);
+    return this.length;
+  };
+
+  Daemon.prototype.playUntil = function (vDate) {
+    var nTime = vDate.constructor === Date ? vDate.getTime() : isNaN(vDate) ? Date.parse(vDate) : vDate;
+    if (isFinite(nTime) &amp;&amp; nTime &gt; Date.now()) {
+      this.length = Math.floor((nTime - Date.now()) / this.rate) + this.INDEX;
+      this.pause();
+      this.start();
+    }
+    return this.length;
+  };</pre>
+</div>
+
+<h2 id="Manual">Manual</h2>
+
+<h3 id="The_constructor">The constructor</h3>
+
+<h4 id="Syntax">Syntax</h4>
+
+<pre class="syntaxbox">var myDaemon = new Daemon(<em>thisObject</em>, <em>callback</em>[, <em>rate</em>[, <em>length</em>[, <em>init</em>[, <em>onstart</em>]]]]);</pre>
+
+<h4 id="Description">Description</h4>
+
+<p>Constructs a JavaScript object containing all information needed by an animation (like the <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object, the callback function, the length, the frame rate, the number of cycles, and the <code>init</code> and <code>onstart</code> functions).</p>
+
+<h4 id="Arguments">Arguments</h4>
+
+<dl>
+ <dt><code>thisObject</code></dt>
+ <dd>The <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object on which will be called the callback function. It can be an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Object" title="/en-US/docs/JavaScript/Reference/Global_Objects/Object">object</a> or <code>null</code>. If is <code>null</code>, the <code>this</code> object will point to the global <code>Daemon.context</code> object (see below).</dd>
+ <dt><code>callback</code></dt>
+ <dd>The function which will be invoked repeatedly. It will be called with three parameters: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not). It will be something like <code><em>callback</em>.call(<em>thisObject</em>, <em>index</em>, <em>length</em>, <em>backwards</em>)</code>. If the <code><em>callback</em></code> function returns a <code>false</code> value, the daemon will be paused.</dd>
+ <dt><code>rate</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The time lapse (in <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of milliseconds) between each invocation. The default value is 100.</dd>
+ <dt><code>length</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The total number of invocations. It can be a positive integer or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>. The default value is <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>.</dd>
+ <dt><code>init</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">function</a> which will be synchronously invoked once during the creation of the daemon and then assigned to the <code>onstop</code> property. It will be called with the same three arguments of the <code>callback</code> function. They will also have the same values of the last invocation of the <code>callback</code> function.</dd>
+ <dt><code>onstart</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">function</a> which will be synchronously invoked whenever the <code>start</code> event occurs. It will be assigned to the <code>onstart</code> property. It will be called with three arguments: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not).</dd>
+</dl>
+
+<h3 id="Daemon_global_object_properties">Daemon global object properties</h3>
+
+<dl>
+ <dt><code>Daemon.context</code></dt>
+ <dd>An empty <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Object" title="/en-US/docs/JavaScript/Reference/Global_Objects/Object">object</a> used as the default <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object when the <code><em>thisObject</em></code> is not specified during the construction of the daemon. If you want your <code><em>callback</em></code> function to be invoked with a <code>null</code> <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object, you have to manually set the <code>owner</code> property to <code>null</code>.</dd>
+</dl>
+
+<h3 id="Daemon_global_object_methods">Daemon global object methods</h3>
+
+<dl>
+ <dt><code>Daemon.forceCall(<em>daemonInstance</em>)</code></dt>
+ <dd>Forces a callback to the <code><em>daemonInstance</em>.task</code> function regardless of whether or not the end has been reached. In any case the internal <code>INDEX</code> property will be increased/decreased (depending on the actual direction of the daemon).</dd>
+ <dt><code>Daemon.construct(<em>arrayOfArguments</em>)</code></dt>
+ <dd>Returns a new daemon constructed upon an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Array" title="/en-US/docs/JavaScript/Reference/Global_Objects/Array">array</a> of arguments. It is very similar to the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function/apply" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function/apply"><code>Function.prototype.apply()</code></a> method.</dd>
+ <dt><code>Daemon.buildAround(<em>context</em>[, <em>rate</em>[, <em>length</em>]])</code></dt>
+ <dd>Returns a new daemon built around a <code><em>context</em></code> object. The <code><em>context</em></code> object must cointain *at least* a <code>perform</code> property pointing to what you want to be the <code><em>callback</em></code> function of the daemon. It can also optionally contain a <code>create</code> and a <code>prepare</code> property pointing respectively to the two functions you want to be the <code><em>init</em></code> and <code><em>onstart</em></code> functions of <code>Daemon</code> constructor's arguments. The <code><em>context</em></code> object will be also the <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object of your <code>callback</code> function. So you can populate it with all your custom properties and methods. The only required one property is <code>perform</code>.
+ <h5 id="Sample_usage">Sample usage:</h5>
+
+ <pre class="syntaxbox">var myDaemon = Daemon.buildAround({
+	"create": function () { [custom code] },  // optional
+	"prepare": function () { [custom code] },  // optional
+	"perform": function () { [custom code] },  // required
+	"customProperty": [custom value],
+	"myCustomMethod": function () { [custom code] },
+	"anotherCustomProperty": [custom value],
+	"etc.": "etc."
+}, 200, 30);
+</pre>
+ </dd>
+ <dt><code>Daemon.incorporate(<em>function</em>)</code></dt>
+ <dd>The <code><em>function</em>.prototype</code> property will replaced with a <code>new Daemon()</code> object. The old replaced prototype will be preserved within a new property of the new <code><em>function</em>.prototype</code> object named <code>legacy</code>.</dd>
+</dl>
+
+<h3 id="Other_constructors">Other constructors</h3>
+
+<dl>
+ <dt><code>Daemon.blank()</code></dt>
+ <dd>Constructs a new instance of <code>Daemon</code> without own properties. This constructor is useful in order to create your own *MySomeDaemon* constructors through the <code>MySomeDaemon.prototype = new Daemon.blank();</code> assignment.</dd>
+ <dt><code>Daemon.safe()</code> [optional module daemon-safe.js]</dt>
+ <dd>
+ <h5 id="Syntax_2">Syntax</h5>
+
+ <pre class="syntaxbox">var myDaemon = new Daemon.safe(<em>thisObject</em>, <em>callback</em>[, <em>rate</em>[, <em>length</em>[, <em>init</em>[, <em>onstart</em>]]]]);</pre>
+
+ <h5 id="Description_2">Description</h5>
+
+ <p><code>Daemon.safe</code> is a clone of the Daemon constructor based on recursive invocations of <a href="/en-US/docs/DOM/window.setTimeout" title="/en-US/docs/DOM/window.setTimeout"><code>setTimeout</code></a> rather than on a single invocation of <a href="/en-US/docs/DOM/window.setInterval" title="/en-US/docs/DOM/window.setInterval"><code>setInterval</code></a>. See the <strong>daemon-safe.js</strong> module for details.</p>
+
+ <div class="note"><strong>Note:</strong> The <code>Daemon.safe</code> constructor is not part of the base system.</div>
+ </dd>
+ <dt><code>Daemon.safe.blank()</code> [optional module daemon-safe.js]</dt>
+ <dd>
+ <p>The same as for <code>Daemon.blank</code>, but applied to the <code>Daemon.safe</code> constructor.</p>
+
+ <div class="note"><strong>Note:</strong> The <code>Daemon.safe</code> constructor is not part of the base system.</div>
+ </dd>
+</dl>
+
+<h3 id="Daemon_instances_properties">Daemon instances properties</h3>
+
+<dl>
+ <dt><code>myDaemon.owner</code></dt>
+ <dd>The <a href="/en-US/docs/JavaScript/Reference/Operators/this" title="en-US/docs/JavaScript/Reference/Operators/this"><code>this</code></a> object on which is executed the daemon (read/write). It can be an <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Object" title="/en-US/docs/JavaScript/Reference/Global_Objects/Object">object</a> or <code>null</code>. Its default value is <code>Daemon.context</code>.</dd>
+ <dt><code>myDaemon.task</code></dt>
+ <dd>The function which will be repeatedly invoked (read/write). It will be called with three arguments: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not). See above. If the myDaemon.task function returns a <code>false</code> value, the daemon will be paused.</dd>
+ <dt><code>myDaemon.rate</code></dt>
+ <dd>The time lapse (in number of milliseconds) between each invocation (read/write).</dd>
+ <dt><code>myDaemon.length</code></dt>
+ <dd>The total <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of invocations. It can be a positive integer or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code> (read/write).</dd>
+ <dt><code>myDaemon.reversals</code></dt>
+ <dd>The <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of times the daemon must be restarted (read/write). Set it to <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code> for a “loop mode”.</dd>
+ <dt><code>myDaemon.onstart</code></dt>
+ <dd>The <code>start</code> listener (read/write). It will be called with three arguments: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not).</dd>
+ <dt><code>myDaemon.onstop</code></dt>
+ <dd>
+ <p>The <code>stop</code> listener (read/write). It will be called with three arguments: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not).</p>
+
+ <div class="note"><strong>Note:</strong> The <code>stop()</code> method is not part of the base system.</div>
+ </dd>
+</dl>
+
+<h3 id="Daemon_instances_methods">Daemon instances methods</h3>
+
+<dl>
+ <dt><code>myDaemon.isAtEnd()</code></dt>
+ <dd>Returns a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the daemon is at the start/end position or not.</dd>
+ <dt><code>myDaemon.synchronize()</code></dt>
+ <dd>Synchronizes the timer of a started daemon with the time of invocation of <code>myDaemon.synchronize()</code>. If the <code>rate</code> property has been changed, the daemon will be updated with the new <code>rate</code> value.</dd>
+ <dt><code>myDaemon.pause()</code></dt>
+ <dd>Pauses the daemon.</dd>
+ <dt><code>myDaemon.start([<em>backwards</em>])</code></dt>
+ <dd>Starts the daemon forwards (index of each invocation increasing) or backwards (index decreasing).</dd>
+ <dt><code>myDaemon.stop()</code></dt>
+ <dd>Stops the daemon. All original properties will be restored. If it exists a <code>stop</code> listener will be called with three arguments: <code><em>index</em></code> (the iterative index of each invocation), <code><em>length</em></code> (the <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> of total invocations assigned to the daemon - finite or <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>), and <code><em>backwards</em></code> (a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean" title="/en-US/docs/JavaScript/Reference/Global_Objects/Boolean">boolean</a> expressing whether the process is going backwards or not).</dd>
+</dl>
+
+<h3 id="Additional_instances_methods_optional_module_daemon-methods.js">Additional instances methods [optional module daemon-methods.js]</h3>
+
+<dl>
+ <dt><code>myDaemon.syncStart([<em>backwards</em>])</code></dt>
+ <dd>Starts the daemon with the first callback synchronous.</dd>
+ <dt><code>myDaemon.play([<em>synchronous</em>])</code></dt>
+ <dd>Starts the daemon forward. If the daemon was running in the same direction, nothing will happen. If the argument is <code>true,</code> the first callback will be synchronous.</dd>
+ <dt><code>myDaemon.reversePlay([<em>synchronous</em>])</code></dt>
+ <dd>Starts the daemon backwards. If the daemon was running in the same direction, nothing will happen. If the argument is <code>true</code>, the first callback will be synchronous.</dd>
+ <dt><code>myDaemon.move([<em>synchronous</em>[, <em>reversals</em>[, <em>backwards</em>]]])</code></dt>
+ <dd>Starts a daemon synchronously or not. If the <code><em>reversals</em></code> argument is specified, the <code>myDaemon.reversals</code> property will be setted on it. If the <code><em>backwards</em></code> argument is specified, the daemon will move forwards (<code>false</code>) or backwards (<em>true</em>). If it is not specified the daemon will start in the same direction in which it has been left. If the daemon was running in the same direction, only the <code>reversals</code> property will be possibly updated.</dd>
+ <dt><code>myDaemon.turn()</code></dt>
+ <dd>Inverts the direction of the daemon. The <code>reversals</code> property will not be decreased.</dd>
+ <dt><code>myDaemon.makeLoop()</code></dt>
+ <dd>Sets the <code>reversals</code> property equal to <code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity" title="/en-US/docs/JavaScript/Reference/Global_Objects/Infinity">Infinity</a></code>.</dd>
+ <dt><code>myDaemon.unmakeLoop()</code></dt>
+ <dd>Sets the <code>reversals</code> property equal to 0.</dd>
+ <dt><code>myDaemon.setRate(<em>milliseconds</em>)</code></dt>
+ <dd>Sets the time lapse between calls (in milliseconds). If the daemon is running it will be immediately updated with the new property.</dd>
+ <dt><code>myDaemon.forcePosition(<em>index</em>)</code></dt>
+ <dd>Sets the internal <code>INDEX</code> property equal to the <code><em>index</em></code> argument without any kind of control about the range.</dd>
+ <dt><code>myDaemon.getDuration()</code></dt>
+ <dd>Returns the duration of the daemon in milliseconds.</dd>
+ <dt><code>myDaemon.getPosition()</code></dt>
+ <dd>Returns the internal <code>INDEX</code> property.</dd>
+ <dt><code>myDaemon.makeSteps(<em>howMany</em>[, <em>backwards</em>[, <em>force</em>]])</code></dt>
+ <dd>Calls synchronously the <code><em>callback</em></code> function <code><em>howMany</em></code> times. Forwards or backwards. If the <code><em>force</em></code> argument is set to true, the possible <code>return false</code> of the <code><em>callback</em></code> function will be ignored.</dd>
+ <dt><code>myDaemon.skipTo(<em>index</em>[, <em>force</em>])</code></dt>
+ <dd>Calls synchronously the <code><em>callback</em></code> function the number of times needed to reach the <code><em>index</em></code> position. If the <code><em>force</em></code> argument is set to true, the possible <code>return false</code> of the <code><em>callback</em></code> function will be ignored.</dd>
+ <dt><code>myDaemon.skipFor(<em>delta</em>[, <em>force</em>])</code></dt>
+ <dd>Calls synchronously the <code><em>callback</em></code> function <code><em>howMany</em></code> times in the same direction in which it was oriented. If the <code><em>force</em></code> argument is set to true, the possible <code>return false</code> of the <code><em>callback</em></code> function will be ignored.</dd>
+ <dt><code>myDaemon.close([<em>backwards</em>[, <em>force</em>]])</code></dt>
+ <dd>Closes the daemon, doing <strong>synchronously</strong> all pending operations forward (index of each invocation increasing) or backwards (index decreasing). If the <code><em>force</em></code> argument is set to true, the possible <code>return false</code> of the <code><em>callback</em></code> function will be ignored.</dd>
+ <dt><code>myDaemon.reclose([<em>force</em>])</code></dt>
+ <dd>Closes the daemon, doing <strong>synchronously</strong> all pending operations in the same direction in which is oriented the daemon. If the <code><em>force</em></code> argument is set to true, the possible <code>return false</code> of the <code><em>callback</em></code> function will be ignored.</dd>
+ <dt><code>myDaemon.restart()</code></dt>
+ <dd>Stops and restarts the daemon.</dd>
+ <dt><code>myDaemon.loopUntil(<em>date</em>)</code></dt>
+ <dd>Sets the reversals property in function of a future <code><em>date</em></code>. The <code><em>date</em></code> argument can be a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Date" title="/en-US/docs/JavaScript/Reference/Global_Objects/Date"><code>Date</code></a> object, a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/String" title="/en-US/docs/JavaScript/Reference/Global_Objects/String">string</a> expressing the date in GMTString format, or a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> expressing the number of milliseconds since January 1, 1970, 00:00:00 UTC.</dd>
+ <dt><code>myDaemon.spread(<em>milliseconds</em>)</code></dt>
+ <dd>Sets the total duration of the daemon in milliseconds. Only the <code>rate</code> property will be modified.</dd>
+ <dt><code>myDaemon.adaptLength(<em>milliseconds</em>)</code></dt>
+ <dd>Sets the internal <code>length</code> property equal to <code><em>milliseconds</em></code> / <code>myDaemon.rate</code>.</dd>
+ <dt><code>myDaemon.playUntil(<em>date</em>)</code></dt>
+ <dd>Starts the daemon forward and sets the total duration of it in function of a future <code><em>date</em></code>. The <code><em>date</em></code> argument can be a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Date" title="/en-US/docs/JavaScript/Reference/Global_Objects/Date"><code>Date</code></a> object, a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/String" title="/en-US/docs/JavaScript/Reference/Global_Objects/String">string</a> expressing the date in GMTString format, or a <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Number" title="/en-US/docs/JavaScript/Reference/Global_Objects/Number">number</a> expressing the number of milliseconds since January 1, 1970, 00:00:00 UTC. Only the length property will be modified.</dd>
+</dl>
+
+<h2 id="Examples">Examples</h2>
+
+<h4 id="Example_1_A_standard_instantiation_–_new_Daemon()">Example #1: A standard instantiation – <code>new Daemon()</code></h4>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: html">&lt;!doctype html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /&gt;
+&lt;title&gt;new Daemon(&amp;hellip;)&lt;/title&gt;
+&lt;script type="text/javascript" src="daemon.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-methods.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript"&gt;
+
+function perform (nIndex, nLength, bBackw) {
+  // http://tyleregeto.com/text-animation-in-javascript
+  for (var oLetter, nLetter = 0; nLetter &lt; aLetters.length; nLetter++) {
+    oLetter = aLetters[nLetter];
+    var nDist = nMaxDist - nMaxDist * nIndex / nLength;
+    oLetter.pos += 0.08;
+    oLetter.elem.style.top = Math.sin(oLetter.pos) * nDist + "px";
+    oLetter.elem.style.left = Math.cos(oLetter.pos) * nDist * 5 + "px";
+  }
+}
+
+function prepare () {
+  // build letters list
+  // http://tyleregeto.com/text-animation-in-javascript
+  this.textContent = "";
+  aLetters.length = 0;
+  for (var oSpan, oLetter, nLetter = 0, nLen = sText.length; nLetter &lt; nLen; nLetter++) {
+    oSpan = document.createElement("span");
+    oSpan.textContent = sText[nLetter];
+    oLetter = { "elem": oSpan, "parent": this };
+    aLetters.push(oLetter);
+    oLetter.pos = Math.random() * 50;
+    oLetter.elem.style.position = "relative";
+    this.appendChild(oSpan);
+  }
+}
+
+var
+  nMaxDist = 25, aLetters = [], sText = "Do you feel lucky, punk?",
+  oRecompose = new Daemon(document.createElement("p"), perform, 33, 30, prepare);
+
+onload = function () {
+  oRecompose.owner.id = "perform-me";
+  document.body.appendChild(oRecompose.owner);
+  oRecompose.play();
+};
+
+&lt;/script&gt;
+
+&lt;style type="text/css"&gt;
+body {
+  font-family: monospace, sans-serif;
+  background: #DDDDDD;
+  overflow: hidden;
+}
+
+#perform-me {
+  margin: 50px;
+  font-size: 20px;
+  line-height: 20px;
+}
+&lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;h1&gt;new Daemon(&lt;em&gt;@thisObject&lt;/em&gt;, &lt;em&gt;@callback&lt;/em&gt;[, &lt;em&gt;@rate&lt;/em&gt;, &lt;em&gt;@length&lt;/em&gt;, &lt;em&gt;@init&lt;/em&gt;, &lt;em&gt;@onstart&lt;/em&gt;])&lt;/h1&gt;
+
+&lt;p&gt;&lt;button onclick="oRecompose.skipTo(11);"&gt;skipTo(11)&lt;/button&gt;
+&lt;button onclick="oRecompose.makeSteps(29);"&gt;makeSteps(29)&lt;/button&gt;
+&lt;button onclick="oRecompose.fixPosition(-13);"&gt;fixPosition(-13)&lt;/button&gt;
+&lt;button onclick="oRecompose.play();"&gt;play&lt;/button&gt;
+&lt;button onclick="oRecompose.turn();"&gt;turn&lt;/button&gt;
+&lt;button onclick="oRecompose.pause();"&gt;pause&lt;/button&gt;
+&lt;button onclick="oRecompose.reversePlay();"&gt;reversePlay&lt;/button&gt;
+&lt;button onclick="oRecompose.reversals = 2;alert('changed');"&gt;two reversals&lt;/button&gt;
+&lt;button onclick="oRecompose.makeLoop();alert('changed');"&gt;makeLoop&lt;/button&gt;
+&lt;button onclick="oRecompose.unmakeLoop();alert('changed');"&gt;unmakeLoop&lt;/button&gt;
+&lt;button onclick="oRecompose.close();"&gt;close&lt;/button&gt;
+&lt;button onclick="oRecompose.reclose();"&gt;reclose&lt;/button&gt;&lt;br /&gt;
+frame rate: &lt;input type="text" id="vello" value="33" style="width: 40px;" onkeypress="return event.charCode===0||/\d/.test(String.fromCharCode(event.charCode));" onkeyup="if(isFinite(this.value)&amp;&amp;Number(this.value)&gt;0){oRecompose.setRate(this.value);}" /&gt;&lt;/p&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+</div>
+
+<h4 id="Example_2_A_practical_instantiation_–_Daemon.buildAround()">Example #2: A practical instantiation – <code>Daemon.buildAround()</code></h4>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: html">&lt;!doctype html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /&gt;
+&lt;title&gt;Daemon.buildAround(&amp;hellip;)&lt;/title&gt;
+&lt;script type="text/javascript" src="daemon.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-methods.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript"&gt;
+
+ /*\
+ |*|
+ |*|  :: Daemon.buildAround(@context[, @rate, @length]) ::
+ |*|
+ |*|  Returns a new daemon built around a @context object. The @context object must contain *at least*
+ |*|  a "perform" property pointing to what you want to be the @callback function of the daemon.
+ |*|  It can also optionally contain "create" and "prepare" properties pointing respectively to the
+ |*|  two functions you want to be the @init and @onstart functions of Daemon constructor's arguments.
+ |*|  The @context object will be also the *this* object of your callback function. So you can populate
+ |*|  it with any custom properties and methods. The only required one property is "perform".
+ |*|
+ |*|    Sample usage:
+ |*|
+ |*|      var myDaemon = Daemon.buildAround({
+ |*|        "customProperty": [custom value],
+ |*|        "myCustomMethod": function () { [custom code] },
+ |*|        "anotherCustomProperty": [custom value],
+ |*|        "etc.": "etc."
+ |*|        "create": function () { [custom code] },  // optional
+ |*|        "prepare": function () { [custom code] },  // optional
+ |*|        "perform": function () { [custom code] },  // required
+ |*|      }, 200, 30);
+ |*|
+ \*/
+
+var sText = "Do you feel lucky, punk?", oUnhide = Daemon.buildAround({
+  // http://tyleregeto.com/text-animation-in-javascript
+  "letters": [],
+  "numletters": 0,
+  "clock": 0,
+  "interval": 0.0,
+  "delta": 33,
+  "letters": [],
+  "pool": ["0","1","2","3","4","5","6","7","8","9"],
+  "target": document.createElement("p"),
+  "create": function () {
+    // build letters list
+    this.target.textContent = "";
+    this.letters.length = 0;
+    for (var oSpan, oLetter, nLetter = 0, nLen = sText.length; nLetter &lt; nLen; nLetter++) {
+      oSpan = document.createElement("span");
+      oSpan.textContent = sText[nLetter];
+      oLetter = { "elem": oSpan, "parent": this.target };
+      this.letters.push(oLetter);
+      oLetter.index = this.numletters;
+      oLetter.elem.style.position = "relative";
+      oLetter.val = oLetter.elem.textContent;
+      this.numletters++;
+      this.target.appendChild(oSpan);
+    }
+  },
+  "perform": function (nIndex, nLength, bBackw) {
+    for (var oLetter, nLetter = 0; nLetter &lt; this.letters.length; nLetter++) {
+      oLetter = this.letters[nLetter];
+      if (nLength &lt; nIndex &amp;&amp; this.clock + this.delta &lt; this.interval) {
+        clock += this.delta;
+        return;
+      }
+      this.clock = 0;
+      oLetter.elem.textContent = nIndex / nLength - oLetter.index / this.numletters &gt;= 0 ?
+        oLetter.val
+        : this.pool[parseInt(Math.random() * this.pool.length)];
+    }
+  }
+}, 33, 30);
+
+onload = function () {
+  oUnhide.owner.target.id = "animate-me";
+  document.body.appendChild(oUnhide.owner.target);
+  oUnhide.play();
+};
+
+&lt;/script&gt;
+
+&lt;style type="text/css"&gt;
+body {
+  font-family: monospace, sans-serif;
+  background: #DDDDDD;
+  overflow: hidden;
+}
+
+#animate-me {
+  margin: 50px;
+  font-size: 20px;
+  line-height: 20px;
+}
+&lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;h1&gt;Daemon.buildAround()&lt;/h1&gt;
+
+&lt;p&gt;&lt;button onclick="oUnhide.skipTo(11);"&gt;skipTo(11)&lt;/button&gt;
+&lt;button onclick="oUnhide.makeSteps(29);"&gt;makeSteps(29)&lt;/button&gt;
+&lt;button onclick="oUnhide.fixPosition(-13);"&gt;fixPosition(-13)&lt;/button&gt;
+&lt;button onclick="oUnhide.play();"&gt;play&lt;/button&gt;
+&lt;button onclick="oUnhide.turn();"&gt;turn&lt;/button&gt;
+&lt;button onclick="oUnhide.pause();"&gt;pause&lt;/button&gt;
+&lt;button onclick="oUnhide.reversePlay();"&gt;reversePlay&lt;/button&gt;
+&lt;button onclick="oUnhide.reversals = 2;alert('changed');"&gt;two reversals&lt;/button&gt;
+&lt;button onclick="oUnhide.makeLoop();alert('changed');"&gt;makeLoop&lt;/button&gt;
+&lt;button onclick="oUnhide.unmakeLoop();alert('changed');"&gt;unmakeLoop&lt;/button&gt;
+&lt;button onclick="oUnhide.close();"&gt;close&lt;/button&gt;
+&lt;button onclick="oUnhide.reclose();"&gt;reclose&lt;/button&gt;&lt;br /&gt;
+frame rate: &lt;input type="text" id="vello" value="33" style="width: 40px;" onkeypress="return event.charCode===0||/\d/.test(String.fromCharCode(event.charCode));" onkeyup="if(isFinite(this.value)&amp;&amp;Number(this.value)&gt;0){oUnhide.setRate(this.value);}" /&gt;&lt;/p&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+</div>
+
+<h4 id="Example_3_A_safe_(without_setInterval)_instantiation_–_new_Daemon.safe()">Example #3: A <em>safe</em> (without <code>setInterval</code>) instantiation – <code>new Daemon.safe()</code></h4>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: html">&lt;!doctype html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /&gt;
+&lt;title&gt;new Daemon.safe(&amp;hellip;)&lt;/title&gt;
+&lt;script type="text/javascript" src="daemon.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-safe.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-methods.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript"&gt;
+
+function perform (nIndex, nLength, bBackw) {
+  // http://tyleregeto.com/text-animation-in-javascript
+  for (var oLetter, nLetter = 0; nLetter &lt; aLetters.length; nLetter++) {
+    oLetter = aLetters[nLetter];
+    var nDist = nMaxDist - nMaxDist * nIndex / nLength;
+    oLetter.pos += 0.08;
+    oLetter.elem.style.top = Math.sin(oLetter.pos) * nDist + "px";
+    oLetter.elem.style.left = Math.cos(oLetter.pos) * nDist * 5 + "px";
+  }
+}
+
+function prepare () {
+  // build letters list
+  // http://tyleregeto.com/text-animation-in-javascript
+  this.textContent = "";
+  aLetters.length = 0;
+  for (var oSpan, oLetter, nLetter = 0, nLen = sText.length; nLetter &lt; nLen; nLetter++) {
+    oSpan = document.createElement("span");
+    oSpan.textContent = sText[nLetter];
+    oLetter = { "elem": oSpan, "parent": this };
+    aLetters.push(oLetter);
+    oLetter.pos = Math.random() * 50;
+    oLetter.elem.style.position = "relative";
+    this.appendChild(oSpan);
+  }
+}
+
+var
+  nMaxDist = 25, aLetters = [], sText = "Do you feel lucky, punk?",
+  oRecompose = new Daemon.safe(document.createElement("p"), perform, 33, 30, prepare);
+
+onload = function () {
+  oRecompose.owner.id = "perform-me";
+  document.body.appendChild(oRecompose.owner);
+  oRecompose.play();
+};
+
+&lt;/script&gt;
+
+&lt;style type="text/css"&gt;
+body {
+  font-family: monospace, sans-serif;
+  background: #DDDDDD;
+  overflow: hidden;
+}
+
+#perform-me {
+  margin: 50px;
+  font-size: 20px;
+  line-height: 20px;
+}
+&lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;h1&gt;new Daemon.safe(&lt;em&gt;@thisObject&lt;/em&gt;, &lt;em&gt;@callback&lt;/em&gt;[, &lt;em&gt;@rate&lt;/em&gt;, &lt;em&gt;@length&lt;/em&gt;, &lt;em&gt;@init&lt;/em&gt;, &lt;em&gt;@onstart&lt;/em&gt;])&lt;/h1&gt;
+
+&lt;p&gt;&lt;button onclick="oRecompose.skipTo(11);"&gt;skipTo(11)&lt;/button&gt;
+&lt;button onclick="oRecompose.makeSteps(29);"&gt;makeSteps(29)&lt;/button&gt;
+&lt;button onclick="oRecompose.fixPosition(-13);"&gt;fixPosition(-13)&lt;/button&gt;
+&lt;button onclick="oRecompose.play();"&gt;play&lt;/button&gt;
+&lt;button onclick="oRecompose.turn();"&gt;turn&lt;/button&gt;
+&lt;button onclick="oRecompose.pause();"&gt;pause&lt;/button&gt;
+&lt;button onclick="oRecompose.reversePlay();"&gt;reversePlay&lt;/button&gt;
+&lt;button onclick="oRecompose.reversals = 2;alert('changed');"&gt;two reversals&lt;/button&gt;
+&lt;button onclick="oRecompose.makeLoop();alert('changed');"&gt;makeLoop&lt;/button&gt;
+&lt;button onclick="oRecompose.unmakeLoop();alert('changed');"&gt;unmakeLoop&lt;/button&gt;
+&lt;button onclick="oRecompose.close();"&gt;close&lt;/button&gt;
+&lt;button onclick="oRecompose.reclose();"&gt;reclose&lt;/button&gt;&lt;br /&gt;
+frame rate: &lt;input type="text" id="vello" value="33" style="width: 40px;" onkeypress="return event.charCode===0||/\d/.test(String.fromCharCode(event.charCode));" onkeyup="if(isFinite(this.value)&amp;&amp;Number(this.value)&gt;0){oRecompose.setRate(this.value);}" /&gt;&lt;/p&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+</div>
+
+<h4 id="Example_4_A_practical_and_safe_(without_setInterval)_instantiation_–_Daemon.safe.buildAround()">Example #4: A practical and <em>safe</em> (without <code>setInterval</code>) instantiation – <code>Daemon.safe.buildAround()</code></h4>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: html">&lt;!doctype html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /&gt;
+&lt;title&gt;Daemon.safe.buildAround(&amp;hellip;)&lt;/title&gt;
+&lt;script type="text/javascript" src="daemon.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-safe.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="daemon-methods.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript"&gt;
+
+ /*\
+ |*|
+ |*|  :: Daemon.safe.buildAround(@context[, @rate, @length]) ::
+ |*|
+ |*|  Returns a new daemon built around a @context object. The @context object must contain *at least*
+ |*|  a "perform" property pointing to what you want to be the @callback function of the daemon.
+ |*|  It can also optionally contain "create" and "prepare" properties pointing respectively to the
+ |*|  two functions you want to be the @init and @onstart functions of Daemon constructor's arguments.
+ |*|  The @context object will be also the *this* object of your callback function. So you can populate
+ |*|  it with any custom properties and methods. The only required one property is "perform".
+ |*|
+ |*|    Sample usage:
+ |*|
+ |*|      var myDaemon = Daemon.safe.buildAround({
+ |*|        "customProperty": [custom value],
+ |*|        "myCustomMethod": function () { [custom code] },
+ |*|        "anotherCustomProperty": [custom value],
+ |*|        "etc.": "etc."
+ |*|        "create": function () { [custom code] },  // optional
+ |*|        "prepare": function () { [custom code] },  // optional
+ |*|        "perform": function () { [custom code] },  // required
+ |*|      }, 200, 30);
+ |*|
+ \*/
+
+var sText = "Do you feel lucky, punk?", oUnhide = Daemon.safe.buildAround({
+  // http://tyleregeto.com/text-animation-in-javascript
+  "letters": [],
+  "numletters": 0,
+  "clock": 0,
+  "interval": 0.0,
+  "delta": 33,
+  "letters": [],
+  "pool": ["0","1","2","3","4","5","6","7","8","9"],
+  "target": document.createElement("p"),
+  "create": function () {
+    // build letters list
+    this.target.textContent = "";
+    this.letters.length = 0;
+    for (var oSpan, oLetter, nLetter = 0, nLen = sText.length; nLetter &lt; nLen; nLetter++) {
+      oSpan = document.createElement("span");
+      oSpan.textContent = sText[nLetter];
+      oLetter = { "elem": oSpan, "parent": this.target };
+      this.letters.push(oLetter);
+      oLetter.index = this.numletters;
+      oLetter.elem.style.position = "relative";
+      oLetter.val = oLetter.elem.textContent;
+      this.numletters++;
+      this.target.appendChild(oSpan);
+    }
+  },
+  "perform": function (nIndex, nLength, bBackw) {
+    for (var oLetter, nLetter = 0; nLetter &lt; this.letters.length; nLetter++) {
+      oLetter = this.letters[nLetter];
+      if (nLength &lt; nIndex &amp;&amp; this.clock + this.delta &lt; this.interval) {
+        clock += this.delta;
+        return;
+      }
+      this.clock = 0;
+      oLetter.elem.textContent = nIndex / nLength - oLetter.index / this.numletters &gt;= 0 ?
+        oLetter.val
+        : this.pool[parseInt(Math.random() * this.pool.length)];
+    }
+  }
+}, 33, 30);
+
+onload = function () {
+  oUnhide.owner.target.id = "animate-me";
+  document.body.appendChild(oUnhide.owner.target);
+  oUnhide.play();
+};
+
+&lt;/script&gt;
+
+&lt;style type="text/css"&gt;
+body {
+  font-family: monospace, sans-serif;
+  background: #DDDDDD;
+  overflow: hidden;
+}
+
+#animate-me {
+  margin: 50px;
+  font-size: 20px;
+  line-height: 20px;
+}
+&lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;h1&gt;Daemon.safe.buildAround()&lt;/h1&gt;
+
+&lt;p&gt;&lt;button onclick="oUnhide.skipTo(11);"&gt;skipTo(11)&lt;/button&gt;
+&lt;button onclick="oUnhide.makeSteps(29);"&gt;makeSteps(29)&lt;/button&gt;
+&lt;button onclick="oUnhide.fixPosition(-13);"&gt;fixPosition(-13)&lt;/button&gt;
+&lt;button onclick="oUnhide.play();"&gt;play&lt;/button&gt;
+&lt;button onclick="oUnhide.turn();"&gt;turn&lt;/button&gt;
+&lt;button onclick="oUnhide.pause();"&gt;pause&lt;/button&gt;
+&lt;button onclick="oUnhide.reversePlay();"&gt;reversePlay&lt;/button&gt;
+&lt;button onclick="oUnhide.reversals = 2;alert('changed');"&gt;two reversals&lt;/button&gt;
+&lt;button onclick="oUnhide.makeLoop();alert('changed');"&gt;makeLoop&lt;/button&gt;
+&lt;button onclick="oUnhide.unmakeLoop();alert('changed');"&gt;unmakeLoop&lt;/button&gt;
+&lt;button onclick="oUnhide.close();"&gt;close&lt;/button&gt;
+&lt;button onclick="oUnhide.reclose();"&gt;reclose&lt;/button&gt;&lt;br /&gt;
+frame rate: &lt;input type="text" id="vello" value="33" style="width: 40px;" onkeypress="return event.charCode===0||/\d/.test(String.fromCharCode(event.charCode));" onkeyup="if(isFinite(this.value)&amp;&amp;Number(this.value)&gt;0){oUnhide.setRate(this.value);}" /&gt;&lt;/p&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+</div>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/JavaScript/Timers" title="/en-US/docs/JavaScript/Timers">JavaScript timers</a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/DOM/window.setTimeout" title="/en-US/docs/DOM/window.setTimeout"><code>setTimeout()</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/DOM/window.setInterval" title="/en-US/docs/DOM/window.setInterval"><code>setInterval()</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/DOM/window.clearTimeout" title="/en-US/docs/DOM/window.clearTimeout"><code>clearTimeout()</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/DOM/window.clearInterval" title="/en-US/docs/DOM/window.clearTimeout"><code>clearInterval()</code></a></li>
+ <li><a href="https://developer.mozilla.org/en-US/docs/DOM/window.requestAnimationFrame" title="en-US/docs/DOM/window.requestAnimationFrame">requestAnimationFrame()</a></li>
+</ul>

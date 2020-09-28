@@ -1,0 +1,86 @@
+<p>{{ Jsapi_minversion_header("38") }}</p>
+
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Encode the given string as UTF8 into given buffer.</p>
+</div>
+
+<h2 id="Syntax">Syntax</h2>
+
+<pre class="syntaxbox">// New in JSAPI 52
+void
+DeflateStringToUTF8Buffer(JSFlatString* src, mozilla::RangedPtr&lt;char&gt; dst,
+                          size_t* dstlenp = nullptr, size_t* numcharsp = nullptr);
+
+// Obsolete in SpiderMonkey 49
+void
+DeflateStringToUTF8Buffer(JSFlatString* src, mozilla::RangedPtr&lt;char&gt; dst);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>src</code></td>
+   <td>{{jsapixref("JSFlatString", "JSFlatString *")}}</td>
+   <td>The pointer to the string to deflate.</td>
+  </tr>
+  <tr>
+   <td><code>dst</code></td>
+   <td><code>mozilla::RangedPtr&lt;char&gt;</code></td>
+   <td>The ranged pointer to the buffer.</td>
+  </tr>
+  <tr>
+   <td><code>dstlenp</code></td>
+   <td><code>size_t*</code></td>
+   <td>The pointer to receive the number of bytes written to the buffer.</td>
+  </tr>
+  <tr>
+   <td><code>numcharsp</code></td>
+   <td><code>size_t*</code></td>
+   <td>The pointer to receive the number of Unicode characters written to the buffer.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description">Description</h2>
+
+<p><code>JS::DeflateStringToUTF8Buffer</code> encodes <code>src</code> as UTF8. The caller must either ensure <code>dst</code> has enough space to encode the entire string, or pass the length of the buffer as <code>dstlenp</code>. In which case, the function will encode characters from the string until the buffer is exhausted. Does not write the <code>null</code> terminator.</p>
+
+<p>If <code>dstlenp</code> is provided, it will be updated to hold the number of bytes written to the buffer. If <code>numcharsp</code> is provided, it will be updated to hold the number of Unicode characters written to the buffer. This can be less than the length of the string, if the buffer is exhausted before the string is fully encoded.</p>
+
+<h2 id="Examples">Examples</h2>
+
+<pre class="brush: cpp">char16_t uchars[] = { 0xD83E, 0xDD8A, 0 };
+
+JS::RootedString str(cx, JS_NewUCStringCopyN(cx, uchars, 2));
+if (!str) return false;
+
+JS::Rooted&lt;JSFlatString*&gt; flatStr(cx, JS_FlattenString(cx, str));
+if (!flatStr) return false;
+
+size_t length = JS::GetDeflatedUTF8StringLength(flatStr);
+
+char* buffer = static_cast&lt;char*&gt;(JS_malloc(cx, length + 1));
+if (!buffer) return false;
+
+JS::DeflateStringToUTF8Buffer(flatStr, mozilla::RangedPtr&lt;char&gt;(buffer, length));
+buffer[length] = '\0';
+
+printf("utf8: [%s]\n", buffer);
+
+JS_free(cx, buffer);
+</pre>
+
+<h2 id="See_Also">See Also</h2>
+
+<ul>
+ <li>{{jsapixref("JS::GetDeflatedUTF8StringLength")}}</li>
+ <li>{{bug(1034627)}}</li>
+ <li>{{bug(1271014)}} -- Added <code>dstlenp</code> and <code>numcharsp</code></li>
+</ul>

@@ -1,0 +1,93 @@
+<p>
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Recursive_Generation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Bindings">Next  »</a></p>
+</div>
+Let's look a more useful example, this time for a template that will show a list of photos. In this situation, an RDF container will be used to hold the list of images.
+
+<pre>&lt;?xml version="1.0"?&gt;
+&lt;rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"&gt;
+
+  &lt;rdf:Seq rdf:about="http://www.xulplanet.com/rdf/myphotos"&gt;
+    &lt;rdf:li rdf:resource="http://www.xulplanet.com/ndeakin/images/t/palace.jpg"/&gt;
+    &lt;rdf:li rdf:resource="http://www.xulplanet.com/ndeakin/images/t/canal.jpg"/&gt;
+    &lt;rdf:li rdf:resource="http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg"/&gt;
+  &lt;/rdf:Seq&gt;
+
+  &lt;rdf:Description rdf:about="http://www.xulplanet.com/ndeakin/images/t/palace.jpg"
+                   dc:title="Palace from Above"/&gt;
+  &lt;rdf:Description rdf:about="http://www.xulplanet.com/ndeakin/images/t/canal.jpg"
+                   dc:title="Canal"/&gt;
+  &lt;rdf:Description rdf:about="http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg"
+                   dc:title="Obelisk"/&gt;
+
+&lt;/rdf:RDF&gt;
+</pre>
+<p>In this example, we have three images, which can be identified by urls. The resource uris correspond to their actual urls although this isn't necessary. Each image also has one property, the image's title. A template which displays this information is very simple to create. Unlike previous examples where we iterated over a property to navigate the graph, here we want to iterate over the children of an RDF container. The container, an RDF Seq, has the uri '<span class="nowiki">http://www.xulplanet.com/rdf/myphotos</span>'. This will be the starting point of the navigation. We want the endpoints to be the three images. First, we set the datasources and ref attributes as needed:
+</p>
+<pre>&lt;vbox datasources="template-guide-ex2.rdf"
+      ref="http://www.xulplanet.com/rdf/myphotos"&gt;
+</pre>
+<p>This time, we need to use a new statement, the <code><a href="/en-US/docs/Mozilla/Tech/XUL/member" title="member">member</a></code> condition as well as a <code><a href="/en-US/docs/Mozilla/Tech/XUL/triple" title="triple">triple</a></code>.
+</p>
+<pre>&lt;query&gt;
+  &lt;content uri="?start"/&gt;
+  &lt;member container="?start" child="?photo"/&gt;
+  &lt;triple subject="?photo"
+          predicate="http://purl.org/dc/elements/1.1/title"
+          object="?title"/&gt;
+&lt;/query&gt;
+</pre>
+<p>The seed is set in a similar manner as the previous examples, effectively creating a single result with the ?start variable set to the reference resource '<span class="nowiki">http://www.xulplanet.com/rdf/myphotos</span>'. The same starting variable is used in this example, but you can of course use any variable you wish.
+</p>
+<pre>(?start = http://www.xulplanet.com/rdf/myphotos)
+</pre>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XUL/member" title="member">member</a></code> element is used to iterate over the children of a container (or the reverse). First, any known variables are filled into the member statement for the current result. There's only one result so far; the member element's container attribute is set to value of the ?start variable of this result. This will result in the following:
+</p>
+<pre>&lt;member container="http://www.xulplanet.com/rdf/myphotos" child="?photo"/&gt;
+</pre>
+<p>As with processing a triple, the builder will now try to find as many values for the ?photo variable as possible and create potential results using them. The container attribute specifies the container and the child attribute specifies the children. In the RDF data, the container '<span class="nowiki">http://www.xulplanet.com/rdf/myphotos</span> has three children, so there are three possible values for the ?photo variable. If that node had no children or wasn't a container, there would be no possible results. The data network will now look like this:
+</p>
+<pre>(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/palace.jpg)
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/canal.jpg)
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/obselisk.jpg)
+</pre>
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XUL/triple" title="triple">triple</a></code> is evaluated next, and it will be examined for each potential result found so far. The builder will first fill in as many variables as it can. For the first result, the value of the ?photo variable is known, so the triple will be evaluated like so:
+</p>
+<pre>&lt;triple subject="http://www.xulplanet.com/ndeakin/images/t/palace.jpg"
+        predicate="http://purl.org/dc/elements/1.1/title"
+        object="?title"/&gt;
+</pre>
+<p>The builder next calculates the value for ?title using the predicate '<span class="nowiki">http://purl.org/dc/elements/1.1/title</span>'. In the RDF, the 'palace' resource has a value 'Palace from Above', so it will be added to the data network, assigned to the ?title variable. Note that this value is a literal rather than a resource.
+</p>
+<pre>(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/palace.jpg,
+ ?title = 'Palace from Above')
+</pre>
+<p>The process continues in a similar manner for the other two results. In the end, the network will contain the following data:
+</p>
+<pre>(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/palace.jpg,
+ ?title = 'Palace from Above')
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/canal.jpg,
+ ?title = 'Canal')
+(?start = http://www.xulplanet.com/rdf/myphotos,
+ ?photo = http://www.xulplanet.com/ndeakin/images/t/obelisk.jpg,
+ ?title = 'Obelisk')
+</pre>
+<p>Since the <code><a href="/en-US/docs/Mozilla/Tech/XUL/triple" title="triple">triple</a></code> is the last statement, three matches total have been found. The action body might look like the following, which displays the image using its url and title in a label. You might note that the image's src attribute uses the member variable ?photo </p>
+<pre>&lt;action&gt;
+  &lt;vbox uri="?photo" align="start"&gt;
+    &lt;image src="?photo"/&gt;
+    &lt;label value="?title"/&gt;
+  &lt;/vbox&gt;
+&lt;/action&gt;
+</pre>
+<p>It shouldn't be too difficult to tell what would appear in the window in this example. You can see if you guessed correctly by <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex11.xul">viewing the example</a>.
+</p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Recursive_Generation" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Bindings">Next  »</a></p>
+</div>

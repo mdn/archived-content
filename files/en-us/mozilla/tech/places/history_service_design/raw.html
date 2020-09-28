@@ -1,0 +1,115 @@
+<p>This document provides a high-level overview of the overall <a class="internal" href="/en/Using_the_Places_history_service" title="en/Using the Places history service">History service</a> design of the <a href="/en/Places" title="en/Places">Places</a> system. <a class="internal" href="/en/Places" title="en/Places">Places</a> is designed to be a complete replacement for the Firefox bookmarks and history systems using <a href="/en/Storage" title="en/Storage">Storage</a>. This system provides additional performance, flexibility, and querying capabilities over the old one, for both end users and extensions developers.</p>
+
+<p>View the service interface definition: <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsINavHistoryService.idl" title="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsINavHistoryService.idl">nsINavHistoryService.idl</a>.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Objectives</h3>
+
+<p>The primary objectives of the new History service implementation in <a class="internal" href="/en/Places" title="en/Places">Places</a> are:</p>
+
+<ul>
+ <li>Improve access to browsing history</li>
+ <li>Allow association of useful metadata with urls</li>
+ <li>Flexible query system for both end-users and add-ons developers</li>
+ <li>Clean architecture for ease of code reuse and maintainability</li>
+</ul>
+
+<p>The most known and visible feature of history are views. The user can query his visits based on a date range, meta contents or revisit behavior. This involves storing informations on all of the user's visits, including visit time, type of visit and meta data. Old history system was instead only storing first and last visit date, and a generic visits counter, creating some problem due to the impossibility to represent real history flow in a timeframe.</p>
+
+<p>History views must be organized and as concise as possible. Each visit is associated with a favicon, to allow for better recognizability and groupable by common timeframes or domains. History views should allow to quickly find a page in a certain timeframe remembering only small details about it. The system should be customizable enough to allow creation of custom, calendar and graphical views based on queries executed through a common API upon underlying data.</p>
+
+<p>The querying system allows to extract slices of data based on common patterns, this is directly usable by the end user, but also by implementers to provide a variety of nice features. For example, is possible to create a query folder containing the 10 pages most visited by the user, allowing to fast find good candidates for bookmarking.</p>
+
+<p>A locationbar intelligent algorithm (aka: the awesomebar) allows searchs through bookmarks, history, keywords (And much more) detaching the user from the old long searches through tree views. This is possible through a relevance algorithm that assigns a param called frecency to every page in history, see <a href="../../../../en/The_Places_frecency_algorithm" rel="internal">The Places frecency algorithm</a> for major informations. History service provides the basics to create such adaptive search paths, allowing for a better browsing experience through a common interface.</p>
+
+<p>Long term objectives include the ability to index more informations from the visited pages, through fulltext indexes, and the possibility to generalize the frecency algorithm to allow for its use in user's queries. Might be also nice to provide a hook for third-party products so they can provide text searching capabilities to the Places system.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Places core</h3>
+
+<p>History Service (<a class="external" href="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/public/nsINavHistoryService.idl" title="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/public/nsINavHistoryService.idl">nsINavHistoryService.idl</a>) is the core of Places, every other Places service depends on it to correctly work, so it gets always initialized at application startup.</p>
+
+<p>Actual tasks executed by this service include:</p>
+
+<ul>
+ <li>
+  <p><strong>Database creation, maintenance and initialization</strong>: all services rely on a common shared database called places.sqlite. History Service checks for database existance and coherence, and initializes the connection through the <a class="internal" href="/en/Storage" title="en/Storage">Storage service</a>.</p>
+ </li>
+ <li>
+  <p><strong>History management</strong>: provides basic and advanced APIs to store and modify visits and page details.</p>
+ </li>
+ <li>
+  <p><strong>Relevance calculation</strong>: maintain and expire frecency values for pages.</p>
+ </li>
+ <li>
+  <p><strong>History expiration</strong>: expire old visits and invalid informations from the database.</p>
+ </li>
+ <li>
+  <p><strong>Queries creation</strong>: allows the creation for complex queries.</p>
+ </li>
+ <li>
+  <p><strong>Queries results maintenance</strong>: allows easy access to queries results.</p>
+ </li>
+ <li>
+  <p><strong>Charset for pages</strong>: allows setting and reading charset for each page.</p>
+ </li>
+</ul>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Database maintenance</h3>
+
+<p>At startup the service creates an exclusive Storage connection to places.sqlite, the exclusive locking is needed for both a perf gain and data-safety. In case the database is missing a new one is created, if instead the database exists but the connection to it fails due to database corruption, the corrupt database is moved away and a new one is created. In both cases an implementer can know what did happen at startup and act accordingly (maybe restoring a backup).</p>
+
+<p>Once the database connection has been set-up the schema version of the database is checked. Schema version is upgraded every time a change is made to the database schema, History service will eventually upgrade the database, moving and fixing its datas accordingly. In case the database has been created for the first time History service will create all tables, indexes and triggers, calling related initTables static methods of other dependant services.</p>
+
+<p>Finally temporary tables, indexes and triggers are created, this happens at every run since those entities are removed when closing the connection. Temporary storage is used to avoid too frequent writes to the disk, since those are most likely to cause fsyncs (to ensure data integrity) on the target filesystem. The temporary data (actually visits and pages) are synced to disk either on a timer and on bookmark's inserts.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Performance</h3>
+
+<p>To ensure performance a bunch of statements, commonly used when adding or reading visit informations, are created at startup. These statements can be reused avoiding the overhead due to createstatement calls, before closing the connection these statements need to be finalized though, since not doing that would cause leaking. The internal syncing service takes care of initializing Places, syncing data to disk and finalize statements, so usually that's not a problem. The same pre-compiled statements approach is used in other dependant services and in Autocomplete.</p>
+
+<p>Another step to improve performance is mainly dedicated to not locking UI. Since Places is actually not thread-safe and doing most of the work in the main-thread, adding visits (the most common action usually executed on user interaction) could end up locking the UI till the database I/O to save data is complete. For this reason visits and favicons are added lazily on a timer. In future this will probably change in favour of Storage asynchronous statements, so that the INSERTs will be queued-up by mozStorage itself in a separate thread.</p>
+
+<p>SQL queries are built with performance in mind, and constantly tested against large databases. Database indexes are quite important, and a good query can make the difference between minutes or seconds. Many queries are especially optimized, for example limited history queries, often used to build menus, allowing for good performances even in presence of a really large history.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Storing pages and visits</h3>
+
+<p>Pages (intended as URIs) are stored into a table shared by both History and Bookmarks, every url is unique in this table and is associated with a place id, commonly used as the foreign key on other tables. This table has common attributes for a page like typed, hidden and frecency.</p>
+
+<p>Certain scheme are excluded from history, so they will never be added, for example: about, view-source, chrome. If a page can be added we first check if it exists already, then it is added or updated accordingly to the previous check, and common attributes are set based on concurrent visit properties. Typed means the page as a typed visit, hidden means the page should not be shown in autocomplete, while frecency is the relevance the page will have in locationbar queries. Finally observers are notified a new visit has been added.</p>
+
+<p>Every visit is identified by its visit date, and a visit type (also known as transition type) that represents how we have come to that page (typed, click, redirect, bookmark, etc.). An additional property of a visit is the visit we have come from, this is used to track visit chains in global history, so for example if clicking a link causes a redirect the from visit will allow to follow up the chain of visits. At the moment this is used when catching favicons or bookmarks for redirected pages.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Querying for data</h3>
+
+<p>Querying data is a basic feature for Places. Thanks to the underlying database, history size has increased far more than 10 times from the previous Mork based implementation, thus the need for a simple and efficient way to extract slices of data.</p>
+
+<p>A Places query is made of of a query object (<span class="lang lang-en"><code><a class="internal" href="/En/NsINavHistoryQuery" rel="internal" title="En/NsINavHistoryQuery">nsINavHistoryQuery</a></code></span>) and a query options object (<span class="lang lang-en"><code><a class="internal" href="/En/NsINavHistoryQueryOptions" rel="internal" title="En/NsINavHistoryQueryOptions">nsINavHistoryQueryOptions</a></code></span>) that defines the constraints results must obey to. These objects can be directly instantiated and built, setting their attributes, but Places allows a more readable and manageable form for queries: <a class="internal" href="/en/Places_query_URIs" title="En/Places query URIs">place query URIs</a>. Query URIs (for example place:queryType=0&amp;sort=8&amp;maxResults=10) can be easily built and read by users (through a built-in advanced search builder UI) and can be bookmarked, creating a so called smart bookmark. A smart bookmark can update itself automatically when bookmarks or visits change, providing a sort of saved search.</p>
+
+<p>Once Places receives a place: URI or a query object an internal query builder checks for the requested options and make up a real SQL query that is executed with Storage APIs. Many queries can be executed and combined at the same time. An history container node is built (the so-called rootNode), this node will fill itself. Finally the root node is assigned to a history result object, that can be furtherly modified setting for example a sorting mode. Only the first level of a node is usually filled, internal nodes or queries will populate themselves when opened.</p>
+
+<p>An implementer working on a UI can then associate a viewer with the result, so that it will be notified when the result tree changes.</p>
+
+<p>Queries can act on a variety of datas, coming from all dependant services, so it is possible to query history, bookmarks or both, also with values coming from other services like tags, annotations. Result nodes can be simple uri nodes with page attributes or complete visit attributes, or can be containers (folders, other queries, dynamic containers and so on).</p>
+
+<p>See <a class="internal" href="/en/Querying_Places" title="En/Querying Places">Querying Places</a> for deeper knowledge on the actual implementation.</p>
+
+<h3 id="Core_URL_table" name="Core_URL_table">Expiration</h3>
+
+<p>Expiration is an important part of data management for two reasons:</p>
+
+<ul>
+ <li><strong>Privacy</strong>: expiring data based on user interaction is important, nothing must be left behind on a page removal</li>
+ <li><strong>Database maintenance</strong>: having cleaner and smaller tables helps queries performances</li>
+</ul>
+
+<p>Expiration is done at certain moments, but in future will most likely be moved to async queries, to be executed on a separate thread. Actually pages and visits are expired:</p>
+
+<ul>
+ <li>On page added (lazily)</li>
+ <li>On idle</li>
+ <li>On shutdown</li>
+</ul>
+
+<p>Expiration of pages happens when a page is no more referenced, so there are no more visits, nor bookmarks associated with it. Visits are expired based on user preferences, there is an hard limit on the minimum number of days that should be retained, visits in that range won't never expire. Visits inside a slushy limit (&gt; than the hard limit) will be removed only if we are over a maximum number of pages we can retain, for performance issues.</p>
+
+<p>Finally expiration can be forced by the user himself to clean up the full history or slices of it (last hour, last day, ...).</p>
+
+<p>See <a class="internal" href="/En/Places_Expiration" title="En/Places Expiration">Places Expiration</a> for more information.</p>

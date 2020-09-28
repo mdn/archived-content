@@ -1,0 +1,157 @@
+<h3 id="Introduction"> Introduction </h3>
+<p>The table layout use the cellmap for two purposes:
+</p>
+<ul><li> quick lookup of table structural data
+</li><li> store of the border collapse data
+</li></ul>
+<p>The cellmap code is contained in <a href="https://dxr.mozilla.org/mozilla-central/source/layout/html/table/src/nsCellMap.cpp" rel="custom">nsCellMap.cpp</a> and <a href="https://dxr.mozilla.org/mozilla-central/source/layout/html/table/src/nsCellMap.h" rel="custom">nsCellMap.h</a>
+</p><p><i>This document does currently describe only the quick lookup part of the game, <a href="en/Table_Cellmap_-_Border_Collapse">border collapse</a> is still far away</i>
+</p>
+<h3 id="Cellmap_data_-_Overview"> Cellmap data - Overview </h3>
+<p>The entries in the cellmap contain information about the table cell frame corresponding to a given row and column number (<a href="https://dxr.mozilla.org/mozilla-central/source/layout/html/table/src/celldata.h" rel="custom">celldata.h</a>). Further it contains info whether this entry is a row- or colspan.
+</p>
+<pre>79   // this union relies on the assumption that an object (not primitive type) does
+80   // not start on an odd bit boundary. If mSpan is 0 then mOrigCell is in effect
+81   // and the data does not represent a span. If mSpan is 1, then mBits is in
+82   // effect and the data represents a span.
+83   union {
+84     nsTableCellFrame* mOrigCell;
+85     long              mBits;
+86   };
+</pre>
+<p>The idea behind this construction is a entry in the cellmap can be either the origin of a row- or colspan (a cell cell without a defined row- or colspan attribute assumes 1 as a default value), or a entry which is only covered by a row- or colspan. Entries which are a origin have a direct corresponding TableCellFrame. Entries which are only spanned don't have that direct relationship. They belong to a entry which has a direct relationship to a TableCellFrame. Now that union uses the fact all addresses of real TableCellFrames are aligned at even boundaries, or in other words they cant have an odd address. If the address is odd then it holds some other info (<code>mBits</code>).
+</p>
+<h3 id="Easy_table_cellmap"> Easy table cellmap </h3>
+<p>Just imagine a 2x2 table.
+</p>
+<pre>&lt;table&gt;
+ &lt;tr&gt;&lt;td&gt;cell 1&lt;/td&gt;&lt;td&gt;cell 2&lt;/td&gt;&lt;/tr&gt;
+ &lt;tr&gt;&lt;td&gt;cell 3&lt;/td&gt;&lt;td&gt;cell 4&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</pre>
+<p>This would create a cellmap with two rows and in each row 2 entries. Each entry in the cellmap wold have a direct link to the corresponding TableCellFrames.
+</p>
+<h3 id="Tables_with_footers_headers_etc."> Tables with footers, headers etc. </h3>
+<p>Take the same table and adder a header
+</p>
+<pre>&lt;table&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;&lt;td&gt;head cell 1&lt;/td&gt;&lt;td&gt;head cell 2&lt;/td&gt;&lt;/tr&gt;
+ &lt;/thead&gt;
+ &lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;cell 1&lt;/td&gt;&lt;td&gt;cell 2&lt;/td&gt;&lt;/tr&gt;
+  &lt;tr&gt;&lt;td&gt;cell 3&lt;/td&gt;&lt;td&gt;cell 4&lt;/td&gt;&lt;/tr&gt;
+ &lt;/tbody&gt;
+&lt;/table&gt;
+</pre>
+<p>Now we have two different rowgroups and and the rowspans can not cross the borders between the different rowgroups. (ref <a class="external" href="http://www.w3.org/TR/2002/WD-xhtml2-20021218/mod-tables.html#sec_18.6.">XHTML-2.0</a>). Further the table header and footer will be repeated on every page when printed out. Due to this behind the cellmap for the table we will find a cellmap for every rowgroup. In this low level cellmap the row count begins every time with 0.
+</p><p>A typical code segment to come from the table level down to the rowgroup level
+</p>
+<pre>nsCellMap* map = mFirstMap;
+while (map) {
+  if (map-&gt;GetRowCount() &gt; rowIndex) {
+    // Add your action here
+  }
+  rowIndex -= map-&gt;GetRowCount();
+  map = map-&gt;GetNextSibling();
+}
+</pre>
+<h3 id="Data_entry"> Data entry </h3>
+<p>The usual way to populate the cellmap is via <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsTableFrame%3A%3AInsertRows">nsTableFrame::InsertRows</a>. Enabling the debug code at the function entrance and exit gives a quite complete picture of the cellmap structure. Below follows the dump for the 2x2 table.
+</p>
+<pre>insertRowsBefore firstRow=0
+***START TABLE DUMP***
+mColWidths=
+row(0)=02763344 cell(0)=02763528 cell(0)=0276381C
+row(0)=02763940 cell(0)=02763990 cell(0)=02763AB4
+***** START TABLE CELL MAP DUMP ***** 023566B0
+cols array orig/span-&gt; 023566B0
+  ***** START GROUP CELL MAP DUMP ***** 023565B0
+  mapRowCount=0 tableRowCount=0
+  ***** END GROUP CELL MAP DUMP *****
+***** END TABLE CELL MAP DUMP *****
+ ***END TABLE DUMP***
+insertRowsAfter
+***START TABLE DUMP***
+mColWidths=-1 -1
+row(0)=02763344 cell(0)=02763528 cell(1)=0276381C
+row(1)=02763940 cell(0)=02763990 cell(1)=02763AB4
+***** START TABLE CELL MAP DUMP ***** 023566B0
+cols array orig/span-&gt; 023566B00=2/0 1=2/0
+  ***** START GROUP CELL MAP DUMP ***** 023565B0
+  mapRowCount=2 tableRowCount=2
+  row 0 : C0,0  C0,1
+  row 1 : C1,0  C1,1
+  C0,0=02763528(0)  C0,1=0276381C(1)
+  C1,0=02763990(0)  C1,1=02763AB4(1)
+  ***** END GROUP CELL MAP DUMP *****
+***** END TABLE CELL MAP DUMP *****
+ ***END TABLE DUMP***
+</pre>
+<h3 id="Structural_Information"> Structural Information </h3>
+<p>One can imagine the cellmap as grid with equally wide rows and columns where the table cells are drawn. These cells can cover more than a grid cell if the row- or colspan attribute is different from 1.
+</p>
+<h4 id="A_colspan"> A colspan </h4>
+<p>Lets add a cell to the second row in the 2x2 table and let the second cell in the first row span over two cells.
+</p>
+<pre>&lt;table&gt;
+ &lt;tr&gt;&lt;td&gt;cell 1&lt;/td&gt;&lt;td colspan="2"&gt;cell 2&lt;/td&gt;&lt;/tr&gt;
+ &lt;tr&gt;&lt;td&gt;cell 3&lt;/td&gt;&lt;td&gt;cell 4&lt;/td&gt;&lt;td&gt;cell 5&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</pre>
+<p>Table cell map would be:
+</p>
+<pre>row 0 : C0,0  C0,1  C
+row 1 : C1,0  C1,1  C1,2
+</pre>
+<p><br>
+</p>
+<table> <tbody><tr>
+<td>
+</td><td>
+</td></tr>
+<tr>
+<td>
+</td><td>
+</td><td>
+</td></tr></tbody></table>
+<p>While it is clear that in the cells that are the origin of a table cells one will find a address the more interesting question is, what will be the content in the upper right cell. The bitfield will hold a 0x00090001.
+</p>
+<pre>#define SPAN             0x00000001 // there a row or col span
+#define ROW_SPAN         0x00000002 // there is a row span
+#define ROW_SPAN_0       0x00000004 // the row span is 0
+#define ROW_SPAN_OFFSET  0x0000FFF8 // the row offset to the data containing the original cell
+#define COL_SPAN         0x00010000 // there is a col span
+#define COL_SPAN_0       0x00020000 // the col span is 0
+#define OVERLAP          0x00040000 // there is a row span and col span but no by same cell
+#define COL_SPAN_OFFSET  0xFFF80000 // the col offset to the data containing the original cell
+#define ROW_SPAN_SHIFT   3          // num bits to shift to get right justified row span
+#define COL_SPAN_SHIFT   19         // num bits to shift to get right justified col span
+</pre>
+<p>Showing that there is a span, this span is a colspan and the colspan origin is one cell away. This shows that the maximum handled row- or colspan value for a cell is 0xFFF8 &gt;&gt; 3 = 8191.
+</p><p>There is a special attribute for <code>rowspan="0"</code> and <code>colspan="0"</code>, because <a class="external" href="http://www.w3.org/TR/html401/struct/tables.html#h-11.2.6">html 4.0</a> did introduce a special handling of the 0 value.
+</p>
+<dl><dt> rowspan = number [CN]
+</dt><dd> This attribute specifies the number of rows spanned by the current cell. The default value of this attribute is one ("1"). The value zero ("0") means that the cell spans all rows from the current row to the last row of the table section (THEAD, TBODY, or TFOOT) in which the cell is defined.
+</dd><dt> colspan = number [CN]
+</dt><dd> This attribute specifies the number of columns spanned by the current cell. The default value of this attribute is one ("1"). The value zero ("0") means that the cell spans all columns from the current column to the last column of the column group (COLGROUP) in which the cell is defined.
+</dd></dl>
+<p>The handling of zero spans introduces overhead as one can not mark in advance the corresponding cells as spanned by the zero spans. The current solution is to use <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsCellMap%3A%3AGetDataAt">nsCellmap::GetDataAt</a> with a special argument <code>aUpdateZeroSpan</code> to repair the cellmap if it encounters a empty cell (nsnull), by looking for a origin of a zero row- or colspan that spans the queried place in the cellmap. This can produce enormous costs once the cellmap contains large holes that are not caused by zero spans, this is at least a O2(n) algorithm.
+</p><p>The following routines seem to be hot spots performance wise:
+</p>
+<ul><li> <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsCellMap%3A%3AColHasSpanningCells">nsCellMap::ColHasSpanningCells</a>
+</li><li> <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsCellMap%3A%3ARowHasSpanningCells">nsCellMap::RowHasSpanningCells</a>
+</li><li> <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsCellMap%3A%3ARowIsSpannedInto">nsCellMap::RowIsSpannedInto</a>
+</li></ul>
+<h3 id="Users_of_nsCellmapGetDataAt_outside_nsCellMap.cpp"> Users of <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsCellMap%3A%3AGetDataAt">nsCellmap::GetDataAt</a> outside <code>nsCellMap.cpp</code> </h3>
+<ul><li> The <a href="http://mxr.mozilla.org/mozilla-central/ident?i=BCMapCellIterator">border collapse</a> code relies on the cellmap.
+</li><li> The collapsing of <a href="http://mxr.mozilla.org/mozilla-central/ident?i=CollapseRowGroupIfNecessary">rows</a> and <a href="http://mxr.mozilla.org/mozilla-central/ident?i=AdjustForCollapsingCols">columns</a> uses the cellmap.
+</li><li> and finally the <a href="http://mxr.mozilla.org/mozilla-central/search?string=nsILineIterator+%23+nsTable">line iterator methods</a> which are used for arrow navigation through a table.
+</li></ul>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information"> Original Document Information </h2>
+<ul><li> Author(s): Bernd Mielke
+</li><li> Last Updated Date: September 27, 2003
+</li><li> Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.
+</li></ul>
+</div>

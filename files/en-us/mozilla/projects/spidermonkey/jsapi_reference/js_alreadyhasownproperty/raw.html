@@ -1,0 +1,82 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+<p>{{ Jsapi_minversion_header("1.8") }}</p>
+<div class="summary">
+<p>Determine whether a property is already physically present on a <code>JSObject</code>.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">boo
+JS_AlreadyHasOwnProperty(JSContext *cx, JS::HandleObject obj, const char *name,
+                         bool *foundp);
+
+boo
+JS_AlreadyHasOwnUCProperty(JSContext *cx, JS::HandleObject obj, const char16_t *name,
+                           size_t namelen, bool *foundp);
+
+boo
+JS_AlreadyHasOwnPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                             bool *foundp); // Added in SpiderMonkey 1.8.1
+
+boo
+JS_AlreadyHasOwnElement(JSContext *cx, JS::HandleObject obj, uint32_t index,
+                        bool *foundp);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to a JS context. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JSObject *")}}</td>
+   <td>The object to be searched.</td>
+  </tr>
+  <tr>
+   <td><code>name</code> <em>or<em> <code>id</code></em></em></td>
+   <td><code>const char *</code> <em>or</em> <code>const char16_t *<em>or</em> {{jsapixref("jsid", "JS::HandleId")}}</code></td>
+   <td><em>(in <code>JS_AlreadyHasOwnProperty</code>, <code>AlreadyHasOwnUCProperty</code>, and <code>JS_AlreadyHasOwnPropertyById</code>)</em> The name of the property to search for.</td>
+  </tr>
+  <tr>
+   <td><code>namelen</code></td>
+   <td><code>size_t</code></td>
+   <td><em>(in <code>JS_AlreadyHasOwnUCProperty</code> only)</em> The length of <code>name</code>, in characters; or the special value <code>(size_t) -1</code> to indicate that <code>name</code> is null-terminated.</td>
+  </tr>
+  <tr>
+   <td><code>index</code></td>
+   <td><code>uint32_t</code></td>
+   <td><em>(in <code>JS_AlreadyHasOwnElement</code> only)</em> The index of the element to search for.</td>
+  </tr>
+  <tr>
+   <td><code>foundp</code></td>
+   <td><code>bool *</code></td>
+   <td>Out parameter. <code>*foundp</code> receives <code>true</code> if the property is found or <code>false</code> if it is not found. If an error occurs, the value left in <code>*foundp</code> is undefined.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p>These functions attempt to determine whether a property already exists on a specific <code>JSObject</code> without modifying the object. By design, this search may not find a property that other property lookup functions, such as {{jsapixref("JS_LookupProperty")}}, would find.</p>
+<p>For <em>native</em> objects—objects whose properties are stored in the default data structure provided by SpiderMonkey—these functions simply check that data structure to see if the specified field is present. They do not search anywhere else for the property. This means that:</p>
+<ul>
+ <li>The prototype chain of <code>obj</code> is not searched.</li>
+ <li>The object's {{jsapixref("JSClass.resolve")}} hook is not called, so lazily defined properties are not found. (This is the only API that can directly detect that a lazily resolved property has not yet been resolved.)</li>
+ <li>Shared, permanent, delegated properties are not found. (Such properties are an implementation detail of SpiderMonkey. They are meant to be a transparent optimization; this is the only API that breaks the abstraction.)</li>
+</ul>
+<p>For non-native objects, this falls back on a complete search. This calls the {{jsapixref("JSObjectOps.lookupProperty")}} hook. <code>*foundp</code> is set to true only if <code>lookupProperty</code> reports that the property was found on <code>obj</code> itself and not on some other object (even the corresponding <a href="/En/SpiderMonkey/Split_object" title="en/Split_object">outer object</a>, if any).</p>
+<p>If the property is found on <code>obj</code>, this sets <code>*foundp</code> to <code>true</code> and returns <code>true</code>.</p>
+<p>If the property is not found on <code>obj</code>, this sets <code>*foundp</code> to <code>false</code> and returns <code>true</code> (to indicate that no error occurred).</p>
+<p>If the search fails with an error or exception, this returns <code>false</code>.</p>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+<li>{{ LXRSearch("ident", "i", "JS_AlreadyHasOwnProperty") }}</li>
+<li>{{ LXRSearch("ident", "i", "JS_AlreadyHasOwnUCProperty") }}</li>
+<li>{{ LXRSearch("ident", "i", "JS_AlreadyHasOwnPropertyById") }}</li>
+<li>{{ LXRSearch("ident", "i", "JS_AlreadyHasOwnElement") }}</li>
+<li>{{bug(400793)}}</li>
+<li>{{bug(461163)}}</li>
+</ul>

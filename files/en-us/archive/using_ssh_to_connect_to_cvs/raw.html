@@ -1,0 +1,98 @@
+<p> </p>
+
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>This document is a guide to setting up access to cvs.mozilla.org using SSH.</p>
+
+<div class="note">
+<p>This document assumes that you already have a write-access CVS account to cvs.mozilla.org. Anonymous/read-only access via SSH is not available at this time. Please see our <a href="en/Mozilla_Source_Code_(CVS)">source code page</a> for directions accessing read-only CVS, and our <a href="en/Getting_commit_access_to_Mozilla_source_code">getting write access page</a> for directions on obtaining write access.</p>
+</div>
+
+<h2 id="Generating_an_SSH_key" name="Generating_an_SSH_key">Generating an SSH key</h2>
+
+<p>First, install ssh. Most Linux, BSD, and OSX distributions come with it installed already. Cygwin makes ssh available on Windows if you install the openssh package from the Net category. If all else fails, <a class="external" href="http://www.openssh.com/">OpenSSH</a> is a widely used and highly portable implementation. The following command should generate a suitable key pair:</p>
+
+<pre>ssh-keygen -t dsa
+</pre>
+
+<p>This will take a moment, followed by a prompt for a passphrase. Once you have entered a passphrase, ssh-keygen will create two files,</p>
+
+<pre>~/.ssh/id_dsa
+</pre>
+
+<p>and</p>
+
+<pre>~/.ssh/id_dsa.pub
+</pre>
+
+<p>Do <strong>not</strong> send<em>id_dsa</em>.</p>
+
+<p><strong>Do</strong> file a Server Operations bug in <a class="link-https" href="https://bugzilla.mozilla.org/">Bugzilla</a> and attach your<em>id_dsa.pub</em> to the bug.</p>
+
+<h2 id="Setting_up_CVS_to_use_SSH" name="Setting_up_CVS_to_use_SSH">Setting up CVS to use SSH</h2>
+
+<p>In your system's environment, make sure that<em>CVS_RSH</em> is set to whatever your ssh binary is called; a full path is not necessary if ssh is already in your path.</p>
+
+<p>Replace <code>pserver</code> with <code>ext</code> in your <code>CVSROOT</code> environment variable. If you wish to keep your previous pserver trees, you'll need to update the <code>Root</code> files in each <code>CVS</code> subdirectory in your tree. This can be done using a unix-style <code>find</code> and <code>perl</code>:</p>
+
+<pre>find . -name Root -exec perl -p -i -e "s/pserver/ext/" {} \;
+</pre>
+
+<h2 id="Dealing_with_firewalls" name="Dealing_with_firewalls">Dealing with firewalls</h2>
+
+<p>Do not attempt to perform the steps in this section unless you have first verified that you can access cvs.mozilla.org from outside of the firewall. Only proceed with these steps once you are certain you can access cvs.mozilla.org from the open Internet.</p>
+
+<p>If you are behind a firewall with an http tunneling proxy, you can use a program called <a class="external" href="http://agroman.net/corkscrew/">corkscrew</a>, in combination with the <code>ProxyCommand</code> ssh config directive to continue to access the mozilla CVS server. This technique was taken from <a class="external" href="http://www.mtu.net/~engstrom/ssh-proxy.php">Eric Engstrom's site</a>, but the instructions have been re-written specifically for Mozilla.</p>
+
+<ol>
+ <li>Download, build, and install corkscrew by following the instructions in the <code>INSTALL</code> file in the corkscrew source distribution. Corkscrew uses the standard "./configure; make install" technique common to many open source projects.</li>
+ <li>Make sure you have a <code>~/.ssh/config</code> file that has at least the following directives</li>
+</ol>
+
+<pre>PreferredAuthentications hostbased,publickey,password
+Host cvs.mozilla.org
+  ProxyCommand corkscrew &lt;i&gt;proxyserver.foo.com&lt;/i&gt; &lt;i&gt;port&lt;/i&gt; %h %p
+</pre>
+
+<p>Replace<em>proxyserver.foo.com</em> with the hostname of your proxy server, and<em>port</em> with the numeric TCP port on which the http tunnel is running.</p>
+
+<p>The usual cvs commands should now work.</p>
+
+<h2 id="Avoiding_passphrase_requests" name="Avoiding_passphrase_requests">Avoiding passphrase requests</h2>
+
+<p>You can avoid repeated passphrase requests by using ssh-agent. If you don't already run ssh-agent on your computer, it's probably easiest to start it up whenever you set up your environment to checkout and build Mozilla. Assuming you use a shell script or batch file to set things up, just add the commands below to the end of your file.</p>
+
+<h4 id="POSIX_shell" name="POSIX_shell">POSIX shell</h4>
+
+<pre class="eval">eval `ssh-agent -s`
+ssh-add ~/.ssh/id_dsa
+$SHELL
+ssh-agent -k
+exit
+</pre>
+
+<h4 id="X_Windows" name="X_Windows">X Windows</h4>
+
+<p>In "~/.xinitrc" add "ssh-add". This will bring up a graphic box just after login, and before the desktop loads, asking for your passphrase. The passphrase will be held for the length of the x session, and be passed on to all child shells.</p>
+
+<h4 id="MS-DOS_command_prompt" name="MS-DOS_command_prompt">MS-DOS command prompt</h4>
+
+<h5 id="Cygwin" name="Cygwin">Cygwin</h5>
+
+<pre class="eval">for /f "tokens=1,2,3* delims=; " %%a in ('ssh-agent -c') do if "%%a"=="setenv" set %%b=%%c
+set HOME=/cygdrive/c/path/to/your/cygwin/home/directory
+ssh-add ~/.ssh/id_dsa
+start /b /wait cmd.exe
+ssh-agent -k
+exit
+</pre>
+
+<p>Essentially both sets of commands do the same thing. First ssh-agent is called and its output is evaluated in the current environment. This sets environment variables that let cvs know how to find and use the agent. Your private key is then added to ssh-agent using ssh-add at which point you will be prompted for the key's passphrase. Since it's important that you kill the agent when you're finished with it, the last three lines start a child environment that, when exited, will result in the agent's process being killed. The environment you will actually use to build is the child environment.</p>
+
+<p>There are a few things to note about the commands for the MS-DOS Command Prompt. First of all they will only work in versions of Windows based on NT (NT/2000/XP). If you're building on Win9x/WinME you'll need to find an alternative solution. If you're typing the commands directly (as opposed to storing them in a batch file that you call), you'll need to replace the occurances of "%%" in the first line with "%". Finally, note that ssh-add needs the environment variable HOME to be set with the cygwin path to your cygwin home directory.</p>
+
+<h5 id="MozillaBuild" name="MozillaBuild">MozillaBuild</h5>
+
+<p>If you're using MozillaBuild, ssh-agent should be started when you run the start-msvc???.bat file. You should be prompted to enter your passphrase.</p>
+
+<p>MozillaBuild 1.2 contains a bug that will stop ssh-agent from automatically starting with MSYS. To fix this, apply <a class="link-https" href="https://bugzilla.mozilla.org/attachment.cgi?id=294363">this diff</a> to c:\mozilla-build\msys\etc\profile.d\profile-sshagent.sh.</p>

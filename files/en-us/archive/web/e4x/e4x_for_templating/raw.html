@@ -1,0 +1,220 @@
+<p></p><div class="warning warningHeader">
+<strong>Warning: </strong>E4X is deprecated. It will be disabled by default for content in Firefox 16, disabled by default for chrome in Firefox 17, and removed in Firefox 18. Use <a href="/en-US/docs/Web/API/DOMParser" title="DOMParser can parse XML or HTML source stored in a string into a DOM Document. DOMParser is specified in DOM Parsing and Serialization."><code>DOMParser</code></a>/<a href="/en-US/docs/Web/API/DOMSerializer" title="The documentation about this has not yet been written; please consider contributing!"><code>DOMSerializer</code></a> or a non-native JXON algorithm instead.</div><p></p>
+<p>E4X can be used for creating templates for dynamic content.</p>
+<p>While it may be obvious after a study of the basics of E4X that it can be used for this purpose, if one adds a few common purpose functions (especially along with the convenience of JavaScript 1.8 expression closures), the templates can function more dynamically, offering the power and readability of templating languages such as Smarty for PHP (though admittedly without the currently wider cross-browser support of XSLT or the strictly-XML approach of PHPTAL or <a class="external" href="http://github.com/bard/seethrough_js/wikis" title="http://github.com/bard/seethrough_js/wikis">Seethrough templating</a>).</p>
+<h3 id="Security_and_escaping">Security and escaping</h3>
+<pre class="brush: js">function e (str) {
+    if (typeof str === 'xml') {str = str.toString();}
+    return str;
+}
+</pre>
+<pre class="brush: js">function quot (s) { // useful for placing user input within inline JavaScript; may be combined with escape function above as well
+    if (typeof s === 'string') {
+        return s.replace(/"/g, '&amp;quot;').replace(/'/g, '&amp;apos;');
+    }
+    if (typeof s === 'xml') {
+        return s.toString().replace(/"/g, '&amp;quot;').replace(/'/g, '&amp;apos;');
+    }
+    return String(s).replace(/"/g, '&amp;quot;').replace(/'/g, '&amp;apos;');
+}
+</pre>
+<h3 id="Localization">Localization</h3>
+<p>E4X works nicely with a simple utility for localizing strings of a properties file:</p>
+<pre class="brush: js">// Localization
+function $S(msg, args){ //get localized message
+    var STRS = Cc['@mozilla.org/intl/stringbundle;1'].getService(Ci.nsIStringBundleService).
+                                    createBundle('chrome://myeExt/locale/myExt.properties');
+    if (args){
+        args = Array.prototype.slice.call(arguments, 1);
+        return STRS.formatStringFromName(msg,args,args.length);
+    }
+    return STRS.GetStringFromName(msg);
+}
+</pre>
+<p>For example,</p>
+<pre class="brush: xml">&lt;toolbarbutton label={$S('myToolbar.label')}/&gt;
+</pre>
+<h3 id="Conditionals">Conditionals</h3>
+<pre class="brush: js">function _if (cond, h, _else) {
+    if (cond &amp;&amp; cond != undefined) { // We need undefined condition for E4X
+        return h(cond);
+    }
+    else if (_else) {
+        return _else(cond);
+    }
+    return ''; // Empty string allows conditions in attribute as well as element content
+}</pre>
+<p>For example:</p>
+<pre class="brush: xml">{_if(elems.length(), function ()
+
+    &lt;description&gt;{elems[0]}&lt;/description&gt;,
+
+function _else ()
+
+    &lt;label&gt;No data&lt;/label&gt;
+
+)}
+</pre>
+<p>Note that the simple XMLList() constructor (&lt;&gt;&lt;/&gt;) may be useful to still be able to use an expression closure (i.e., without needing return statements and braces):</p>
+<pre class="brush: xml">{_if(elems.length(), function () &lt;&gt;
+        &lt;markup/&gt;
+        &lt;markup/&gt;
+&lt;/&gt;)}</pre>
+<p>Note that, while it is convenient to store such E4X in separate file templates (to be eval()d at a later time, taking into account security considerations, such as escaping with the above), E4X content using such functions can also be easily serialized inline (and then perhaps converted to the DOM) as needed:</p>
+<pre class="brush: js">var list = &lt;&gt;{_if(elems.length(), function () &lt;&gt;
+        &lt;markup/&gt;
+        &lt;markup/&gt;
+&lt;/&gt;)}&lt;/&gt;.toXMLString();
+</pre>
+<h3 id="Iterating">Iterating</h3>
+<p>Functions such as the following foreach (which can work with arrays, objects, or E4X objects) are quite convenient in iterating over complex structures such as E4X would not normally allow. </p>
+<pre class="brush: js">/*
+The first two arguments are optional: (h is a handler with an explicit argument v only, or beginning with k, v)
+lev is optional argument to note recursive depth (if part of recursion)
+*/
+function foreach (min, max, arr, h, lev) {
+    var k, ret=&lt;&gt;&lt;/&gt;, it = 1;
+    lev = lev || 0;
+    if (typeof min === 'number') {
+        if (typeof max !== 'number') {
+            lev = h;
+            h = arr;
+            arr = max;
+            max = min;
+            min = 1;
+        }
+    }
+    else {
+        lev = arr;
+        h = max;
+        arr = min;
+        max = Number.POSITIVE_INFINITY;
+        min = 1;
+    }
+    if (h.length === 1) {
+        for (k in arr) {
+            if (it &lt; min) {
+                ++it;
+                continue;
+            }
+            if (it &gt; max) {
+                break;
+            }
+            ret+=h(arr[k], it, lev); // Need to get it or lev via arguments[] since our length detection implies no explicit additional params; otherwise define with more than one param (see below)
+            ++it;
+        }
+    }
+    else {
+        for (k in arr) {
+            if (it &lt; min) {
+                ++it;
+                continue;
+            }
+            if (it &gt; max) {
+                break;
+            }
+            ret+=h(k, arr[k], it, lev);
+            ++it;
+        }
+    }
+    return ret;
+}</pre>
+<p>The following real case example iterates over an array of the lines in an E4X child element to produce an XMLList of multiple vbox's representing each line:</p>
+<pre class="brush: xml">&lt;vbox&gt;
+
+{foreach(e(someEl.someChild[0]).split('\n'), function (line)
+    &lt;description&gt;{line}&lt;/description&gt;
+)}
+
+&lt;/vbox&gt;</pre>
+<p>The following example shows iteration over an E4X object itself:</p>
+<pre class="brush: xml">{foreach(elems, function (k, elem, iter) &lt;&gt;
+
+    &lt;row&gt;{k}: {elem}&lt;/row&gt;
+
+    &lt;row&gt;&lt;image src="chrome://myExt/skin/images/FillerRow.jpg" /&gt;&lt;/row&gt;
+
+&lt;/&gt;)}
+</pre>
+<p>or if the E4X child element had its own children and text:</p>
+<pre class="brush: xml">{foreach(elems, function (k, elem, iter) &lt;&gt;
+
+    &lt;row&gt;{k}: {elem.text()} {elem.someChild}&lt;/row&gt;
+
+    &lt;row&gt;&lt;image src="chrome://myExt/skin/images/FillerRow.jpg" /&gt;&lt;/row&gt;
+
+&lt;/&gt;)}</pre>
+<p> </p>
+<h3 id="Sorting">Sorting</h3>
+<pre class="brush: js">/*
+@param {XMLList} xmllist The XMLList to sort
+@param {Function} h The sorting handler
+*/
+function sort (xmllist, h) {
+    var k, arr=[], ret = &lt;&gt;&lt;/&gt;;
+    for (k in xmllist) {
+        if (xmllist.hasOwnProperty(k)) {
+            arr.push(xmllist[k]);
+        }
+    }
+    arr.sort(h).forEach(function (item) {
+        if (typeof item === 'xml') {
+            ret +=  item;
+        }
+        else if (typeof item === 'string') {
+            ret += new XML(item);
+        }
+        else {
+            var ser = (new XMLSerializer()).serializeToString(item);
+            ret += new XML(ser);
+        }
+    });
+    return ret;
+}
+</pre>
+<p>Example:</p>
+<pre class="brush: js">var fruits = &lt;fruits&gt;
+    &lt;item&gt;Pear&lt;/item&gt;
+    &lt;item&gt;Banana&lt;/item&gt;
+    &lt;item&gt;Grapes&lt;/item&gt;
+&lt;/fruits&gt;;
+
+alert( // Using a JavaScript 1.8 expression closure
+&lt;output&gt;
+    {sort(fruits.*, function (a, b) a.text() &gt; b.text() /* text() call may not be necessary */  )}
+&lt;/output&gt;.toXMLString()
+);
+
+/*
+&lt;output&gt;
+  &lt;item&gt;Banana&lt;/item&gt;
+  &lt;item&gt;Grapes&lt;/item&gt;
+  &lt;item&gt;Pear&lt;/item&gt;
+&lt;/output&gt;
+*/
+</pre>
+<p>The above utility also works if the input is an HTMLCollection, an array of strings, an array of DOM objects, or an array of E4X objects (assuming the comparison function is changed or adapted accordingly).</p>
+<h3 id="Inline_functions">Inline functions</h3>
+<p>As explained in <a href="/en/E4X_Tutorial/Introduction#Use_of_inline_functions_in_content" title="en/E4X_Tutorial/Introduction#Use_of_inline_functions_in_content">the tutorial</a>, it is possible to use anonymous functions inline (returning the desired content, including potentially XMLList's) in order to execute more than a single related statement, keeping this logic together with the resulting XML.</p>
+<p>Although a big advantage of E4X is being able to separate presentation from business logic, and the above-mentioned technique may fly in the face of this, if formatted well, it can also allow inline shaping of XML somewhat akin to the W3C standard <a href="/XQuery" title="XQuery">XQuery</a> language, allowing the scripting to mix in context with the surrounding declarative XML:</p>
+<pre class="brush: js">var a = &lt;a&gt;&lt;b/&gt;&lt;c/&gt;&lt;d/&gt;&lt;/a&gt;;
+var b =
+&lt;bar&gt;{function () {
+    var content = &lt;&gt;&lt;/&gt;;
+    for each (var el in a) {
+        el.@att = 'val';
+        content += el;
+    }
+    return content;
+}()}&lt;/bar&gt;;
+</pre>
+<p>giving:</p>
+<pre>&lt;bar&gt;
+  &lt;b att="val"/&gt;
+  &lt;c att="val"/&gt;
+  &lt;d att="val"/&gt;
+&lt;/bar&gt;
+
+
+</pre>
+<p>One may still wish to remove complex business logic and supply as variables to the E4X, but the above allows the shaping of resulting content to be made more clear (and sometimes design logic also calls for extra processing).</p>

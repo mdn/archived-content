@@ -1,0 +1,46 @@
+<div>{{FirefoxSidebar}}</div>
+
+<p>This article will help Firefox developers understand the security controls in place and avoid common pitfalls when developing front-end code for Firefox.</p>
+
+<h2 id="Existing_Security_Controls">Existing Security Controls</h2>
+
+<h3 id="Sanitizing_all_strings_that_enter_the_DOM_through_APIs_such_as_innerHTML">Sanitizing all strings that enter the DOM through APIs such as innerHTML</h3>
+
+<p>When running system-privileged chrome code, we sanitize all HTML fragments that are created for chrome-privileged documents. This policy includes all DOM APIs that take a string and parse it into a DOM tree.</p>
+
+<p>We use our built-in sanitizer with the following <a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIParserUtils#Constants">flags</a>:</p>
+
+<pre><code id="line-5195">SanitizerAllowStyle
+</code><code id="line-5196">SanitizerAllowComments
+</code><code id="line-5197">SanitizerDropForms
+</code><code id="line-5198">SanitizerLogRemovals</code></pre>
+
+<p>The sanitizer removes all scripts (script tags, event handlers) and form elements (<code>form</code>, <code>input</code>, <code>keygen</code>, <code>option</code>, <code>optgroup</code>, <code>select</code>, <code>button</code>, <code>datalist</code>). The canonical truth for the <a href="https://searchfox.org/mozilla-central/source/dom/base/nsTreeSanitizer.cpp#38">list of whitelisted elements</a> is the source code.</p>
+
+<p>The last flag ensures that developers will identify and avoid the problems early on in the development cycle and before shipping the code.</p>
+
+<p> </p>
+
+<h3 id="Linter_rules_against_unsanitized_DOM_interaction">Linter rules against unsanitized DOM interaction</h3>
+
+<p>The Security Assurance team maintains an <a href="https://github.com/mozilla/eslint-plugin-no-unsanitized">ESLint rule</a> that disallows unsafe uses of <code>innerHTML</code> and similar DOM APIs. The linter makes an exception for code that uses string literals that are hard coded in the source code, assuming benevolent developers. Developers are able to avoid tripping the rule by using escaping functions in combination with <a href="/en-US/docs/Web/JavaScript/Reference/Template_literals">template strings</a>, for example:</p>
+
+<pre class="brush: js"><span class="pl-smi">bar</span>.<span class="pl-smi">innerHTML</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-en">escapeHTML</span><span class="pl-pds">`</span>&lt;<span class="pl-ent">a</span> <span class="pl-e">href</span>=<span class="pl-s"><span class="pl-pds">'</span>${url}<span class="pl-pds">'</span></span>&gt;About&lt;/<span class="pl-ent">a</span>&gt;<span class="pl-pds">`</span></span>;</pre>
+
+<p>In system-privileged chrome code, any kind of remaining scripts will still be removed by our sanitizer.<br>
+  </p>
+
+<h2 id="Appendix">Appendix</h2>
+
+<h4 id="List_of_disallowed_DOM_APIs"><a name="list-disallowed">List of disallowed DOM APIs</a></h4>
+
+<ul>
+ <li><code>innerHTML</code></li>
+ <li><code>outerHTML</code></li>
+ <li><code>insertAdjacentHTML()</code></li>
+ <li><code>createContextualFragment()</code></li>
+ <li><code>document.write()</code></li>
+ <li><code>document.writeln()</code></li>
+</ul>
+
+<p><a href="https://github.com/mozilla/eslint-plugin-no-unsanitized/tree/master/docs/rules">Please take a look at the repository for an updated list</a></p>

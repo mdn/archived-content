@@ -1,0 +1,101 @@
+<div><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Containment_Properties" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:XML_Assignments">Next  »</a></p>
+</div> </div>
+
+<p>Mozilla also supports the use of XML datasources. An XML document will be loaded and <a href="/en-US/docs/XPath" title="XPath">XPath</a> expressions may be used to take portions of the XML document and generate content from these. When an XML source is desired, specify a <code id="a-querytype"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/querytype">querytype</a></code> attribute on the root node of the template to the value <code>xml</code>. This indicates to the template builder that an XML source is being used as that the queries use syntax that is specific to XML.</p>
+
+<p>The <code id="a-datasources"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/datasources">datasources</a></code> attribute should be set to the URL of an XML document, either a local file or a remote web site. The <code id="a-ref"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ref">ref</a></code> attribute isn't currently used for XML sources, as the root of the document is always the starting point for XML queries; you should just set the <code>ref</code> attribute to a dummy value, for example '*' which is typically used.</p>
+
+<p>An example:</p>
+
+<pre class="brush:xml">&lt;listbox datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    ...
+  &lt;/template&gt;
+&lt;listbox&gt;</pre>
+
+<p>The URL in the <code>datasources</code> attribute may be a relative URL or an absolute URL.</p>
+
+<div class="note">
+  <strong>Note:</strong> If you want to have the state of the disclosure triangles ("twisties") be persistent, be sure to give each node a unique "id" attribute. These are used to track the current state of the disclosure triangles. Support for this was introduced in Gecko 7.0 (Firefox 7.0 / Thunderbird 7.0 / SeaMonkey 2.4).</div>
+
+<p>For this and the following examples, we are going to use the following XML document containing a list of people:</p>
+
+<pre class="brush:xml">&lt;people&gt;
+  &lt;person name="Napoleon Bonaparte" gender="male"/&gt;
+  &lt;person name="Cleopatra" gender="female"/&gt;
+  &lt;person name="Julius Caesar" gender="male"/&gt;
+  &lt;person name="Ferdinand Magellan" gender="male"/&gt;
+  &lt;person name="Laura Secord" gender="female"/&gt;
+&lt;/people&gt;</pre>
+
+<h2 id="XML_Query_Syntax" name="XML_Query_Syntax">XML Query Syntax</h2>
+
+<p>The query syntax is fairly simple for XML datasources. Just place an <code id="a-expr"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/expr">expr</a></code> attribute on the <code><a href="/en-US/docs/Mozilla/Tech/XUL/query" title="query">query</a></code> element containing an XPath expression returns the set of results to output. Here is an <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex-xml1.xul">example</a>:</p>
+
+<pre class="brush:xml">&lt;listbox datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="person"/&gt;
+    &lt;action&gt;
+      &lt;listitem uri="?" label="?name"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/listbox&gt;</pre>
+
+<p>The <code>expr</code> attribute is a very simple XPath expression which simply retrieves the <code>person</code> elements from within the datasource. As there are five in the XML document, five results will be generated. The <code><a href="/en-US/docs/Mozilla/Tech/XUL/action" title="action">action</a></code> element defines the content to generate for each result. The content of the <code>action</code> element will be generated and repeated for each result, which in this case, is a <code>listitem</code>.</p>
+
+<p>The child of the <code>action</code> element has to have a <code id="a-uri"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/uri">uri</a></code> attribute, although it does not have to be a direct child. The element with the <code>uri</code> attribute and its children will be copied once for each result. Any elements between the <code>action</code> element and this element are only copied once. This is useful when recursive generation or multiple rules are used, and we'll see examples of why this is useful later. For an RDF query, the <code>uri</code> attribute specifies the member variable; for an XML query the member variable is always '?' so the value of the <code>uri</code> attribute for XML templates should always be the single question mark character as in this example.</p>
+
+<p>The label attribute has been set to a special value <code>?name</code>. When a question mark character followed by a string appears in an attribute value, the label value is not directly, but instead the value of an attribute for the source XML is used. For each node generated by the XPath expression used in the query, the attribute on the generated XML node is taken and substituted for the question mark and following string.</p>
+
+<p>In the above example, the use of the <code>?name</code> value, causes the name attribute on each result node to be used as the value of the label. You can see the name attributes in the original XML data above. This substitution occurs for any attribute within the action body, so you can also set other attributes with this technique.</p>
+
+<p>In <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex-xml2.xul">this example</a>, an <code><a href="/en-US/docs/Mozilla/Tech/XUL/hbox" title="hbox">hbox</a></code> element containing a button and a label is generated for each result.</p>
+
+<pre class="brush:xml">&lt;vbox datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="person"/&gt;
+    &lt;action&gt;
+      &lt;hbox uri="?" align="center"&gt;
+        &lt;button label="?name"/&gt;
+        &lt;label value="?gender"/&gt;
+      &lt;/hbox&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+
+<p>Note how two attributes are substituted here, the label on the button and the value on the label.</p>
+
+<p>The query does not have to be as simple as the one used here. Any XPath expression may be used. For instance, the following query returns only those results for female people.</p>
+
+<pre class="brush:xml">&lt;query expr="person[@gender='female']"/&gt;</pre>
+<p>As long as the expression returns one or more nodes, it can be used in an query expression.</p>
+
+<h2 id="Using_Inline_XML" name="Using_Inline_XML">Using Inline XML</h2>
+<p>It's also possible to embed the XML data directly within the XUL document if desired. Instead of using a URL for the <code id="a-datasources"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/datasources">datasources</a></code> attribute, you can use an anchor reference to refer to a node within the same document. The effect is the same, but the data isn't stored in a separate file.</p>
+
+<pre class="brush:xml">&lt;people id="famouspeople" xmlns=""&gt;
+  &lt;person name="Napoleon Bonaparte" gender="male"/&gt;
+  &lt;person name="Cleopatra" gender="female"/&gt;
+  &lt;person name="Julius Caesar" gender="male"/&gt;
+  &lt;person name="Ferdinand Magellan" gender="male"/&gt;
+  &lt;person name="Laura Secord" gender="female"/&gt;
+&lt;/people&gt;
+
+&lt;listbox datasources="#famouspeople" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="person"/&gt;
+    &lt;action&gt;
+      &lt;listitem uri="?" label="?name"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/listbox&gt;</pre>
+
+<p>Here, an anchor reference, starting with a number sign (#) is used for the <code>datasources</code> attribute. It refers to an element with that id (without the number sign) and uses that node as the source XML node instead of a separate file. Otherwise the data included inline and the template are the same. Note the only change is that the addition of the <code>xmlns</code> attribute on the data; this is used to clear the namespace used for the elements in the data, otherwise they become XUL elements. You can also specify a namespace. If so, you will need to ensure that prefixes are defined within the template as well, so that they can be used in the XPath expressions. The namespace prefixes that may be used in an XPath expression are those that are defined on the <code>query</code> or <code>assign</code> element where the expression is used.</p>
+
+<p>Be aware that when XML data is included inline as in this example, the content may be displayed and may affect the layout of other parts of the window. You may wish to hide the inline XML by placing it inside a hidden box.</p>
+
+<div><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Containment_Properties" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:XML_Assignments">Next  »</a></p>
+</div></div>

@@ -1,0 +1,161 @@
+<p>{{ Draft() }}</p>
+
+<div>
+<p>MozillaTranslator (MT) is a Java-based CAT tool used to translate a variety of Mozilla applications. Since it is written in Java, any platform that supports Java 1.7 or above supports MozillaTranslator also. If you decide to use MozillaTranslator, be sure you have <a class="external" href="http://www.java.com" title="http://www.java.com">Java 1.7</a> or above installed on your system. Like most CAT tools, MozillaTranslator employs glossaries and translation memory to leverage your work from previous translations, thus cutting time and effort when localizing new versions of Mozilla applications.</p>
+</div>
+
+<h2 id="Getting_started_with_MozillaTranslator">Getting started with MozillaTranslator</h2>
+
+<div>
+<p>MT uses <strong>products</strong> as groups of localization files with a common root directory (for instance, you may have a product for Thunderbird, other for SeaMonkey, other for Dom, other for Toolkit, etc.)</p>
+
+<p>You update your repository copy using your favorite repository tool, and then update the product(s) in MT. This will remove obsolete strings and files from the internal database of MT, and will present you with a list of new and updated strings.</p>
+
+<p><span style="color: #daa520;">If you are starting a new localization, all strings will be marked as new or updated.</span>MT puts a <strong>fuzzy</strong> flag on each flag and saves it in its database. All this means is that the strings have yet to be translated. You can save your work in progress and reopen it to continue working by selecting <strong>View Fuzzy</strong> from the <strong>Edit</strong> menu.</p>
+
+<p>After translating those strings (if using the Edit Phrase dialog, you can get translation suggestions for strings having an original text equal to existing translations), you can run some automated tests to detect typical errors. After that, you export either the whole product or indvididual files.</p>
+
+<p>Finally, you commit your changes outside of MT, using your favorite repository tools.</p>
+</div>
+
+<h2 id="Recipes">Recipes</h2>
+
+<h4 id="Introduction">Introduction</h4>
+
+<div>
+<p>We aim to put here some recipes that may be useful at a certain moment for MT users, but that, due to its temporary nature, don't fit in the user manual.</p>
+</div>
+
+<h4 id="Migrating_contents_when_the_directory_structure_changes">Migrating contents when the directory structure changes</h4>
+
+<div>
+<p>Overall, if you are a ''good'' MT user and you do things like:</p>
+</div>
+
+<ul>
+ <li>checking "Keep Original" flags for strings not needing translation, instead of just leaving the translation empty</li>
+ <li>struggling to get empty lists when running "Untranslated strings" and "View Fuzzy" if you are up to date in localization</li>
+ <li>regularly running QA checks and trying to minimize them.</li>
+</ul>
+
+<div>
+<p>you will always do better if you can export a partial glossary and reimport it as needed. See the following example.</p>
+
+<p>Let's assume you have a Firefox product in MT with the directory layout present in language packs, as you probably would need for a initial localization. The directory structure will look like this:</p>
+
+<pre>  (ab-CD JAR root)
+  locale
+  |-- branding
+  |   |-- brand.dtd
+  |   `-- brand.properties
+  |-- browser
+  |   |-- aboutDialog.dtd
+  .
+  .
+  |-- browser-region
+  |   `-- region.properties
+  `-- ab-CD
+      |-- alerts
+      |   `-- notificationNames.properties
+      |-- autoconfig
+      |   `-- autoconfig.properties
+      |-- cookie
+      |   |-- cookieAcceptDialog.dtd
+      |   `-- cookieAcceptDialog.properties
+      |-- global
+      |   |-- about.dtd
+      |   |-- appPicker.dtd
+      .
+      .
+</pre>
+
+<p>but in the CVS and mozilla-central repositories the locale part looks like this:</p>
+
+<pre>  toolkit
+  |-- locales
+  |   |-- en-US
+  |   |   |-- chrome
+  |   |   |   |-- alerts
+  |   |   |   |   `-- notificationNames.properties
+  |   |   |   |-- autoconfig
+  |   |   |   |   `-- autoconfig.properties
+  |   |   |   |-- cookie
+  |   |   |   |   |-- cookieAcceptDialog.dtd
+  |   |   |   |   `-- cookieAcceptDialog.properties
+  |   |   |   |-- global
+  |   |   |   |   |-- about.dtd
+  |   |   |   |   |-- appPicker.dtd
+  .
+  .
+  browser
+  |-- locales
+  |   |-- en-US
+  |   |   |-- README.txt
+  |   |   |-- chrome
+  |   |   |   |-- branding
+  |   |   |   |   |-- brand.dtd
+  |   |   |   |   `-- brand.properties
+  |   |   |   |-- browser
+  |   |   |   |   |-- aboutDialog.dtd
+ </pre>
+
+<p>As you see, there is ''link'' point, usually at chrome (in CVS &amp; mozilla-central), sometimes in a deeper point. For instance, '''toolkit/locales/en-US/chrome''' in mozilla-central matches '''locale/en-US''' and '''browser/locales/en-US/chrome''' matches '''locale/browser'''.</p>
+
+<p>So, what you have to do is export partial glossaries in each link point of the ''old'' product and import them in the corresponding link point of the ''new'' point. Your Keep Original and Fuzzy flags will be honored for each string.</p>
+
+<p>There will be some exceptions. Files hanging directly from the Platform neutral platform can't be part of a partial glossary (because they are not components), and Platform neutral itself can't be selected either, since it is not a component, but a platform. For these few files, you will have to export them individually and reimport them.</p>
+
+<p>If you are a ''not so good'' MT user, however, you can just create a new product (or several ones; see next recipe to know why), run File -&gt; Update on them (you'll get a list of all the strings) and then run Edit -&gt; Autotranslate. Most of the strings will be automatically filled, although if you do this you should review them, because for en-US strings with several possible translations, MT will choose one of them, which could not be the one you want.</p>
+</div>
+
+<h4 id="From_CVS_to_Mercurial_in_MT">From CVS to Mercurial in MT</h4>
+
+<div>
+<p>So, you have a Firefox product in MT with a Platform neutral and, inside it, several directories (''components'' in MT terminology) more or less like the second sample above, checked out from CVS. Now, you want to start working directly on mozilla-central (and l10n-central). What should you do?</p>
+
+<p>The first thing to do, once you have your Mercurial local repository up and working, is create a new product... or more. With good oldie CVS, you could checkout just the locale content and, even more, you could checkout just ''the locale directories'' you were interested in. With Mercurial, partial checkouts are not possible, so you have your own Mozilla repository full copy (there are alternate solutions; read on).</p>
+</div>
+
+<h4 id="A_bit_of_history_on_MT">A bit of history on MT</h4>
+
+<div>
+<p>MT has been evolving from long ago, when L10n were done always on shipped en-US JARs and when Mozilla Suite had five L10n JARs: ab-CD.jar, ab-win.jar, ab-mac.jar, ab-unix.jar, and CD.jar. MT thus referred to ab-CD.jar contents as ''Platform neutral'' platform, CD.jar as '''region''' platform (or regional files), and the other three as ''Windows platform'', ''Mac platform'' and ''Unix platform''. This JAR structure is now used just by SeaMonkey 1.1.x.</p>
+
+<p>When Mozilla L10n switched to ''Source L10n'', one of the many problems that MT had to solve was how to fit a directory structure in what had been designed for five JARs, and the ''patch'' consisted of providing a ''read from dir instead of JAR'' and ''put everything inside Platform neutral''.</p>
+
+<p>That has worked well (OK, more or less) :-) as long as you could instruct MT to use just one ''root'' L10n directory, but this is no longer the case with Mercurial.</p>
+
+<p>MT could be changed for a MT product to have a list of ''root'' directories instead of just one, and maybe someday it will do, but it will probably won't happen before SeaMonkey 1.1.x dies (and SeaMonkey 2.0 finally conquers the web, if I may add). ;-)</p>
+</div>
+
+<h4 id="Enough_chatting_what's_next">Enough chatting, what's next?</h4>
+
+<div>
+<p>Anyway, we need to work around the full-fledged repository problem. These are your options:</p>
+</div>
+
+<ul>
+ <li>Create one product for each ''root'' directories. This means browser, extensions/reporter, dom, netwer, security, and toolkit. Besides that, you will need to create one tiny product for other-licenses/branding/firefox. For each one of the above, the ''root'' directory will be ''.../locales/en-US''.</li>
+ <li>FrenchMozilla has just [<a class="external" href="http://groups.google.es/group/mozilla.dev.l10n/msg/fdeaf9f1322fa2fb" rel="freelink">http://groups.google.es/group/mozill...eaf9f1322fa2fb</a> announced] they are providing an en-US only Mercurial repository comprising both mozilla-central and comm-central. If you are happy with a non-official solution (it's not like if they were third-party, they are your french equals!) ;-) you have a pretty easy and comfortable solution.</li>
+ <li>If you are using a filesystem with symbolic links support (i.e., Linux or Mac), you can create symbolic links in a separate directory so it contains just the locale part. Thanks to Alexandru Szasz, from Narro, [<a class="external" href="http://groups.google.com/group/mozilla.dev.l10n/msg/d8bbffa5402ec819" rel="freelink">http://groups.google.com/group/mozil...bbffa5402ec819</a> for this inspiration]. See <a href="#Defining symbolic links for browser" title="#Defining symbolic links for browser">this example for browser</a>.</li>
+</ul>
+
+<div>
+<p>For the last two options, you should be able to adjust your current MT product paths so you can keep using it just like with CVS. Keep in mind that MT doesn't really know if you are using CVS, SVN, or Mercurial. It is just instructed to read directory subtrees and ignore "CVS" and ".svn" directories it finds.</p>
+
+<p>If you have opted for the first solution, you will find yourself with some new products completely untranslated (once you Update each of them). To migrate the existing translation in the old product, you need to export partial glossaries from the old product, selecting the ''link'' origin (see <a href="#Migrating contents when the directory structure changes" title="#Migrating contents when the directory structure changes">the previous section</a>) and importing them into the ''link'' target.</p>
+</div>
+
+<h4 id="Defining_symbolic_links_for_browser">Defining symbolic links for browser</h4>
+
+<div>
+<p>This is an example just for browser, without shared components, but it should suffice to get the idea.</p>
+
+<pre>  ; Assuming we are in a directory containing mozilla-central/
+  $ mkdir locale-only
+  $ cd locale-only
+  $ mkdir -p browser extensions/reporter other-licenses/branding/firefox/
+  $ cd browser; ln -s ../../mozilla-central/browser/locales/; cd ..
+  $ cd extensions/reporter; ln -s ../../../mozilla-central/extensions/reporter/locales/; cd ../..
+  $ cd other-licenses/branding/firefox/; ln -s ../../../../mozilla-central/other-licenses/branding/firefox/locales/; cd ../../..</pre>
+</div>

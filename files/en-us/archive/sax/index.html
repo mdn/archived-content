@@ -1,0 +1,128 @@
+---
+title: SAX
+slug: Archive/SAX
+tags:
+  - Add-ons
+  - Extensions
+---
+<p><strong>SAX</strong>, short for<em>Simple API for XML</em>, is a parsing API. SAX was the first widely adopted API for XML in Java, and later implemented in several other programming language environments. Starting with <a href="en/Firefox_2">Firefox 2</a>, a SAX parser is available to XUL applications and extensions. For more information, please see <a href="http://www.saxproject.org/" class="external">SAX homepage</a>.</p>
+
+<h3 id="Quick_start" name="Quick_start">Quick start</h3>
+
+<p>The SAX parser functionality is available through the XML reader component. To create one, use the following code:</p>
+
+<pre class="eval">var xmlReader = Components.classes["@mozilla.org/saxparser/xmlreader;1"]
+                          .createInstance(Components.interfaces.nsISAXXMLReader);
+</pre>
+
+<p>After you created the SAX parser, you need to set the handlers for the events you're interested in and fire off the parsing process. All functionality is available through the <a href="https://dxr.mozilla.org/mozilla-central/source/parser/xml/public/nsISAXXMLReader.idl" rel="custom">nsISAXXMLReader</a> interface.</p>
+
+<h4 id="Set_the_handlers" name="Set_the_handlers">Set the handlers</h4>
+
+<p>Handlers are user-defined objects implementing SAX handler interfaces, depending on what kind of information they need to get from the parser. After the parsing process is started, handlers receive a series of callbacks for the content of XML being parsed. The following handlers are available:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Interface</th>
+   <th>Purpose</th>
+  </tr>
+  <tr>
+   <td><a href="https://dxr.mozilla.org/mozilla-central/source/parser/xml/public/nsISAXContentHandler.idl" rel="custom">nsISAXContentHandler</a></td>
+   <td>Receive notification of the logical content of a document (e.g. elements, attributes, whitespace, and processing instructions).</td>
+  </tr>
+  <tr>
+   <td><a href="https://dxr.mozilla.org/mozilla-central/source/parser/xml/public/nsISAXDTDHandler.idl" rel="custom">nsISAXDTDHandler</a></td>
+   <td>Receive notification of basic DTD-related events.</td>
+  </tr>
+  <tr>
+   <td><a href="https://dxr.mozilla.org/mozilla-central/source/parser/xml/public/nsISAXErrorHandler.idl" rel="custom">nsISAXErrorHandler</a></td>
+   <td>Receive notification of errors in the input stream.</td>
+  </tr>
+  <tr>
+   <td><a href="https://dxr.mozilla.org/mozilla-central/source/parser/xml/public/nsISAXLexicalHandler.idl" rel="custom">nsISAXLexicalHandler</a></td>
+   <td>SAX2 extension handler for lexical events (e.g. comment and CDATA nodes, DTD declarations, and entities).</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>An example implementation of the most commonly used content handler:</p>
+
+<pre>function print(s) {
+  dump(s + "\n");
+}
+
+xmlReader.contentHandler = {
+  // nsISAXContentHandler
+  startDocument: function() {
+    print("startDocument");
+  },
+
+  endDocument: function() {
+    print("endDocument");
+  },
+
+  startElement: function(uri, localName, qName, /*nsISAXAttributes*/ attributes) {
+    var attrs = [];
+    for(var i=0; i&lt;attributes.length; i++) {
+      attrs.push(attributes.getQName(i) + "='" +
+                 attributes.getValue(i) + "'");
+    }
+
+    print("startElement: namespace='" + uri + "', localName='" +
+          localName + "', qName='" + qName + "', attributes={" +
+          attrs.join(",") + "}");
+  },
+
+  endElement: function(uri, localName, qName) {
+    print("endElement: namespace='" + uri + "', localName='" +
+          localName + "', qName='" + qName + "'");
+  },
+
+  characters: function(value) {
+    print("characters: " + value);
+  },
+
+  processingInstruction: function(target, data) {
+    print("processingInstruction: target='" + target + "', data='" +
+          data + "'");
+  },
+
+  ignorableWhitespace: function(whitespace) {
+    // don't care
+  },
+
+  startPrefixMapping: function(prefix, uri) {
+    // don't care
+  },
+
+  endPrefixMapping: function(prefix) {
+    // don't care
+  },
+
+  // nsISupports
+  QueryInterface: function(iid) {
+    if(!iid.equals(Components.interfaces.nsISupports) &amp;&amp;
+       !iid.equals(Components.interfaces.nsISAXContentHandler))
+      throw Components.results.NS_ERROR_NO_INTERFACE;
+    return this;
+  }
+};
+</pre>
+
+<h4 id="Start_parsing" name="Start_parsing">Start parsing</h4>
+
+<p>The XML Reader component can parse XML from a string, an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIInputStream" title="">nsIInputStream</a></code>, or asynchronously via the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIStreamListener" title="">nsIStreamListener</a></code> interface. Below is an example of parsing from a string:</p>
+
+<pre class="eval">xmlReader.parseFromString("&lt;f:a xmlns:f='g' d='1'&gt;&lt;BBQ/&gt;&lt;/f:a&gt;", "text/xml");
+</pre>
+
+<p>This call results in the following output (assuming the content handler from the example above is used):</p>
+
+<pre>startDocument
+startElement: namespace='g', localName='a', qName='f:a', attributes={d='1'}
+startElement: namespace='', localName='BBQ', qName='BBQ', attributes={}
+endElement: namespace='', localName='BBQ', qName='BBQ'
+endElement: namespace='g', localName='a', qName='f:a'
+endDocument
+</pre>

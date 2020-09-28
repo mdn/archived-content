@@ -1,0 +1,119 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/XBL_Attribute_Inheritance" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Adding_Methods_to_XBL-defined_Elements">Next  »</a></p>
+</div>
+<p>Next, we'll find out how to add custom properties to XBL-defined elements.</p>
+<h3 id="The_XBL_Interface" name="The_XBL_Interface">The XBL Interface</h3>
+<p><a href="/en-US/docs/JavaScript" title="en/JavaScript">JavaScript</a> and the <a href="/en-US/docs/DOM" title="en/DOM">DOM</a> provide access to get and set the properties of elements. With XBL, you can define your own properties for the elements you create. You can also add methods that can be called. That way, all you need is to get a reference to the element (using <a href="/en-US/docs/Web/API/Document/getElementById" title="The Document method getElementById() returns an Element object representing the element whose id property matches the specified string. Since element IDs are required to be unique if specified, they're a useful way to get access to a specific element quickly."><code>document.getElementById</code></a> or a similar function) and then get or set the additional properties and call the methods on it.</p>
+<p>There are three types of items you can add.</p>
+<ul>
+ <li>Fields are used to hold a simple value.</li>
+ <li>Properties can also be used to hold a value but may have code execute when an attempt is made to retrieve or modify the value.</li>
+ <li>Methods are functions which may be executed.</li>
+</ul>
+<p>All three are defined within an <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#implementation">implementation</a></code></code> element, which should be a child of the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#binding">binding</a></code></code> element. Within the implementation, you define individual <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code>, <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#property">property</a></code></code>, and <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#method">method</a></code></code> elements, one for each one that you want. The general syntax is as follows:</p>
+<pre>&lt;binding id="element-name"&gt;
+  &lt;content&gt;
+    -- content goes here --
+  &lt;/content&gt;
+  &lt;implementation&gt;
+    &lt;field name="field-name-1"/&gt;
+    &lt;field name="field-name-2"/&gt;
+    &lt;field name="field-name-3"/&gt;
+
+    &lt;property name="property-name-1"/&gt;
+    &lt;property name="property-name-2"/&gt;
+    &lt;property name="property-name-3"/&gt;
+    .
+    .
+    .
+    &lt;method name="method-name-1"&gt;
+      -- method content goes here --
+    &lt;/method&gt;
+    .
+    .
+    .
+  &lt;/implementation&gt;
+&lt;/binding&gt;
+</pre>
+<h3 id="Fields" name="Fields">Fields</h3>
+<p>Each field is defined using the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> element. Often, fields would correspond to an attribute placed on the element such as <code>label</code> or <code>disabled</code>, but they do not have to.</p>
+<p>The <code>name</code> attribute on the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> element is used to indicate the name of the field. You can use the name from a script to get and set the value. The example below creates a button which generates and stores a random number. You can retrieve this same number multiple times by getting the <code>number</code> property from the button. Most of the work here is done in the <code>oncommand</code> handlers. Later, we'll find out how to move this to XBL.</p>
+<pre class="eval"><strong>XUL:</strong>
+
+&lt;box id="random-box" class="randomizer"/&gt;
+
+&lt;button label="Generate"
+           oncommand="document.getElementById('random-box').number=Math.random();"/&gt;
+&lt;button label="Show"
+           oncommand="alert(document.getElementById('random-box').number)"/&gt;
+
+<strong>XBL:</strong>
+
+&lt;binding id="randomizer"&gt;
+  &lt;implementation&gt;
+    &lt;field name="number"/&gt;
+  &lt;/implementation&gt;
+&lt;/binding&gt;
+</pre>
+<p>A <code>number</code> field has been defined in the binding, which stores the random number. The two extra buttons set and get the value of this field. The syntax is very similar to getting and setting the properties of HTML elements. In this example, no content has been placed inside either the XUL box or its definition in XBL, which is perfectly valid.</p>
+<p>This example isn't quite correct because the field is not assigned a default value. To do this, add the default value as the content of the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> tag. For example:</p>
+<pre>&lt;field name="number"&gt;
+  25
+&lt;/field&gt;
+</pre>
+<p>This will assign the value 25 as the default value of the number field. Actually, you can instead place a script inside the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> tag that evaluates to the default value. That might be necessary if the value needs to be computed. For example, the following field is given a default value equal to the current time:</p>
+<pre>&lt;field name="currentTime"&gt;
+  new Date().getTime();
+&lt;/field&gt;
+</pre>
+<h3 id="Properties" name="Properties">Properties</h3>
+<p>Sometimes you will want to validate the data that is assigned to a property. Or, you may want the value to be calculated dynamically as it's asked for. For example, if you want a property that holds the current time, you would want to have its value generated as needed. In these cases, you need to use a <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#property">property</a></code></code> tag instead of a <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> tag. Its syntax is similar but has additional features.</p>
+<h4 id="Onget_Attribute_and_Onset_Attribute" name="Onget_Attribute_and_Onset_Attribute">Onget Attribute and Onset Attribute</h4>
+<p>You can use the <code>onget</code> and <code>onset</code> attributes to have code execute when the property is retrieved or modified. Add each to the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#property">property</a></code></code> element and set its value to a script which either gets or sets the value of the property.</p>
+<p>For example, you could assign a script to the value of <code>onget</code> to calculate the current time. Whenever a script attempts to access the value of the property, the <code>onget</code> script will be called to retrieve the value. The script should return the value that should be treated as the value of that property.</p>
+<p>The <code>onset</code> handler is similar but is called whenever a script attempts to assign a new value to the property. This script should store the value somewhere, or validate the value. For example, some properties might only be able to store numbers. Attempting to assign alphabetic text to such a property should fail.</p>
+<pre>&lt;property name="size"
+          onget="return 77;"
+          onset="alert('Changed to:'+val);"/&gt;
+</pre>
+<p>This property will always return 77 when retrieved. When set, an alert will be displayed which displays the value to assign to the property. The special variable <code>val</code> holds the value that the property should be assigned to. Use this to validate it or store it.</p>
+<p>The following decribes what happens in a typical case:</p>
+<p>There are two elements, one called 'banana' and the other 'orange'. They each have a custom property called 'size'. When the following line of script is executed:</p>
+<pre>banana.size = orange.size;
+</pre>
+<ol>
+ <li>The <code>onget</code> script is called for the size property of the orange. The script calculates the value and returns it.</li>
+ <li>The <code>onset</code> handler of the size property of the banana is called. This script uses the value passed in the <code>val</code> variable and assigns it to the size property of the banana in some manner.</li>
+</ol>
+<p>Note that unlike a field, a property does not hold a value. Attempting to set a property that does not have an <code>onset</code> handler will generate an error. You will often use a separate field to hold the actual value of the property. It is also common to have the properties match an attribute on the XBL-defined element. The following example maps a property to an attribute on an element.</p>
+<pre>&lt;property name="size"
+          onget="return this.getAttribute('size');"
+          onset="this.setAttribute('size', val);"
+/&gt;
+</pre>
+<p>Whenever a script attempts to get the value of the property, it is grabbed instead from the attribute on the element with the same name. Whenever a script attempts to set the value of a property, it is set as an attribute on the element. This is convenient because then you can modify the property or the attribute and both will have the same value.</p>
+<h4 id="Getter_Element_and_Setter_Element" name="Getter_Element_and_Setter_Element">Getter Element and Setter Element</h4>
+<p>You can use an alternate syntax for the <code>onget</code> and <code>onset</code> attributes that is useful if the scripts are longer. You can replace the <code>onget</code> attribute with a child element called <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#getter">getter</a></code></code>. Similarly, you can replace the <code>onset</code> attribute with a <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#setter">setter</a></code></code> element. The example below shows this:</p>
+<pre>&lt;property name="number"&gt;
+  &lt;getter&gt;
+    return this.getAttribute('number');
+  &lt;/getter&gt;
+  &lt;setter&gt;
+    var v = parseInt(val,10);
+    if (!isNaN(v)) {
+      this.setAttribute('number', '' + v);
+    }
+  &lt;/setter&gt;
+&lt;/property&gt;
+</pre>
+<p>The property in this example will only be able to hold integer values. If other characters are entered, they are stripped off. If there are no digits, the value is not changed. This is done in the code inside the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#setter">setter</a></code></code> element. The real value of the property is stored in the <code>number</code> attribute.</p>
+<p>You can use either syntax for creating get and set handlers.</p>
+<h4 id="Readonly_Attribute" name="Readonly_Attribute">Readonly Attribute</h4>
+<p>You can make a field or property read-only by adding a <code>readonly</code> attribute to the <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#field">field</a></code></code> tag or <code><code><a href="/en-US/docs/XBL/XBL_1.0_Reference/Elements#property">property</a></code></code> tag and setting it to <code>true</code>. Attempting to set the value of a read-only property will fail.</p>
+<div class="note">
+ <p><strong>Note:</strong> The <code>readonly</code> attribute did not work correctly on fields until <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span>.</p>
+</div>
+<p>The next section shows how to add methods to XBL-defined elements.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/XBL_Attribute_Inheritance" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/Adding_Methods_to_XBL-defined_Elements">Next  »</a></p>
+</div>

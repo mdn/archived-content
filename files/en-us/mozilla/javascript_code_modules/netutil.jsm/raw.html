@@ -1,0 +1,284 @@
+<p>The <code>NetUtil.jsm</code> JavaScript code module provides easy-to-use APIs for performing common network related tasks.</p>
+
+<p>To use these utilities, you first need to import the code module into your JavaScript scope:</p>
+
+<pre class="eval"><span class="nowiki">Components.utils.import("resource://gre/modules/NetUtil.jsm");</span>
+</pre>
+
+<p>Once you've imported the module, you can then use its methods.</p>
+
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>{{ interface("nsIAsyncStreamCopier") }} <a href="/en/JavaScript_code_modules/NetUtil.jsm#asyncCopy()" title="en/JavaScript code modules/NetUtil.jsm#asyncCopy()">asyncCopy</a>({{ interface("nsIInputStream") }} aSource, {{ interface("nsIOutputStream") }} aSink, [optional] aCallback)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="/en/JavaScript_code_modules/NetUtil.jsm#asyncFetch()" title="en/JavaScript code modules/NetUtil.jsm#asyncFetch()">asyncFetch</a>(aSource, aCallback)</code></td>
+  </tr>
+  <tr>
+   <td><code>{{ interface("nsIChannel") }} <a href="/en/JavaScript_code_modules/NetUtil.jsm#newChannel()" title="en/JavaScript code modules/NetUtil.jsm#newChannel()">newChannel</a>(aWhatToLoad, [optional] aOriginCharset, [optional] {{ interface("nsIURI") }} aBaseURI)</code></td>
+  </tr>
+  <tr>
+   <td><code>{{ interface("nsIURI") }} <a href="/en/JavaScript_code_modules/NetUtil.jsm#newURI()" title="en/JavaScript code modules/NetUtil.jsm#newURI()">newURI</a>(aTarget, [optional] aOriginCharset, [optional] {{ interface("nsIURI") }} aBaseURI)</code></td>
+  </tr>
+  <tr>
+   <td><code>String <a href="/en/JavaScript_code_modules/NetUtil.jsm#readInputStreamToString()" title="en/JavaScript code modules/NetUtil.jsm#readInputStreamToString()">readInputStreamToString</a>(aInputStream, aCount, aOptions)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Attributes">Attributes</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>ioService</code></td>
+   <td>{{ interface("nsIIOService") }}</td>
+   <td>Returns a reference to {{ interface("nsIIOService") }}.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="asyncCopy()">asyncCopy()</h3>
+
+<p>The <code>asyncCopy()</code> method performs a simple asynchronous copy of data from a source input stream to a destination output stream. Both streams are automatically closed when the copy operation is completed.</p>
+
+<pre>nsIAsyncStreamCopier asyncCopy(
+  aSource,
+  aSink,
+  aCallback
+);
+</pre>
+
+<h6 id="Parameters">Parameters</h6>
+
+<dl>
+ <dt><code>aSource</code></dt>
+ <dd>The input stream from which to read the source data. This must be an {{ interface("nsIInputStream") }} based object.</dd>
+ <dt><code>aSink</code></dt>
+ <dd>The output stream to which to copy the data. This must be an {{ interface("nsIOutputStream") }} based object.</dd>
+ <dt><code>aCallback</code></dt>
+ <dd>An optional function that will be called when the copy operation is completed. The callback receives a single parameter: the <code>nsresult</code> status code for the copy operation.</dd>
+</dl>
+
+<h6 id="Return_value">Return value</h6>
+
+<p>Returns the {{ interface("nsIAsyncStreamCopier") }} object that is handling the copy.</p>
+
+<h6 id="Exceptions_thrown">Exceptions thrown</h6>
+
+<p>This method throws an exception with the message "Must have a source and a sink" if either <code>aSource</code> or <code>aSink</code> is null.</p>
+
+<h6 id="Example">Example</h6>
+
+<p>This example writes a string to a file; it comes from the test suite for the NetUtil module.</p>
+
+<pre class="brush: js">var file = Cc["@mozilla.org/file/directory_service;1"].
+           getService(Ci.nsIProperties).
+           get("TmpD", Ci.nsIFile);
+file.append("test-file.tmp");
+file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, 0666);
+
+// Then, we need an output stream to our output file.
+var ostream = Cc["@mozilla.org/network/file-output-stream;1"].
+              createInstance(Ci.nsIFileOutputStream);
+ostream.init(file, -1, -1, 0);
+
+// Finally, we need an input stream to take data from.
+const TEST_DATA = "this is a test string";
+let istream = Cc["@mozilla.org/io/string-input-stream;1"].
+              createInstance(Ci.nsIStringInputStream);
+istream.setData(TEST_DATA, TEST_DATA.length);
+
+NetUtil.asyncCopy(istream, ostream, function(aResult) {
+  if (!Components.isSuccessCode(aResult)) {
+    // an error occurred!
+  }
+})
+</pre>
+
+<h3 id="asyncFetch()">asyncFetch()</h3>
+
+<p>The <code>asyncFetch()</code> method opens an input source, asynchronously, and gives an {{ interface("nsIInputStream") }} containing the data obtained to the callback provided. The callback may then consume data from the input stream passed to the callback.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Prior to Gecko 2, the input source was required to be specified as an {{ interface("nsIChannel") }}.</p>
+</div>
+
+<div class="note">
+<p><strong>Note:</strong> Support for specifying an {{ interface("nsIInputStream") }} as the input source was added in Gecko 5.</p>
+</div>
+
+<pre>asyncFetch(
+  aSource,
+  aCallback
+);
+</pre>
+
+<h6 id="Parameters_2">Parameters</h6>
+
+<dl>
+ <dt><code>aSource</code></dt>
+ <dd>The source to open asynchronously. This may be specified as an {{ interface("nsIURI") }}, {{ interface("nsIFile") }}, {{ interface("nsIChannel") }}, {{ interface("nsIInputStream") }} or as a string specifying the URL to open.</dd>
+ <dt><code>aCallback</code></dt>
+ <dd>A function that will be called when the open operation is completed. The callback receives three parameters: the input stream containing the data, if any (implementing {{ interface("nsIInputStream") }}), an <code>nsresult</code> status code for the open operation, and a reference to the {{ interface("nsIRequest") }} object.</dd>
+</dl>
+
+<h6 id="Exceptions_thrown_2">Exceptions thrown</h6>
+
+<p>This method throws an exception with the message "Must have a source and a callback" if either <code>aSource</code> or <code>aCallback</code> is null.</p>
+
+<h6 id="Example_2">Example</h6>
+
+<p>This example shows the basic code consumers would need to implement to be correct.</p>
+
+<pre class="brush: js">NetUtil.asyncFetch(channel, function(aInputStream, aResult) {
+  // Check that we had success.
+  if (!Components.isSuccessCode(aResult)) {
+    // Handle error
+    return;
+  }
+
+  // Consume the input stream.
+});</pre>
+
+<h6 id="Remarks">Remarks</h6>
+
+<div class="note"><strong>Note:</strong> If you specify an {{ interface("nsIChannel") }} as the input source, and its notification callbacks have already been set, callers are responsible for implementing {{ interface("nsIBadCertListener") }} and {{ interface("nsISSLErrorListener") }}.</div>
+
+<h3 id="newChannel()">newChannel()</h3>
+
+<p>Creates a new channel for the specified URI string, {{ interface("nsIURI") }}, or {{ interface("nsIFile") }}.</p>
+
+<pre>nsIChannel newChannel(
+  aWhatToLoad,
+  [optional] aOriginCharset,
+  [optional] aBaseURI
+);
+</pre>
+
+<h6 id="Parameters_3">Parameters</h6>
+
+<h6 id="Return_value_2">Return value</h6>
+
+<p>An {{ interface("nsIChannel") }} allowing access to the specified data source.</p>
+
+<dl>
+ <dt><code>aWhatToLoad</code></dt>
+ <dd>A string specifying a URI, or an {{ interface("nsIURI") }} or {{ interface("nsIFile") }} object. The returned method will allow access to the specified data.</dd>
+ <dt><code>aOriginCharset</code></dt>
+ <dd>The optional character set to use when interpreting <code>aWhatToLoad</code> as a string; this is ignored if <code>aWhatToLoad</code> is not a string. Defaults to UTF-8 if not provided.</dd>
+ <dt><code>aBaseURI</code></dt>
+ <dd>The base URI for the spec, specified as an {{ interface("nsIURI") }}. Only used if <code>aWhatToLoad</code> is a string.</dd>
+</dl>
+
+<h3 id="newURI()">newURI()</h3>
+
+<p>The <code>newURI()</code> method creates a new {{ interface("nsIURI") }}. This method wraps the {{ ifmethod("nsIIOService", "newURI") }}.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Starting in Gecko 2, this method supports specifying an {{ interface("nsIFile") }} as the target of the URI. In previous versions of Gecko, you must use a string to specify the URI.</p>
+</div>
+
+<pre>nsIURI newURI(
+  aTarget,
+  [optional] aOriginCharset,
+  [optional] aBaseURI
+);
+</pre>
+
+<h6 id="Parameters_4">Parameters</h6>
+
+<dl>
+ <dt><code>aTarget</code></dt>
+ <dd>Specifies the target of the URI as either a URI string or (starting in Gecko 2) as an {{ interface("nsIFile") }}.</dd>
+ <dt><code>aOriginCharset</code></dt>
+ <dd>The optional character set for the URI. Defaults to UTF-8 if not provided.</dd>
+ <dt><code>aBaseURI</code></dt>
+ <dd>The base URI for the spec, specified as an {{ interface("nsIURI") }}.</dd>
+</dl>
+
+<h6 id="Return_value_3">Return value</h6>
+
+<p>Returns the {{ interface("nsIURI") }} object representing the specified target.</p>
+
+<h6 id="Exceptions_thrown_3">Exceptions thrown</h6>
+
+<p>This method throws an exception with the message "Must have a non-null string spec or nsIFile object" and result code <code>NS_ERROR_INVALID_ARG</code> if <code>aSpec</code> is null.</p>
+
+<h3 id="readInputStreamToString()">readInputStreamToString()</h3>
+
+<p>Reads a given number of bytes from an input stream, returning a string containing those bytes. This works even if some of those bytes are zeros, instead of terminating the string at the first zero byte.</p>
+
+<pre>String readInputStreamToString(
+  aInputStream,
+  aCount,
+  aOptions
+);
+</pre>
+
+<h6 id="Parameters_5">Parameters</h6>
+
+<dl>
+ <dt><code>aInputStream</code></dt>
+ <dd>The input stream from which to read the data.</dd>
+ <dt><code>aCount</code></dt>
+ <dd>The number of bytes to read from the stream. You can call {{ ifmethod("nsIInputStream","available") }} to get the number of bytes currently available.</dd>
+ <dt><code>aOptions</code></dt>
+ <dd>Specifies additional options to control the reading process. This is a JavaScript object with fields as specified in {{ anch("Options") }}.</dd>
+</dl>
+
+<h6 id="Options">Options</h6>
+
+<p>The <code>aOptions</code> parameter is a JavaScript object which can have any or all of the following fields:</p>
+
+<table class="standard-table" style="width: auto;">
+ <tbody>
+  <tr>
+   <td class="header">Field name</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>charset</code></td>
+   <td>The character encoding to use when interpreting the input stream. If you don't provide this, the input won't be decoded at all and the raw bytes will be returned.</td>
+  </tr>
+  <tr>
+   <td><code>replacement</code></td>
+   <td>A character with which to replace any invalid byte sequences in the input stream. If you don't specify a replacement character, any invalid sequences will result in <code>NS_ERROR_ILLEGAL_INPUT</code> being thrown. This option only has effect if <code>charset </code>is as well.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h6 id="Return_value_4">Return value</h6>
+
+<p>A string containing the bytes read from the input stream.</p>
+
+<h6 id="Exceptions_thrown_4">Exceptions thrown</h6>
+
+<dl>
+ <dt><code>NS_ERROR_INVALID_ARG</code></dt>
+ <dd>The specified stream is not an {{ interface("nsIInputStream") }}.</dd>
+ <dt><code>NS_BASE_STREAM_WOULD_BLOCK</code></dt>
+ <dd>Reading from the specified stream would block the calling thread, and the stream is in non-blocking mode.</dd>
+ <dt><code>NS_ERROR_FAILURE</code></dt>
+ <dd>There aren't at least <code>aCount</code> bytes available to read from the stream.</dd>
+ <dt><code>NS_ERROR_ILLEGAL_INPUT</code></dt>
+ <dd>The input stream has invalid byte sequences, and no replacement character was specified using <code>aOptions.replacement</code>.</dd>
+</dl>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a class="internal" href="/en/JavaScript_code_modules/Using" title="en/JavaScript code modules/Using JavaScript code modules">Using JavaScript code modules</a></li>
+ <li><a class="internal" href="/en/JavaScript_code_modules" title="en/JavaScript code modules">JavaScript code modules</a></li>
+ <li><a class="internal" href="/en/Components.utils.import" title="en/Components.utils.import"><code>Components.utils.import</code></a></li>
+</ul>

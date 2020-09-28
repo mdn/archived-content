@@ -1,0 +1,60 @@
+<p> </p>
+
+<p>The following document outlines rules that one must abide by when writing a skin. Mozilla can have any number of installed UI packages, from Navigator to Sidebar to Editor. Each package has its own skin, CSS files and images that determine the appearance of that package.</p>
+
+<p>In our particular Mozilla skin, there is a special package called<em>global</em>. This package contains a special skin called the<em>global skin</em>. If you wish for your package to blend in with the other packages, then the skin for your package should inherit information from the global skin in order to reduce the amount of duplication across packages and in order to make the UI as a whole easier to skin.</p>
+
+<h2 id="Writing_CSS_files_for_a_Package" name="Writing_CSS_files_for_a_Package">Writing CSS files for a Package</h2>
+
+<ol>
+ <li><strong>Learn CSS!</strong> This may seem obvious, but many of the nastiest problems we're seeing are being caused by people writing buggy or syntactically incorrect CSS. <a class="external" href="http://www.w3.org/Style/css/">Read the spec! Study a book!</a> Know it! Love it! Make it a part of you!</li>
+ <li><strong>Each skin has a master skin file.</strong> The skin for a package should always have a master skin file whose name corresponds to the name of the package. For example, the skin for the <strong>Navigator</strong> package should contain a file called navigator.css that determines the default look of all XUL windows posed from this package.</li>
+ <li><strong>If inheriting the global skin, a skin file must import the global skin explicitly.</strong> If your skin file wishes to inherit the global skin, then it should import the global skin explicitly. This is done using an @import directive placed at the top of the file.
+  <pre>@import url(chrome://global/skin/)
+... rest of skin file ...
+</pre>
+ </li>
+ <li><strong>CSS files for a skin fall into two categories: base skin files and derived skin files.</strong> CSS files that import another skin file are called<em>derived skin files</em>. CSS files that don't import another skin file are called<em>base skin files</em>. There is one notable exception to this rule. Skin files that don't import any other skin files, but that are only intended to be used in the context of another component's skin are also considered derived skin files, since they are implicitly importing information from the other component's skin. These sorts of files are typically used with reusable overlayable widgets (e.g., the sidebar).</li>
+ <li><strong>Your CSS file should never import another skin file if your file is loaded by a XUL overlay.</strong> CSS files that are used by XUL overlays should never import the global skin (or any other skin for that matter). They are already derived skins and therefore should not inherit from global. They should instead rely on the context in which they will appear for color, font, and border information. For example, the sidebar should not import the global skin, since it could appear in Messenger and in Navigator (which could have two completely different color schemes). If it imported the global skin, then when it was overlayed into Navigator, it would potentially clash (if the user's current chosen Navigator skin were NOT inheriting from global).</li>
+ <li><strong>Derived skin files should not contain any font, color, or border information. This information should only be found in base skin files.</strong> The skin file should instead inherit from a base skin file to obtain the appropriate font, color, and border information. By obeying this restriction, your package will be almost entirely skinnable by changing only the global defaults. This rule also applies when designing a CSS file for a UI component that will be overlayed into other components. Below are examples for each case.
+  <blockquote><strong>Example 1:</strong> The Navigator package has a personal toolbar with popup menu buttons. The colors for the toolbar and buttons should be drawn from global by placing<em>class</em> attributes on the appropriate elements in the XUL. There should be no rules in navigator.css that attempt to define colors, fonts, etc. for either the personal toolbar headers or for the menu buttons' borders.</blockquote>
+
+  <blockquote><strong>Example 2:</strong> The Messenger package has a CSS file that describes the appearance of the Messenger button that appears on the taskbar used by all windows. The Messenger CSS file should not attempt to describe the borders or the colors for this button. It should only describe the icon. Because the button is used in the Navigator window (through overlays), the fonts/colors used should not be described by Messenger. This allows the button to blend in as much as possible regardless of where it is used.</blockquote>
+
+  <p>The importance of this rule cannot be overstated. Derived skin files should not contain any rules for colors, fonts, or borders. Exceptions to this rule must be approved in order to be allowed into the product. Note that in our current designed Mozilla skin (aside from global) every single CSS file is a derived skin file, so this applies to <strong>ALL OF YOU!!!</strong></p>
+ </li>
+ <li><strong>Derived skin files should not attempt to change the default look for a widget.</strong> For example, there should never be any CSS rules of the form tagName {...}; in a derived skin file. In doing so, you have redefined the default look for the widget, which will make the UI in your window different from others that properly inherit from the same base skin file you do.</li>
+ <li><strong>The descendant selector is forbidden.</strong> Never use the descendant selector without first getting usage of the rule approved. The matching for these rules (unless you're very careful) will be inefficient, and when only using generic tag names, can be positively grotesque. I'll show you the evil rule I put into the global skin a few months back that was making trees slow.
+  <pre>treehead treerow treecell { BAD! EVIL! YUCK!
+    ...
+}
+</pre>
+
+  <p>This evil rule caused the style system, for every treecell that wasn't in a treehead (which is practically every treecell in a typical tree), to crawl up the whole parent chain to the root of the document in order to determine that the style rule wasn't a match.</p>
+
+  <p>I'm usually seeing this rule misused by people who really wanted to use the child selector instead. That was my mistake with the above rule. I should have used treehead &gt; treerow &gt; treecell. After all, that's what I meant anyway.</p>
+ </li>
+ <li><strong>Never use an attribute selector rule for the class attribute.</strong> This is inefficient and you should just use the class notation (the dot notation) instead.</li>
+</ol>
+
+<h2 id="Writing_Skinnable_XUL" name="Writing_Skinnable_XUL">Writing Skinnable XUL</h2>
+
+<ol>
+ <li><strong>A XUL file that describes a window always imports the master skin file for its package.</strong> For example, all XUL files that describe windows in the Navigator package should contain a line explicitly importing navigator.css. XUL overlays, however, should not, since they will be used in the context of other skins.</li>
+ <li><strong>A XUL file NEVER imports skin files from outside its package.</strong> It is a flagrant and hideous violation (punishable by a public flogging in front of the Netscape fountain) to load a skin file from XUL that is not found in your package. For example, a Navigator XUL file should never load the global skin or a Sidebar skin.</li>
+ <li><strong>XUL files never explicitly load files from other packages unless the presence of the other packages can be guaranteed.</strong> For example, a Navigator XUL file can only load a Sidebar overlay explicitly if the Sidebar UI is always going to be installed with navigator. If it is possible that the sidebar is a separate component that could be installed or uninstalled, then the overlaying should not occur in the XUL file. It should instead take place through the chrome registry. Examples of overlays that should take place using the chrome registry include the security padlock icon and any Messenger UI in the Navigator window.</li>
+ <li><strong>style="..." is prohibited in XUL files without approval</strong> Any usages of inline style are extremely dangerous, since they are overriding the included skin, and must be approved before their usage will be allowed.</li>
+ <li><strong>Image chrome URLs should never occur in XUL.</strong> Any chrome URL that references an image in the skin is strictly forbidden in the XUL. If you find yourself needing to display an image from the skin, then use &lt;titledbutton&gt; and style it rather than using &lt;html:img&gt;. The problem here is that you'll end up placing a restriction on the skin, which will force the skin designer to supply an image with the exact name you've specified. This is not healthy. Note that some particularly evil people put images chrome URLs in DTDs. This is even worse, and it also is strictly forbidden.</li>
+</ol>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:hyatt@netscape.com">David Hyatt</a></li>
+ <li>Last Updated Date: May 24, 2000</li>
+ <li>Copyright Information: Copyright (C) 1999-2000 <a class="link-mailto" href="mailto:hyatt@netscape.com">David Hyatt</a></li>
+</ul>
+</div>
+
+<p> </p>

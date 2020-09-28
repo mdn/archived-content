@@ -1,0 +1,37 @@
+<p>This describes how to use pork to rewrite source code.</p>
+
+<p>Most refactoring toolchains are UI-based. Typically they require loading the entire project into an IDE. Usually, IDEs require one to use their build system. Pork does not yet have a UI, but it is also build-system agnostic and scales to large codebases. These notes are based on</p>
+
+
+
+<h3 id="Tools" name="Tools">Tools</h3>
+
+<ul>
+ <li>Pork refactoring toolchain {{ mediawiki.external('required') }}. See <a href="/en-US/docs/Mozilla/Projects/Pork/Installing">Installing Pork</a>.</li>
+ <li>filterdiff from <a class="external" href="http://cyberelk.net/tim/software/patchutils/">patchutils</a></li>
+</ul>
+
+<h3 id="Renaming_a_class" name="Renaming_a_class">Renaming a class</h3>
+
+<p>1. Make two copies of the source(analysis and test). This isn't strictly required, but will save time.</p>
+
+<p>2. The first copy will be an analysis copy. Convince GCC to create annotated .ii files while compiling the analysis copy. Typically, make CXXFLAGS="-Wp,-K,-W0 -save-temps" will work. Note the -K,-W0 options are passed down to the MCPP preprocessor such that it can annotate files with more precise position information. In order for this to work MCPP has to be integrated into your compiler as described in the pork installation instructions</p>
+
+<p>3. In the analysis copy make a list of files to process. Use absolute paths.</p>
+
+<pre class="eval">find `pwd` -name \*.ii &gt; /tmp/ls.txt
+</pre>
+
+<p>4. Run renamer through pork-barrel. this makes it easier to refer to any diagnostics</p>
+
+<pre class="eval">touch /tmp/err.txt
+tail -F /tmp/err.txt &amp;
+~/work/pork-barrel/pork-barrel 4 /tmp/ls.txt ./renamer -rename-class string sm::string &gt; /tmp/string.diff 2&gt;/tmp/err.txt
+</pre>
+
+<p>Pork-barrel runs multiple copies of the renamer and merges their output. One can also run the ./renamer command directly on the .ii files.</p>
+
+<p>5. Apply the patch in the test sources. Pork patches contain absolute paths in them and will touch generated sources if it comes across any. Thus it is helpful to postprocess the patch with sed and filterdiff. Now in the analysis copy do some processing on the patch and apply it. --dry-run is helpful for debugging</p>
+
+<pre class="eval">filterdiff -x \*/smbase/\* /tmp/string.diff |sed 's/.home.tglek.tmp.//' | patch -p1 --dry-run
+</pre>

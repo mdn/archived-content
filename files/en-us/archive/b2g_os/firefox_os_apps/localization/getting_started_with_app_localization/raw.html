@@ -1,0 +1,206 @@
+<div class="summary">
+<p>In this article, we will discuss how to localize Firefox OS apps — both internal <a href="/en-US/Firefox_OS/Platform/Gaia">Gaia</a> apps, and third party apps. This article provides a detailed guide, but can be considered a good starting point for those new to Firefox OS localization.</p>
+</div>
+
+<p>Currently Firefox OS Gaia uses a modified version of the L10n.js library to localize the default apps that are available in Firefox OS. <a href="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/l10n.js" title="https://github.com/mozilla-b2g/gaia/blob/master/shared/js/l10n.js">L10n.js is available in the Gaia source tree</a>. The library relies on a key/value-based properties format.</p>
+
+<p>There are many other frameworks and technologies to pick from when it comes to localization. For example, the <a href="http://slexaxton.github.io/Jed/" title="http://slexaxton.github.io/Jed/">Jed</a> Gettext-style library is a popular traditional option.  There are also new localization platforms in development that extend the capabilities available in current libraries. For example, at Mozilla we have <a href="/en-US/docs/Mozilla/Projects/L20n">L20n</a>, a very promising <a href="https://wiki.mozilla.org/L20n" title="https://wiki.mozilla.org/L20n">localization project</a> that extends L10n with a variety of compelling new features. Gaia will be moving to L20n fairly soon, but this documentation will still be useful for legacy Firefox OS installs, and other projects.</p>
+
+<div class="note">
+<p><strong>Note</strong>: If you do decide to use the L10n approach, bear in mind that some features of the library are not cross-browser compatible (for example l10n_date.js uses the non-standard <code>toLocaleFormat()</code> method.)</p>
+</div>
+
+<h2 id="The_localization_procedure">The localization procedure</h2>
+
+<p>We'll localize the strings that appear in the app's HTML as well as the <a href="/en-US/Apps/Build/Manifest#name"><code>name</code></a> and <a href="/en-US/Apps/Build/Manifest#description"><code>description</code></a> in the <a href="/en-US/Apps/Build/Manifest">app manifest</a>. The process will take five steps:</p>
+
+<ul>
+ <li><a href="#Create_translations">Create translations</a>: Create a file for each language we need to support that contains the translated strings.</li>
+ <li><a href="#Mark_up_the_HTML">Mark up the HTML</a>: Add a new attribute to each string in the HTML that will need localization.</li>
+ <li><a href="#Include_l10n.js">Include l10n.js</a>: Include the l10n.js JavaScript library in the app, which inserts the correct strings into the HTML depending on locale.</li>
+ <li><a href="#Update_manifest.webapp">Update manifest.webapp</a>: Add the translations for "name" and "description" to the app manifest.</li>
+ <li><a href="#Link_resources">Link resources</a>: Make sure the translation files can be found, and the app manifest is linked.</li>
+</ul>
+
+<h3 id="Create_translations">Create translations</h3>
+
+<p>First, we need to create a new directory in your app's root named <code>locales</code>, and a directory under there for each language you need to support. Then in each of those directories, we create a file with an extension of <code>.properties</code>. As an example of how it works examine one of our <a href="https://github.com/mozilla-b2g/gaia/tree/master/apps">Gaia apps</a>. The Bluetooth App might look like this with some translations added:</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/8905/bluetooth.png" style="display: block; height: 324px; margin: 0px auto; width: 500px;"></p>
+
+<p>This App contains <code>.properties</code> files for four locales (<code>ar</code>, <code>en-US</code>, <code>fr</code>, and <code>zh-TW</code>). A portion of the <code>bluetooth.en-US.properties</code> file is listed below:</p>
+
+<pre class="brush: js">bluetooth = Bluetooth
+confirmation = Confirmation
+bluetooth-status-description = Bluetooth is disabled
+turn-bluetooth-on = Do you want to turn Bluetooth on?
+cancel = Cancel
+turn-on = Turn On</pre>
+
+<p>As you can see, it’s a simple key/value property file containing the set of strings to localize. Each line is the translation of a single string in <code>name=value</code> format:</p>
+
+<ul>
+ <li><code>name</code> is an identifier for this string, matching the value for a <code>data-l10n-id</code> attribute in the app's HTML.</li>
+ <li><code>value</code> is the translation of the string in this particular language.</li>
+</ul>
+
+<p>The other <code>.properties</code> files will contain the same string names, but the values will be translated into the particular language for each file.</p>
+
+<p>Usually, the app developer won't create the contents of <code>app.properties</code>: a translator will create it, given the set of string identifiers and their value in the original language. For more on this, see the <a href="/en-US/Apps/Build/Localization/App_Localization_with_Transifex">article on working with Transifex</a>.</p>
+
+<h3 id="Mark_up_the_HTML">Mark up the HTML</h3>
+
+<p>You'll need to add a new attribute to every element in your HTML whose content needs to be translated. The name of the attribute is <code>data-l10n-id</code>, and its value is an identifier for the string. This identifier is used as a key to look up the correct translation of the string. Here's an example:</p>
+
+<pre class="brush: html">&lt;h2 data-l10n-id="label1"&gt;Label One&lt;/h2&gt;</pre>
+
+<p>When all your attributes have been set, on page load the <a href="/en-US/Apps/Build/Localization/Setup#l10n.js"><code>l10n.js</code></a> library will:</p>
+
+<ul>
+ <li>Find all elements which have the <code>data-l10n-id</code> attribute set.</li>
+ <li>Use the attribute's value as a key to look up the correct translation of the string, given the current device language.</li>
+ <li>Assign this translation as the element's <a href="/en-US/docs/Web/API/Node.textContent"><code>textContent.</code></a></li>
+</ul>
+
+<p>There is also an attribute called <code>data-l10n-args</code>, which can be used to hold values like the default value for an argument. You'll learn about this later on, in <a href="#Argument_substitution">Argument substitution</a>.</p>
+
+<p>The value of the <code>label1</code> attribute serves as the key into the properties file. Complex strings can be created in the properties files using argument substitution and the <a href="#Plural_macro">Plural macro</a>.</p>
+
+<p>The binding between each <code>l10n-id</code> and its associated HTML Element is a one-to-one model. Entities should not be reused because although they may have the same value in your source language, different contexts will often require different translations.</p>
+
+<p>Localizable elements should also not have any content or child elements because the localization will overwrite them.</p>
+
+<h4 id="Argument_substitution">Argument substitution</h4>
+
+<p>Sometimes your app needs to insert a string that should not be localized into a string that should be localized. For example, if you want to greet the user, their name should not be localized but the greeting itself should, for example <em>"Hello, Bob!"</em>.</p>
+
+<p>Argument substitution is achieved by surrounding the argument with double curly braces: <code>\{{arg}}</code>. A message can then be customized for a specific user using syntax similar to the following:</p>
+
+<pre class="brush: js">label1 = Hello \{{ username }}, glad you decided to visit</pre>
+
+<p>Default values for arguments can be set using the <code>data-l10n-args</code> attribute. This attribute expects a JSON-formatted value. In the above example, a default value could be set for the user argument using the HTML below:</p>
+
+<pre class="brush: html">&lt;h2 data-l10n-id="label1" data-l10n-args='{ "user": "Guest" }'&gt;&lt;/h2&gt;</pre>
+
+<p>This will result in the element's content being set as "Hello Guest, glad you decided to visit".</p>
+
+<p>You can also reference other entities in the same way:</p>
+
+<pre class="brush: js">brandShortName = Firefox OS
+helloWorld = Welcome to \{{ brandShortName }}
+</pre>
+
+<div class="note">
+<p><strong>Note</strong>: You can also <a href="/en-US/Apps/Build/Localization/Localization_code_best_practices#Argument_substitution">retrieve argument-substituted strings using JavaScript</a>.</p>
+</div>
+
+<h4 id="Plural_macro">Plural macro</h4>
+
+<p>Most languages use different forms of words depending on how many of a thing there are. Some languages, like English, have just two forms: singular, for "one", and plural, for "everything else, including zero":</p>
+
+<pre class="language-html">You have no tomatoes :(.
+You have one tomato.
+You have five tomatoes.</pre>
+
+<p>Other languages have more than two forms, and some have just one.</p>
+
+<p>When your app is constructing strings dynamically and their forms depend on how many of a thing there are, the localization system needs a way to represent these rules, and the app needs a way to pass the number to the localization system. For this, we have the Plural macro.</p>
+
+<p>L10n.js currently supports very limited macro functionality and multi-variant strings. The plural macro can be used to customize messages based on an argument value. The macro takes a number value and returns zero, one, two, few, many, or other. The return value depends on the value passed in and the current locale’s <a href="http://unicode.org/repos/cldr-tmp/trunk/diff/supplemental/language_plural_rules.html" title="http://unicode.org/repos/cldr-tmp/trunk/diff/supplemental/language_plural_rules.html">Unicode Plural Rules</a>. As an example, a customized mail message for the <code>en-US</code> locale may look something like this:</p>
+
+<pre class="brush: js">mailMessage = {[ plural(n) ]}
+mailMessage[zero]  = you have no messages
+mailMessage[one]   = you have one message
+mailMessage[two]   = you have two messages
+mailMessage[other] = you have \{{ n }} messages</pre>
+
+<pre class="brush: html">&lt;h3 data-l10n-id="mailMessage" data-l10n-args='{ "n": "6" }'&gt;&lt;/h3&gt;</pre>
+
+<p>This will result in the element's content being set as "You have 6 messages".</p>
+
+<div class="note">
+<p><strong>Note</strong>: You can also <a href="/en-US/Apps/Build/Localization/Localization_code_best_practices#Pluralization">resolve plurals using JavaScript</a>.</p>
+</div>
+
+<h3 id="Include_l10n.js">Include l10n.js</h3>
+
+<p>To find nodes in the HTML marked with <code>data-l10n-id</code> and replace their contents with values from <code>app.properties</code>, we need to include <code>l10n.js</code> alongside the other JavaScript files in your app (including it in the <a href="/en-US/docs/Web/HTML/Element/head" title="The HTML &lt;head> element provides general information (metadata) about the document, including its title and links to its scripts and style sheets."><code>&lt;head&gt;</code></a> is recommended):</p>
+
+<pre class="brush: html">&lt;script src="js/l10n.js"&gt;&lt;/script&gt;</pre>
+
+<h3 id="Update_manifest.webapp">Update manifest.webapp</h3>
+
+<p>To localize the app's <code>name</code> and <code>description</code>, we need to update the <code>manifest.webapp</code> file. You need to add two new fields:</p>
+
+<ul>
+ <li><a href="/en-US/Apps/Build/Manifest#default_locale"><code>default_locale</code></a>: this is assigned a language code which will be the default. When the device is set to this language or any language not explicitly supported by the app, the <code>name</code> and <code>description</code> already specified in the manifest will be used</li>
+ <li><code><a href="/en-US/Apps/Build/Manifest#locales">locales</a></code>: this contains one property for each supported language apart from the default, listing the values to be used for <code>name</code> and <code>description</code> in that language</li>
+</ul>
+
+<p>In this case we want to make English (<code>en</code>) the default, and support the other languages as well, so we would add the following lines to <code>manifest.webapp</code>, adding translations into the appropriate places:</p>
+
+<pre class="brush: json">"default_locale": "en",
+"locales": {
+  "ar": {
+    "name" : " ... ",
+    "description" : " ... "
+ }
+ "fr": {
+    "name" : " ... ",
+    "description" : " ... "
+ }
+ "zh-TW": {
+    "name" : " ... ",
+    "description" : " ... "
+  }
+}</pre>
+
+<div class="note">If you <a href="/en-US/Apps/Build/Localization/App_Localization_with_Transifex">work with a translator using the Transifex service</a>, you'll probably keep the translations of <code>name</code> and <code>description </code>in separate files called <code>manifest.properties</code>, stored alongside your other <code>.properties</code> files.</div>
+
+<h3 id="Link_resources">Link resources</h3>
+
+<p>In order for the resources to be used to localize your HTML file, you need to link them from your HTML <code>&lt;head&gt;</code> element, like this:</p>
+
+<pre class="brush: html">&lt;link rel="localization" href="locales/bluetooth.{locale}.properties" /&gt;</pre>
+
+<p>L10n.js uses the <a href="http://en.wikipedia.org/wiki/URL_Template">URL Template</a> scheme, where the <code>{locale}</code> portion of the path will be replaced with a locale code selected as the result of language negotiation.</p>
+
+<p>On top of that, you need to link to your manifest file as follows:</p>
+
+<pre class="brush: html">&lt;link rel="manifest" href="./manifest.webapp" /&gt;</pre>
+
+<p>Alternatively, you can list available locales and the default locale within the HTML file using <a href="/en-US/docs/Web/HTML/Element/meta" title="The HTML &lt;meta> element represents metadata that cannot be represented by other HTML meta-related elements, like &lt;base>, &lt;link>, &lt;script>, &lt;style> or &lt;title>."><code>&lt;meta&gt;</code></a> elements:</p>
+
+<pre class="brush: html">&lt;meta name="locales" content="en-US, fr, de"&gt;
+&lt;meta name="default_locale" content="en-US"&gt;
+</pre>
+
+<p>L10n.js will do language negotiation between user-selected languages (see <code><a href="/en-US/docs/Web/API/NavigatorLanguage/languages" title="The NavigatorLanguage.languages read-only property returns an array of DOMStrings representing the user's preferred languages. The language is described using BCP 47 language tags. In the returned array they are ordered by preference with the most preferred language first."><code>NavigatorLanguage.languages</code></a></code>) and the list of available languages provided in the manifest, select the language fallback chain and loading the resources for the most preferred locale.</p>
+
+<h2 id="Testing_it_outHow_to_view_different_locales">Testing it out/How to view different locales</h2>
+
+<p>Finally, test that the localization worked. Using a real Firefox OS device or the Simulator, change the device language to Spanish using one of these options:</p>
+
+<p>To view your app with a different locale, change the language in Firefox or Firefox OS:</p>
+
+<dl>
+ <dt>All platforms</dt>
+ <dd>Set the desired locale to test in JavaScript, e.g: <code>document.webL10n.setLanguage("es");</code></dd>
+ <dt>Firefox OS (or Firefox OS Simulator via WebIDE)</dt>
+ <dd><a href="https://support.mozilla.org/en-US/kb/change-default-language-firefox-os?esab=a&amp;s=language&amp;r=0&amp;as=s">Language setting in the Settings app</a></dd>
+ <dt>Firefox</dt>
+ <dd>Choose language under <code>Preferences &gt; Content &gt; Languages</code>. More information in <a class="external external-icon" href="https://support.mozilla.org/en-US/kb/settings-fonts-languages-pop-ups-javascript">Set content language in Firefox</a></dd>
+</dl>
+
+<p>In <a href="/en-US/docs/Tools/WebIDE">WebIDE</a>, Firefox, or your Firefox OS phone, you should then be able to install or update your app, and open it — The strings it contains should now appear in the language you chose, provided of course there is a translation available for that language! If not, you'll just get the English versions.</p>
+
+<div class="note">Note that because the strings in the app are replaced on page load, they're not dynamically updated when you change the language. You have to restart the app for the language change to be reflected in the app's interface.</div>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li>There is a lot more to know about translating Firefox OS apps. A good place to start might be our <a href="/en-US/docs/Web/Apps/Build/Localization/L10n.js_reference">L10n.js reference</a>; you can also learn some advanced tricks and best practices in <a href="https://developer.mozilla.org/en-US/docs/Web/Apps/Build/Localization/Localization_code_best_practices">App localization code best practices.</a></li>
+ <li>Most of the time, app developers don't translate strings themselves: they work with translators who are fluent in the target language. The developer supplies a set of string identifiers and their value in the source language, and the translator then supplies the translations. We're working with <a href="https://www.transifex.com/">Transifex</a> to put app developers in touch with translators. Read about <a href="/en-US/Apps/Build/Localization/App_Localization_with_Transifex">how to use the Transifex service to connect with translators</a>.</li>
+ <li>For further reading on general good localization practices (not Firefox OS-specific), see <a href="/en-US/docs/Web_Localizability/Creating_localizable_web_applications" title="/en-US/docs/Web_Localizability/Creating_localizable_web_applications">Creating localizable web applications</a> and <a href="/en-US/docs/Mozilla/Localization/Localization_content_best_practices">Localization content best practices</a>.</li>
+ <li>And after you’ve finished localizing your own Firefox OS app, why not help with the localization of Firefox OS itself? Take a look at <a href="/en-US/Firefox_OS/Developing_Gaia/Localizing_Firefox_OS" title="/en-US/docs/Firefox_OS/Hacking_Firefox_OS/Localizing_Firefox_OS">Localizing Firefox OS</a> for more information on how to contribute.</li>
+</ul>

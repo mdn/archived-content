@@ -1,0 +1,853 @@
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It was last updated in 2004.</p>
+</div>
+
+<h3 id="Introduction" name="Introduction">Introduction</h3>
+
+<p>The purpose of this document is provide all the information you need to create a new Mozilla Module or break existing code into a module. The mechanism we're using is based on the principles laid down by COM, so pretty much anything you know about COM can be applied here, and any reference on COM can provide you with more interesting and complex examples than the ones provided here.</p>
+
+<h3 id="The_Basics" name="The_Basics">The Basics</h3>
+
+<h4 id="Interfaces" name="Interfaces">Interfaces</h4>
+
+<p>The basic building blocks of modules are C++ pure virtual interfaces. A pure virtual interface is simply a class where every method is defined as pure virtual, that is:</p>
+
+<pre>virtual int foo(int bar) = 0;
+</pre>
+
+<p>Pure virtual interfaces provide an easy mechanism for passing function tables between modules that may reside in separate, possibly dynamically loaded, libraries. Each interface is assigned a unique Interface Identifier, or <a href="#About_nsIIDs_and_nsCIDs">IID</a>.</p>
+
+<h4 id="nsISupports" name="nsISupports"><code>nsISupports</code></h4>
+
+<p>The key interface in our model is the <code>nsISupports</code> interface, our equivalent to <abbr>COM</abbr>'s <code>IUnknown</code> interface. <code>nsISupports</code> provides two key features, interface interrogation and reference counting. Interface interrogation is a simple, uniform mechanism for determining which interfaces a object supports, and for hiding the the mechanics of how the object was implemented.</p>
+
+<p>Interface interrogation is performed using the <code>QueryInterface()</code> method. The caller passes in an ID and a pointer to a address to place the resulting interface. If the query is successful, <code>QueryInterface()</code> will return <code>NS_OK</code>. If the object does not support the given interface, it will return <code>NS_NOINTERFACE</code>.</p>
+
+<p>Reference counting is performed using the <code>AddRef()</code> and <code>Release()</code> methods. An objects reference count generally starts at zero. <code>AddRef()</code> increments that reference count, and <code>Release()</code> decrements it. If a call to <code>Release()</code> causes the reference count to hit zero, the object will generally free itself. A successful <code>QueryInterface()</code> will call <code>AddRef()</code> on the requested interface before returning. Both <code>AddRef()</code> and <code>Release()</code> return the resulting reference count.</p>
+
+<p>The convenience macros <code>NS_ADDREF()</code> and <code>NS_RELEASE()</code> are preferred over calling <code>AddRef</code> and <code>Release</code> directly. In debug builds, these macros provide useful reference counting logs. Use them wherever possible.</p>
+
+<pre>/*
+ * The nsISupports interface
+ */
+
+class nsISupports {
+public:
+    NS_IMETHOD QueryInterface(const nsIID &amp;aIID,
+                              void **aResult) = 0;
+    NS_IMETHOD_(nsrefcnt) AddRef(void) = 0;
+    NS_IMETHOD_(nsrefcnt) Release(void) = 0;
+};
+</pre>
+
+<p>The <code>NS_IMETHOD</code> and <code>NS_IMETHOD_(<var>type</var>)</code> macros are basically shorthand for <code>virtual nsresult</code> and <code>virtual<em>type</em></code>. On Windows they expand to <code>virtual nsresult __stdcall</code> and <code>virtual <var>type</var> __stdcall</code> for <abbr>COM</abbr> compatibility reasons. You don't have to use them in your interfaces unless you're concerned with COM compatibility.</p>
+
+<p>All Mozilla interfaces inherit from <code>nsISupports</code>. Inheriting from <code>nsISupports</code> allows any interface to be interrogated about other interfaces that its instance may support, and insures that reference counting facilities are always available. The IID for <code>nsISupports</code> is defined as <code>NS_ISUPPORTS_IID</code>.</p>
+
+<p><code>QueryInterface()</code> has several important characteristics that must be maintained. If you perform a <code>QueryInterface()</code> on interface A and obtain interface B, you must be able to perform a <code>QueryInterface()</code> B and obtain interface A. If interfaces A and B are both implemented by the same instance, performing a <code>QueryInterface()</code> for <code>nsISupports</code> on either should return the exact same interface. This means that even though interface B inherits from nsISupports, performing a QueryInterface() on it may not return the same interface. This important behavior is the only reliable mechanism for determining whether interfaces A and B are implemented by the same object.For simple objects, maintaining these behaviors is easy. Aggregation, as we will see later, can complicate things.</p>
+
+<p>On the other hand, objects are allowed a certain degree of flexibility in their implementations of <code>AddRef()</code> and <code>Release()</code>. They can maintain a single reference count for the entire object, or individual reference counts for each interface. A static object would chose to ignore reference counts altogether. However, a poor implementation of these functions can have negative results, such as memory leaks or inadvertent access of freed objects.</p>
+
+<h4 id="Factories" name="Factories">Factories</h4>
+
+<p>Factories are special classes dedicated to creating instances of classes. A Foo class will typically have a FooFactory associated with it. The <code>nsIFactory</code> interface is the equivalent of COM's <code>IClassFactory</code>.</p>
+
+<pre>/*
+ * The nsIFactory interface
+ */
+
+class nsIFactory: public nsISupports {
+public:
+    NS_IMETHOD CreateInstance(nsISupports *aOuter,
+                              const nsIID &amp;aIID,
+                              void **aResult) = 0;
+    NS_IMETHOD LockFactory(PRBool aLock) = 0;
+</pre>
+
+<p>The reason for using factories is that it provides a mechanism for creating an object without having access to the class declaration for that object. Calling new Foo() requires that at compile time you have access to the class declaration of Foo(). A factory allows an implementor to hide both the class declaration and creation details of an object, an extremely important step for allowing maximum flexibility in the implementation of a class and reducing compile time dependencies. It can even be used to eliminate all link time dependencies on the class and its factory entirely.</p>
+
+<h4 id="The_Component_Manager" name="The_Component_Manager">The Component Manager</h4>
+
+<p>One of the major goals of our modularization is to remove link time dependencies. So how do you find a module if you've never linked with it? We've created something called the nsComponentManager. The <code>nsComponentManager</code> is simply a mapping of class IDs to factories and their containing libraries.</p>
+
+<pre>class nsComponentManager {
+public:
+  // Finds a factory for a specific class ID
+  static nsresult FindFactory(const nsCID &amp;aClass,
+                              nsIFactory **aFactory);
+  // Creates a class instance for a specific class ID
+  static nsresult CreateInstance(const nsCID &amp;aClass,
+                                 const nsIID &amp;aIID,
+                                 nsISupports *aDelegate,
+                                 void **aResult);
+  // Manually registry a factory for a class
+  static nsresult RegisterFactory(const nsCID &amp;aClass,
+                                  nsIFactory *aFactory,
+                                  PRBool aReplace);
+  // Manually registry a dynamically loaded factory for a class
+  static nsresult RegisterFactory(const nsCID &amp;aClass,
+                                  const char *aLibrary,
+                                  PRBool aReplace,
+                                  PRBool aPersist);
+  // Manually unregister a factory for a class
+  static nsresult UnregisterFactory(const nsCID &amp;aClass,
+                                    nsIFactory *aFactory);
+  // Manually unregister a dynamically loaded factory for a class
+  static nsresult UnregisterFactory(const nsCID &amp;aClass,
+                                    const char *aLibrary);
+  // Unload dynamically loaded factories that are not in use
+  static nsresult FreeLibraries();
+};
+</pre>
+
+<p>There are several ways a factory can make its way into the repository. The most direct is through <code>RegisterFactory()</code>. <code>RegisterFactory()</code> supports two different registration mechanisms. The first takes a class ID and a pointer to a factory. This mechanism can be used on factories that are linked into the executable. The second takes a class ID and the path to a dynamically loadable library. This mechanism can be used both inside an executable at run-time and externally using the <code>aPersist</code> flag to tell the repository to store the class ID/library relationship in its permenant store.</p>
+
+<h4 id="About_nsIIDs_and_nsCIDs" name="About_nsIIDs_and_nsCIDs">About nsIIDs and nsCIDs</h4>
+
+<p>To simplify the process of dynamically finding, loading and binding interfaces, all classes and interfaces are assigned unique IDs. The IDs are unique 128 bit numbers that are based on UUIDs. For those who like gory details, their structure is this:</p>
+
+<pre>struct nsID {
+  PRUint32 m0;
+  PRUint16 m1, m2;
+  PRUint8 m3[8];
+};
+</pre>
+
+<p>Frequently you see them represented as strings, like this:</p>
+
+<pre>{221ffe10-ae3c-11d1-b66c-00805f8a2676}
+</pre>
+
+<p>To initialize an ID struct you declare them like this:</p>
+
+<pre>ID = {0x221ffe10, 0xae3c, 0x11d1,
+       {0xb6, 0x6c, 0x00, 0x80, 0x5f, 0x8a, 0x26, 0x76}};
+</pre>
+
+<p>Why the <code>b66c</code> couplet gets broken up and grouped with the last set of bytes is probably a footnote somewhere. On Windows you can use the programs <code>uuidgen</code> and <code>guidgen</code>, which ship with Visual C++, to generate IDs.</p>
+
+<h3 id="A_Simple_Example" name="A_Simple_Example">A Simple Example</h3>
+
+<div class="blockIndicator note">
+<p>It is recommended that you use <a href="en/XPIDL">XPIDL</a> to define your interfaces. This sample code should be updated to reflect this, but it gives you a good basic understanding of COM from the C++ perspective.</p>
+</div>
+
+<h4 id="File_nsISample.h" name="File_nsISample.h">File <code>nsISample.h</code></h4>
+
+<p><code>nsISample.h</code> defines an extremely simple interface and its interface ID (IID). The important things to notice are that the interface inherits from nsISupports, and all member functions are pure virtual methods.</p>
+
+<pre>#include "nsISupports.h"
+
+// {57ecad90-ae1a-11d1-b66c-00805f8a2676}
+#define NS_ISAMPLE_IID \
+{0x57ecad90, 0xae1a, 0x11d1, \
+  {0xb6, 0x6c, 0x00, 0x80, 0x5f, 0x8a, 0x26, 0x76}}
+
+/*
+ * nsISample Interface declaration
+ */
+
+class nsISample: public nsISupports {
+public:
+  NS_IMETHOD Hello() = 0;
+};
+</pre>
+
+<h4 id="File_nsSample.h" name="File_nsSample.h">File <code>nsSample.h</code></h4>
+
+<p><code>nsSample.h</code> defines the class ID (CID) for our sample class. Note that one interface can have a number of classes that implement it, so there is not necessarily a one-to-one mapping from IIDs to CIDs. It also defines the function for retrieving our class factory. Notice it does not contain a class declaration.</p>
+
+<pre>#include "nsIFactory.h"
+
+// {d3944dd0-ae1a-11d1-b66c-00805f8a2676}
+#define NS_SAMPLE_CID \
+ {0xd3944dd0, 0xae1a, 0x11d1, \
+   {0xb6, 0x6c, 0x00, 0x80, 0x5f, 0x8a, 0x26, 0x76}}
+
+extern nsresult GetSampleFactory(nsIFactory **aResult);
+</pre>
+
+<h4 id="File_nsSample.cpp" name="File_nsSample.cpp">File <code>nsSample.cpp</code></h4>
+
+<p><code>nsSample.cpp</code> contains both the declaration and implementation of our sample class, and the declaration and implementation of our class factory.</p>
+
+<pre>#include "nsISample.h"
+#include "nsSample.h"
+
+static NS_DEFINE_IID(kISupportsIID, NS_ISUPPORTS_IID);
+static NS_DEFINE_IID(kIFactoryIID, NS_IFACTORY_IID);
+static NS_DEFINE_IID(kISampleIID, NS_ISAMPLE_IID);
+static NS_DEFINE_CID(kISampleCID, NS_ISAMPLE_CID);
+
+/*
+ * nsSampleClass Declaration
+ */
+
+class nsSample: public nsISample {
+private:
+  nsrefcnt mRefCnt;
+
+public:
+// Constructor and Destuctor
+  nsSample();
+  ~nsSample();
+
+// nsISupports methods
+  NS_IMETHOD QueryInterface(const nsIID &amp;aIID,
+                            void **aResult);
+  NS_IMETHOD_(nsrefcnt) AddRef(void);
+  NS_IMETHOD_(nsrefcnt) Release(void);
+
+// nsISample method
+  NS_IMETHOD Hello();
+};
+
+/*
+ * nsSampleFactory Declaration
+ */
+
+class nsSampleFactory: public nsIFactory {
+private:
+  nsrefcnt mRefCnt;
+
+public:
+  nsSampleFactory();
+  ~nsSampleFactory();
+
+// nsISupports methods
+  NS_IMETHOD QueryInterface(const nsIID &amp;aIID,
+                            void **aResult);
+  NS_IMETHOD_(nsrefcnt) AddRef(void);
+  NS_IMETHOD_(nsrefcnt) Release(void);
+
+// nsIFactory methods
+  NS_IMETHOD CreateInstance(nsISupports *aOuter,
+                            const nsIID &amp;aIID,
+                            void **aResult);
+
+  NS_IMETHOD_(void) LockFactory(PRBool aLock);
+};
+
+/*
+ * nsSample Implementation
+ */
+
+nsSample::nsSample()
+{
+  mRefCnt = 0;
+}
+
+nsSample::~nsSample()
+{
+  assert(mRefCnt == 0);
+}
+
+NS_IMETHOD nsSample::QueryInterface(const nsIID &amp;aIID,
+                                  void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  // Always NULL result, in case of failure
+  *aResult = NULL;
+
+  if (aIID.Equals(kISupportsIID)) {
+    *aResult = (void *) this;
+  } else if (aIID.Equals(kISampleIID)) {
+    *aResult = (void *) this;
+  }
+
+  if (aResult != NULL) {
+    return NS_ERROR_NO_INTERFACE;
+  }
+
+  AddRef();
+  return NS_OK;
+}
+
+nsRefCount nsSample::AddRef()
+{
+  return ++mRefCnt;
+}
+
+nsRefCount nsSample::Release()
+{
+  if (--mRefCnt == 0) {
+    delete this;
+    return 0; // Don't access mRefCnt after deleting!
+  }
+  return mRefCnt;
+}
+
+/*
+ * nsSampleFactory Implementation
+ */
+
+nsSampleFactory::nsSampleFactory()
+{
+  mRefCnt = 0;
+}
+
+nsSampleFactory::~nsSampleFactory()
+{
+  assert(mRefCnt == 0);
+}
+
+NS_IMETHODIMP nsSampleFactory::QueryInterface(const nsIID &amp;aIID,
+                                         void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  // Always NULL result, in case of failure
+  *aResult = NULL;
+
+  if (aIID.Equals(kISupportsIID)) {
+    *aResult = (void *) this;
+  } else if (aIID.Equals(kIFactoryIID)) {
+    *aResult = (void *) this;
+  }
+
+  if (*aResult == NULL) {
+    return NS_ERROR_NO_INTERFACE;
+  }
+
+  AddRef(); // Increase reference count for caller
+  return NS_OK;
+}
+
+NS_IMETHODIMP(nsRefCount) nsSampleFactory::AddRef()
+{
+  return ++mRefCnt;
+}
+
+NS_IMETHODIMP(nsRefCount) nsSampleFactory::Release()
+{
+  if (--mRefCnt == 0) {
+    delete this;
+    return 0; // Don't access mRefCnt after deleting!
+  }
+  return mRefCnt;
+}
+
+NS_IMETHODIMP nsSampleFactory::CreateInstance(nsISupports *aOuter,
+                                         const nsIID &amp;aIID,
+                                         void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  *aResult = NULL;
+
+  nsISupports inst = new nsSample();
+
+  if (inst == NULL) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  nsresult res = inst-&gt;QueryInterface(aIID, aResult);
+
+  if (res != NS_OK) {
+    // We didn't get the right interface, so clean up
+    delete inst;
+  }
+
+  return res;
+}
+
+void nsSampleFactory::LockFactory(PRBool aLock)
+{
+  // Not implemented in simplest case.
+}
+
+nsresult GetSampleFactory(nsIFactory **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  *aResult = NULL;
+
+  nsISupports inst = new nsSampleFactory();
+
+  if (inst == NULL) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  nsresult res = inst-&gt;QueryInterface(kIFactoryIID, aResult);
+
+  if (res != NS_OK) {
+    // We didn't get the right interface, so clean up
+    delete inst;
+  }
+
+  return res;
+}
+</pre>
+
+<h4 id="File_main.cpp" name="File_main.cpp">File <code>main.cpp</code></h4>
+
+<p><code>main.cpp</code> is a simple program that creates an instance of our sample class and disposes of it. Because it obtains the class factory directly, it doesn't use the CID for class.</p>
+
+<pre>#include "nsISample.h"
+#include "nsSample.h"
+
+static NS_DEFINE_IID(kISampleIID, NS_ISAMPLE_IID);
+
+int main(int argc, char *argv[])
+{
+  nsIFactory *factory;
+  GetSampleFactory(&amp;factory);
+
+  nsISample *sample;
+
+  nsresult res = factory-&gt;CreateInstance(NULL, kISampleIID,
+                                         (void **) &amp;sample);
+
+  if (res == NS_OK) {
+    sample-&gt;Hello();
+    NS_RELEASE(sample);
+  }
+
+  return 0;
+}
+</pre>
+
+<h3 id="Moving_to_a_Dynamically_Linked_Library" name="Moving_to_a_Dynamically_Linked_Library">Moving to a Dynamically Linked Library</h3>
+
+<h4 id="Implementing_a_DLL" name="Implementing_a_DLL">Implementing a DLL</h4>
+
+<p>Once you've set a factory, moving it to a DLL is a relatively trivial thing. A DLL that contains a factory need to define one or two exported functions:</p>
+
+<pre>// Returns the factory associated with the given class ID
+extern "C" NS_EXPORT nsresult NSGetFactory(const nsCID &amp;aCID,
+                                           nsIFactory **aFactory);
+
+// Returns whether the DLL can be unloaded now.
+extern "C" NS_EXPORT PRBool NSCanUnload();
+</pre>
+
+<p>The implementation of <code>NSGetFactory()</code> in the simplest case is nearly identical to that of <code>GetSampleFactory()</code> in our previous example. You only need to verify that the class ID passed in is the correct one for the factory you implement. If your DLL contains multiple factories, you'll need to add conditional code to determine which one to return.</p>
+
+<p><code>NSCanUnload()</code> is an optional, but useful function. If implemented, it allows the NSRepository to free up memory by unloading DLLs it is no longer using when <code>FreeLibraries()</code> is called. The implementation takes into consideration two things when deciding whether or not a DLL can be unloaded: Whether any of its factories are currently in use, and whether anyone has locked the server. If <code>NSCanUnload()</code> is not implemented, the DLL will not be unloaded.</p>
+
+<p>The following example turns <code>nsSample.cpp</code> into a file that can be compiled into a DLL. The differences are marked with <strong>strong emphasis</strong>. There really aren't that many.</p>
+
+<h4 id="File_nsSample3.cpp" name="File_nsSample3.cpp">File <code>nsSample3.cpp</code></h4>
+
+<pre>#include &lt;iostream.h&gt;
+#include "pratom.h"
+#include "nsRepository.h"
+#include "nsISample.h"
+#include "nsSample.h"
+
+static NS_DEFINE_IID(kISupportsIID, NS_ISUPPORTS_IID);
+static NS_DEFINE_IID(kIFactoryIID, NS_IFACTORY_IID);
+static NS_DEFINE_IID(kISampleIID, NS_ISAMPLE_IID);
+static NS_DEFINE_CID(kSampleCID, NS_SAMPLE_CID);
+
+&lt;strong&gt;/*
+ * Globals
+ */
+
+static PRInt32 gLockCnt = 0;
+static PRInt32 gInstanceCnt = 0;&lt;/strong&gt;
+
+/*
+ * nsSampleClass Declaration
+ */
+
+class nsSample: public nsISample {
+private:
+  nsrefcnt mRefCnt;
+
+public:
+// Constructor and Destuctor
+  nsSample();
+  ~nsSample();
+
+// nsISupports methods
+  NS_IMETHOD QueryInterface(const nsIID &amp;aIID,
+                            void **aResult);
+  NS_IMETHOD_(nsrefcnt) AddRef(void);
+  NS_IMETHOD_(nsrefcnt) Release(void);
+
+// nsISample method
+  NS_IMETHOD Hello();
+};
+
+/*
+ * nsSampleFactory Declaration
+ */
+
+class nsSampleFactory: public nsIFactory {
+private:
+  nsrefcnt mRefCnt;
+
+public:
+  nsSampleFactory();
+  ~nsSampleFactory();
+
+// nsISupports methods
+  NS_IMETHOD QueryInterface(const nsIID &amp;aIID,
+                            void **aResult);
+  NS_IMETHOD_(nsrefcnt) AddRef(void);
+  NS_IMETHOD_(nsrefcnt) Release(void);
+
+// nsIFactory methods
+  NS_IMETHOD CreateInstance(nsISupports *aOuter,
+                                  const nsIID &amp;aIID,
+                                  void **aResult);
+
+  NS_IMETHOD_(void) LockFactory(PRBool aLock);
+};
+
+/*
+ * nsSample Implemtation
+ */
+
+nsSample::nsSample()
+{
+  mRefCnt = 0;
+  &lt;strong&gt;PR_AtomicIncrement(&amp;gInstanceCnt);&lt;/strong&gt;
+}
+
+nsSample::~nsSample()
+{
+// assert(mRefCnt == 0);
+  &lt;strong&gt;PR_AtomicDecrement(&amp;gInstanceCnt);&lt;/strong&gt;
+}
+
+NS_IMETHODIMP nsSample::Hello() {
+  cout &lt;&lt; "Hello, world\n";
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsSample::QueryInterface(const nsIID &amp;aIID,
+                                  void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  // Always NULL result, in case of failure
+  *aResult = NULL;
+
+  if (aIID.Equals(kISupportsIID)) {
+    *aResult = (void *) this;
+  } else if (aIID.Equals(kISampleIID)) {
+    *aResult = (void *) this;
+  }
+
+  if (aResult != NULL) {
+    return NS_NOINTERFACE;
+  }
+
+  AddRef();
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsSample::AddRef()
+{
+  return ++mRefCnt;
+}
+
+NS_IMETHODIMP nsSample::Release()
+{
+  if (--mRefCnt == 0) {
+    delete this;
+    return 0; // Don't access mRefCnt after deleting!
+  }
+  return mRefCnt;
+}
+
+/*
+ * nsSampleFactory Implementation
+ */
+
+nsSampleFactory::nsSampleFactory()
+{
+  mRefCnt = 0;
+  &lt;strong&gt;PR_AtomicIncrement(&amp;gInstanceCnt);&lt;/strong&gt;
+}
+
+nsSampleFactory::~nsSampleFactory()
+{
+// assert(mRefCnt == 0);
+  &lt;strong&gt;PR_AtomicDecrement(&amp;gInstanceCnt);&lt;/strong&gt;
+}
+
+NS_IMETHODIMP nsSampleFactory::QueryInterface(const nsIID &amp;aIID,
+                                         void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  // Always NULL result, in case of failure
+  *aResult = NULL;
+
+  if (aIID.Equals(kISupportsIID)) {
+    *aResult = (void *) this;
+  } else if (aIID.Equals(kIFactoryIID)) {
+    *aResult = (void *) this;
+  }
+
+  if (*aResult == NULL) {
+    return NS_NOINTERFACE;
+  }
+
+  AddRef(); // Increase reference count for caller
+  return NS_OK;
+}
+
+NS_IMETHODIMP_(nsrefcnt) nsSampleFactory::AddRef()
+{
+  return ++mRefCnt;
+}
+
+NS_IMETHODIMP_(nsrefcnt) nsSampleFactory::Release()
+{
+  if (--mRefCnt == 0) {
+    delete this;
+    return 0; // Don't access mRefCnt after deleting!
+  }
+  return mRefCnt;
+}
+
+NS_IMETHODIMP nsSampleFactory::CreateInstance(nsISupports *aOuter,
+                                         const nsIID &amp;aIID,
+                                         void **aResult)
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  *aResult = NULL;
+
+  nsISupports *inst = new nsSample();
+
+  if (inst == NULL) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  nsresult res = inst-&gt;QueryInterface(aIID, aResult);
+
+  if (res != NS_OK) {
+    // We didn't get the right interface, so clean up
+    delete inst;
+  }
+
+  return res;
+}
+
+&lt;strong&gt;/*
+ * Exported functions
+ */
+
+void nsSampleFactory::LockFactory(PRBool aLock)
+{
+  if (aLock) {
+    PR_AtomicIncrement(&amp;gLockCnt);
+  } else {
+    PR_AtomicDecrement(&amp;gLockCnt);
+  }
+}
+
+extern "C" NS_EXPORT nsresult NSGetFactory(const nsCID &amp;aCID,
+                                           nsIFactory **aResult)&lt;/strong&gt;
+{
+  if (aResult == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  *aResult = NULL;
+
+  nsISupports *inst;
+
+  &lt;strong&gt;if (aCID.Equals(kSampleCID)) {
+    inst = new nsSampleFactory();
+  } else {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  if (inst == NULL) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }&lt;/strong&gt;
+
+  nsresult res = inst-&gt;QueryInterface(kIFactoryIID, (void **) aResult);
+
+  if (res != NS_OK) {
+    // We didn't get the right interface, so clean up
+    delete inst;
+  }
+
+  return res;
+}
+
+&lt;strong&gt;extern "C" NS_EXPORT PRBool NSCanUnload()
+{
+  return PRBool(gInstanceCnt == 0 &amp;&amp; gLockCnt == 0);
+}&lt;/strong&gt;
+</pre>
+
+<p>Now, instead of directly calling the factory, we call <code>NSRepository::CreateInstance()</code>. We rely on the factory registering itself somehow.</p>
+
+<h4 id="File:_main2.cpp" name="File:_main2.cpp">File: <code>main2.cpp</code></h4>
+
+<pre>#include "nsRepository.h"
+#include "nsISample.h"
+#include "nsSample.h"
+
+static NS_DEFINE_IID(kISampleIID, NS_ISAMPLE_IID);
+static NS_DEFINE_CID(kSampleCID, NS_SAMPLE_CID);
+
+int main(int argc, char *argv[])
+{
+  nsISample *sample;
+
+  nsresult res = NSRepository::CreateInstance(kSampleCID,
+                                              NULL,
+                                              kISampleIID,
+                                              (void **) &amp;sample);
+
+  if (res == NS_OK) {
+    sample-&gt;Hello();
+    NS_RELEASE(sample);
+  }
+
+  return 0;
+}
+</pre>
+
+<h4 id="Registering_a_DLL" name="Registering_a_DLL">Registering a DLL</h4>
+
+<p>This is currently being hashed out. You can currently manually register a DLL using the NSRepository's <code>RegisterFactory()</code> method (For an example of this, see <code>nsSample2.cpp</code>).</p>
+
+<p>A DLL can export two additional functions for self registration and unregistration.</p>
+
+<pre>extern "C" NS_EXPORT nsresult NSRegisterSelf(const char *path);
+extern "C" NS_EXPORT nsresult NSUnregisterSelf(const char *path);
+</pre>
+
+<p>This allows a DLL to register and unregister all its factories. A simple program called RegFactory.exe (on Windows) or regfactory (on UNIX) can be used to register self-registering DLLs.</p>
+
+<h3 id="Reference_Counting_Basics" name="Reference_Counting_Basics">Reference Counting Basics</h3>
+
+<p>Reference counting is a critical part of modularity picture. There are a number of basic reference counting rules to remember. Here's a quick summary.</p>
+
+<h4 id="Out_Parameters" name="Out_Parameters">Out Parameters</h4>
+
+<p>Functions that return a new interface should call AddRef() on that interface before returning it.</p>
+
+<pre>nsresult GetFoo(IFoo **aFooRes)
+{
+  if (aFooRes == NULL) {
+    return NS_ERROR_NULL_POINTER;
+  }
+  *aFooRes = mFoo;
+  NS_ADDREF(*aFooRes);
+
+  return NS_OK;
+}
+</pre>
+
+<p>Remember that this applies to the interfaces returned by <code>QueryInterface()</code>, <code>CreateInstance()</code> and <code>NS_New<em>X</em>()</code>, and you must call <code>Release()</code> on them when you are done to avoid memory leaks.</p>
+
+<h4 id="In_Parameters_and_Local_Pointers" name="In_Parameters_and_Local_Pointers">In Parameters and Local Pointers</h4>
+
+<p>Interfaces that are passed in to a function and local copies of that interface pointer are assumed to be in the lifetime of the calling function, and do not need to have <code>AddRef()</code> called.</p>
+
+<pre>nsresult TweekFoo(IFoo *aFoo1, IFoo *aFoo2) {
+  IFoo local = aFoo;
+
+  if (aFoo-&gt;Bar() == NS_OK) {
+    local = aFoo2;
+  }
+
+  return local-&gt;Boff();
+}
+</pre>
+
+<h4 id="In-Out_Parameters" name="In-Out_Parameters">In-Out Parameters</h4>
+
+<p>In-Out parameters are used as both In parameters and Out parameters. If a function changes the value of an interface In-Out parameter, it should call <code>Release()</code> on the interface passed in and <code>AddRef()</code> on the interface passed out.</p>
+
+<pre>nsresult RefreshFoo(IFoo **aFoo)
+{
+  if (aFoo == NULL || *aFoo == NULL) {
+    return NS_ERROR_NULL_PARAMETER;
+  }
+  if ((*aFoo)-&gt;Stale()) {
+    NS_RELEASE(*aFoo);
+    *aFoo = mFoo;
+    NS_ADDREF(*aFoo);
+  }
+  return NS_OK;
+}
+</pre>
+
+<h4 id="Global_and_Member_Variables" name="Global_and_Member_Variables">Global and Member Variables</h4>
+
+<p>Both global and member variables have lifetimes that can be changed by any number of functions. Therefore one should call <code>AddRef()</code> on any global or member variable that is being passed to a function, and call <code>Release()</code> afterward.</p>
+
+<pre>NS_ADDREF(mFoo);
+TweekFoo(mFoo);
+NS_RELEASE(mFoo);
+</pre>
+
+<h3 id=".28Soon_to_be.29_Frequently_Asked_Questions" name=".28Soon_to_be.29_Frequently_Asked_Questions">(Soon to be) Frequently Asked Questions</h3>
+
+<h4 id="Why_are_we_mimicking_COM.3F_Doesn.27t_COM_suck.3F" name="Why_are_we_mimicking_COM.3F_Doesn.27t_COM_suck.3F">Why are we mimicking COM? Doesn't COM suck?</h4>
+
+<p>You're probably basing this opinion on your experiences with or stories you've heard about OLE. A really important thing to remember is that COM is not OLE. OLE was built one top of COM, but it's not a shining example of COM. COM is simply a mechanism for laying out and using interfaces, the important components we've pretty much described here. OLE (actually OLE 2) was one of the first efforts to use COM.</p>
+
+<h4 id="Why_C.2B.2B.3F" name="Why_C.2B.2B.3F">Why C++?</h4>
+
+<p>C++ provides the easiest mechanism for implementing interfaces. You can manually assemble interfaces using function tables and macros, but you'd be simply doing by hand what a C++ compiler can do for you automatically.</p>
+
+<h4 id="Can_I_use_C.3F" name="Can_I_use_C.3F">Can I use C?</h4>
+
+<p>You can use C everywhere except your interface. There are mechanisms for declaring interfaces in C, but they're pretty gruesome and compiler dependent, and we're trying to make this as light weight as possible.</p>
+
+<h4 id="Why_not_COM.3F" name="Why_not_COM.3F">Why not COM?</h4>
+
+<p>The only platform for which COM support is currently widely available is Windows. Microsoft ships a COM extension for the Macintosh, but it's generally only installed with Internet Explorer or Microsoft Office. UNIX support for COM is scarce.</p>
+
+<h4 id="Why_not_COM_on_Windows.3F" name="Why_not_COM_on_Windows.3F">Why not COM on Windows?</h4>
+
+<p>Because it's not a cross platform solution, and that's what we need. We're going to make every effort to make our interfaces compatible with COM on platforms that support it, so it may not matter. But no promises, yet.</p>
+
+<h4 id="What_are_the_major_differences.3F" name="What_are_the_major_differences.3F">What are the major differences?</h4>
+
+<p>Instead of Microsoft's MIDL compiler, we are using a CORBA-compliant IDL compiler, <a href="en/XPIDL">XPIDL</a>. It outputs NSPR types when generating C++ headers. It also generates <a class="external" href="http://www.mozilla.org/scriptable/typelib_file.html">typelibraries</a> that are not compatible with Microsoft's .TLB format. XPCOM uses these typelibraries to allow other languages, <a href="en/XPJS_Components_Proposal">such as JavaScript</a>, to implement and call XPCOM objects. We also do cross-thread proxying calls using the typelib and NSPR's event queues.</p>
+
+<p>Microsoft provides an extensive support infrastructure for COM. This technology is built into Windows, but not most other platforms. The technology can be licensed from Microsoft, but for obvious reasons we are not going to be doing that. In house equivalents to the important elements of this technology will be developed as needed.</p>
+
+<h3 id="Links" name="Links">Links</h3>
+
+<ul>
+ <li><a class="external" href="http://msdn.microsoft.com/library/specs/s1d139.htm">The Component Object Model Specification</a></li>
+</ul>
+
+<h3 id="Revision_History" name="Revision_History">Revision History</h3>
+
+<ul>
+ <li><abbr>Feb</abbr> 25, 1998, Created</li>
+ <li><abbr>Oct</abbr> 19, 1998, Dusted off momentarily</li>
+ <li><abbr>Oct</abbr> 10, 1999, Added comments about XPIDL, language-independentness</li>
+</ul>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): Will Scullin</li>
+ <li>Last Updated Date: September 13, 2004</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a></li>
+</ul>
+</div>

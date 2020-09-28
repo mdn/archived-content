@@ -1,0 +1,65 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div>{{ obsolete_header("jsapi39") }}</div>
+
+<div class="summary">
+<p>Get the parent object of a given object.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JSObject *
+JS_GetParent(JSObject *obj);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JSObject *")}}</td>
+   <td>Object for which to retrieve the parent.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS_GetParent</code></strong> retrieves the parent object of <code>obj</code>, or <code>NULL</code> if <code>obj</code> does not have a parent.</p>
+
+<p>{{ warning("The result may be an internal-use-only object. Such an object should not be passed to any other JSAPI function that could expose it to script code.") }}</p>
+
+<p>Each object is assigned a parent when it is created:</p>
+
+<ul>
+ <li>The standard library objects and functions all have the global object as their parent.</li>
+ <li>Objects created by standard library functions, such as <code>Array.prototype.concat</code>, have the global object as their parent.</li>
+ <li>An object created by a script via the <code>new</code> keyword has the same parent as the constructor.  For example, after <code>d = new Date</code>, <code>d</code> has the same parent as <code>Date</code>, ordinarily the global object.</li>
+ <li>An object created by a script via implicit conversion (the ECMAScript ToObject operator), an object initializer (<code>{a: 1, b: 2}</code>), or an array initializer (<code>[1, 2, 3]</code>), has the global object as its parent.</li>
+ <li>The parent of a <code>Function</code> created by evaluating a function declaration or function expression in a script depends on the lexical scope of the function.  If there is no enclosing function, <code>with</code> statement, or block scope, then the <code>Function</code>'s parent is the global object. Otherwise, the parent is implementation-defined. It may be a Call, With, or Block object representing the function's dynamic scope, or it may be the global object. In any case the global object is guaranteed appear on the new function's parent chain.</li>
+ <li>
+  <p>The initial parent of an object created via the JSAPI depends on the particular JSAPI function (of which there are many that create objects, including but not limited to {{jsapixref("JS_NewObject")}}, {{jsapixref("JS_ConstructObject")}}, {{jsapixref("JS_DefineObject")}}, {{jsapixref("JS_ValueToObject")}}, {{jsapixref("JS_NewArrayObject")}}, {{jsapixref("JS_NewScriptObject")}}, {{jsapixref("JS_NewFunction")}}, {{jsapixref("JS_CompileFunction")}}, {{jsapixref("JS_DefineFunction")}}, {{jsapixref("JS_DefineFunctions")}}, and {{jsapixref("JS_InitClass")}}). Some of these functions allow the application to specify a parent object. If the JSAPI function creating the object has a <code>parent</code> parameter, and the application passes a non-null value to it, then that object becomes the new object's parent. Otherwise, if the context {{jsapixref("JS_IsRunning", "is running", "", 1)}} any scripts or functions, a default parent object is selected based on those. Otherwise, if {{jsapixref("JS_GetGlobalObject", "the context has a global object", "", 1)}}, it is used. Otherwise the new object has no parent. This is often the case for the global object, which is typically the first object created in a new context.</p>
+ </li>
+</ul>
+
+<p>The preferred way to set an object's parent is by using the parent parameter to {{jsapixref("JS_NewObject")}} or {{jsapixref("JS_ConstructObject")}}.  An application can also use {{jsapixref("JS_SetParent")}}, but see the caveats on that page.</p>
+
+<p>An object's parent serves two purposes in SpiderMonkey:</p>
+
+<ol>
+ <li>For some functions, it is used to implement lexical scoping (but this is an implementation detail).</li>
+ <li>Applications that use SpiderMonkey's custom security features can use the parent during security checks, as a convenient way to determine the security domain of an object being accessed. The typical rule is that every object is in the same security domain as its parent. (But each application can define its own security rules. See the <a class="internal" href="/En/SpiderMonkey/JSAPI_User_Guide#Security" title="/en/JSAPI User Guide#Security">Security section of the User Guide</a> for an introduction to the security model.)</li>
+</ol>
+
+<p>In some cases, JavaScript code can get an object's parent via the read-only <code>obj.__parent__</code> property. But if an object's parent is an internal-use-only object (that is, a special Call, With, or Block object), <code>JS_GetParent</code> simply returns it, but <code>obj.__parent__ === null</code>. Similarly, if an object's parent is an <a class="internal" href="/En/SpiderMonkey/Split_object" title="en/SpiderMonkey/Split object">inner object</a>, <code>JS_GetParent</code> simply returns it, but <code>obj.__parent__</code> returns the corresponding outer object.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_GetParent") }}</li>
+ <li>{{bug(1131805)}} -- removed</li>
+</ul>

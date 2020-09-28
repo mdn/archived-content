@@ -1,0 +1,86 @@
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+<p>This document describes the current state of editor embeddability, problems with the existing implementation, some possible embedding scenarios that we need to deal with, and an embedding solution that will fulfill them. Finally, steps towards that final solution are described.</p>
+<h2 id="Embedding_applications" name="Embedding_applications">Embedding applications</h2>
+<p>Here are some embedding scenarios that editor needs to deal with. Note here that I use the term 'Composer' to mean an HTML-savvy compose widget that does rich text editing, and 'Editor' to mean a plain text editor (as well as the underlying technology for Composer). <code>&lt;htmlarea&gt;</code> is intended as a shorthand for a rich-text multiline text widget embedded in an HTML document, and is not meant to infer that future versions of Mozilla will support this specific tag.</p>
+<h3 id="Composer_embedded_in_a_XUL_application" name="Composer_embedded_in_a_XUL_application">Composer embedded in a XUL application</h3>
+<p>Developers need to embed composer widgets in their XUL applications, by using the <code>&lt;editor&gt;</code> tag as we do today. They should need to do as little work as possible to get basic editing functionality, be able to have any number of <code>&lt;editor&gt;</code>s per window, and control whether those <code>&lt;editor&gt;</code>s are in HTML or plain text mode.</p>
+<h3 id="Composer_embedded_in_a_native_application" name="Composer_embedded_in_a_native_application">Composer embedded in a native application</h3>
+<p>In this application, the <code>&lt;iframe&gt;</code> on which the editor lives is embedded directly in the native application; this is equivalent to embedding the browser via nsIWebBrowser, but instead having an editable document. The composer chrome (toolbars etc) may be implemented by the embedder using native widgets, or using some amount of XUL. That chrome needs to be configurable - dockable floating toolbars, toolbar shared between composer widgets, or 1 per widget.</p>
+<p>This type of embedding requires that the composer code is agnostic to where its UI is coming from; communication between the core editor and the UI needs to go through one or more interfaces that insulate the editor from its host application. (The current <code>nsEditorShell</code> makes assumptions about the hosting XUL document, which need to be broken.)</p>
+<h3 id="Composer_embedded_in_a_web_page_.28.3Chtmlarea.3E.29" name="Composer_embedded_in_a_web_page_.28.3Chtmlarea.3E.29">Composer embedded in a web page (<code>&lt;htmlarea&gt;</code>)</h3>
+<p>IE 5 supports the <a class="external" href="http://www.siteexperts.com/ie5/htmlarea/page1.asp"><code>&lt;HTMLArea&gt;</code> element</a>; if Mozilla is to support something similar, editor needs to be embeddable to the extent that this can be done. It is likely that we'd use <a class="external" href="http://www.mozilla.org/projects/xbl/xbl.html">XBL</a> to implement this type of widget, as is the plan for other form controls.</p>
+<p>As is the case for composer embedded in a native application, there is a requirement here that the composer UI be configurable, such that it can be displayed either as a toolbar at the top of the <code>&lt;htmlarea&gt;</code>, a floating palette, or a top-level toolbar.</p>
+<h2 id="Current_problems" name="Current_problems">Current problems</h2>
+<p>The current composer architecture was created while other parts of Mozilla were still under development, and as a result it suffers from a number of shortcomings, and anachronisms. This section describes its major faults.</p>
+<h3 id="Editor_incorrectly_rooted" name="Editor_incorrectly_rooted">Editor incorrectly rooted</h3>
+<p>The editor in a composer window is current owned by the <code><a class="external" href="http://lxr.mozilla.org/seamonkey/source/editor/base/nsEditorShell.cpp">nsEditorShell</a></code>, which in turn is created, owned and destroyed by the <code><a class="external" href="http://lxr.mozilla.org/seamonkey/source/layout/xul/base/src/nsEditorBoxObject.cpp">nsEditorBoxObject</a></code>. The box object is a layout structure that is owned by content nodes, and survives frame destruction/recreation. The box object also has a reference to the docShell for the editor frame. XBL creates an <code>nsEditorBoxObject</code> for each <code>&lt;editor&gt;</code> tag, and allows JavaScript to access properties of this box object (such as the <code>nsIEditorShell</code>). The <code>&lt;editor&gt;</code> tag is simply a <code>&lt;iframe&gt;</code> on which an editor is created; in all other respects, it behaves like a XUL <code>&lt;iframe&gt;</code>.</p>
+<p>The problem with this ownership model is that there can be only one editor per <code>&lt;editor&gt;</code> tag, yet the document loaded in the <code>&lt;iframe&gt;</code> may itself contain multiple <code>&lt;iframe&gt;</code>s (consider a frameset document, or a document itself containing an <code>&lt;html:iframe&gt;</code>). Currently, composer does not deal gracefully with such documents.</p>
+<h3 id="One_editor_per_window_limitation" name="One_editor_per_window_limitation">One editor per window limitation</h3>
+<p>The current composer window XUL/C++ architecture has grown up with the assumption that there can be just one <code>&lt;editor&gt;</code> tag per window. At window construction time, we get the editorShell from the <code>&lt;editor&gt;</code> element, and <a class="external" href="http://lxr.mozilla.org/seamonkey/source/editor/ui/composer/content/editor.js#169">put that into <code>window.editorShell</code></a>. Thence, lots of JavaScript in editor.js, ComposerCommands.js and the various dialog JS files assume that they can get at the one true editor via <code>window.editorShell</code>. This assumption was short-sighted, and must be fixed.</p>
+<h3 id="Editor_assumes_XUL_document_structure" name="Editor_assumes_XUL_document_structure">Editor assumes XUL document structure</h3>
+<p>There is C++ and JS code in the editor that assumes that the editor is living in a XUL document, and that there are XUL document nodes out there whose attributes can be tweaked to change the state of the UI (e.g. the inline style buttons). This needs to be changed to allow embedders to provide their own, possibly native UI. Editor needs to call through one or more interfaces when communicating with the UI.</p>
+<h2 id="Embedding_objectives" name="Embedding_objectives">Embedding objectives</h2>
+<p>Editor requires design changes such that the embedding applications above can be fulfilled, and these changes will need to address the current problems. Briefly, the embedding objectives are:</p>
+<ul>
+  <li><code>&lt;editor&gt;</code> should get you a working editor in a XUL application</li>
+  <li>Should be able to have multiple <code>&lt;editor&gt;</code>s per XUL window</li>
+  <li>Should be able to embed an editable content frame in a native application</li>
+  <li>Embedders should be able to supply their own chrome (toolbars etc).</li>
+</ul>
+<p>Meeting these objectives will also solve the following existing composer problems:</p>
+<ul>
+  <li>Composer should handle frameset documents</li>
+  <li>Composer should handle documents with <code>&lt;iframe&gt;</code>s.</li>
+  <li>Composer shouldn't rely on certain XUL document structure</li>
+</ul>
+<h2 id="Proposed_solutions" name="Proposed_solutions">Proposed solutions</h2>
+<h3 id="Fixing_editor_rooting" name="Fixing_editor_rooting">Fixing editor rooting</h3>
+<p>As described above, editor rooting needs to be changed so that an editor lives on top of an nsDocShell, rather than hanging off the <code>nsEditorBoxObject</code>. There is a docShell for each editable <code>&lt;iframe&gt;</code>. This will involve:</p>
+<ul>
+  <li>Making a new interface, <b><code>nsIEditorFrame</code></b>, that is implemented by <code>nsDocShell</code> or a related class. You should be able to QI from <code>nsIDocShell</code> to one of these; if this succeeds, it indicates that the frame is editable. <code>nsIEditorFrame</code> should contain methods for getting the editing session, and doing some generic editor-related stuff (probably common to HTML and plain text editing). A subset of <code>nsIEditorShell</code> will probably move into this interface. (This would be analogous to the <a class="external" href="http://lxr.mozilla.org/seamonkey/source/docshell/base/nsIWebNavigation.idl"><code>nsIWebNavigation</code></a> interface used for a browser.)</li>
+</ul>
+<ul>
+  <li>When we have one editor per docShell, loading a frameset document, or a page with an <code>&lt;iframe&gt;</code> in composer, will instantiate more than one low-level editor. We need a concept of an "editing session" - a single top-level document which is editable, and which may embody more than one editor. This interface will be called <b><code>nsI????</code></b>. High-level UI and emebedding code should deal with this editing session interface, without knowledge of the underlying editors. The editing session will forward commands to the individual editors depending on focus, and mediate undo/redo between them.</li>
+  <li><i>Alternative solution</i>: Rather than having multiple editors in this scenario, we could have a single editor, which is capable of saving and restoring state such that it can be transferred between the various subdocuments being edited. That state would have to include the document, undo stack, and typing state. The implementation of the editing session would be responsible for swapping out the editor's state on focus changes etc.</li>
+</ul>
+<h3 id="More_than_one_editor_per_window" name="More_than_one_editor_per_window">More than one editor per window</h3>
+<p>Current Composer clients in the Mozilla codebase all assume that there is only one <code>&lt;editor&gt;</code> tag per window. They all need to be able to deal with multiple editors. Fixing this would require JS changes of the following kind:</p>
+<ul>
+  <li>Standardize the way that clients get at the editorShell (or its replacement, post-embedding work) from the window.</li>
+  <li>Ensure that focus changes between editors update the window's notion of the "current" editor. If we continue to use <code>window.editorShell</code>, then this needs to be updated on focus changes.</li>
+  <li>Ensure that each editor is properly constructed on window setup, and torn down on window destruction.</li>
+  <li>Ensure that window close tests (e.g. calling <code>window.tryToClose</code>) appropriately consult each editor for state.</li>
+</ul>
+<h3 id="Insulating_editor_from_the_chrome" name="Insulating_editor_from_the_chrome">Insulating editor from the chrome</h3>
+<p>Composer needs to not know anything about the UI that is driving it. The plan is to insulate Composer from the UI via a new interface that the embedder implements. Any UI that is now thrown up by Composer should go through this interface.</p>
+<ul>
+  <li>Use a new interface, <code>nsIEditorUserInterface</code>, to mediate communication between the editor and the UI. An embedder would need to implement this to get native toolbars and menus to work. In Composer, we'd have an implementation in JS that talks to the existing commands, and updates the XUL nodes.</li>
+  <li>Fix existing JS and C++ code which explicitly addresses elements in the XUL document to go through <code>nsIEditorUserInterface</code>.</li>
+</ul>
+<h2 id="Steps_to_embedding" name="Steps_to_embedding">Steps to embedding</h2>
+<p>This section attempts to lay out an implementation plan, with the aim of keeping everything working as the various steps are taken. Some of these tasks can be done concurrently.</p>
+<ol>
+  <li>Decide on how to implement <a href="#Fixing_editor_rooting">editing session multiple-editor support</a></li>
+  <li>Eliminate <a href="#Insulating_editor_from_the_chrome">specific interdependencies between Composer and the XUL document</a>, via <code>nsIEditorUserInterface</code></li>
+  <li>Create <a href="#More_than_one_editor_per_window">bottleneck for getting to the focussed editor; ensure that focus changes update state</a></li>
+  <li>Move <a href="#Fixing_editor_rooting">editor ownership to docShell, creating <code>nsIEditorFrame</code></a></li>
+  <li>Created the editing session API which copes with collections of editors (or make editor refocussable)</li>
+</ol>
+<h2 id="Open_Questions" name="Open_Questions">Open Questions</h2>
+<h3 id="Where_should_file_Open_and_Save_logic_live.3F" name="Where_should_file_Open_and_Save_logic_live.3F">Where should file Open and Save logic live?</h3>
+<p>It seems that some embedders will want composer Open and Save file logic, and some won't. Where should this logic live? Can it be in JavaScript? Of course, an embedder should be able to use its own Open and Save dialogs, and communicate with composer to coordinate the open or save process.</p>
+<h4 id="Possible_Answer" name="Possible_Answer">Possible Answer</h4>
+<p>The embedder provides Open and Save dialogs if they want to. In Composer, we can pose these dialogs from JS (once some <code>nsIFile</code> problems have been solved).</p>
+<h3 id="Does_all_Composer_UI_need_to_be_replaceable.3F" name="Does_all_Composer_UI_need_to_be_replaceable.3F">Does all Composer UI need to be replaceable?</h3>
+<p>There is a huge amount of Composer UI in the various dialogs for editing tables, links, images etc. Do we need to make it possible for an embedder to replace all of these with native UI?</p>
+<h4 id="Possible_Answer_2" name="Possible_Answer_2">Possible Answer</h4>
+<p>Dialogs use the available editor APIs to get and set data, so can do all their work through existing APIs. If an embedder wants a fully native UI, then they'll have to code their own dialogs, and associated logic, but the APIs should already be available to them. This seems to be a non-issue.</p>
+<div class="originaldocinfo">
+  <h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+  <ul>
+    <li>Author(s): the editor team (<a class="link-mailto" href="mailto:mozilla-editor@mozilla.org">mozilla-editor@mozilla.org</a>)</li>
+    <li>Last Updated Date: October 30, 2000</li>
+    <li>Original Document: <a class="external" href="http://www.mozilla.org/editor/editor-embedding.html">Embedding the Editor</a></li>
+  </ul>
+</div>
+<p> </p>

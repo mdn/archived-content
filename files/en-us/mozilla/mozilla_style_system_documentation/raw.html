@@ -1,0 +1,128 @@
+<p>See also the <a class="external" href="http://www.mozilla.org/newlayout/doc/style-techtalk.html">style techtalk</a> for more complete although less detailed documentation.</p>
+
+<h3 id="Style_context_management" name="Style_context_management">Style context management</h3>
+
+<p>A style context (class <code>nsStyleContext</code>, currently also interface <code>nsIStyleContext</code> although the interface should go away when all of the style systems can be moved back into the layout DLL) represents the style data for a CSS formatting object. In the layout system, these formatting objects are described as frames (interface <code>nsIFrame</code>), although a pair of frames represents table formatting objects.</p>
+
+<p>The CSS specification describes formatting objects that correspond to elements in the content model and formatting objects that correspond to pseudo-elements. (Mozilla has a bunch of its pseudo-elements that are not in the CSS specification.) We also create style contexts for some things that are not CSS formatting objects: text nodes and placeholder frames. These three types of style contexts correspond to the three ways of creating a style context: <code>nsIPresContext::ResolveStyleContextFor</code>, <code>nsIPresContext::ResolvePseudoStyleContextFor</code>, and.<code>nsIPresContext::ResolveStyleContextForNonElement</code> There is also a fourth method, <code>nsIPresContext::ProbePseudoStyleContextFor</code>, which creates a style context only if there are style rules that match the pseudo-element. This is useful for the pseudo-elements defined in the CSS specification (<code>:before</code>, <code>:after</code>, <code>:first-line</code>, <code>:first-letter</code>), but few of Mozilla's custom pseudo-elements, many of which are hacks for further formatting objects that we create. The pres context forwards these calls to its style set object (<code>StyleSetImpl</code>, interface <code>nsIStyleSet</code>), which does the real work (and also maintains the lists of stylesheets and owns the rule tree). These methods may all return an existing style context rather than a new one (see <code>StyleSetImpl::GetContext</code>), if there is a current style context with the same parent, that matches the same rules (a check that is easy because of the <a href="#Style_contexts_and_the_rule_tree">ruletree</a>), and is for the same pseudo-element (or not for a pseudo-element, or a "non-element"). This is more than just sibling-sharing since if the parent is shared, it could be cousin-sharing.</p>
+
+<p>In CSS, some of the style data for an element depends on the style data for that element's parent. Likewise, some of the style data for a pseudo-element depends on the data for the pseudo-elements parent element. Thus we create a style context tree so that the style contexts can find their ancestors and their descendants easily. However, siblings in the style context tree are unordered, since the order is not relevant. Thus the parent style context is an argument to the functions that create style contexts. If the parent is not given, the style context is taken to be the root of the style context tree. The functions that form the style context automatically adds the context to the tree correctly.</p>
+
+<h4 id="Dynamic_changes" name="Dynamic_changes">Dynamic changes</h4>
+
+<p>Describe <code>nsFrameManager::ReResolveStyleContext</code> and <code>nsIFrame::GetParentStyleContextFrame</code> ...&lt;/p&gt;</p>
+
+<p>Describe <code>nsCSSFrameConstructor::AttributeChanged</code> hack for <code>style</code> attribute that avoids style context tree manipulation.</p>
+
+<p><strong>Problems</strong>: Dynamic style changes scrap the whole thing and start over. This is very hard to fix because of the "sibling-sharing" optimisation. Matters dealing with dynamic style changes are also tricky because the style contexts don't have pointers to their frames, but instead, we have the reverse and is probably the biggest flaw in the design of this part of the system.</p>
+
+<h3 id="Getting_style_data_from_a_style_context" name="Getting_style_data_from_a_style_context">Getting style data from a style context</h3>
+
+<p>To get style data from a style context, use the <code>GetStyleData</code> method to fill in a pointer to a style struct. Each of the style structs contains a group of properties. The structs are listed in, <code>nsStyleStruct.h</code>and the many of the values are in <code>nsStyleConsts.h</code>. Each of the structs includes either only features that are inherited by default or single properties that are set to the initial value by default (see <a class="external" href="http://www.w3.org/TR/REC-CSS2/cascade.html#specified-value">CSS26.1.1</a>), which is essential for the <a href="#Style_contexts_and_the_rule_tree">ruletree</a>.</p>
+
+<p>The fundamental way to get a style struct from a style context looks like this:</p>
+
+<pre class="code">const nsStyleDisplay *display = NS_STATIC_CAST(const nsStyleDisplay*,
+                                    sc-&gt;GetStyleData(eStyleStruct_Display));
+</pre>
+
+<p>There is also a (non-virtual) method on nsIFrame to get the style data from a frame's style context (saving the refcounting needed to get the style context):</p>
+
+<pre class="code">const nsStyleDisplay *display;
+frame-&gt;GetStyleData(eStyleStruct_Display, (const nsStyleStruct*&amp;)display);
+</pre>
+
+<p>However, there are similar typesafe global function templates that (should) compile to the same thing but use the type of the template parameter to pass the correct <code>nsStyleStructID</code> parameter. For frames:</p>
+
+<pre class="code">const nsStyleDisplay *display;
+::GetStyleData(frame, &amp;display);</pre>
+
+<p>or for style contexts:</p>
+
+<pre class="code">const nsStyleDisplay *display;
+::GetStyleData(sc, &amp;display);</pre>
+
+<p>These functions cause an appropriate struct to be computed if it hasn't been computed already and then fill in the struct pointer. The struct is owned by the style system (either on the style context or on the rule node). These functions should only fill in a null pointer on allocation failure.</p>
+
+<h3 id="Style_contexts_and_the_rule_tree" name="Style_contexts_and_the_rule_tree">Style contexts and the rule tree</h3>
+
+<p>When the style system creates a style context, it walks through the style sheets (interface <code>nsIStyleSheet</code>) attached to a document in the order defined by the CSS cascade and finds the style rules (interface <code>nsIStyleRule</code>) that<em>match</em> the content node or content node + pseudo-element pair. (The "non-element" style contexts are defined never to match any rules.) These interfaces <code>nsIStyleSheet</code> and <code>nsIStyleRule</code> correspond to the CSS concepts of style sheets and style rules, except they are more general, and are used by other code that needs to add style information to the document. For the <a href="#CSS_Stylesheet_backend">CSS stylesheets</a>, this process corresponds to CSS selector matching. The output of CSS selector matching as defined by the CSS specification is an ordered list of rules, where the order determines which declarations override other declarations. (In CSS,<em>declarations</em> are the property-value pairs within style rules. In Mozilla, <code>nsCSSDeclaration</code> objects correspond to CSS declaration-blocks.) Due to the high similarity of these lists between elements in the content tree, Mozilla stores the output of the selector matching process in a lexicographic tree, the rule tree. This double tree (style context tree and rule tree) allows for sharing of style data, which allows the data to take up less memory and allows the data computation to take less time.</p>
+
+<div class="highlight">
+<p>For example, suppose we had the CSS stylesheet:</p>
+
+<pre class="code">/* rule 1 */ doc { display: block; text-indent: 1em; }
+/* rule 2 */ title { display: block; font-size: 3em; }
+/* rule 3 */ para { display: block; }
+/* rule 4 */ [class="emph"] { font-style: italic; }
+</pre>
+
+<p>and the following document:</p>
+
+<pre class="code">&lt;doc&gt;
+    &lt;title&gt;A few quotes&lt;/title&gt;
+
+    &lt;para class="emph"&gt;Benjamin Franklin said that &lt;quote&gt;"A penny saved
+    is a penny earned."&lt;/quote&gt;&lt;/para&gt;
+    &lt;para&gt;Franklin D. Roosevelt said that &lt;quote&gt;"We have nothing to
+    fear but &lt;span class="emph"&gt;fear itself&lt;/span&gt;."&lt;/para&gt;
+
+&lt;/doc&gt;
+
+This will lead to a rule tree that looks like this, where each node is in the format &lt;code&gt;[name of node: rule it points to]&lt;/code&gt;:
+
+&lt;pre class="tree"&gt;
+                  [A: null]
+            ,------' /  \ `------.
+        [B: 1]  [C: 2]  [D: 3]  [E:  4]
+                          |
+                        [F: 4]
+</pre>
+
+<p>Note that two rule nodes point to rule 4.</p>
+
+<p>The style context tree will look like this, ignoring all the style contexts for the text nodes (all of which have style contexts pointing to rule node <code>A</code>), with each style context in the format <code>{{ mediawiki.external('element type: rule node') }}</code>:</p>
+
+<pre class="tree">                      [doc: B]
+         ,------------'  |   `-----------.
+    [title: C]       [para: F]         [para: D]
+                         |                 |
+                    [quote: A]         [quote: A]
+                         |
+                     [span: E]
+</pre>
+</div>
+
+<p>The reason the rule tree shares style data naturally is that most style rules specify properties in very few structs. As stated above, each style struct contains only features that are inherited by default or those that are set to their initial value ("reset") by default. This leads to (or perhaps three, depending on how you count) two types of sharing. For those structs where all the values are inherited by default, a style context can often (when none of the rules matched by the style context specifies any properties in the struct, or when explicit <code>inherit</code> is used) use the same struct as its parent style context. For the structs where all the properties are reset by default, if no explicit <code>inherit</code> values or <code>em</code> or similar units are used, the style struct can be cached on the rule node rather than the style context and shared between all style contexts pointing to that rule node. Furthermore, if the rule specifies no values for a struct, it can use the same struct as its parent. While the style context tree is generally quite deep, since it corresponds roughly to the content tree, the rule tree is generally quite broad (but are there cases where it is quite deep??), since the depth of a node in the tree corresponds to the number of rules matched. Therefore, inherited structs are cached on the style context (but only the top style contexts pointing to them actually "owns" them), but structs that are shared between rule nodes are stored only on the highest rule node to which they apply and then retrieved from that most upper rule node every time they are needed. The code that does this sharing work is mostly in <code>nsStyleContext::GetStyleData</code>, <code>nsRuleNode::GetStyleData</code>, and <code>nsRuleNode::WalkRuleTree</code>.</p>
+
+<p>When <code>nsRuleNode::WalkRuleTree</code> computes a struct, it walks the rules, starting with the style context's rule node, towards the root of the rule tree. It uses the appropriate <a href="#Stylesheet_representation">declaration struct</a> and has each rule fill in any properties specified by that rule <em>that are not filled in already</em>. The walking stops when all of the properties are filled in or when the root of the rule tree is reached. Then the style struct is computed from the declaration and stored at the appropriate location in the rule tree or on the style context.</p>
+
+<p><strong>Problems</strong>: Dynamic style changes often destroy too much data.</p>
+
+<h3 id="CSS_Stylesheet_backend" name="CSS_Stylesheet_backend">CSS Stylesheet backend</h3>
+
+<h4 id="CSS_Stylesheet_Loading" name="CSS_Stylesheet_Loading">CSS Stylesheet Loading</h4>
+
+<p>{{ mediawiki.external('This section needs to be written. I\'m reluctant to write it both since I don\'t know much about it.') }}</p>
+
+<p><strong>Problems</strong>:A bunch the code needs to be rewritten to prevent stylesheets from blocking the parser and to reduce string copying (although that partly goes with <a href="#Parsing">parsing</a>).]</p>
+
+<h4 id="Parsing" name="Parsing">Parsing</h4>
+
+<h4 id="Stylesheet_representation" name="Stylesheet_representation">Stylesheet representation</h4>
+
+<p><strong>Problems</strong>: The stylesheet representation uses way too much memory.</p>
+
+<h3 id="Other_nsIStyleSheet_implementations" name="Other_nsIStyleSheet_implementations">Other <code>nsIStyleSheet</code> Implementations</h3>
+
+<p><strong>Problems</strong>: Some of the HTML style information is implemented in the content node classes. It should be consolidated so that the style system code can be moved back within the layout DLL and <code>nsIStyleContext</code> can be de-COM-ified.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:dbaron@dbaron.org">L. David Baron</a></li>
+ <li>Last Updated Date: June 6, 2003</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

@@ -1,0 +1,88 @@
+
+<h2 id="Debugger.2C_license" name="Debugger.2C_license">Java API for Continuations</h2>
+<p style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; padding-top: 0px; padding-right: 0px; padding-bottom: 0px; padding-left: 0px;">Rhino has supported Continuations for some time now, but there wasn't a great way to interact with continuations from Java. Continuations have been useful with in server-side scripting, since it allows for saving and restarting JavaScript execution, possibly with serializing the execution state when stopped. With Rhino 1.7R2, methods in <span style="font-family: 'Courier New';">org.mozilla.javascript.Context</span> allow for control from Java:</p>
+<ul style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; padding-top: 0px; padding-right: 0px; padding-bottom: 0px; margin-left: 25px; padding-left: 0px;"> <li style="margin-bottom: 0.25em;"><span style="font-size: small;"><span style="font-family: Verdana;"><a class="external" href="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#executeScriptWithContinuations(org.mozilla.javascript.Script,%20org.mozilla.javascript.Scriptable)" title="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#executeScriptWithContinuations(org.mozilla.javascript.Script, org.mozilla.javascript.Scriptable)">executeScriptWithContinuations</a> - Execute script that may pause execution by capturing a continuation.</span></span></li> <li style="margin-bottom: 0.25em;"><span style="font-size: small;"><span style="font-family: Verdana;">callFunctionWithContinuations - Call function that may pause execution by capturing a continuation.</span></span></li> <li style="margin-bottom: 0.25em;"><span style="font-size: small;"><span style="font-family: Verdana;"><a class="external" href="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#captureContinuation()" title="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#captureContinuation()">captureContinuation</a> - Capture a continuation from the current execution.</span></span></li> <li style="margin-bottom: 0.25em;"><span style="font-size: small;"><span style="font-family: Verdana;"><a class="external" href="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#resumeContinuation(java.lang.Object,%20org.mozilla.javascript.Scriptable,%20java.lang.Object)" title="http://www.mozilla.org/rhino/apidocs/org/mozilla/javascript/Context.html#resumeContinuation(java.lang.Object, org.mozilla.javascript.Scriptable, java.lang.Object)">resumeContinuation</a> - Restarts execution of the JavaScript suspended at the call to captureContinuation.</span></span></li>
+</ul>
+<p>For example, if you had a Java class MyClass with a method f(). Say that you wanted to pause execution of a script when f() was called. You could call captureContinuation, which wraps up all the state of the current execution and returns it as a ContinuationPending object. ContinuationPending is also an exception; you indicate to Rhino that you want to suspend execution by throwing the exception:</p>
+<pre style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; font: normal normal normal 12px/normal 'Courier New', 'Andale Mono', monospace; color: rgb(37, 34, 29);">public static class MyClass {
+    public int f(int a) {
+        Context cx = Context.enter();
+        try {
+            ContinuationPending pending = cx.captureContinuation();
+            pending.setApplicationState(a);
+            throw pending;
+        } finally {
+            Context.exit();
+        }
+    }
+}<br></pre>
+<div>Rhino only allows capturing continuations in scripts that are exeucting when called in through new Context methods, executeScriptWithContinuations and callFunctionWithContinuations. If a Java method called while executing using these methods throws ContinuationPending, the exception is propagated up, allowing the calling Java code to perform some action and then resume execution later: </div>
+<div>
+<pre style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; font: normal normal normal 12px/normal 'Courier New', 'Andale Mono', monospace; color: rgb(37, 34, 29);">Context cx = Context.enter();
+try {
+    cx.setOptimizationLevel(-1); // must use interpreter mode
+    Script script = cx.compileString("myObject.f(3) + 1;",
+        "test source", 1, null);
+    cx.executeScriptWithContinuations(script, globalScope);
+    fail("Should throw ContinuationPending");
+} catch (ContinuationPending pending) {
+    Object applicationState = pending.getApplicationState();
+    assertEquals(new Integer(3), applicationState);
+    int saved = (Integer) applicationState;
+    Object result = cx.resumeContinuation(pending.getContinuation(),
+        globalScope, saved + 1);
+    assertEquals(5, ((Number)result).intValue());
+} finally {
+    Context.exit();
+}<br></pre>
+<div>Note also that as an added convenience ContinuationPending supports saving an application-defined object. The continuations API is only supported for interpreted mode.</div>
+</div>
+<p>For more examples of using the API, see the unit test, <a class="external" href="http://mxr.mozilla.org/mozilla/source/js/rhino/testsrc/org/mozilla/javascript/tests/ContinuationsApiTest.java" title="http://mxr.mozilla.org/mozilla/source/js/rhino/testsrc/org/mozilla/javascript/tests/ContinuationsApiTest.java">ContinuationsAPITest.java</a>. </p>
+<h2 id="Better_line_editing_for_Rhino_shell" name="Better_line_editing_for_Rhino_shell">Better line editing for Rhino shell</h2>
+<p>Rhino 1.7R2 now has line editing in the Rhino shell. The heavy lifting comes from <a class=" external" href="http://jline.sourceforge.net/" style="color: rgb(51, 102, 153);">JLine</a>, a nice Java library for handling console input. We get command history (using the up and down arrow keys to bring up previous command lines) for free. And with some additional code in Rhino we have limited support for completion.</p>
+<p>We don't ship with JLine with Rhino, so you'll have to download it yourself. Rhino automatically detects whether JLine is on the classpath and uses it if so and otherwise maintains the previous simple behavior. So to run your shell with JLine your command will look like</p>
+<pre>java -cp js.jar:lib/jline-0.9.93.jar org.mozilla.javascript.tools.shell.Main<br></pre>
+<p> Completion works by looking at the global scope and attempting to complete variables defined there. For example,</p>
+<pre>js&gt; var obj = {prop1:{prop2:3}};<br>js&gt; ob<br></pre>
+<p>After typing <code>ob</code> and pressing tab, Rhino will autocomplete to <code>obj</code>. It's also smart enough if it sees a dotted property list it will walk it to find names to autocomplete:</p>
+<pre>js&gt; obj.prop1.pr<br></pre>
+<p>Pressing tab after <code>obj.prop1.pr</code> will autocomplete to <code>obj.prop1.prop2</code>.</p>
+<p>Autocompletion also works for Java objects:</p>
+<pre style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; font: normal normal normal 12px/normal 'Courier New', 'Andale Mono', monospace; color: rgb(37, 34, 29);">js&gt; var s = new java.lang.String("hi");
+js&gt; s.<br></pre>
+<div>Pression tab after "s." will cause Rhino to list all the possible completions:</div>
+<pre style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; font: normal normal normal 12px/normal 'Courier New', 'Andale Mono', monospace; color: rgb(37, 34, 29);">contentEquals(         bytes                  codePointBefore(
+hashCode(              contains(              indexOf(
+wait(                  isEmpty(               toUpperCase(
+matches(               substring(             notify(
+empty                  equalsIgnoreCase(      length(
+getChars(              replaceFirst(          codePointAt(
+codePointCount(        trim(                  charAt(
+notifyAll(             subSequence(           getClass(
+getBytes(              startsWith(            equals(
+class                  lastIndexOf(           compareTo(
+offsetByCodePoints(    concat(                replace(
+compareToIgnoreCase(   toCharArray(           toLowerCase(
+intern(                chars                  split(
+toString(              replaceAll(            endsWith(
+regionMatches(<br></pre>
+<div><br>
+Some limitations: it's not possible as far as I know to enumerate all the classes or packages in the Java runtime, so autocompletion works somewhat disappointingly for Java class names. I've also found that JLine doesn't work in the Eclipse console, so I just leave the JLine jar off when I'm running in Eclipse.</div>
+<div><br>
+For more details, see <a class=" link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=418034" style="color: rgb(51, 102, 153);">bug 418034</a>.</div>
+<p> </p>
+<h2 id="Debugger.2C_license" name="Debugger.2C_license">Debugger bundled with Rhino distribution</h2>
+<p>Thanks to the sharp eyes of Hannes Wallnoefer, who spotted a more-liberally licensed version of files we depended on for the Rhino debugger GUI, we now have the debugger fully built and shipped with Rhino.</p>
+<p>See <a href="/en/Rhino/License" title="en/Rhino_License">Rhino License</a> for details on the new license for files in the debugger.</p>
+<p> </p>
+<h2 id="Debugger.2C_license" name="Debugger.2C_license">Doctest</h2>
+<p style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; padding-top: 0px; padding-right: 0px; padding-bottom: 0px; padding-left: 0px;">Python is a fertile ground of good ideas, and we've seen a number of Python's ideas surface in JavaScript recently. JavaScript 1.7's <a class=" external" href="http://developer.mozilla.org/en/docs/New_in_JavaScript_1.7#Generators">generators </a>and <a class=" external" href="http://developer.mozilla.org/en/docs/New_in_JavaScript_1.7#Array_comprehensions">array comprehensions</a> are two recent examples.<br>
+<br>
+Rhino 1.7R2 contains another Python idea: <a class=" external" href="http://docs.python.org/lib/module-doctest.html">doctest</a>. This is a function that will test snippets of shell sessions. It gets its name from its use testing these snippets that appear in documentation comments, but it turns out to be a very convenient way to write tests more generally.<br>
+<br>
+For example, say you've written a new function <code style="color: rgb(37, 34, 29); font-weight: inherit;">hello()</code>. I usually go to the shell and play with it to make sure it works correctly:</p>
+<pre style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; font: normal normal normal 12px/normal 'Courier New', 'Andale Mono', monospace; color: rgb(37, 34, 29);">js&gt; function hello(greetee) {<br>  &gt;   return "hello, " + greetee;<br>  &gt; }<br>js&gt; hello("world");<br>hello, world<br>js&gt; hello(3)<br>hello, 3<br>js&gt; hello()<br>hello, undefined<br></pre>
+<p style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; padding-top: 0px; padding-right: 0px; padding-bottom: 0px; padding-left: 0px;">Now to test this function you might write a  <a class=" external" href="http://www.junit.org/">JUnit</a> test that executes a bunch of setup code and then calls <code style="color: rgb(37, 34, 29); font-weight: inherit;">hello()</code> three times, saving the result value, and calling a comparison function with the actual and expected values. It's a decent amount of code to write. </p>
+<p style="margin-top: 0px; margin-right: 0px; margin-bottom: 1.7em; margin-left: 0px; padding-top: 0px; padding-right: 0px; padding-bottom: 0px; padding-left: 0px;">Doctest does this all for me. Rhino 1.7R2 contains both a new doctest shell function and a JUnit test <a class="external" href="http://mxr.mozilla.org/js/source/js/rhino/testsrc/org/mozilla/javascript/tests/DoctestsTest.java" title="http://mxr.mozilla.org/js/source/js/rhino/testsrc/org/mozilla/javascript/tests/DoctestsTest.java">DoctestsTest</a> that finds files with a <code style="color: rgb(37, 34, 29); font-weight: inherit;">.doctest</code> extension and runs them. So now all I need to do is copy the shell session above, paste it into <code style="color: rgb(37, 34, 29); font-weight: inherit;">hello.doctest</code>, and put it in the right directory and I have a JUnit test! It's much more convenient to write tests, which greatly increases the chances that tests actually get written.</p>
+<hr>
+<p><a href="/User:Norrisboyd" title="User:Norrisboyd">Norrisboyd</a> 05:04, 11 March 2008 (PDT)</p>

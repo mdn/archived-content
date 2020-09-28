@@ -1,0 +1,95 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This example illustrates how to customize the progress bar displayed for a given download in the Downloads window.</p>
+
+<p>First you need to overlay the Downloads window so that you can add a new stylesheet. In your jar.mn file, add the following (replacing "myextension" with the name of your extension's chrome package):</p>
+
+<p><code>% overlay <a class="external" rel="freelink">chrome://mozapps/content/downloads/downloads.xul</a>  <a class="external" rel="freelink">chrome://myextension/content/downloads-overlay.xul</a></code></p>
+
+<p>In downloads-overlay.xul, reference the new stylesheet:</p>
+
+<p><code>&lt;?xml version="1.0"?&gt;<br>
+ <br>
+ &lt;?xml-stylesheet href="<a class="external" rel="freelink">chrome://myextension/skin/myextension.css</a>" type="text/css"?&gt;<br>
+ <br>
+ &lt;overlay id="myDownloadOverlay" xmlns="<a class="external" href="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" rel="freelink">http://www.mozilla.org/keymaster/gat...re.is.only.xul</a>"&gt;<br>
+  &lt;/overlay&gt;</code></p>
+
+<p>In jar.mn, make sure that there is an asterisk in front of the entry for myextension.css so that it will be preprocessed. This is required since it contains platform-specific directives, as we will see.</p>
+
+<p>The myextension.css file will look something like this:</p>
+
+<p><code>richlistitem progressmeter {<br>
+ %ifdef XP_WIN<br>
+   min-height: 17px !important;<br>
+ %else<br>
+ %ifdef XP_MACOSX<br>
+   -moz-appearance: none !important;<br>
+   background-image: url(<a class="external" rel="freelink">chrome://myextension/skin/progress_bg_osx.png</a>) !important;<br>
+ %endif<br>
+ %endif<br>
+ }<br>
+ <br>
+ richlistitem .progress-bar {<br>
+ %ifdef XP_WIN<br>
+   -moz-appearance: none !important;<br>
+   background-image: url(<a class="external" rel="freelink">chrome://myextension/skin/progress_fd_win.png</a>) !important;<br>
+ %else<br>
+ %ifdef XP_MACOSX<br>
+   background-image: url(<a class="external" rel="freelink">chrome://myextension/skin/progress_fd_osx.gif</a>) !important;<br>
+ %endif<br>
+ %endif<br>
+ }</code></p>
+
+<p> </p>
+
+<div class="note"><strong>Note:</strong> This file only supports Windows and Mac, but it would be straightforward to add support for Linux.</div>
+
+<p> </p>
+
+<p>This is the product of some tweaking and experimentation, so perhaps there is a different and/or better way to achieve the same thing. We are specifying the height of the progress meter on Windows and a background image on Mac. The background image (the first one in the file) should be a segment of whatever you want the unfilled portion of the progress bar to look like. An image of 7 pixels wide and 12 pixels high seems to work well. The other two images are for the filled in progress bar on Windows and Mac respectively. Once again, a height of 12 pixels or so and a few pixels wide seems about right, though you might have to experiment with this a bit.</p>
+
+<h3 id="Changing_the_progress_bar_for_specific_downloads">Changing the progress bar for specific downloads</h3>
+
+<p>This is all you need to change the progress bar appearance for all downloads. If you want to change it for certain specific downloads only, things get a bit trickier. In your overlay file, add a JavaScript file between the &lt;overlay&gt; and &lt;/overlay&gt; tags:</p>
+
+<p><code>    &lt;script type="application/javascript" src="<a class="external" rel="freelink">chrome://myextension/content/downloads-overlay.js</a>" /&gt;</code></p>
+
+<p>The JavaScript file will look something like this:</p>
+
+<p><code>var MyDownloadManager = {<br>
+   defaultCreateDownloadItem : null,<br>
+ <br>
+   init : function fdm_init() {<br>
+     MyDownloadManager.defaultCreateDownloadItem = window.createDownloadItem;<br>
+     window.createDownloadItem = function(aAttrs) {<br>
+       var dl = MyDownloadManager.defaultCreateDownloadItem(aAttrs);<br>
+       if (dl) {</code><br>
+              <code>if (...whatever condition you use to decide whether to change this download...) {</code><br>
+                <code>dl.setAttribute("myspecialdownload", "true");</code><br>
+ <code>        }</code><br>
+ <code>      }<br>
+       return dl;<br>
+     }<br>
+   }<br>
+ };</code><br>
+ <br>
+ window.addEventListener("load", function(e) { MyDownloadManager.init(); }, false);</p>
+
+<p>In your CSS file, change <code>richdownloaditem</code> (both occurrences) to <code>richdownloaditem[myspecialdownload="true"]</code>. Now your new progress bar image will only be used for the downloads with your special attribute.</p>

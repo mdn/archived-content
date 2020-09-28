@@ -1,0 +1,95 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+<p>{{ obsolete_header("jsapi18") }}</p>
+<div class="summary">
+<p>Add or remove a format string handler for {{jsapixref("JS_ConvertArguments")}}, {{jsapixref("JS_PushArguments")}}, {{jsapixref("JS_ConvertArgumentsVA")}}, and {{jsapixref("JS_PushArguments", "JS_PushArgumentsVA")}}.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">JSBool
+JS_AddArgumentFormatter(JSContext *cx, const char *format,
+                        JSArgumentFormatter formatter);
+
+void
+JS_RemoveArgumentFormatter(JSContext *cx, const char *format);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to install the formatter.</td>
+  </tr>
+  <tr>
+   <td><code>format</code></td>
+   <td><code>const char *</code></td>
+   <td>The format string prefix that should be handled by <code>formatter</code>, or whose handler should be removed.</td>
+  </tr>
+  <tr>
+   <td><code>formatter</code></td>
+   <td><code>JSArgumentFormatter</code></td>
+   <td>The function to be used to convert arguments described by the given format. This function is described in more detail below.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><strong><code>JS_AddArgumentFormatter</code></strong> establishes <code>formatter</code> as the conversion function for format strings beginning with <code>format</code> in the context <code>cx</code>. On success, it returns <code>JS_TRUE</code>. Otherwise it returns <code>JS_FALSE</code>. (At the moment, <code>JS_AddArgumentFormatter</code> fails only if there is no memory available to record the registration.)</p>
+<p><code>JS_AddArgumentFormatter</code> does not copy <code>format</code>, it points at the string storage allocated by the caller, which is typically a string constant. If <code>format</code> is in dynamic storage, the caller must keep the string alive until <code>JS_RemoveArgumentFormatter</code> is called.</p>
+<p><strong><code>JS_RemoveArgumentFormatter</code></strong> removes any conversion functions associated with <code>format</code>.</p>
+<h2 id="Callback_Syntax" name="Callback_Syntax">Callback Syntax</h2>
+<pre class="brush: cpp">JSBool
+(*JSArgumentFormatter)(JSContext *cx, const char *format,
+                       JSBool fromJS, jsval **vpp, va_list *app);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which the conversion is being performed.</td>
+  </tr>
+  <tr>
+   <td><code>format</code></td>
+   <td><code>const char *</code></td>
+   <td>The tail of the format string whose prefix is associated with this formatting function.</td>
+  </tr>
+  <tr>
+   <td><code>fromJS</code></td>
+   <td>{{jsapixref("JSBool")}}</td>
+   <td><code>JS_TRUE</code> if the conversion function should convert from <code>jsval</code> values to C values; <code>JS_FALSE</code> if the conversion function should convert from C values to <code>jsval</code> values.</td>
+  </tr>
+  <tr>
+   <td><code>vpp</code></td>
+   <td>{{jsapixref("jsval", "jsval **")}}</td>
+   <td>In-out parameter. A pointer into an array of <code>jsval</code> values.</td>
+  </tr>
+  <tr>
+   <td><code>app</code></td>
+   <td><code>va_list *</code></td>
+   <td>In-out parameter. A pointer to an argument pointer, used to retrieve pointers to C values.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Callback_Description" name="Callback_Description">Callback Description</h2>
+<p>The conversion function should return true on success, and return false after reporting an error or detecting an already-reported error.</p>
+<p>For a given format string, for example <code>"AA"</code>, the formatter is called from {{jsapixref("JS_ConvertArgumentsVA")}} like so:</p>
+<pre class="brush: cpp">formatter(cx, "AA...", JS_TRUE, &amp;sp, &amp;ap);
+</pre>
+<p><code>sp</code> points into the arguments array on the JS stack, while <code>ap</code> points into the <code>stdarg.h</code> <code>va_list</code> on the C stack. The <code>JS_TRUE</code> passed for <code>fromJS</code> tells the formatter to convert zero or more jsvals at <code>sp</code> to zero or more C values accessed via pointers-to-values at <code>ap</code>, updating both <code>sp</code> (via <code>*vpp</code>) and <code>ap</code> (via <code>*app</code>) to point past the converted arguments and their result pointers on the C stack.</p>
+<p>When called from {{jsapixref("JS_PushArguments", "JS_PushArgumentsVA")}}, the formatter is invoked thus:</p>
+<pre class="brush: cpp">formatter(cx, "AA...", JS_FALSE, &amp;sp, &amp;ap);
+</pre>
+<p>where <code>JS_FALSE</code> for <code>fromJS</code> means to wrap the C values at <code>ap</code> according to the format specifier and store them at <code>sp</code>, updating <code>ap</code> and <code>sp</code> appropriately.</p>
+<p>The <code>"..."</code> after <code>"AA"</code> is the rest of the format string that was passed into <code>JS_{Convert,Push}Arguments{,VA}</code>. The actual format trailing substring used in each <code>Convert</code> or <code>PushArguments</code> call is passed to the formatter, so that one such function may implement several formats, in order to share code.</p>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+<li>{{bug(788359)}}</li>
+</ul>

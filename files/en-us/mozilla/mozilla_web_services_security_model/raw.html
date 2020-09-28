@@ -1,0 +1,89 @@
+
+
+<h3 id="Overview" name="Overview">Overview</h3>
+
+<p>(This document is being compiled from scattered documentation and source code and most of the information in it has not been verified. Please do not depend on anything in it being correct for security.)</p>
+
+<p>To prevent the browser from being used as a tool for Web sites to obtain priveleges that belong to the browser's user (such as being behind a firewall or getting the benefits of the user's cookies), Web browsers restrict what Web pages can do when accessing things in other domains. These restrictions apply to Web Services.</p>
+
+<p>However, Web Services can be designed to be accessed from other domains, or even from any domain. Mozilla allows sites hosting such Web Services to tell Mozilla that other sites can access the service. They do this by creating a file called <code>web-scripts-access.xml</code> in the root of the server that grants permission for other domains to access Web Services. For example, to determine what Web sites can access a Web Service at <a class="external" href="http://www.example.com/dir1/dir2/service" rel="freelink">http://www.example.com/dir1/dir2/service</a>, Mozilla would load the file <a class="external" href="http://www.example.com/web-scripts-access.xml" rel="freelink">http://www.example.com/web-scripts-access.xml</a>, which <em>may</em> choose to delegate the decision to <a class="external" href="http://www.example.com/dir1/dir2/web-scripts-access.xml" rel="freelink">http://www.example.com/dir1/dir2/web...pts-access.xml</a>.</p>
+
+<h3 id="web-scripts-access.xml_File_Format" name="web-scripts-access.xml_File_Format">web-scripts-access.xml File Format</h3>
+
+<p>The <code>web-scripts-access.xml</code> file is an XML document. Any errors in XML syntax, as well as many failures to follow the format, will cause the document to be ignored.</p>
+
+<h4 id="The_webScriptAccess_element" name="The_webScriptAccess_element">The webScriptAccess element</h4>
+
+<p>Its root element must be a <code>webScriptAccess</code> element in the <code><a class="external" href="http://www.mozilla.org/2002/soap/security" rel="freelink">http://www.mozilla.org/2002/soap/security</a></code> namespace. This element must have either one <code>delegate</code> element child or any number (0 or more) of <code>allow</code> element children. All of these children elements must be in the same namespace as the parent, and <em>must be empty</em>.</p>
+
+<h4 id="The_delegate_element" name="The_delegate_element">The delegate element</h4>
+
+<p>A <code>delegate</code> element means that the browser should delegate the access control to a <code>web-scripts-access.xml</code> file in the directory that the service is in. For example, when accessing a Web Service at <code><a class="external" href="http://www.example.com/dir1/dir2/service" rel="freelink">http://www.example.com/dir1/dir2/service</a></code>, if the access file at <code><a class="external" href="http://www.example.com/web-scripts-access.xml" rel="freelink">http://www.example.com/web-scripts-access.xml</a></code> contains a <code>delegate</code> element, Mozilla will instead use <code><a class="external" href="http://www.example.com/dir1/dir2/web-script-access.xml" rel="freelink">http://www.example.com/dir1/dir2/web...ipt-access.xml</a></code> to determine whether access is permitted. If no such file exists, then access will be denied.</p>
+
+<h4 id="The_allow_element" name="The_allow_element">The allow element</h4>
+
+<p>If no <code>delegate</code> elements are present or if the Web Service is in the same directory as the <code>web-script-access.xml</code> file, then the <code>allow</code> elements will be processed. If the file exists but contains no <code>allow</code> elements, <em>then all access will be allowed</em>. If allow elements exist, then the access will be allowed if one of them allows it.</p>
+
+<h5 id="The_type_attribute" name="The_type_attribute">The type attribute</h5>
+
+<p>The <code>type</code> attribute of the <code>allow</code> element can take the following values:</p>
+
+<dl>
+ <dt>any </dt>
+ <dd>means that the allow element applies to all services that use web-scripts-access.xml for security checks. There may be more such such services in the future than there are now. This is the same as not having a type attribute.</dd>
+ <dt>load </dt>
+ <dd>{{ mediawiki.external('Not implemented!') }} Ability to load documents via XMLHttpRequest or similar mechanisms.</dd>
+ <dt>soap </dt>
+ <dd>SOAP requests without verification headers</dd>
+ <dt>soapv </dt>
+ <dd>SOAP requests with verification headers</dd>
+</dl>
+
+<h5 id="The_from_attribute" name="The_from_attribute">The from attribute</h5>
+
+<p>The <code>from</code> attribute on the <code>allow</code> element says which calling sites the <code>allow</code> element applies to. If there is no <code>from</code> attribute then the <code>allow</code> element applies to all sites. The <code>from</code> attribute otherwise gives a URL to match, which may contain up to two asterisks (<code>*</code>) that match any characters in the URL. The match is done against a URL from which the directory and file have been removed, so trying to match a specific page will cause the entire match to fail. (Is this correct?)</p>
+
+<h3 id="web-scripts-access.xml_Examples" name="web-scripts-access.xml_Examples">web-scripts-access.xml Examples</h3>
+
+<p><strong>These examples are untested! Somebody should test them to make sure they do what is claimed.</strong></p>
+
+<h4 id="Allow_all_services_on_a_site_to_be_accessed_from_any_Web_page" name="Allow_all_services_on_a_site_to_be_accessed_from_any_Web_page">Allow all services on a site to be accessed from any Web page</h4>
+
+<p>Note that this is only a sensible thing to do if nothing on the site serves content based on cookies, HTTP authentication, IP address / domain origin, or any other method of authentication.</p>
+
+<pre>&lt;webScriptAccess xmlns="http://www.mozilla.org/2002/soap/security"/&gt;</pre>
+
+
+
+<h4 id="Allow_access_to_SOAP_services_within_a_services_directory" name="Allow_access_to_SOAP_services_within_a_services_directory">Allow access to SOAP services within a services directory</h4>
+
+<p>To allow access to services only within a certain directory (i.e., the directory where the safe, public, non-authenticated services are), you need one web-scripts-access.xml in the root directory of the server and one in the directory containing the services. In the root directory of the server:</p>
+
+<pre>&lt;webScriptAccess xmlns="http://www.mozilla.org/2002/soap/security"&gt;
+&lt;delegate/&gt;
+&lt;allow type="none"/&gt;
+&lt;/webScriptAccess&gt;</pre>
+
+<p>And in the services directory:</p>
+
+<pre>&lt;webScriptAccess xmlns="http://www.mozilla.org/2002/soap/security"&gt;
+&lt;allow type="soapv"/&gt;
+&lt;allow type="soap"/&gt;
+&lt;/webScriptAccess&gt;</pre>
+
+<h4 id="Good_examples" name="Good_examples">Good examples</h4>
+
+<p>(Needed.)</p>
+
+<h3 id="References" name="References">References</h3>
+
+<ul>
+ <li><a href="/en-US/docs/Archive/Mozilla/New_Security_Model_for_Web_Services">New Security Model for Web Services</a>, the original proposal for the web-scripts-access.xml file format</li>
+ <li><a class="external" href="https://www-archive.mozilla.org/projects/webservices/">Web Services Roadmap</a>, documenting when Web services features, including the security model, were first supported</li>
+</ul>
+
+<h3 id="Additional_Reading" name="Additional_Reading">Additional Reading</h3>
+
+<ul>
+ <li><a class="external" href="http://www.macromedia.com/cfusion/knowledgebase/index.cfm?id=tn_14213">Documentation of crossdomain.xml</a>, a similar format used by Macromedia Flash Player</li>
+</ul>

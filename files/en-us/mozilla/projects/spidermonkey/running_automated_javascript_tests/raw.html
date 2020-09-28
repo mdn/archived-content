@@ -1,0 +1,79 @@
+<div>{{SpiderMonkeySidebar("Tests")}}</div>
+
+<div class="summary">
+<p>There are two test suites, affectionately called "<strong>jstests</strong>" and "<strong>jit-tests</strong>". Sometimes jstests are called JS reftests because of how they are run in the browser. Both sets of tests can be used from a normal build of the JS shell. (Some JS reftests will be skipped when run in the browser, as it lacks some shell-specific testing functionality.)</p>
+</div>
+
+<h2 id="Running_jstests">Running jstests</h2>
+
+<h3 id="Running_jstests_on_a_JS_shell">Running jstests on a JS shell</h3>
+
+<p>The jstests shell harness is <em>js/src/tests/jstests.py</em>. Basic usage is:</p>
+
+<pre class="brush: shell"><code>jstests.py PATH_TO_JS_SHELL</code></pre>
+
+<p>Or using <code>mach</code>:</p>
+
+<pre>./mach jstests</pre>
+
+<p>Note that <code>mach</code> will generally find the JS shell itself; the <code>--shell</code> argument can be used to specify the location manually. All other flags will be passed along to the harness.</p>
+
+<p>Developers will often want to use the -d option:</p>
+
+<pre class="brush: shell"><code>jstests.py -d PATH_TO_JS_SHELL</code></pre>
+
+<p>The -d option skips tests that are marked as randomly failing; random failures are usually just noise when being run for day-to-day developer testing.</p>
+
+<p>Another common use case is to run just one test, or all the tests in just one directory:</p>
+
+<pre class="brush: shell"><code>jstests.py PATH_TO_JS_SHELL TEST_PATH_SUBSTRING [ TEST_PATH_SUBSTRING_2 ... ]</code></pre>
+
+<p>This runs all the tests whose paths contain TEST_PATH_SUBSTRING. Thus, you can run one test by giving its filename, or any substring that is a substring of that test filename only. You can run all tests in a directory by giving the directory path. You can run three specific tests by giving the three names. Or you can run all but selected tests with the --exclude option. Now that the full set of test262 tests is included in the tree, jstests take a long time to complete. For a smoke test or if you are not changing language-level functionality, you may wish to use</p>
+
+<pre class="brush: shell"><code>jstests.py PATH_TO_JS_SHELL --exclude=test262</code></pre>
+
+<p>Other options allow you to show the test command lines being run, command output and return codes, run tests named in a given file, exclude tests named in a given file, hide the progress bar, change the timeout, run skipped tests, print output in Tinderbox format, run a test in the debugger, or run tests in valgrind. Run with the -h option to see all the options.</p>
+
+<p>The jstests test suite also includes some tests from <a href="https://web-platform-tests.org/">web-platform-tests</a>. By default, these are only run when no tests paths are specified; this can be overridden by the <code>--wpt=enabled</code> flag.</p>
+
+<h3 id="Running_JSTest_in_a_browser">Running JSTest in a browser</h3>
+
+<p>JSTests also runs on browser, with the following command:</p>
+
+<pre class="brush: shell">./mach jstestbrowser
+</pre>
+
+<p>To run specific test, you can use <code>--filter=PATTERN</code> command-line argument, where <code>PATTERN</code> is a RegExp pattern that is tested against <code>file:///{PATH_TO_OBJ_DIR}/dist/test-stage/jsreftest/tests/jsreftest.html?test={RELATIVE_PATH_TO_TEST_FROM_js/src/tests}</code> string:</p>
+
+<pre class="brush: shell">./mach jstestbrowser --filter=PATTERN
+</pre>
+
+<h3 id="Running_jstests_on_Treeherder">Running jstests on Treeherder</h3>
+
+<p>When viewing <a class="external" href="https://treeherder.mozilla.org/#/jobs?repo=mozilla-inbound" title="https://tree.mozilla.org/?tree=TraceMonkey">Treeherder</a> after a push to the Mozilla repositories, jstests run in the browser are shown as R(J) meaning "Javascript Reftests". Most of the Spidermonkey shell jobs, labeled SM(...), will include JS shell runs of both jstests and jit-tests.</p>
+
+<h2 id="Running_jit-tests">Running jit-tests</h2>
+
+<p>The jit-test suite uses a Python harness that is similar to the jstests shell harness, but with some minor differences. Basic usage is the same:</p>
+
+<pre class="brush: shell"><code>jit_test.py PATH_TO_JS_SHELL</code></pre>
+
+<p>Developers will usually want to run like this to skip the slow tests and cover the most important options:</p>
+
+<pre class="brush: shell"><code>jit_test.py --no-slow PATH_TO_JS_SHELL</code></pre>
+
+<p>You can select specific tests to run in the same way as the jstests shell harness. Most of the options in the jstests harness are also available for this one, but a few have different names. Use -h to see all the options.</p>
+
+<p>The <code>--jitflags option </code>allows you to test the JS executable with different flags. The flags are used to control which features are run, such as which JITs are enabled and how quickly they will kick in. The valid options are named bundles like '<code>all</code>', '<code>interp</code>', '<code>none</code>', etc. See the full list in the <code>-h</code> / <code>--help</code> output.</p>
+
+<p>One helpful option specific to jit-tests is -R filename (or --retest filename). The first time this is run, it runs the suite and writes a list of tests that failed to the given filename. The next time it is run, it will run only the tests in the given filename, and then will write the list of tests that failed when it is done. Thus, you can keep retesting as you fix bugs and only the tests that failed the last time will run, speeding things up a bit.</p>
+
+<h3 id="Running_jit-tests_on_Treeherder">Running jit-tests on Treeherder</h3>
+
+<p>When viewing <a class="external" href="https://treeherder.mozilla.org/#/jobs?repo=mozilla-inbound&amp;filter=spider" title="https://tree.mozilla.org/?tree=TraceMonkey">Treeherder </a>after a push to the Mozilla repositories, jit-tests are run by calling <code>make check</code>, and appear under B.</p>
+
+<h2 id="Creating_new_tests_for_jit-tests">Creating new tests for jit-tests</h2>
+
+<p>Creating new tests for jit-tests is easy. Just add a new JS file to the tests/basic directory (or any appropriate directory under 'tests'). The test harness will automatically find the test and run it. The test is considered to pass if the exit code of the JS shell is zero (i.e., JS didn't crash and there were no JS errors). Use the assertEq function to verify values in your test.</p>
+
+<p>There are some advanced options for tests. See the README (in js/src/jit-tests) for details.</p>

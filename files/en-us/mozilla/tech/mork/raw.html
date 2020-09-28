@@ -1,0 +1,65 @@
+<p>Mork is a database file format invented by David McCusker for the Mozilla code since the original Netscape database information was proprietary and could not be released open source. Starting with Mozilla 1.9, it was phased out in favor of <a href="/en/mozIStorageConnection" title="en/mozIStorageConnection">SQLite</a>, a more widely-supported file format.</p>
+<p>The information on this page was constructed by reading the source code of the mork database in Mozilla and attempting to codify what it parses as faithfully as possible. In a few cases, constructs that the parser supported but were never used in Mozilla's code are left unspecified.</p>
+<h2 id="Mork_Structure">Mork Structure</h2>
+<p>Mork is a schema-less database format. At its core, it can be viewed as a set of rows, collections of name-value pairs, which can be organized into various tables. Rows need not be in a table, nor need they be in only one table. Values are merely an opaque sequence of bytes, so their actual content is dependent on the mork consumer.</p>
+<p>Except when parsing values, whitespace ('<code>\b</code>', '<code>\t</code>', '<code>\r</code>', '<code>\n</code>', '<code>\f</code>', '<code> </code>', and '<code>\x7f</code>'), line continuations ('<code>\\</code>' followed by a newline), and comments (C++ or C style) can be ignored. In practice, only C++-style comments, and the standard whitespace characters ('<code>\t</code>', ' ', '<code>\r</code>', '<code>\n</code>') appear to be used.</p>
+<p>The grammar for mork is as follows:</p>
+<pre>file = header ( dictionary | table | group | row )*
+header = '// &lt;!-- &lt;mdb:mork:z v="1.4"/&gt; --&gt;'
+
+dictionary = '&lt;' ( metaDictionary | alias )* '&gt;'
+table = '{' '-'? mid ( metaTable | row | '-' | rowReference)* '}'
+row = '[' '-'? mid ( cell | metaRow | '-' )* ']'
+group = '@$${' hex '{@' (dictionary|table|row)* ('@$$}' hex '}@' | '@$$}~~}@')
+
+metaDictionary = '&lt;' cell* '&gt;'
+metaTable = '{' ( cell | row | rowReference )* '}'
+metaRow = '[' cell* ']'
+rowReference = hex ( '!' hex )?
+
+cell = '(' ( '^' mid | name ) ( '=' value | '^' mid ) ')'
+alias = '(' hex '=' value ')'
+mid = hex ( ':' ( name | '^' hex ) )?
+
+hex = [0-9A-Fa-f]+
+name = [A-Za-z_?:] [A-Za-z_?:+-]*
+value is a string terminated by ')' (not consumed) where '\' quotes the next metacharacter and
+  '$' quotes the next two hexadecimal digits as a value (e.g., $20 is a space)
+</pre>
+<p>The first line in the file is the header. It is structured as a comment so it can be safely ignored by the parser. The header is:</p>
+<pre>// &lt;!-- &lt;mdb:mork:z v="1.4"/&gt; --&gt;</pre>
+<p>This file is therefore version 1.4 of the Zany Mork format for the Message Database. Versions 1.0-1.3 were never used in any publicly-available source code. Other serializations of mork have also never been used, so the Zany Mork version 1.4 format has become the only official Mork format.</p>
+<p>After that, the lexical structure of mork is somewhat simple. The file is a collection of top-level structures, of which there exists four: dictionaries, tables, rows, and groups (changesets). Dictionaries, tables, and rows all have corresponding metastructures.</p>
+<p>Meta-dictionaries are in practice only used to change the scope of alias definitions (the '<code>(a=c)</code>' that you can see in files). Meta-tables are used to establish some facts about the table as well as the default row scope. Meta-rows do not appear to be used at all, although the parser seems to consider setting the charset, row scope, and atom scope.</p>
+<p><br>
+Some notes on further terminology:</p>
+<ul> <li>When referring to cells or aliases, the first component is the key and the second component is the value.</li> <li>Expanding refers to taking a '<code>^</code>' hex buffer and replacing it with the alias value for the hex key (explained below).</li> <li>A mid has two components: the ID itself, to the left of the colon, and the scope, to the right of the colon.</li> <li>There are two types of meta-rows, those of rows and those of tables. However, since the meta-row of a row never appears to be used, I will generally use 'meta-row' to refer to the meta-row of a table, unless otherwise qualified.</li>
+</ul>
+<h3 id="Dictionaries">Dictionaries</h3>
+<p>A dictionary establishes a series of aliases. If inside the meta-dictionary, the only cell we care about is if the key is '<code>a</code>' (for atom scope). This value is used to establish which dictionary the aliases are added to. Most files will have just two dictionaries: the column scope dictionary ('<code>c</code>') and the value scope dictionary ('<code>v</code>', the default).</p>
+<p>The keys are hexadecimal numbers starting at 0x80, because the values less than 0x80 are theoretically their representative ASCII values.</p>
+<h3 id="Tables">Tables</h3>
+<p>A table is set of rows, potentially with a meta-row. The table id is specified using the mid at the beginning of the table. Furthermore, the scope of the mid also serves as the default scope of rows defined within the table.</p>
+<p>The meta-row of the table (different from the meta-row of a row) contains a few things you might care about. The first is the kind column (<code>k</code>), where the mid is<br>
+typically column-scoped (<code>:c</code>). Next is the status column (<code>s</code>), which is defined as a single digit that is the priority (which appears to be unused), a '<code>u</code>' if it is unique (i.e., the only table of its kind), and a '<code>v</code>' if it is verbose (which also appears to be unused).</p>
+<p>The presence of a row or rowReference in the meta-table indicates that said row is the meta-row of the table: it contains arbitrary properties for the entire <br>
+table just like a normal row. For example, the message summary format files use a table for each thread, where the meta-rows represent information about the <br>
+thread in general.</p>
+<p>The last important point about tables is the meaning of the minuses. A minus before the table ID indicates that all the rows currently stored in the table should be removed before adding more rows. A minus sign before a row or rowReference indicates that said row should be removed from the table.</p>
+<h3 id="Rows">Rows</h3>
+<p>For the most part, a row should not be seen outside of a table; the only time I have seen one outside a table is for table meta-rows. The first mid, as you should expect by now, is the row ID, with the scope being an important part of the ID, in that <code>1:scope1</code> is not the same row as <code>1:scope2</code>. If the scope is not specified, then it is the default scope of the table (if it has one) or '<code>r</code>' otherwise. These row IDs are global, even if defined in a table. Indeed, defining a row in a table is a shortcut for both defining a row and adding the row to the table.</p>
+<p>The presence of an initial minus means to delete all cells before adding new cells. A minus after the mid indicates that the next cell should be deleted. I haven't seen that case though, so it may not be an issue in practice.</p>
+<p>The rowReference is a mid that refers to a specific row. If it occurs in a table, you can treat it as adding that row to a table; in a meta-table, it is the same as making that row the meta-row of the table.</p>
+<h3 id="Groups_a.k.a._Changesets">Groups, a.k.a. Changesets</h3>
+<p>A group is theoretically an atomic transaction à la SQL's transactions. The equivalent of <code>BEGIN TRANSACTION</code> is the '<code>@$${<em>hex</em>{@</code>' identify (the hex represents the id). <code>COMMIT TRANSACTION</code> is '<code>@$$}<em>hex</em>}@</code>' and <code>ROLLBACK TRANSACTION</code> '<code>@$$}~~}</code>'. A brief survey of Mozilla code implies that it an aborted transaction is only used if mork loses internal consistency.</p>
+<h3 id="Cells_and_Aliases_and_Mids">Cells and Aliases and Mids</h3>
+<p>Cells are the core of mork: they are key-value pairs of columns and the particular row's values. You can either manually refer to the key or use an alias to the key, and you can either manually refer to the value or use an alias to the value.</p>
+<p>The scope of the mid for keys defaults to the column scope, '<code>c</code>', and the scope for values defaults to the value scope, '<code>v</code>'. These defaults are used if the scope is not specified (by having the '<code>:</code>' then the scope).</p>
+<p>The value of a mork cell is treated as nothing more than a <code>char*</code>, char here in the sense of an octet rather than a string character. Most of the time, however, regular 7-bit ASCII data is put in the cell. Where integer data is used, the convention is to use and store the hexadecimal value for the output.</p>
+<p>Aliases are how dictionary values are stored. They use the same semantics of cells for the value, except that it cannot refer to a mid.</p>
+<p>The values of cells and aliases, when not specified by a mid reference, are one of the cases where whitespace is significant. Using the '<code>\</code>' character quotes the next character; at the end of the line, it represents a continuation such as that found in C\C++ code. The '<code>$</code>' character quotes the next two characters (which must be valid hexadecimal digits) and these three in total represent an octet with the value of the digits.</p>
+<p>Mids are unique identifiers represented by the tuple (scope, id); if the ids are the same but the scopes are different, the two mids are different. In many places, the mid's scope has an assumed default value; if the scope component is not present, it assumes this default value.</p>
+<h2 id="Morkreader_usage">Morkreader usage</h2>
+<p>Morkreader has both internal and external linkage static libraries that can be used.</p>
+<p>The API that is presented is simple. You pass in a file to <code>ParseFile</code>, select the tables, and then pass in callback functions for the meta-row and row enumeration functions. <code>GetTableIDs</code> is provided for convenience's sake, and is mostly expected to be used only by the morkreader tests. All data stored internally will be destroyed when the MorkReader goes out of scope. More detail about individual functions can be found by reading the documentation included in MorkReader.h.</p>
+<p>There is in the test directory a program called <code>TestMorkReader</code>. If you wish to just display a mork file, most of the code in this file can be copied to display it to you.</p>

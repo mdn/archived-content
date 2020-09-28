@@ -1,0 +1,329 @@
+---
+title: Using js-ctypes
+slug: Mozilla/js-ctypes/Using_js-ctypes
+tags:
+  - Guide
+  - JavaScript
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+ <ol>
+  <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+  <li class="toggle">
+      <details open>
+        <summary>Introduction</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>References</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>Examples</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li></ol>
+      </details>
+  </li>
+ </ol>
+</section>
+
+<div> <div class="blockIndicator draft">
+    <p><strong>Draft</strong><br>
+    This page is not complete.</p>
+
+</div></div>
+
+<p>Before you can use js-ctypes, you need to import the ctypes.jsm code module. This is as simple as including the following line of code in the desired JavaScript scope:</p>
+
+<pre>Components.utils.import(&quot;resource://gre/modules/ctypes.jsm&quot;)</pre>
+
+<h2 id="Loading_a_native_library">Loading a native library</h2>
+
+<p>Once you&apos;ve imported the code module, you can call the <a href="/en-US/docs/js-ctypes/js-ctypes_reference/ctypes#open()"><code>ctypes.open()</code></a> method to load each native library you wish to use. On Windows, for example, you might load the system user32 library like this:</p>
+
+<pre>var lib = ctypes.open(&quot;user32.dll&quot;);</pre>
+
+<p>On Mac OS X, you can load the Core Foundation library from the Core Foundation framework like this:</p>
+
+<pre>var coreFoundation = ctypes.open(&quot;/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation&quot;);</pre>
+
+<p>The returned object is a Library object that you use to declare functions and data types for use with the loaded library.</p>
+
+<div class="note"><strong>Note:</strong> js-ctypes only works with C libraries; you can&apos;t use C++ methods directly. Instead, you&apos;ll need to create a shim library that uses C functions that then call into the C++ library for you. Examples can be found here: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=505907#c20">Bugzilla :: Bug 505907 - Support C++ calling from JSctypes</a></div>
+
+<h3 id="Library_search_paths">Library search paths</h3>
+
+<p>If you specify a full path, that path is used to load the library. Otherwise, the system looks for the library in its standard locations.</p>
+
+<h4 id="Windows">Windows</h4>
+
+<p>On Windows, the following locations are searched for the library, in this order:</p>
+
+<ol>
+ <li>The application&apos;s directory.</li>
+ <li>The system directory.</li>
+ <li>The 16-bit system directory.</li>
+ <li>The Windows directory.</li>
+ <li>The current working directory</li>
+ <li>The directories listed in the <code>PATH</code> environment variable.</li>
+</ol>
+
+<div class="note"><strong>Note:</strong> This information comes from <a href="http://msdn.microsoft.com/en-us/library/ms682586(VS.85).aspx">this article on MSDN</a>.</div>
+
+<h2 id="After_youre_done">After you&apos;re done</h2>
+
+<p>When you&apos;re finished using a library, you should close it by calling the <code>Library</code> object&apos;s <a href="/en-US/docs/js-ctypes/js-ctypes_reference/Library#close()"><code>close()</code></a> method:</p>
+
+<pre>lib.close();</pre>
+
+<p>If you fail to close the library, it will be automatically closed when it is garbage collected.</p>
+
+<h2 id="Using_the_library">Using the library</h2>
+
+<p>You may need to declare new types. These can be simple types or more complex types such as structures. See <a href="/en-US/docs/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a> for details. You will almost certainly need to <a href="/en-US/docs/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">declare one or more functions</a>, so that you can call them.</p>
+
+<p>Once you&apos;ve declared the types and functions, you can write your code to make use of them. Instantiating C data objects and referencing them is covered in the article <a href="/en-US/docs/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a>.</p>
+
+<h2 id="Memory_management">Memory management</h2>
+
+<p>moved to <a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a> page.</p>
+
+<h2 id="Examples">Examples</h2>
+
+<p>These examples offer a quick look at how js-ctypes is used. See <a href="/en-US/docs/js-ctypes/Examples">js-ctypes examples</a> for more intricate examples.</p>
+
+<h3 id="Calling_Windows_routines">Calling Windows routines</h3>
+
+<p>This example demonstrates how to use ctypes to call a Win32 API.</p>
+
+<pre class="brush: js">Components.utils.import(&quot;resource://gre/modules/ctypes.jsm&quot;);
+
+var lib = ctypes.open(&quot;C:\\WINDOWS\\system32\\user32.dll&quot;);
+
+/* Declare the signature of the function we are going to call */
+var msgBox = lib.declare(&quot;MessageBoxW&quot;,
+                         ctypes.winapi_abi,
+                         ctypes.int32_t,
+                         ctypes.int32_t,
+                         ctypes.jschar.ptr,
+                         ctypes.jschar.ptr,
+                         ctypes.int32_t);
+var MB_OK = 0;
+
+var ret = msgBox(0, &quot;Hello world&quot;, &quot;title&quot;, MB_OK);
+
+lib.close();</pre>
+
+<p>In line 3, the <code>user32.dll</code> system library is loaded. Line 6 declares <code>msgBox()</code> to be a method that calls the Windows function <a href="http://msdn.microsoft.com/en-us/library/ms645505%28VS.85%29.aspx"><code>MessageBoxW</code></a>. Line 15 calls the <code>msgBox()</code> routine, which displays the alert.</p>
+
+<p>The last thing we do is call <code>lib.close()</code> to close the library when we&apos;re done using it.</p>
+
+<p>Instead of defining the whole path, you may also just give the file name.</p>
+
+<p>ABOUT DECLARING THE FUNCTION</p>
+
+<p>How we knew how to declare the function was by going to MSDN site and looking at the MessageBox (MessageBoxW is just a unicode version of same function) function. Also learn about the lib.declare function used here: <a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library#declare%28%29">lib.declare</a>. Learn about the data types used here: <a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes?redirectlocale=en-US&amp;redirectslug=js-ctypes%2Fjs-ctypes_reference%2Fctypes#Predefined_data_types">Data Types</a>. We see that it needs to be defined like this:</p>
+
+<pre>int WINAPI MessageBox(
+  _In_opt_  HWND hWnd,
+  _In_opt_  LPCTSTR lpText,
+  _In_opt_  LPCTSTR lpCaption,
+  _In_      UINT uType
+);</pre>
+
+<p>So we read this article here on defining types and replicate it: <a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring Types</a></p>
+
+<pre>var lib = ctypes.open(&quot;user32.dll&quot;);
+</pre>
+
+<p>Or even without the extension.</p>
+
+<pre>var lib = ctypes.open(&quot;user32&quot;);
+</pre>
+
+<h3 id="Calling_Carbon_routines_on_Mac_OS_X">Calling Carbon routines on Mac OS X</h3>
+
+<p>This example demonstrates how to use ctypes to call a Carbon function on Mac OS X.</p>
+
+<div class="note"><strong>Note:</strong> This example will not work on 64bit OS X, see below for Core Foundation for 64bit OS X</div>
+
+<pre class="brush: js">/* build a Str255 (&quot;Pascal style&quot;) string from the passed-in string */
+
+function makeStr(str) {
+  return String.fromCharCode(str.length) + str;
+}
+
+Components.utils.import(&quot;resource://gre/modules/ctypes.jsm&quot;);
+
+var carbon = ctypes.open(&quot;/System/Library/Frameworks/Carbon.framework/Carbon&quot;);
+
+stdAlert = carbon.declare(&quot;StandardAlert&quot;,       /* function name */
+                          ctypes.default_abi,    /* ABI type */
+                          ctypes.int16_t,        /* return type */
+                          ctypes.int16_t,        /* alert type */
+                          ctypes.char.ptr,       /* primary text */
+                          ctypes.char.ptr,       /* secondary text */
+                          ctypes.uint32_t,       /* alert param */
+                          ctypes.int16_t);       /* item hit */
+
+var hit = 0;
+var msgErr = makeStr(&quot;Carbon Says...&quot;);
+var msgExp = makeStr(&quot;We just called the StandardAlert Carbon function from JavaScript!&quot;);
+
+var err = stdAlert(1, msgErr, msgExp, 0, hit);
+
+carbon.close();</pre>
+
+<p>The <code>makeStr()</code> function is a utility routine that takes as input a standard JavaScript string and returns a Carbon-style &quot;Pascal&quot; string, which is a length byte followed by the characters of the string itself. Note that this only works correctly if the string is in fact under 256 characters; if it&apos;s longer, this will fail spectacularly.</p>
+
+<p>In line 9, the Carbon library is loaded from the system&apos;s Carbon framework.</p>
+
+<p>Line 11 declares the <code>stdAlert()</code> function, which will call the Carbon <code>StandardAlert</code> routine. It uses the default ABI, returns a 16-bit integer (which is a Carbon <code>OSErr</code> value), and accepts an integer (the alert type), two strings, a pointer to a parameter block, which we aren&apos;t using, and another integer, which is used to return the hit item. See Apple&apos;s documentation for <a href="http://developer.apple.com/legacy/mac/library/documentation/Carbon/Reference/Dialog_Manager/Reference/reference.html#//apple_ref/c/func/StandardAlert"><code>StandardAlert</code></a> for details.</p>
+
+<p>After that, we simply set up our parameters by using <code>makeStr()</code> to generate the two <code>Str255</code> strings we need, then call <code>stdAlert()</code>, which produces the following alert window:</p>
+
+<p><img alt="ctype-mac-dialog.png" class="default internal" src="/@api/deki/files/4559/=ctype-mac-dialog.png"></p>
+
+<p>The last thing we do is call <code>carbon.close()</code> to close the library when we&apos;re done using it.</p>
+
+<h4 id="Standard_Alert_in_64bit_OS_X">Standard Alert in 64bit OS X</h4>
+
+<p>Carbon is not available in 64bit versions of OS X, therefore Core Foundation must be used. The below will do the same as <code>StandardAlert</code> from above, it will use the Core Foundation function of <code>CFUserNotificationDisplayNotice</code>.</p>
+
+<pre>Cu.import(&apos;resource://gre/modules/ctypes.jsm&apos;);
+var libcf = ctypes.open(&apos;/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation&apos;);
+
+// DEFINE TYPES
+var CFIndex = ctypes.long;
+var CFOptionFlags = ctypes.unsigned_long;
+var CFTimeInterval = ctypes.double;
+var CFTypeRef = ctypes.voidptr_t;
+var SInt32 = ctypes.long;
+var VOID = ctypes.void_t;
+
+var __CFString = new ctypes.StructType(&quot;__CFString&quot;);
+var CFStringRef = __CFString.ptr;
+
+var __CFURL = new ctypes.StructType(&quot;__CFURL&quot;);
+var CFURLRef = __CFURL.ptr;
+
+var __CFAllocator = new ctypes.StructType(&quot;__CFAllocator&quot;);
+var CFAllocatorRef = __CFAllocator.ptr;
+
+var UniChar = ctypes.jschar;   // uint16 with automatic conversion
+
+// DEFINE CONSTANTS
+var kCFUserNotificationStopAlertLevel = 0;
+var kCFUserNotificationNoteAlertLevel = 1;
+var kCFUserNotificationCautionAlertLevel = 2;
+var kCFUserNotificationPlainAlertLevel = 3;
+
+// DECLARE FUNCTIONS
+/* https://developer.apple.com/library/mac/documentation/CoreFoundation/Reference/CFUserNotificationRef/index.html#//apple_ref/c/func/CFUserNotificationDisplayNotice
+ * SInt32 CFUserNotificationDisplayNotice (
+ *   CFTimeInterval timeout,
+ *   CFOptionFlags flags,
+ *   CFURLRef iconURL,
+ *   CFURLRef soundURL,
+ *   CFURLRef localizationURL,
+ *   CFStringRef alertHeader,
+ *   CFStringRef alertMessage,
+ *   CFStringRef defaultButtonTitle
+ * );
+ */
+var CFUserNotificationDisplayNotice = libcf.declare(&quot;CFUserNotificationDisplayNotice&quot;, ctypes.default_abi,
+	SInt32,				// return
+	CFTimeInterval,		// timeout
+	CFOptionFlags,		// flags
+	CFURLRef,			// iconURL
+	CFURLRef,			// soundURL
+	CFURLRef,			// localizationURL
+	CFStringRef,		// alertHeader
+	CFStringRef,		// alertMessage
+	CFStringRef			// defaultButtonTitle
+);
+
+/* https://developer.apple.com/library/mac/documentation/CoreFoundation/Reference/CFTypeRef/#//apple_ref/c/func/CFRelease
+ * void CFRelease (
+ *   CFTypeRef cf
+ * );
+ */
+var CFRelease = libcf.declare(&apos;CFRelease&apos;, ctypes.default_abi,
+	VOID,		// return
+	CFTypeRef	// cf
+);
+
+/* https://developer.apple.com/library/mac/documentation/CoreFoundation/Reference/CFStringRef/#//apple_ref/c/func/CFStringCreateWithCharacters
+ * CFStringRef CFStringCreateWithCharacters (
+ *   CFAllocatorRef alloc,
+ *   const UniChar *chars,
+ *   CFIndex numChars
+ * );
+ */
+var CFStringCreateWithCharacters = libcf.declare(&apos;CFStringCreateWithCharacters&apos;, ctypes.default_abi,
+	CFStringRef,		// return
+	CFAllocatorRef,		// alloc
+	UniChar.ptr,		// *chars
+	CFIndex				// numChars
+);
+
+// HELPER FUNCTIONS
+function makeCFStr(jsStr) {
+	// js str is just a string
+	// returns a CFStr that must be released with CFRelease when done
+	return CFStringCreateWithCharacters(null, jsStr, jsStr.length);
+}
+
+// MAIN
+var myCFStrs = {
+	head: makeCFStr(&apos;Core Foundation Says...&apos;),
+	body: makeCFStr(&apos;We just called the equivalent of the &quot;StandardAlert Carbon function&quot; for 64bit OSX from JavaScript!&apos;)
+};
+
+var rez = CFUserNotificationDisplayNotice(0, kCFUserNotificationCautionAlertLevel, null, null, null, myCFStrs.head, myCFStrs.body, null);
+console.info(&apos;rez:&apos;, rez, rez.toString(), uneval(rez)); // CFUserNotificationDisplayNotice does not block till user clicks dialog, it will return immediately
+
+if (rez.toString() == &apos;0&apos;) {
+    console.log(&apos;Notification was succesfully shown!!&apos;);
+} else {
+    console.error(&apos;Failed to show notification... :(&apos;);
+}
+
+for (var cfstr in myCFStrs) {
+	if (myCFStrs.hasOwnProperty(cfstr)) {
+		var rez_CFRelease = CFRelease(myCFStrs[cfstr]); // returns void
+	}
+}
+
+libcf.close();</pre>
+
+<h3 id="Calling_LibC_routines_on_LinuxPOSIX">Calling LibC routines on Linux/POSIX</h3>
+
+<p>This example demonstrates how to use ctypes to call a libc function on Linux.</p>
+
+<pre class="brush: js">/* import js-ctypes */
+var {Cu} = require(&quot;chrome&quot;);
+var {ctypes} = Cu.import(&quot;resource://gre/modules/ctypes.jsm&quot;, null);
+
+/* Open the library */
+try {
+  /* Linux */
+  var libc = ctypes.open(&quot;libc.so.6&quot;);
+} catch (e) {
+  /* Most other Unixes */
+  libc = ctypes.open(&quot;libc.so&quot;);
+}
+
+/* Import a function */
+var puts = libc.declare(&quot;puts&quot;,             /* function name */
+                        ctypes.default_abi, /* call ABI */
+                        ctypes.int,         /* return type */
+                        ctypes.char.ptr);   /* argument type */
+
+var ret = puts(&quot;Hello World from js-ctypes!&quot;);
+
+libc.close();
+</pre>

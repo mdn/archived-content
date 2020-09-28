@@ -1,0 +1,117 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p><strong><code>JSPropertyOp</code></strong> and <strong><code>JSStrictPropertyOp</code></strong> are the type of property getter and setter callbacks in the JSAPI.</p>
+</div>
+
+<p>They are also the types of the <strong><code>{{jsapixref("JSClass")}}.addProperty</code></strong>, <strong><code>getProperty</code></strong>, and <strong><code>setProperty</code></strong> callbacks, which are called during object property accesses.</p>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef bool
+(* JSPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                 JS::MutableHandleValue vp);
+
+typedef bool
+(* JSStrictPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                       bool strict, JS::MutableHandleValue vp); // Added in SpiderMonkey 1.9.3
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>
+    <p>The context in which the property access is taking place.</p>
+
+    <p>Provides request. <em>In <code><a href="/en-US/docs/JS_THREADSAFE#Requests">JS_THREADSAFE</a></code> builds, the JavaScript engine calls this callback only from within an active request on <code>cx</code>.  The callback does not need to call <code>JS_BeginRequest()</code>).</em></p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>The object whose properties are being accessed.</td>
+  </tr>
+  <tr>
+   <td><code>id</code></td>
+   <td>{{jsapixref("jsid", "JS::HandleId")}}</td>
+   <td>The name or index of the property being accessed. This is either a string (Unicode property identifier) or an integer (element index).</td>
+  </tr>
+  <tr>
+   <td><code>strict</code></td>
+   <td><code>bool</code></td>
+   <td><em>(<code>JSStrictPropertyOp</code> only)</em> If <code>strict</code> is <code>true</code>, treating the assignment as strict mode code.</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("JS::Value", "JS::MutableHandleValue")}}</td>
+   <td>In/out parameter. Points to a {{jsapixref("JS::Value")}} variable. The meaning of this variable is different for each of the hooks; see below.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JSPropertyOp</code> and <code>JSStrictPropertyOp</code> callbacks are hooks that applications may install to be called at some point during property access. A <code>JSPropertyOp</code> may be installed on an individual property as a getter or setter; or it may be installed on a JSClass to hook property gets, sets, or adds. These different cases are described in more detail in the sections below.</p>
+
+<p>If a <code>JSPropertyOp</code> or <code>JSStrictPropertyOp</code> does nothing and returns <code>true</code>, then property get, set, or add is unaffected. It proceeds as normal.</p>
+
+<p>Each of these callbacks may veto the ongoing property operation by optionally {{jsapixref("JS_ReportError", "reporting an error", "", 1)}} or {{jsapixref("JS_SetPendingException", "raising an exception", "", 1)}} and then returning <code>false</code>. The operation then fails, and the error is propagated to the caller. Otherwise the callback must return <code>true</code>, and the property operation proceeds.</p>
+
+<h3 id="Getters_and_setters">Getters and setters</h3>
+
+<p>When a JSAPI application creates a property on an object (for example, using {{jsapixref("JS_DefineProperty")}} or {{jsapixref("JS_DefineProperties")}}) it can specify getter and setter callbacks for the new property.</p>
+
+<p><strong>Getters.</strong> The getter callback is called each time JavaScript code accesses the property's value using the syntax <code>obj.prop</code> or <code>obj[propname]</code>. It is also called when the property's value is accessed via JSAPI functions such as {{jsapixref("JS_GetProperty")}} or (less obviously) {{jsapixref("JS_CallFunctionName")}}. On entry, <code>*vp</code> contains the property's {{jsapixref("Stored_value", "stored value", "", 1)}} or <code>undefined</code> if the property doesn't have a stored value. The callback may modify <code>*vp</code>. On success, the callback returns <code>true</code> and the value left in <code>*vp</code> is returned to the script or JSAPI caller.</p>
+
+<p><strong>Setters.</strong> The setter callback is called each time JavaScript code assigns to the property using any assignment operator (<code>=</code>, <code>+=</code>, etc.) or the <code>++</code> or <code>--</code> operators. It is also called when the property is set via JSAPI functions such as <code>JS_SetProperty</code>. On entry, <code>*vp</code> contains the value being assigned to the property. The callback may modify <code>*vp</code>. On success, the callback returns <code>true</code>. If the property has a stored value, it is then updated to the value left in <code>*vp</code> after the callback.</p>
+
+<p>As of SpiderMonkey 1.7, the value of a property assignment expression, like <code>(a.length = x)</code>, is the value of <code>*vp</code> <em>after</em> the setter is called. This is typically the value of the left-hand side after assignment, as opposed to the value of the right-hand side, as required by <span class="pl-s1"><span class="pl-s">ECMA 262-3 §</span></span>11.13. This ECMAScript incompatibility is observable when assigning to the <code>length</code> property of an <code>Array</code>, for example. This incompatibility will be fixed in SpiderMonkey 1.8; see {{ bug(312354) }}.</p>
+
+<p><strong>Inherited properties.</strong> Note that in JavaScript, an object can inherit properties from its prototype. Getters (and sometimes setters; see {{jsapixref("JS_SetProperty")}} for details) are called even when the property being accessed is found on a prototype and not on <code>obj</code> itself. In this case <code>obj</code> points to the object from which the property is being accessed, not the object on which the property was defined.</p>
+
+<h3 id="JSClass_hooks"><code>JSClass</code> hooks</h3>
+
+<p><code>JSClass</code> offers following hooks:</p>
+
+<h5 id="JSPropertyOp"><code>JSPropertyOp</code></h5>
+
+<ul>
+ <li>
+  <p><strong><code>JSClass.addProperty</code></strong> is called just after a new property is added to an object. This happens when a program sets a property that isn't already an own property of the target object. It also happens in JSAPI functions such as {{jsapixref("JS_DefineProperty")}}. On entry, <code>*vp</code> contains the value provided by the code defining or setting the property. The callback may modify <code>*vp</code>. On success, the post-callback value of <code>*vp</code> becomes the initial {{jsapixref("Stored_value", "stored value", "", 1)}} of the new property.</p>
+
+  <p>In {{jsapixref("JS_THREADSAFE")}} builds, this callback is called with <code>obj</code> locked. It is therefore dangerous for the callback to call JSAPI functions, particularly if <code>obj</code> may have been visible to more than one thread.</p>
+ </li>
+ <li>
+  <p><strong><code>JSClass.getProperty</code></strong> is the default getter for new properties. See the section on getters and setters above.</p>
+
+  <p><code>JSClass.getProperty</code> is also called when a program attempts to get a property that does not exist on <code>obj</code> or any prototype.</p>
+
+  <p>On entry, <code>*vp</code> contains the property's stored value, or <code>undefined</code> if the property doesn't exist or doesn't have a stored value. The callback may modify <code>*vp</code>. On success, the post-callback value of <code>*vp</code> is returned to the caller. This value also becomes the property's new stored value, if the property exists and has a stored value.</p>
+ </li>
+</ul>
+
+<h5 id="JSStrictPropertyOp"><code>JSStrictPropertyOp</code></h5>
+
+<ul>
+ <li>
+  <p><strong><code>JSClass.setProperty</code></strong> is the default setter for new properties. See the section on getters and setters above.</p>
+
+  <p>A property's setter is called each time the property is assigned. Hence when a script assigns to a nonexisting property, first the object's class's <code>addProperty</code> hook is called, then the <code>setProperty</code> hook.</p>
+ </li>
+</ul>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JSPropertyOp") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JSStrictPropertyOp") }}</li>
+ <li>{{ bug(312354) }}</li>
+ <li>{{bug(537873)}} - added <code>JSStrictPropertyOp</code></li>
+</ul>

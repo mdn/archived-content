@@ -1,0 +1,317 @@
+<div class="summary">
+<p><span class="seoSummary">The <code>make</code> command is used inside the Gaia repo to create a Gaia profile that can be loaded onto your device or run in a <a href="/en-US/Firefox_OS/Using_the_B2G_desktop_client">B2G Desktop</a> build. This article looks in detail at the different make options available.</span></p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: There are many environment variables present in the Makefile. Do not depend on them as they may be removed in the future.</p>
+</div>
+
+<p>Created profiles are generally stored in the root of the gaia directory, for example <code>/gaia/profile</code>, and contain the following items:</p>
+
+<ul>
+ <li><code>defaults/</code>: Directory containing default settings to be reloaded after you reset the phone.</li>
+ <li><code>extensions/</code>: Directory containing extensions.</li>
+ <li><code>settings.json</code>: Settings file.</li>
+ <li><code>user.js</code>: Another file containing more settings/preferences.</li>
+ <li><code>webapps/</code>: Directory containing all the web apps that are to be installed on the phone.</li>
+</ul>
+
+<div class="note">
+<p><strong>Note</strong>: When you've already made a profile and you want to build a new one, you must delete the existing profile directory before trying to generate a new one.</p>
+</div>
+
+<h2 id="Default">Default</h2>
+
+<pre class="brush: bash">make</pre>
+
+<p>This simply gives you an unbranded, non-debug build. For a branded build you need to use <a href="#Official_Mozilla_branding_make">Official Mozilla branding make</a>; for a debug build you need <a href="#Debug_make">Debug make</a>.</p>
+
+<h2 id="Push_to_device">Push to device</h2>
+
+<pre class="brush: bash">make install-gaia
+
+make reset-gaia
+</pre>
+
+<p>With <a href="/en-US/Firefox_OS/Debugging/Installing_ADB">ADB</a> (Android Debug Bridge) setup, these make targets will push Gaia to the device. <code>install-gaia</code> will just push updates of Gaia from your working directory to your device. <code>reset-gaia</code> will purge all existing configuration, profiles, web apps and database entries (a new settings database will be initialized) before pushing Gaia.</p>
+
+<div class="note">
+<p><strong>Note</strong>: Pushing Gaia to your device using <code>make install-gaia</code> / <code>make reset-gaia</code> builds Gaia with 1x resolution assets by default. To specify higher resolution assets you need to use the <code>GAIA_DEV_PIXELS_PER_PX</code> or <code>GAIA_DPPX</code> make options (see <a href="/en-US/Firefox_OS/Developing_Gaia/make_options_reference#High_resolution_image_assets">High resolution image assets</a> for more details of these options.). When pushing Gaia to your device in this fashion, you should specify the relevant make option along with your device's scale factor, so for example <code>make install-gaia GAIA_DEV_PIXELS_PER_PX=1.5</code> for a Flame device (or 2, or 2.5, etc; see the scale factor values in the table inside <a href="/en-US/Apps/Build/Icon_implementation_for_apps#512_icon_for_device_display">512 icon for device display</a>.)</p>
+</div>
+
+<h2 id="Build_specific_apps">Build specific apps</h2>
+
+<pre class="brush: bash">APP=system make
+
+APP=system make install-gaia</pre>
+
+<p>When a profile already exists, <code>APP</code> allows you to specify which app to re-package, instead of re-packing and re-pushing all the Gaia apps. Note that while this command pushes the new app package and the manifest, the manifest change (e.g. new permissions, keyboard layout declarations) will not get picked up by Gecko.</p>
+
+<h2 id="Specify_custom_profile_folder">Specify custom profile folder</h2>
+
+<p>You can specify a custom directory to build your profile in, using <code>PROFILE_FOLDER</code>, for example:</p>
+
+<pre class="brush: bash">PROFILE_FOLDER=profile-b2g-desktop make</pre>
+
+<h2 id="Different_device_builds">Different device builds</h2>
+
+<p>There are a few make options that create builds for different devices, with different purposes.</p>
+
+<h3 id="Create_a_phone_build_of_Gaia">Create a phone build of Gaia</h3>
+
+<pre class="brush: bash">GAIA_DEVICE_TYPE=phone make</pre>
+
+<p>This build gets apps from <code>/gaia/build/config/phone/apps-engineering.list</code>.</p>
+
+<h3 id="Create_a_tablet_build_of_Gaia">Create a tablet build of Gaia</h3>
+
+<pre class="brush: bash">GAIA_DEVICE_TYPE=tablet make</pre>
+
+<p>This build gets apps from <code>/gaia/build/config/tablet/apps-engineering.list</code>.</p>
+
+<h3 id="Creating_a_spark_build">Creating a spark build</h3>
+
+<pre class="brush: bash">GAIA_DISTRIBUTION_DIR=distros/spark make reset-gaia</pre>
+
+<p>Installs spark on your device. The equivalent B2G build.sh option looks like this:</p>
+
+<pre class="brush: bash">GAIA_DISTRIBUTION_DIR=distros/spark ./build.sh</pre>
+
+<h2 id="Different_types_of_build">Different types of build</h2>
+
+<p>There are a few make options that create different types of build, with different purposes.</p>
+
+<h3 id="Production_make">Production make</h3>
+
+<pre class="brush: bash">PRODUCTION=1 make</pre>
+
+<p>This creates a production build of Gaia:</p>
+
+<ul>
+ <li>Gaia is run as packaged apps, which are harder to debug, but are the best available state for apps in terms of available API permissions, etc.</li>
+ <li>Test apps are not included in the build</li>
+ <li>Remote debugging is turned off by default</li>
+ <li>Lock screen is turned on (which in turn will cut USB connections)</li>
+ <li>Marionette is turned off</li>
+ <li>First time user experience is turned on</li>
+ <li>Offline cache is used.</li>
+</ul>
+
+<div class="note">
+<p><strong>Note</strong>: You can also use the alias <code>make production</code>.</p>
+</div>
+
+<h3 id="Debug_make">Debug make</h3>
+
+<pre class="brush: bash">DEBUG=1 make</pre>
+
+<p>The <code>DEBUG</code> variable runs Gaia as hosted apps on a built-in web server on a specific <code>GAIA_PORT</code>, rather than the default of packaged apps which have to be re-packaged after every change; this makes things easier to test. Launching the profile with the latest Firefox Nightly will also give you nice B2G specific panels on the Firefox Developer Tools.</p>
+
+<p>In addition:</p>
+
+<ul>
+ <li>Test apps are included in the build.</li>
+ <li>Remote debugging is turned on by default.</li>
+ <li>Lock screen is turned off (USB connections won't be interrupted.)</li>
+ <li><a href="/en-US/docs/Mozilla/QA/Marionette">Marionette</a> is turned on, which is needed when running Gaia <a href="/en-US/docs/Mozilla/Firefox_OS/Platform/Testing/Gaia_unit_tests" title="/en-US/docs/Mozilla/Firefox_OS/Platform/Testing/Gaia_unit_tests">unit tests</a>.</li>
+ <li>First time user experience is turned off.</li>
+ <li>Offline cache is not used, even if it is generated.</li>
+</ul>
+
+<div class="note">
+<p><strong>Note</strong>: There is currently a bug (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1180103" title="B2G desktop client get an empty homescreen when run w/ debug profile (gaia/profile-debug)">bug 1180103</a>) that causes Gaia debug profiles to render with an empty homescreen when run through the Firefox OS Simulator (through WebIDE, or whatever.) This can be worked around by building with <code>DEBUG=1 DESKTOP=0 make</code> instead (see <a href="#Device_debug_make">Device debug make</a>.)</p>
+</div>
+
+<h3 id="Device_debug_make">Device debug make</h3>
+
+<pre class="brush: bash">DEVICE_DEBUG=1 make</pre>
+
+<p>This disables screen lock on the device, and enables debugging with the ADB tool, so is useful for device debugging.</p>
+
+<p>In Firefox OS version &gt; 1.2, specify this param when you want to debug Firefox OS webapps with <a href="/en-US/docs/Tools/WebIDE">WebIDE</a>.</p>
+
+<h3 id="Debug_desktop_make">Debug desktop make</h3>
+
+<pre class="brush: bash">DEBUG=1 DESKTOP=0 make</pre>
+
+<p>This option creates a desktop debug version, for running inside <a href="/en-US/Firefox_OS/Using_the_B2G_desktop_client">B2G desktop</a>.</p>
+
+<h3 id="Official_Mozilla_branding_make">Official Mozilla branding make</h3>
+
+<pre class="brush: bash">MOZILLA_OFFICIAL=1 make</pre>
+
+<p>Use this to make an official Mozilla-branded build.</p>
+
+<h3 id="Dogfood_make">Dogfood make</h3>
+
+<pre class="brush: bash">DOGFOOD=1 make</pre>
+
+<p>Dogfooding options and utilities are turned on, for example the Feedback app, which allows dog fooders to easily submit feedback on the OS.</p>
+
+<h3 id="System_apps_make">System apps make</h3>
+
+<pre class="brush: bash">B2G_SYSTEM_APPS=1 make</pre>
+
+<p>This environment variable lets you push an app to <code>/system/b2g</code> instead of <code>/data/local</code>. You should use this when you work with a user build. This variable is automatically set when running <code>make production</code>. This can be used for <code>install-gaia</code> or <code>reset-gaia</code> too.</p>
+
+<h3 id="Distribution_and_market_customization_build">Distribution and market customization build</h3>
+
+<pre class="brush: bash">GAIA_DISTRIBUTION_DIR=./dir</pre>
+
+<div class="note">
+<p><strong>Note</strong>: Read <a href="/en-US/Firefox_OS/Hacking_Firefox_OS/Market_customizations_guide">Market Customizations</a> for more details.</p>
+</div>
+
+<h2 id="Developerdebugging_options">Developer/debugging options</h2>
+
+<p>There are also make options for adding/removing features or changing settings, for debugging purposes.</p>
+
+<h3 id="Enable_remote_debugging">Enable remote debugging</h3>
+
+<pre class="brush: bash">REMOTE_DEBUGGER=1</pre>
+
+<p>This enables remote debugging on the device, the same as using the option in the <a href="/en-US/Firefox_OS/Debugging/Developer_settings#Remote_debugging">developer settings</a>.</p>
+
+<h3 id="JavaScript_optimization_make">JavaScript optimization make</h3>
+
+<pre class="brush: bash">GAIA_OPTIMIZE=1 make</pre>
+
+<p>This triggers an optimization pass on Gaia's JavaScript, concatenating/compressing the files. This is automatically set when running <code>make production</code>. This can be used for <code>install-gaia</code> or <code>reset-gaia</code> too.</p>
+
+<h3 id="High_resolution_image_assets">High resolution image assets</h3>
+
+<pre class="brush: bash">GAIA_DEV_PIXELS_PER_PX=1.5 make</pre>
+
+<p>Or with alias:</p>
+
+<pre class="brush: bash">GAIA_DPPX=1.5 make</pre>
+
+<p>When packaging the app, this option replaces images with their <code>*@1.5x.(gif|jpg|png)</code> equivalents if such images exist. You need to use the above option as part of a standard <code>make</code> command, for example:</p>
+
+<pre class="brush: bash">GAIA_DEV_PIXELS_PER_PX=1.5 make reset-gaia
+
+GAIA_DEV_PIXELS_PER_PX=1.5 make install-gaia</pre>
+
+<p>Gaia is currently targetting the following screen resolutions:</p>
+
+<ul>
+ <li>qHD: ~540×960; device pixel ratio = 1.6875</li>
+ <li>WVGA: ~480×800; device pixel ratio = 1.5</li>
+ <li>HBGA (320x240); device pixel ratio = 1</li>
+</ul>
+
+<p>use <code>GAIA_DEV_PIXELS_PER_PX</code> to make sure the images looks sharp on qHD and WVGA devices. see <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Mobile/Viewport_meta_tag#A_pixel_is_not_a_pixel" title="https://developer.mozilla.org/en-US/docs/Mozilla/Mobile/Viewport_meta_tag#A_pixel_is_not_a_pixel">A pixel is not a pixel</a> for more information about device pixels per css pixels.</p>
+
+<h3 id="Running_integration_tests">Running integration tests</h3>
+
+<p>You can run integration tests on Gaia using make. See <a href="/en-US/Firefox_OS/Platform/Automated_testing/Gaia_integration_tests">Gaia integration tests</a> for details.</p>
+
+<h3 id="Running_Raptor_performance_tests">Running Raptor performance tests</h3>
+
+<p>You need to configure your device for running Raptor tests prior to actually running the tests. See <a href="/en-US/Firefox_OS/Automated_testing/Raptor">Raptor</a> for details.</p>
+
+<pre class="brush: bash">make raptor
+</pre>
+
+<h3 id="Low_memory_profile_build">Low memory profile build</h3>
+
+<pre class="brush: bash">GAIA_MEMORY_PROFILE=low make</pre>
+
+<p>This variable generates a low memory profile version of Gaia, aimed at low memory devices like the Tarako.</p>
+
+<h3 id="Disable_first_time_use_experience_(FTU)">Disable first time use experience (FTU)</h3>
+
+<pre class="brush: bash">NOFTU=1
+</pre>
+
+<p>Disable the FTU with this environment variable.</p>
+
+<h3 id="Disable_lockscreen">Disable lockscreen</h3>
+
+<p>You can disable the Firefox OS lockscreen using the NO_LOCK_SCREEN option, for example:</p>
+
+<pre class="brush: bash">NO_LOCK_SCREEN=1 make</pre>
+
+<h3 id="Reference_Workloads">Reference Workloads</h3>
+
+<p>Reference workloads allow developers/testers to quickly install a large amount of data in several applications, typically on a newly-flashed phone.</p>
+
+<p>The commands are (from the gaia directory):</p>
+
+<pre class="brush: bash">make reference-workload-light</pre>
+
+<ul>
+ <li>200 contacts</li>
+ <li>200 sms messages</li>
+ <li>50 dialer history entries</li>
+ <li>20 gallery images</li>
+ <li>20 songs</li>
+ <li>5 videos</li>
+</ul>
+
+<pre class="brush: bash">make reference-workload-medium</pre>
+
+<ul>
+ <li>500 contacts</li>
+ <li>500 sms messages</li>
+ <li>100 dialer history entries</li>
+ <li>50 gallery images</li>
+ <li>50 songs</li>
+ <li>10 videos</li>
+</ul>
+
+<pre class="brush: bash">make reference-workload-heavy</pre>
+
+<ul>
+ <li>1000 contacts</li>
+ <li>1000 sms messages</li>
+ <li>200 dialer history entries</li>
+ <li>100 gallery images</li>
+ <li>100 songs</li>
+ <li>20 videos</li>
+</ul>
+
+<pre class="brush: bash">make reference-workload-x-heavy</pre>
+
+<ul>
+ <li>2000 contacts</li>
+ <li>2000 sms messages</li>
+ <li>500 dialer history entries</li>
+ <li>250 gallery images</li>
+ <li>250 songs</li>
+ <li>50 videos</li>
+</ul>
+
+<p>These targets accept the <code>APP</code> environment variable, or an <code>APPS</code> environment variable that should contain the app names separated by a space, e.g.:</p>
+
+<pre class="brush: bash">APP=sms make reference-workload-light
+APPS="sms communications/contacts" make reference-workload-heavy
+</pre>
+
+<p>The apps available are:</p>
+
+<pre class="brush: bash">APPS="gallery music video communications/contacts sms communications/dialer"</pre>
+
+<p>In order to install music (songs) with reference workloads, the utility mid3v2 must be installed. This utility can be installed with:</p>
+
+<pre class="brush: bash">sudo apt-get install python-mutagen</pre>
+
+<p>If you run Fedora or RHEL instead, use:</p>
+
+<pre class="brush: bash">sudo yum install python-mutagen</pre>
+
+<h3 id="Documentation_make">Documentation make</h3>
+
+<p>Gaia docs can be built, via jsdoc3. To generate these, you can use the following command:</p>
+
+<pre class="brush: bash">make docs</pre>
+
+<h3 id="Enabling_IME_layout_and_dictionaries">Enabling IME layout and dictionaries</h3>
+
+<p>To enable keyboard IME layout and dictionaries enabled, use following command structure:</p>
+
+<pre class="brush: bash">GAIA_KEYBOARD_LAYOUTS=en,zh-Hant-Zhuyin,el,de,fr,zh-Hans-Pinyin make</pre>
+
+<p>We currently don't ship all the layouts by default due to disk space concerns. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1029951" id="yui_3_7_3_2_1407926266649_781">Bug 1029951</a> is being work on to decouple shipped layouts and it's dictionaries (by offering dictionary download to the users).</p>
+
+<p>Please look at the file <a href="https://github.com/mozilla-b2g/gaia/blob/master/build/config/keyboard-layouts.json">build/config/keyboard-layouts.json</a> to know all available layouts.</p>

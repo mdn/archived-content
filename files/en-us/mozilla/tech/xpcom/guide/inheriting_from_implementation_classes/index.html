@@ -1,0 +1,81 @@
+---
+title: Inheriting from implementation classes
+slug: Mozilla/Tech/XPCOM/Guide/Inheriting_from_implementation_classes
+tags:
+  - XPCOM
+---
+<p>Given that IDL interfaces map to abstract classes in C++, a common problem when dealing with IDL is when you have an IDL inheritance hierarchy, and a corresponding C++ implementation hierarchy, you run into <strong>multiple inheritance</strong>. That's not inherently multiple inheritance, though, because you only mix in interfaces (i.e. the problem would not exist with Java's <code>interface</code>s).</p>
+<h2 id="Example_problem" name="Example_problem">Example problem</h2>
+<p>You have interfaces A and B, B inherits from A, and you have implementation classes for
+ <i>
+  both</i>
+ A and B, and you want the implementation class for B to inherit from the implementation class for A. The latter is the problem. The lacking <code>virtual</code> in the generated IB C++ abstract class doesn't make things easier. So, in code:</p>
+<p>IDL:</p>
+<pre class="eval">interface IA {
+  void funcA();
+}
+interface IB : IA {
+  void funcB();
+}
+interface IC : IB {
+  void funcC();
+}
+</pre>
+<p>C++ implementation:</p>
+<pre class="eval">class A : public IA {
+  ???
+}
+class B : public A, public IB {
+  ???
+}
+class C : public B, public IC {
+  ???
+}
+</pre>
+<h2 id="Example_solution" name="Example_solution">Example solution</h2>
+<pre class="eval">A.h, as usual:
+  class A : public IA
+  {
+    ...
+    NS_DECL_ISUPPORTS
+    NS_DECL_IA
+  }
+A.cpp, as usual:
+  NS_IMPL_ISUPPORTS1(A, IA)
+  NS_IMETHODIMP A::funcA() { ... }
+B.h:
+  class B : public A, public IB
+  {
+    ...
+    NS_DECL_ISUPPORTS_INHERITED
+    NS_FORWARD_IA(A::) // need to disambiguate
+    NS_DECL_IB
+  }
+B.cpp:
+  NS_IMPL_ISUPPORTS_INHERITED1(B, A, IB) // this, superclass,<i>added</i> ifaces
+  NS_IMETHODIMP B::funcB() { ... }
+C.h:
+  class C : public B, public IC
+  {
+    ...
+    NS_DECL_ISUPPORTS_INHERITED
+    NS_FORWARD_IA(B::)
+    NS_FORWARD_IB(B::)
+    NS_DECL_IC
+  }
+C.cpp:
+  NS_IMPL_ISUPPORTS_INHERITED1(C, B, IC)
+  NS_IMETHODIMP C::funcC() { ... }
+</pre>
+<h3 id="Threadsafe" name="Threadsafe">Threadsafe</h3>
+<p>If you want to make this threadsafe, you can replace <code>NS_IMPL_ISUPPORTS1(A, IA)</code> with <code>NS_IMPL_THREADSAFE_ISUPPORTS1(A, IA)</code>
+ <i>
+  in the base implementation class</i>
+ only (e.g. A here). The rest stays as-is. The inheriting classes (B, C here) don't need to change their macros.</p>
+<h2 id="See_also" name="See_also">See also</h2>
+<ul>
+ <li><a class="external" href="http://dbaron.org/mozilla/coding-practices">dbaron's coding practices</a></li>
+ <li><a class="external" href="http://mxr.mozilla.org/seamonkey/source/xpcom/glue/nsISupportsImpl.h">nsISupportsImpl.h</a> comments</li>
+</ul>
+<p><br>
+ Author <a>Ben Bucksch</a>.</p>

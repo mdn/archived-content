@@ -1,0 +1,135 @@
+---
+title: Windows
+slug: Archive/Add-ons/Code_snippets/Windows
+tags:
+  - Add-ons
+  - Code snippets
+  - Extensions
+  - Guide
+  - NeedsContent
+  - NeedsHelp
+---
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This article offers code snippets demonstrating common tasks you may wish to perform.</p>
+
+<h2 id="Opening_new_browser_windows">Opening new browser windows</h2>
+
+<p>To open a new browser window, you can simply use <code>window.open()</code>. However, <code>window.open()</code> returns a <code>Window</code> object for content, not for the browser window itself, so you should get the chrome <code>Window</code> first. The simplest way to do that is to use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIWindowMediator" title="">nsIWindowMediator</a></code>.</p>
+
+<h3 id="Example">Example</h3>
+
+<pre class="brush: js">window.open(); //This open a pop-up window that could be "blocked" client-side
+
+//The following code generate an error as describe in the following warning box
+var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
+                   .getService(Components.interfaces.nsIWindowMediator);
+var newWindow = wm.getMostRecentWindow("navigator:browser");
+var b = newWindow.gBrowser;
+</pre>
+
+<div class="warning">
+<p>The code generate a TypeError from firefox console. In particular the <code>Components.classes is undefined </code>and <code>The Components object is deprecated. It will soon be removed. </code></p>
+</div>
+
+<h2 id="Draggable_windows">Draggable windows</h2>
+
+<p>To make a window draggable by clicking on the window's contents, you can use the <code>mousedown</code> and <code>mousemove</code> events. The following code does not care which element is clicked on, simply responding to all mousedown events equally. You could improve this code by checking the event.target element and only setting the startPos if the element matches some criteria.</p>
+
+<h3 id="Example_2">Example</h3>
+
+<p> </p>
+
+<pre class="brush: js">var startPos = null;
+function mouseDown(event) {
+  startPos = [event.clientX, event.clientY];
+}
+function mouseMove(event) {
+  if (startPos) {
+    var newX = event.screenX - startPos[0];
+    var newY = event.screenY - startPos[1];
+    window.moveTo(newX, newY);
+  }
+}
+function mouseUp(event) {
+  startPos = null;
+}
+
+window.addEventListener("mousedown", mouseDown, false);
+window.addEventListener("mouseup", mouseUp, false);
+window.addEventListener("mousemove", mouseMove, false);
+</pre>
+
+<h3 id="XUL_Titlebar_Element">XUL Titlebar Element</h3>
+
+<p>XUL Applications can take advantage of the <code><a href="/en-US/docs/Mozilla/Tech/XUL/titlebar" title="titlebar">titlebar</a></code> element to achieve a similar result without extra JavaScript code.</p>
+
+<h2 id="Re-using_and_focusing_named_windows">Re-using and focusing named windows</h2>
+
+<p>While specifying the name parameter to <a href="/en/DOM/window.open" title="en/DOM/window.open">window.open</a> or <a href="/en/DOM/window.openDialog" title="en/DOM/window.openDialog">window.openDialog</a> will prevent multiple windows of that name from opening, each call will actually re-initialize the window and thus lose whatever state the user has put it in. Additionally, if the window is in the background, it may not be brought to the front. This code will check for a window of the provided name. If it finds one, it focuses it. If it doesn't, it opens one.</p>
+
+<pre class="brush: js">var wenum = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+                      .getService(Components.interfaces.nsIWindowWatcher)
+                      .getWindowEnumerator();
+var index = 1;
+var windowName = "yourWindowName";
+while (wenum.hasMoreElements()) {
+  var win = wenum.getNext();
+  if (win.name == windowName) {
+    win.focus();
+    return;
+  }
+  index++
+}
+window.open("chrome://to/your/window.xul", windowName, "features");
+</pre>
+
+<p> </p>
+
+<div class="headingWithIndicator">
+<h1 id="Uniquely_identifying_DOM_windows">Uniquely identifying DOM windows</h1>
+<span class="geckoMinVerMethod indicatorInHeadline minVer">Requires Gecko 2.0(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)</span></div>
+
+<p> </p>
+
+<p>In Gecko, each DOM window has a unique 64-bit ID number. You can get a DOM window's ID using the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWindowUtils" title="">nsIDOMWindowUtils</a></code> attribute <code>outerWindowID</code>. Each time a new window is created, it gets assigned an ID one greater than the last created window. This can be used in cases in which you need to uniquely identify a DOM window during the duration of the application's lifespan:</p>
+
+<pre class="brush: js">var util = win.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIDOMWindowUtils);
+var windowID = util.outerWindowID;
+</pre>
+
+<p>After running that code, <code>windowID</code> contains the outer window's unique ID.</p>
+
+<p>Similarly, you can get the current inner window ID using the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMWIndowUtils" title="">nsIDOMWIndowUtils</a></code> attribute <code>currentInnerWindowID</code>:</p>
+
+<pre class="brush: js">var util = win.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIDOMWindowUtils);
+var windowID = util.currentInnerWindowID;</pre>
+
+<h2 id="Programatically_modifying_HTML">Programatically modifying HTML</h2>
+
+<p>When attempting to modify HTML elements, it is important to specify the namespace. For example, the following code will add a horizontal rule.</p>
+
+<pre class="brush: js"><span style="font-family: courier new;">var hr = document.createElementNS("http://www.w3.org/1999/xhtml", "html:hr");
+</span><span style="font-family: courier new;">document.getElementById("id1").appendChild(hr);</span></pre>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li>More about <a href="/en/Working_with_windows_in_chrome_code" title="en/Working_with_windows_in_chrome_code">Working with windows in chrome code</a>.</li>
+</ul>

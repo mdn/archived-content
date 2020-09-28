@@ -1,0 +1,77 @@
+---
+title: Tab selection in multiprocess Firefox
+slug: Mozilla/Firefox/Multiprocess_Firefox/Tab_selection_in_multiprocess_Firefox
+tags:
+  - Necesita traducción
+translation_of: Mozilla/Firefox/Multiprocess_Firefox/Tab_selection_in_multiprocess_Firefox
+---
+<div><section class="Quick_links" id="Quick_Links">
+  <ol>
+    <li class="toggle">
+        <details>
+            <summary>Notas de la Versión para Desarrolladores de Firefox</summary>
+            <ol>
+              <li><a href="/es/docs/Mozilla/Firefox/Releases">Notas de la Versión para Desarrolladores de Firefox</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Complementos</summary>
+            <ol>
+              <li><a href="/es/Add-ons/WebExtensions">Extensiones del navegador</a></li>
+              <li><a href="/es/Add-ons/Themes">Temas</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Firefox por dentro</summary>
+            <ol>
+              <li><a href="/es/docs/Mozilla/">Proyecto Mozilla (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/Gecko">Gecko</a></li>
+              <li><a href="/es/docs/Mozilla/Firefox/Headless_mode">Headless mode</a></li>
+              <li><a href="/es/docs/Mozilla/JavaScript_code_modules">Modulos de código JavaScript (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/js-ctypes">JS-ctypes (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/MathML_Project">Proyecto MathML</a></li>
+              <li><a href="/es/docs/Mozilla/MFBT">MFBT (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/Projects">Proyectos Mozilla (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/Preferences">Sistema de Preferencias (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/WebIDL_bindings">Ataduras WebIDL (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/Tech/XPCOM">XPCOM</a></li>
+              <li><a href="/es/docs/Mozilla/Tech/XUL">XUL</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Crear y contribuir</summary>
+            <ol>
+              <li><a href="/es/docs/Mozilla/Developer_guide/Build_Instructions">Instrucciones para la compilación</a></li>
+              <li><a href="/es/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options">Configurar las opciones de compilación</a></li>
+              <li><a href="/es/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works">Cómo funciona el sistema de compilación (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/Developer_guide/Source_Code/Mercurial">Código fuente de Mozilla</a></li>
+              <li><a href="/es/docs/Mozilla/Localization">Localización</a></li>
+              <li><a href="/es/docs/Mozilla/Mercurial">Mercurial (Inglés)</a></li>
+              <li><a href="/es/docs/Mozilla/QA">Garantía de Calidad</a></li>
+              <li><a href="/es/docs/Mozilla/Using_Mozilla_code_in_other_projects">Usar Mozilla en otros proyectos (Inglés)</a></li>
+            </ol>
+        </details>
+    </li>
+  </ol>
+</section></div><p>In single-process Firefox, when the user switches tabs, this is a synchronous operation. The browser blocks while it loads content into the newly selected tab, then switches to that tab. It indicates that the tab is selected by setting the <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selected">selected</a></code> attribute on the XUL <code>tab</code> object. Code (including browser code, extensions, or themes) that wants to change the appearance of the selected tab can use the <code>selected</code> attribute to apply CSS for that tab.</p>
+
+<p>In multiprocess Firefox, tab switching is asynchronous. When the user switches tabs, the chrome process sends a request to the content process to load the page into the newly selected tab. The function in the chrome process then returns immediately, so other code can run. Once the content process is ready, it sends a message back to the chrome process, which then switches tabs in the user interface.</p>
+
+<p>There's also a timer in the chrome process: if the content process has not responded before the timer expires, then the browser switches tabs anyway, and just displays an empty tab containing a spinner, until the content process has finished loading the page. Currently the timer is set to 300 milliseconds.</p>
+
+<p>There are, correspondingly, two attributes used to signal tab selection:</p>
+
+<ul>
+ <li>The old <code><a href="/en-US/docs/XUL/Attribute/selected">selected</a></code> attribute is set synchronously, at the start of the process. It signals that tab selection has started, but at this point the user interface has not yet been updated.</li>
+ <li>A new attribute <code><a href="/en-US/docs/Mozilla/Tech/XUL/Attribute/visuallyselected">visuallyselected</a></code> is now used once the browser has actually updated the user interface, either because the content process is ready or because the timer has expired.</li>
+</ul>
+
+<p>This means that code which wants to style the currently selected tab needs to use the <code>visuallyselected</code> attribute to do so. If it uses the <code>selected</code> attribute, then there will be a momentary disconnect in which the newly selected tab's style is updated, but the browser is still displaying the old tab's content.</p>
+
+<footer class="entry-meta"> </footer>

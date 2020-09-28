@@ -1,0 +1,154 @@
+<div>
+ {{SpiderMonkeySidebar("JSAPI")}}</div>
+<div class="summary">
+ <p>Describes the format of a JS error that is used either by the internal error reporting mechanism or by a user-defined error-reporting mechanism.</p>
+</div>
+<h3 id="Syntax" name="Syntax">Syntax</h3>
+<pre class="brush: cpp">JSErrorReport();
+</pre>
+<h3 id="Properties">Properties</h3>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>filename</code></td>
+   <td><code>const char *</code></td>
+   <td>Indicates the source file or URL that produced the error condition. If <code>NULL</code>, the error is local to the script in the current HTML page.</td>
+  </tr>
+  <tr>
+   <td><code>lineno</code></td>
+   <td><code>unsigned</code></td>
+   <td>Line number in the source that caused the error.</td>
+  </tr>
+  <tr>
+   <td><code>column</code></td>
+   <td><code>unsigned</code></td>
+   <td>zero-based column index in line in the source that caused the error.</td>
+  </tr>
+  <tr>
+   <td><code>isMuted</code></td>
+   <td><code>bool</code></td>
+   <td>
+    <p>The Web Platform allows scripts to be loaded from arbitrary cross-origin sources. This allows an attack by which a malicious website loads a sensitive file (say, a bank statement) cross-origin (using the user's cookies), and sniffs the generated syntax errors (via a window.onerror handler) for juicy morsels of its contents.</p>
+    <p>To counter this attack, HTML5 specifies that script errors should be sanitized ("muted") when the script is not same-origin with the global for which it is loaded. Callers should set this flag for cross-origin scripts, and it will be propagated appropriately to child scripts and passed back in <code>JSErrorReports</code>.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>linebuf</code></td>
+   <td><code>const char *</code></td>
+   <td>Text of the line that caused the error, minus the trailing newline character.</td>
+  </tr>
+  <tr>
+   <td><code>tokenptr</code></td>
+   <td><code>const char *</code></td>
+   <td>Pointer to the error token in <code>*linebuf</code>.</td>
+  </tr>
+  <tr>
+   <td><code>uclinebuf</code></td>
+   <td><code>const char16_t *</code></td>
+   <td>Unicode line buffer. This is the buffer that contains the original data.</td>
+  </tr>
+  <tr>
+   <td><code>uctokenptr</code></td>
+   <td><code>const char16_t *</code></td>
+   <td>Pointer to the error token in <code>*uclinebuf</code>.</td>
+  </tr>
+  <tr>
+   <td><code>flags</code></td>
+   <td><code>unsigned</code></td>
+   <td>
+    <p>The logical OR of zero or more of the following flags:</p>
+    <dl>
+     <dt>
+      <code>JSREPORT_WARNING</code></dt>
+     <dd>
+      This "error" is really only a warning. It will not cause the current operation to fail.</dd>
+     <dt>
+      <code>JSREPORT_EXCEPTION</code></dt>
+     <dd>
+      An exception is being raised. A <code>JSErrorReporter</code> might choose to ignore a <code>JSErrorReport</code> that has this flag set, since the exception may be caught and handled by JavaScript code.</dd>
+     <dt>
+      <code>JSREPORT_STRICT</code></dt>
+     <dd>
+      This error is only being reported because the engine is in strict mode.</dd>
+     <dt>
+      <code>JSREPORT_STRICT_MODE_ERROR</code></dt>
+     <dd>
+      This condition is an error in strict mode code, a warning if <code>JS_HAS_STRICT_OPTION(cx)</code>, and otherwise should not be reported at all. We check the strictness of the context's top frame's script; where that isn't appropriate, the caller should do the right checks itself instead of using this flag.</dd>
+    </dl>
+    <p>The constant <strong><code>JSREPORT_ERROR</code></strong> is <code>0</code> and can be used to indicate an error report without any of the above flags.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>errorNumber</code></td>
+   <td><code>unsigned</code></td>
+   <td>The error number.</td>
+  </tr>
+  <tr>
+   <td><code>ucmessage</code></td>
+   <td><code>const char16_t *</code></td>
+   <td>The default unicode error message.</td>
+  </tr>
+  <tr>
+   <td><code>messageArgs</code></td>
+   <td><code>const char16_t **</code></td>
+   <td>Arguments for the error message.</td>
+  </tr>
+  <tr>
+   <td><code>exnType</code></td>
+   <td><code>int16_t</code></td>
+   <td>One of the <code>JSExnType</code> constants.</td>
+  </tr>
+ </tbody>
+</table>
+<h3 id="Description" name="Description">Description</h3>
+<p><code>JSErrorReport</code> describes a single error that occurs in the execution of script.</p>
+<p>In the event of an error, <code>filename</code> will either contain the name of the external source file or URL containing the script (<code>SCRIPT SRC=</code>) or <code>NULL</code>, indicating that a script embedded in the current HTML page caused the error.</p>
+<p><code>lineno</code> indicates the line number of the script containing the error. In the case of an error in a script embedded in the HTML page, <code>lineno</code> indicates the HTML lineno where the script error is located.</p>
+<p><code>linebuf</code> is a pointer to a user-defined buffer into which JS copies the offending line of the script.</p>
+<p><code>tokenptr</code> is a pointer into <code>linebuf</code> that identifies the precise location line of the problem within the offending line.</p>
+<p><code>uclinebuf</code> is a pointer to a user-defined buffer into which JS copies the Unicode (original) version of the offending line of script.</p>
+<p><code>uctokenptr</code> is a pointer into <code>uclinebuf</code> that identifies the precise location line of the problem within the offending Unicode (original) version of the offending line.</p>
+<p>To use <code>JSErrorReport</code>, your application must define a variable of type <code>JSErrorReport</code> and allocate a buffer to hold the text that generated the error condition. Set <code>linebuf</code> to point at the buffer before your application executes a script. For Unicode scripts, define a second buffer that holds the Unicode version of the text the generated the error. For application that do not use Unicode, set <code>uclinebuf</code> and <code>uctokenptr</code> to <code>NULL</code>.</p>
+<h3 id="Macros">Macros</h3>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>JSREPORT_IS_WARNING(flags)</code></td>
+   <td>Returns <code>true</code> if <code>flags</code> has <code>JSREPORT_WARNING</code>.</td>
+  </tr>
+  <tr>
+   <td><code>JSREPORT_IS_EXCEPTION(flags)</code></td>
+   <td>Returns <code>true</code> if <code>flags</code> has <code>JSREPORT_EXCEPTION</code>.</td>
+  </tr>
+  <tr>
+   <td><code>JSREPORT_IS_STRICT(flags)</code></td>
+   <td>Returns <code>true</code> if <code>flags</code> has <code>JSREPORT_STRICT</code>.</td>
+  </tr>
+  <tr>
+   <td><code>JSREPORT_IS_STRICT_MODE_ERROR(flags)</code></td>
+   <td>Returns <code>true</code> if <code>flags</code> has <code>JSREPORT_STRICT_MODE_ERROR</code>.</td>
+  </tr>
+ </tbody>
+</table>
+<h3 id="See_Also" name="See_Also">See Also</h3>
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JSErrorReport") }}</li>
+ <li>{{jsapixref("JS_ReportError")}}</li>
+ <li>{{jsapixref("JS_ReportError", "JS_ReportWarning")}}</li>
+ <li>{{jsapixref("JS_ReportOutOfMemory")}}</li>
+ <li>{{jsapixref("JS_SetErrorReporter")}}</li>
+ <li>{{jsapixref("JS_ReportErrorNumber")}}</li>
+ <li>{{jsapixref("JS_ReportErrorNumber", "JS_ReportErrorNumberUC")}}</li>
+ <li>{{jsapixref("JS_ReportErrorNumber", "JS_ReportErrorFlagsAndNumber")}}</li>
+ <li>{{jsapixref("JS_ReportErrorNumber", "JS_ReportErrorFlagsAndNumberUC")}}</li>
+ <li>{{jsapixref("JS_ReportPendingException")}}</li>
+</ul>

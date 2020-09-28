@@ -1,0 +1,50 @@
+<p></p><div class="blockIndicator obsolete obsoleteHeader"><p><strong><span class="icon-only-inline" title="This is an obsolete API and is no longer guaranteed to work."><i class="icon-trash"> </i></span> Obsolete</strong><br>This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p></div><p></p>
+<p><a class="external" href="http://mxr.mozilla.org/mozilla-central/source/xpcom/obsolete/nsIRegistry.idl#45" title="http://mxr.mozilla.org/mozilla-central/source/xpcom/obsolete/nsIRegistry.idl#45">nsIRegistry</a> on MXR</p>
+<p>Other documentation: <a class="external" href="http://lxr.mozilla.org/mozilla/source/modules/libreg">libreg source</a>, <a class="external" href="http://lxr.mozilla.org/mozilla/source/modules/libreg/src/reg.h">reg.h in particular</a></p>
+<p>Okay!</p>
+<p><a href="/en/Appreg" title="en/Appreg">appreg</a>.</p>
+<p>It works like this.</p>
+<pre class="eval">var Cc = Components.classes;
+var Ci = Components.interfaces;
+var rc = Cc["@mozilla.org/registry;1"];
+var rs = rc.getService(Ci.nsIRegistry);
+</pre>
+<p>Now you have the registry service.</p>
+<pre class="eval">rs.openWellKnownRegistry(2);  // 2 signifies the ApplicationRegistry, if I understand right
+var st = rs.enumerateAllSubtrees(2);  // 2 signifies "common", see libreg source (reg.h) for info
+</pre>
+<p>Now you have an <a href="/en/XPCOM_Interface_Reference/nsIEnumerator" title="en/nsIEnumerator">nsIEnumerator</a> that can report the subtrees.</p>
+<pre class="eval">try {
+  st.first();
+  do {
+    var data = st.currentItem();
+    if( data instanceof Ci.nsIRegistryNode )
+      print("nsIRegistryNode: " + data.nameUTF8 + " (" + data.key + ")");
+    st.next();
+  } while( Components.lastResult == 0 );
+} catch(e) {}
+</pre>
+<p>Now, the output is something like:</p>
+<pre class="eval">Profiles (344)
+Profiles/default (530)
+Profiles/foo (1046)
+Profiles/bar (1518)
+</pre>
+<p>The number inside the parenthesis is the "key." You can use this key with the rest of the nsIRegistry API (see <a class="external" href="http://mxr.mozilla.org/mozilla-central/source/xpcom/obsolete/nsIRegistry.idl#45" title="http://mxr.mozilla.org/mozilla-central/source/xpcom/obsolete/nsIRegistry.idl#45">MXR</a>).</p>
+<p>Now, I know from visual inspection that there's a key called "directory" for each profile. I don't know how to get the other keys' names automatically, but I <em>do</em> know how to look up the directory for a particular profile.</p>
+<pre class="eval">js&gt; rs.getStringUTF8(530, "directory")  // 530: key corresponding with Profiles/default
+</pre>
+<p>The output is something like:</p>
+<pre class="eval">/home/lion/.mozilla/default/awp83kud.slt
+</pre>
+<p>Boo-yah!</p>
+<p>Can we change it?</p>
+<pre class="eval">js&gt; rs.setStringUTF8(530, "directory", "/home/lion/somewhere/else")
+js&gt; rs.getStringUTF8(530, "directory")
+/home/lion/somewhere/else
+</pre>
+<p>Yes!</p>
+<p>Now, the only puzzle is: <em>how do you save it?</em></p>
+<pre class="eval">js&gt; rs.flush()  // this is not enough...
+</pre>
+<p>Perhaps if we quit with the <a href="/en/XPConnect/appShellService" title="en/XPConnect/appShellService">XPConnect:appShellService</a>, it will work.</p>

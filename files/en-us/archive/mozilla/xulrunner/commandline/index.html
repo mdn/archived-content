@@ -1,0 +1,205 @@
+---
+title: CommandLine
+slug: Archive/Mozilla/XULRunner/CommandLine
+tags:
+  - Command Line
+  - Guide
+  - NeedsUpdate
+  - XUL
+  - XULRunner
+---
+<h2 id="Handling_command_line_arguments_with_XULRunner" name="Handling_command_line_arguments_with_XULRunner">Handling command line arguments with XULRunner</h2>
+
+<h3 id="For_Multiple_Instances_Application" name="For_Multiple_Instances_Application">For Multiple Instances Application</h3>
+
+<p>It's fairly easy to retrieve application specific command line arguments in XULRunner when it's not a single instance application. An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsICommandLine" title="">nsICommandLine</a></code> object is passed as the first argument of the launched window:</p>
+
+<h4 id="Example" name="Example">Example</h4>
+
+<pre class="brush: js">var cmdLine = window.arguments[0];
+cmdLine = cmdLine.QueryInterface(Components.interfaces.nsICommandLine);
+alert(cmdLine.handleFlagWithParam("test", false));
+</pre>
+
+<div class="note">
+<p>See also: <a href="/en-US/docs/Chrome:_Command_Line" title="/en-US/docs/Chrome:_Command_Line">Chrome: Command Line</a></p>
+</div>
+
+<h3 id="For_Single_Instance_Application" name="For_Single_Instance_Application">For single instance applications</h3>
+
+<p>Of course, for a single instance application (see <a href="/en/toolkit.singletonWindowType" title="en/toolkit.singletonWindowType">toolkit.singletonWindowType</a> for more information), the last example still applies the first time your application is launched. However, if you'd like to retrieve the latest command line arguments (to open a file for example), a possible solution is to create your own <a href="/en/Chrome/Command_Line" title="en/Chrome/Command_Line">command line handler</a>.</p>
+
+<p>For the sake of simplicity, the proposed solution involves the <a href="/en/XPCOM_Interface_Reference/nsIObserverService" title="en/nsIObserverService">observer service</a> to notify observers that the updated arguments are available. A similar and better way to implement this solution is by defining argument specific handlers with registering and unregistering functions in your command line handler service. This has the advantage to accumulate unhandled arguments until a specific handler is added. This approach has been used in <a href="http://publicsvn.songbirdnest.com/browser/trunk/components/commandline/src/sbCommandLine.js" class="external">Songbird</a>.</p>
+
+<h4 id="Example_2" name="Example_2">Example</h4>
+
+<p><a href="/es/XPCOM/XPCOM_changes_in_Gecko_2.0" title="XPCOM changes in Gecko 2.0">Notice the changes since Gecko 2.0</a> (Component registration has moved into the manifest file).</p>
+
+<p>Define your own Command Line Handler Component: <strong>components/clh.js</strong></p>
+
+<pre class="brush: js">const nsISupports              = Components.interfaces.nsISupports;
+
+const nsICategoryManager       = Components.interfaces.nsICategoryManager;
+const nsIComponentRegistrar    = Components.interfaces.nsIComponentRegistrar;
+const nsICommandLine           = Components.interfaces.nsICommandLine;
+const nsICommandLineHandler    = Components.interfaces.nsICommandLineHandler;
+const nsIFactory               = Components.interfaces.nsIFactory;
+const nsIModule                = Components.interfaces.nsIModule;
+
+const CLASS_ID = Components.ID("178cfbb6-503c-11dc-8314-0800200c9a66");
+const CLASS_NAME = "ApplicationNameCLH";
+const CONTRACT_ID = "@example.com/applicationname/clh;1";
+const CLD_CATEGORY = "m-applicationname";
+
+var appHandler = {
+  /* nsISupports */
+  QueryInterface : function clh_QI(aIID)
+  {
+    if (aIID.equals(nsICommandLineHandler) ||
+        aIID.equals(nsIFactory) ||
+        aIID.equals(nsISupports))
+      return this;
+
+    throw Components.results.NS_ERROR_NO_INTERFACE;
+  },
+
+  /* nsICommandLineHandler */
+  handle : function clh_handle(aCmdLine)
+  {
+    var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                    .getService(Components.interfaces.nsIObserverService);
+    observerService.notifyObservers(aCmdLine, "commandline-args-changed", null);
+  },
+
+  helpInfo : "  -test &lt;value&gt;        A test attribute\n",
+
+  /* nsIFactory */
+  createInstance : function mdh_CI(aOuter, aIID)
+  {
+    if (aOuter != null) {
+      throw Components.results.NS_ERROR_NO_AGGREGATION;
+    }
+
+    return this.QueryInterface(aIID);
+  },
+
+  lockFactory : function mdh_lock(aLock)
+  {
+    /* no-op */
+  }
+};
+
+var appHandlerModule = {
+  /* nsISupports */
+  QueryInterface : function mod_QI(aIID)
+  {
+    if (aIID.equals(nsIModule) ||
+        aIID.equals(nsISupports))
+      return this;
+
+    throw Components.results.NS_ERROR_NO_INTERFACE;
+  },
+
+  /* nsIModule */
+  getClassObject : function mod_gch(aCompMgr, aCID, aIID)
+  {
+    if (aCID.equals(CLASS_ID))
+      return appHandler.QueryInterface(aIID);
+
+    throw components.results.NS_ERROR_FAILURE;
+  },
+
+  registerSelf : function mod_regself(aCompMgr, aFileSpec, aLocation, aType)
+  {
+    var compReg = aCompMgr.QueryInterface(nsIComponentRegistrar);
+
+    compReg.registerFactoryLocation(CLASS_ID, CLASS_NAME, CONTRACT_ID,
+                                    aFileSpec, aLocation, aType);
+
+    var catMan = Components.classes["@mozilla.org/categorymanager;1"]
+                           .getService(nsICategoryManager);
+    catMan.addCategoryEntry("command-line-handler",
+                            CLD_CATEGORY, CONTRACT_ID, true, true);
+  },
+
+  unregisterSelf : function mod_unreg(aCompMgr, aLocation, aType)
+  {
+    var compReg = aCompMgr.QueryInterface(nsIComponentRegistrar);
+    compReg.unregisterFactoryLocation(CLASS_ID, aLocation);
+
+    var catMan = Components.classes["@mozilla.org/categorymanager;1"]
+                           .getService(nsICategoryManager);
+    catMan.deleteCategoryEntry("command-line-handler", CLD_CATEGORY);
+  },
+
+  canUnload : function (aCompMgr)
+  {
+    return true;
+  }
+};
+
+function NSGetModule(aCompMgr, aFileSpec)
+{
+  return appHandlerModule;
+}
+</pre>
+
+<p>Create an observer that will get notified when arguments change: <strong>chrome/content/cmdline.js</strong></p>
+
+<pre class="brush: js">function CommandLineObserver() {
+  this.register();
+}
+CommandLineObserver.prototype = {
+  observe: function(aSubject, aTopic, aData) {
+     var cmdLine = aSubject.QueryInterface(Components.interfaces.nsICommandLine);
+     var test = cmdLine.handleFlagWithParam("test", false);
+     alert("test = " + test);
+  },
+
+  register: function() {
+    var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                    .getService(Components.interfaces.nsIObserverService);
+    observerService.addObserver(this, "commandline-args-changed", false);
+  },
+
+  unregister: function() {
+    var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                    .getService(Components.interfaces.nsIObserverService);
+    observerService.removeObserver(this, "commandline-args-changed");
+  }
+}
+
+var observer = new CommandLineObserver();
+
+
+// Because we haven't yet registered a CommandLineObserver when the application is
+// launched the first time, we simulate a notification here.
+var observerService = Components.classes["@mozilla.org/observer-service;1"]
+                                 .getService(Components.interfaces.nsIObserverService);
+observerService.notifyObservers(window.arguments[0], "commandline-args-changed", null);
+
+addEventListener("unload", observer.unregister, false);
+</pre>
+
+<p>Finally, add a reference in your application window to the observer: <strong>chrome/content/window.xul</strong></p>
+
+<pre class="brush: xml">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css"?&gt;
+
+&lt;window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        id="main" title="&amp;window.title;" windowtype="xulmine"
+        style="width: 300px; height: 350px;"
+        persist="screenX screenY width height sizemode"&gt;
+  &lt;script type="application/javascript" src="cmdline.js" /&gt;
+  ...
+&lt;/window&gt;
+</pre>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author: <a href="http://legege.com" class="external">Georges-Etienne Legendre</a></li>
+ <li>Last Updated Date: August 21st, 2007</li>
+</ul>
+</div>

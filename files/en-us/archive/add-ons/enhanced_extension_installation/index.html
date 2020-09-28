@@ -1,0 +1,322 @@
+---
+title: Enhanced Extension Installation
+slug: Archive/Add-ons/Enhanced_Extension_Installation
+tags:
+  - Add-ons
+  - Extensions
+---
+<p> </p>
+
+<h2 id="Background" name="Background">Background</h2>
+
+<p>There are several flaws with Extension<sup><a href="#Footnotes">1</a></sup> Installation in Firefox<sup><a href="#Footnotes">2</a></sup> 1.0, including:</p>
+
+<ul>
+ <li>It is very difficult for a third party application with its own managed install process to install an Extension into Firefox. First it must locate the Firefox executable, then run it with the -install-global-extension command line flag, which installs from a XPI into the Firefox application directory. Aside from the work of locating the Firefox executable in the first place (which varies from platform to platform), this is very limiting because:
+  <ol>
+   <li>It forces the third party application to package its Firefox integration hooks as a XPI.</li>
+   <li>It forces it to have write access to the Firefox directory in order to be installed, which may not always be the case.</li>
+   <li>It forces its items to be located in different places on the user's disk - some vendors wish to keep all of their installed content within <code>C:\Program Files\Foo\</code> for example.</li>
+   <li>There is no clean uninstall procedure, as the <code>-install-global-extension</code> flag was designed only as a means to install items for all user profiles, not as a means for third party installers to register their components.</li>
+  </ol>
+ </li>
+ <li>The system for installation, upgrade and uninstall is not robust enough. When a newer version fo an existing Extension is installed, files for the newer version are copied into the folder used by the older version, and obsolete files are not cleaned up. This can lead to incompatibilities, mysterious crashes and other problems. There are not enough guards in the upgrade and uninstall process to handle failure and abort the operation, restoring the previous state.</li>
+ <li>Items that are installed must be visible in the Extension Manager user interface, even if the Extension type is just an integration hook that has no meaningful UI presence.</li>
+ <li>Extension installation and registration is also prohibitively difficult/annoying for developers, who are forced to either dangerously hand-edit all the appropriate manifest files, or package their code as a XPI and install it that way every time they make a change.</li>
+</ul>
+
+<h2 id="The_State_of_the_World" name="The_State_of_the_World">The State of the World</h2>
+
+<h3 id="Install_Locations" name="Install_Locations">Install Locations</h3>
+
+<p>In Firefox 1.0 Extensions can be installed into only two locations:</p>
+
+<ul>
+ <li>The Firefox user's profile directory directory, e.g. <code>~/.mozilla/firefox/abcdefgh.default/extensions/</code></li>
+ <li>The Firefox application directory, e.g. <code>C:\Program Files\Mozilla Firefox\extensions</code></li>
+</ul>
+
+<h3 id="Extension_Metadata" name="Extension_Metadata">Extension Metadata</h3>
+
+<p>The Extension System stores metadata in both of the two locations, in the following files:</p>
+
+<ul>
+ <li><code>&lt;location&gt;/extensions/Extensions.rdf</code> - an XML/RDF datasource listing all the Extensions installed at that location.</li>
+ <li><code>&lt;location&gt;/extensions.ini</code> - an INI manifest listing the directories for all the Extensions and Themes at the location (used by the Component Manager, Preferences system, Chrome Registry etc to locate files during the startup process).</li>
+</ul>
+
+<p>In the profile directory, the file <code>compatibility.ini</code> stores information about the version of the application (build info) that last started this profile - during startup this file is checked and if the version info held by the running app disagrees with the info held by this file, a compatibility check is run on all installed items.</p>
+
+<p>When changes are made to the Extensions datasource - new items are installed, old items uninstalled, enabled or disabled, a <code>.autoreg</code> file is written to the profile directory as well, which tells the startup code that the system has been modified, so that it destroys the component registries, finishes pending transactions and regenerates metadata appropriately.</p>
+
+<h3 id="Datasource_Structure" name="Datasource_Structure">Datasource Structure</h3>
+
+<p>The Extension Manager implements a RDF Datasource which contains a composite of the two XML/RDF datasources at the two Install Locations. The Composite datasource handles all read-only information requests, and when data must be written the Extension Manager determines the appropriate datasource to write and flush to. The model looks something like this:</p>
+
+<pre>    nsExtensionsDataSource.prototype = {
+      _composite            // The composite that manages the two
+                            // datasources at the Install Locations for
+                            // read-only information requests
+      _profileExtensions    // The RDF/XML datasource for the items at the
+                            // profile Install Location
+      _globalExtensions     // The RDF/XML datasource for the items at the
+                            // global Install Location.
+    };
+</pre>
+
+<h3 id="Tracking_Install_Locations" name="Tracking_Install_Locations">Tracking Install Locations</h3>
+
+<p>Since there are only two locations, the installed location of an Extension is expressed throughout the code using a boolean value, often referred to as <code>isProfile</code> - true if the item is installed in the profile directory's extensions folder. This boolean relationship itself is not stored directly in the datasource. Rather, if the system needs to know where an item is located, it checks to see if the item is a member of the the appropriate type container (<code>urn:mozilla:extension:root</code> or <code>urn:mozilla:theme:root</code>) in each of the two datasources. This is clumsy.</p>
+
+<h3 id="Item_Type" name="Item_Type">Item Type</h3>
+
+<p>The Extension System in Firefox 1.0 supports only two item types, Extensions and Themes. This is a by-product of the fact that there are physical per-type containers in the datasource. Sections of UI that display installed items are rooted on these containers.</p>
+
+<h3 id="Tracking_Item_Type" name="Tracking_Item_Type">Tracking Item Type</h3>
+
+<p>Item type is tracked for the most part by containment in one or other of the two containers. In situations where an item is not yet a member of one of the containers, type is inelegantly determined by checking for presence of a theme-only property on the item's Install Manifest RDF file.</p>
+
+<h3 id="Installation" name="Installation">Installation</h3>
+
+<h4 id="Initiation" name="Initiation">Initiation</h4>
+
+<p>When an item is installed from the web, XPInstall is invoked and it calls into the Extension System when it discovers that the XPI file contains an <code>install.rdf</code> manifest. The Extension Manager extracts that file and checks to see if the item is compatible with the running version of the application. If it is, a small set of metadata about it is written to the appropriate datasource (name, version, a flag to tell the system to properly install it on the next startup), and it is added to the appropriate type container. The system also writes a <code>.autoreg</code> file to the profile folder which tells the startup system that something has changed on the next restart. A copy of the XPI file the item was installed from is set aside since the XPInstall system cleans up the temporary file it hands to the Extension System.</p>
+
+<p>If the item is not compatible, the Extension System asks the appropriate Update Service (either the one specified by the item, or the default one) if there is remote compatibility information that supercedes the compatibility information held by the item. If there is, and this remote information makes it so that the item is now compatible with the running version of the application, the item is configured in the manner described above (metadata written, added to container).</p>
+
+<h4 id="Finalization" name="Finalization">Finalization</h4>
+
+<p>For Themes, the item is immediately installed fully, rather than awaiting the next restart, since Themes do not supply XPCOM components, preferences defaults etc.</p>
+
+<p>For Extensions, on the next startup, the startup system notices the presence of the <code>.autoreg</code> file and starts the Extension manager with a "dirty" flag, telling it to finish any install operations that may be pending.</p>
+
+<p>The Extension manager loads the XML/RDF datasources (this is allowable and necessary because a major change has happened) and gets a list of all items that need to be installed (tracked using a <code>toBeInstalled</code> flag on the item in the datasource). It locates the staged copy of the XPI file, extracts its contents (logging file additions as it goes into <code>{GUID}/uninstall/Uninstall</code>), loads the Install Manifest file and copies all metadata into the appropriate datasource. At this time a new <code>extensions.ini</code> file is written locating the Extension so that the Component Manager, Preferences System and Chrome Registry can locate additional files on the next start. The finalization process then notifies the startup process that finalization has changed this manifest, and that the application must be restarted to pick up changes specified therein.</p>
+
+<p>The startup process receives this "<code>needsRestart</code>" bit when the Extension manager's startup completes, shuts down XPCOM and relaunches the application. On the next restart, the <code>XREDirProvider</code> now supplies a list of directories to requesting systems listing the new item's components, defaults and chrome manifests.</p>
+
+<h3 id="Uninstallation.2C_Disabling.2C_Enabling" name="Uninstallation.2C_Disabling.2C_Enabling">Uninstallation, Disabling, Enabling</h3>
+
+<p>These functions work on the same principle as installation - the user requests an action through the UI while the application is running and metadata is written (<code>toBeUninstalled</code>, <code>toBeDisabled</code>, <code>toBeEnabled</code>) and a <code>.autoreg</code> file created in the profile so that on the subsequent startup the Extension System's startup routine can remove files (in the Uninstall case) and write a new <code>extensions.ini</code> file listing the directories for the currently "active" items. ("Active" items are items that are enabled.)</p>
+
+<h2 id="A_Whole_New_World" name="A_Whole_New_World">A Whole New World</h2>
+
+<h3 id="Install_Locations_2" name="Install_Locations_2">Install Locations</h3>
+
+<p>We have several targets for where items can be installed. These include:</p>
+
+<ul>
+ <li>The application profile directory <code>&lt;profile&gt;/extensions/</code></li>
+ <li>The application install directory <code>&lt;application&gt;/extensions/</code></li>
+ <li>Any location specified in a text file with a {GUID} name placed in one of the above locations, useful for developing extensions at another location, e.g. a NFS home directory and simply placing a text "link" file in the applicable directory above that links to the location of the extension in its installed state at the other location.</li>
+ <li>Any location specified in a GUID-to-path registry key mapping, e.g. <code>[HKLM|HKCU]\Software\Mozilla\Firefox\Extensions</code></li>
+</ul>
+
+<p>Given these goals, and the likelihood of future goals, such as potential for extensions to the XULRunner framework, common drop zones for XPIs etc it makes sense to have the set of install locations be customizable. By default, the application knows about and maintains three Install Locations:</p>
+
+<dl>
+ <dt><code>app-profile</code> </dt>
+ <dd>A directory-based install location for items living in the application profile extensions directory.</dd>
+ <dt><code>app-global</code> </dt>
+ <dd>A directory-based install location for items living in the application global extensions directory.</dd>
+ <dt><code>app-registry</code> </dt>
+ <dd>A registry-key based install location for items living at locations specified by a GUID-to-path value set within the registry at a predefined location.</dd>
+</dl>
+
+<p>To implement this, we create an interface that the Extension Manager can ask for information about the location, such as what its name is, where its located on disk (if anywhere, in the case of registry based locations which have no root directory), for a list of item directories, for a directory of a particular item, for a subdirectory or file within an item's directory, etc.</p>
+
+<p>Since our needs and the needs of other applications may vary in the future, since we've already effectively generalized the concept of an install location, we can make this set configurable by applications and Extensions. To this end, we scan the category <code>extension-install-locations</code> as the Extension System is started (after profile initialization) and add these to our internal set.</p>
+
+<h3 id="Extension_Metadata_2" name="Extension_Metadata_2">Extension Metadata</h3>
+
+<p>The following files are now used to hold metadata:</p>
+
+<dl>
+ <dt><code>&lt;profile&gt;/extensions.ini</code> -<em>active items</em> </dt>
+ <dd>This file contains a list of active Extension directories (i.e. directories to extensions that are <strong>enabled</strong> only), to be used by the XREDirProvider during startup to locate components, preferences and chrome manifests. The format here is similar to Firefox 1.0 except there is no longer a <code>Count</code> value that needs to be kept in sync with the number of lines... the file is written simply as <code>Extension#=&lt;absolute path to item&gt;</code> and is read until there are no more numbers. The other difference is that since there is now only a single instance of this file in the profile location, the file paths are now absolute.</dd>
+ <dt><code>&lt;profile&gt;/extensions.rdf</code> -<em>visible items</em> </dt>
+ <dd>This file contains non-startup and compatibility metadata for extensions that are <strong>visible to the user</strong>, whether they are enabled or disabled. If an extension is installed at two different Install Locations, the one with the higher importance is what is shown in this file. This replaces the individual <code>Extensions.rdf</code> files at the old locations.</dd>
+ <dt><code>&lt;profile&gt;/extensions-startup.manifest</code> -<em>all items</em> </dt>
+ <dd>This file contains a tab delimited set of lines, one per item. This is a list of all installed items, disabled or not, keyed first by Install Location name, then by GUID. The following information is stored for each entry:
+ <ul>
+  <li>the <strong>persistent</strong> descriptor of the path where the item lives.</li>
+  <li>the <strong>last modified time</strong> of that path, used to detect out of process upgrades.</li>
+  <li>optionally, an <strong>operation key</strong> that tells the startup system that there is an install operation pending that needs to be finalized, e.g. <code>needs-install</code>, <code>needs-upgrade</code>, <code>needs-uninstall</code>, <code>needs-enable</code>, <code>needs-disable</code>, <code>needs-install</code></li>
+ </ul>
+ </dd>
+ <dd>When the Extension Manager starts, this dataset is read into two data structures:
+ <ul>
+  <li>The <strong>Startup Cache</strong> - a hashtable keyed off Install Location name and then GUID, each entry having <code>persistentDescriptor</code>, <code>mtime</code> and <code>id</code> properties.</li>
+  <li>The Pending Operations List - a set of entries organized into arrays hashed by operation key, each entry having a locationKey and id properties.</li>
+ </ul>
+ </dd>
+</dl>
+
+<dl>
+ <dd>The Startup Cache data structure is used to reflect the extensions-startup.manifest file over the lifetime of the running application, the extensions-startup.manifest file is written from the current state of the cache.</dd>
+</dl>
+
+<dl>
+ <dd>The Pending Operations List is used by the Install Operation Finalization routine (|_finishOperations|) to get a list of items that are to be operated on.</dd>
+</dl>
+
+<p>Since all metadata is now stored in the profile directory, there is no longer any need for special Extension System handling of the <code>-register</code> command line flag, so support for that has been removed.</p>
+
+<h3 id="Datasource_Structure_2" name="Datasource_Structure_2">Datasource Structure</h3>
+
+<p>Since there is now only a single RDF/XML datasource for storage of all installed items, the staggered datasource structure used by Firefox 1.0 and the use of an internal composite datasource is no longer required. The Extension System retains an object implementing nsIRDFDataSource (so that it can supply special properties in addition to the set stored simply in the XML datasource) and an internal member that holds the single RDF/XML datasource. Properties are read and are written directly to this, there are no shims.</p>
+
+<h3 id="Tracking_Install_Locations_2" name="Tracking_Install_Locations_2">Tracking Install Locations</h3>
+
+<p>Since there is now only a single datasource, Install Location information is tracked for every item in the single datasource in the form of a string <code>&lt;em:installLocation&gt;</code> property on each item. The value of this property corresponds to the <code>name</code> property on the Install Location where the item is installed. Code in the Extension System can quickly locate an Install Location for an item using the <code>getInstallLocation</code> method which basically reads this value from the datasource and retrieves the Install Location from the hash of registered Install Locations.</p>
+
+<h3 id="Item_Type_2" name="Item_Type_2">Item Type</h3>
+
+<p><code>install.rdf</code> Install Manifests should now specify a <code>&lt;em:type&gt;</code> property which tells the Extension System what their type is. Types are defined in <code>nsIUpdateService.idl</code> on the <code>nsIUpdateItem</code> interface. The types at the time of writing include:</p>
+
+<ul>
+ <li><code>2</code> - Extension</li>
+ <li><code>4</code> - Theme</li>
+ <li><code>8</code> - Locale</li>
+</ul>
+
+<p>For backward compatibility the Extension System will continue to assume an item is an Extension by default, and a Theme if the item has a <code>&lt;em:internalName&gt;</code> property, but Extension and Theme authors should be good citizens and upgrade their Install Manifests to include the type.</p>
+
+<p>The type information supplied or inferred will be added to the Extensions datasource.</p>
+
+<h3 id="Tracking_Item_Type_2" name="Tracking_Item_Type_2">Tracking Item Type</h3>
+
+<p>We still track the item type at this stage by looking at containment. See below in <a href="#Things_This_Upgrade_Does_Not_Do">Things This Upgrade Does Not Do</a>.</p>
+
+<h3 id="Installation_2" name="Installation_2">Installation</h3>
+
+<p>Installation is much different. There three kinds of item installation:</p>
+
+<ol>
+ <li>Installation from a file</li>
+ <li>Installation by a folder or folder-link "appearing" in an Install Location, and</li>
+ <li>A hybrid of the two - an XPI file "appearing" into a directory based Install Location.</li>
+</ol>
+
+<h4 id="Installation_From_a_File" name="Installation_From_a_File">Installation From a File</h4>
+
+<h5 id="Initiation_2" name="Initiation_2">Initiation</h5>
+
+<p>When an item is installed from a File (such as, when an item is installed from the web, via XPInstall, upgraded by XPInstall or dropped into a directory-based Install Location), the Install Manifest supplied by the item is expanded into a temporary location and read. The GUID and Version supplied are validated, and then Compatibility is checked for by the new <code>_getInstallData</code> function. This function returns the GUID, version, and type of the item, and also an error code listing either success, or the reason for a failure, such as invalid GUID, version, or incompatible item.</p>
+
+<p>Depending on the failure, the Install function may take several steps. If the item is found incompatible, a Version Update check is performed as before. If updated compatibility information is found this is written into the in-memory representation of the the temporary Install Manifest and the Install function is called recursively, supplying this updated Install Manifest as the source for <code>_getInstallData</code>.</p>
+
+<p>If the item is determined compatible by either of the above processes, a copy of the item's file is staged into the Install Location directory under a hierarchy like so: <code>&lt;staged-xpis&gt;/guid/foo.xpi</code> (where foo.xpi is the original file name of the file) since XPInstall cleans up the file it supplies when the Install function returns. If the item is a Theme, we perform the installation immediately (thanks to Benjamin Smedberg's Chrome Registry changes this operation is now so simple that it can be performed by a function on the ExtensionManager, rather than creating a separate object).</p>
+
+<p>If the item is an Extension, we add it to the Extension container and set the same set of initial setup properties on it that we used to, with the addition of the <code>installLocation</code> key and the type value.</p>
+
+<p>At this stage we rewrite the <code>extensions-startup.manifest</code> and <code>extensions.ini</code> manifests and create the <code>.autoreg</code> file in the profile directory.</p>
+
+<h5 id="Finalization_2" name="Finalization_2">Finalization</h5>
+
+<p>On the next startup, the Startup system discovers the <code>.autoreg</code> file (as before) and starts the Extension System with the dirty flag, which causes the system to scan for items to be installed as before.</p>
+
+<p>Regardless of whether or not the Extension System is called from the Startup process with the dirty flag set to true (i.e. the Startup process discovered the <code>.autoreg</code> file, before pending operations are finalized the Extension System reads the <code>extensions-startup.manifest</code> and scans all of the Install Locations looking for items that match the following criteria:</p>
+
+<ol>
+ <li>Item in Install Location is <strong>not</strong> listed in Startup Manifest (new item being installed by just appearing in the Install Location).</li>
+ <li>Item in Install Location is listed in Startup Manifest, but its <strong>mtime is different</strong>. (Existing item in Install Location being upgraded).</li>
+ <li>Item in the Startup Manifest <strong>does not exist</strong> in the Install Location (item uninstalled by removing its folder or registry key).</li>
+ <li>XPI File that is not a staged XPI for a pending install operation has appeared in the Install Location.</li>
+</ol>
+
+<p>For case 1, the same registration steps performed during the<em>Initiation</em> steps of the install-from-file operation are now performed. The configuration sets up initial assertions in the datasource for the item, setting the "toBeInstalled" flag to tell the finalization function to fully register the item.</p>
+
+<p>See below for cases 2 and 3.</p>
+
+<p>If a non-staged XPI is detected, it is passed to the <code>installItemFromFile</code> function, which performs the initial registration so that when finalization routines run the item is properly installed.</p>
+
+<h3 id="Upgrades" name="Upgrades">Upgrades</h3>
+
+<p>When an item is installed (in any of the places described above, e.g. when an item is being installed from a XPI file from the web or from a drop in) the Extension System checks to see if there is an existing version installed, and if so a special routine is called which sets a <code>toBeUpgraded</code> flag on the configured item instead of the usual <code>toBeInstalled</code> flag. On the subsequent startup, this function causes metadata about the old version of the item to be completely removed from the Extensions datasource and the new data from the Install Manifest of the upgrade copied in, to avoid duplicate assertions. After the Upgrade finalization routine executes, it unsets the <code>toBeUninstalled</code> flag and sets the <code>toBeInstalled</code> flag to trigger the item's files to be replaced from the staged XPI.</p>
+
+<p>When an item's files are extracted, a special extraction routine known as a <code>safeInstallOperation</code> is performed. This function moves the existing item's folder to <code>{GUID}-trash</code> file-by-file, while maintaining a list of the files that are moved. If at any point during this move the move of an individual file fails, the process rolls back and the install is aborted. The extraction operation then proceeds into the now-clean <code>{GUID}</code> folder. If this operation fails, the entire operation is rolled back. At the end of the process once everything has succeeded the <code>{GUID}-trash</code> folder is removed.</p>
+
+<h3 id="Uninstallation" name="Uninstallation">Uninstallation</h3>
+
+<p>If an item is uninstalled via the UI (and has a <code>toBeUninstalled</code> flag set, its data is removed from the datasource and its files removed using a <code>safeInstallOperation</code> with no extraction function, i.e. the item's files are moved to <code>{GUID}-trash</code> and then deleted.</p>
+
+<p>If an item is uninstalled by removing its directory, the Extension startup process detects this prior to finalization and sets the <code>toBeUninstalled</code> flag so that the item's metadata is removed from the datasource.</p>
+
+<h4 id="Uninstall_and_Staggered_Install_Locations" name="Uninstall_and_Staggered_Install_Locations">Uninstall and Staggered Install Locations</h4>
+
+<p>If Item Foo 1.1 is installed in the user's profile directory Install Location, and Foo 1.0 is installed in the application directory Install Location, when the user uninstalls Foo 1.1, Foo 1.0 should become visible due to Install Location ordering. This allows the user to shield items installed at lower locations by installing items at higher locations.</p>
+
+<p>When an item is uninstalled, the Extension Manager checks the Startup Cache to see if there is another copy of the item installed at a lower Install Location. If there is one, then the item is uninstalled and an entry is added to the Pending Operations List that indicates the item at the lower Install Location needs to be installed.</p>
+
+<p>The install operation finalization process loops continuously installing, upgrading and uninstalling items at progressively lower locations until the size of the Pending Operations List is finally zero.</p>
+
+<h2 id="Little_Things_This_Upgrade_Fixes_or_Changes" name="Little_Things_This_Upgrade_Fixes_or_Changes">Little Things This Upgrade Fixes or Changes</h2>
+
+<p>It used to not be possible to move items in the Extension Manager UI up and down if there were items that were from two different Install Locations in the list - that is there were actually two RDF containers and ordering is unique to each. By moving to a unified datasource where Install Location containment is expressed as a property, user-defined ordering can be respected.</p>
+
+<p>Extension authors installing into restricted Install Locations can specify that their item does not show up in the Extensions UI by using the <code>&lt;em:hidden&gt;true&lt;em:hidden&gt;</code> property in their Install Manifests. This property is ignored for Extensions installed into unrestricted locations, such as the profile location, to prevent abuse.</p>
+
+<p>There is more logging for failures in the installation and update process. The set of error logs written is still neither perfect nor complete, but it's a very good start. Log strings are written to the application's error console (in anticipation of that API automatically logging to a file) and to the terminal window.</p>
+
+<p>We now check more effectively for system integrity during startup. We ask each Install Location if it is functioning (for a Directory Install location such as <code>app-profile</code> or <code>app-global</code> the location is functioning if it the directory exists. If any location is not functioning, or any of the manifests listed above does not exist, all manifests are removed and the system rebuilds everything from scratch. This should prevent against random file deletions and allow developers to easily reset their state by deleting one of the required system files.</p>
+
+<p>Since we can now install by simply detecting the presence of a {GUID} folder under the <code>app-profile</code> and <code>app-global</code> Install Locations, we no longer need <code>installed-extensions.txt</code> for registration of pre-configured items such as the default theme. The Firefox build system will just create the {GUID} folder for the default theme and place its Install Manifest inside, and on the first startup of the application it will be automatically registered.</p>
+
+<p>We drop support for the <code>-lock-item</code>/<code>-unlock-item</code> flags, as well as the <code>-list-global-items</code> flag.</p>
+
+<p>Messages that appear in the Extensions UI in response to user-actions such as install, uninstall, enable and disable are now driven by the Extensions datasource itself and are supplied by the <code>em:displayDescription</code> property, rather than being supplied by the front end and several different redundant XBL bindings/style rules.</p>
+
+<p>It is no longer possible to perform any operations on an item that has just been installed. Bugs in the command controller in the Extensions UI made this possible in Firefox 1.0 which could leave the user in bogus states.</p>
+
+<p>The <code>nsIExtensionManager</code> interface now has a single, unified set of installation/enabling interfaces:</p>
+
+<ul>
+ <li><code>void installItemFromFile(in nsIFile file, in string locationKey);</code></li>
+ <li><code>void uninstallItem(in string id);</code></li>
+ <li><code>void enableItem(in string id);</code></li>
+ <li><code>void disableItem(in string id);</code></li>
+</ul>
+
+<p>Uninstall logs are no longer written, since the item folder is removed completely on uninstall. Benjamin Smedberg's recent Chrome Registry changes made it unnecessary to have log entries for chrome registration, so the Uninstall log was only being used for file additions. This allows for the removal of the InstallLogReader/Writer objects in the Extension Manager.</p>
+
+<p>It is possible to order Install Locations using the priority property on an Install Location object. This determines whether or not an extension from one Install Location can "trump" the same Extension installed at a different Install Location.</p>
+
+<p>User action requested notifications are now sent with the <code>em-action-requested</code> topic through the observer service:</p>
+
+<dl>
+ <dt><code>item-installed</code> </dt>
+ <dd>An item has just been downloaded and configured for installation for the first time.</dd>
+ <dt><code>item-upgraded</code> </dt>
+ <dd>A new version of an installed item has been downloaded and configured for installation.</dd>
+ <dt><code>item-uninstalled</code> </dt>
+ <dd>An item has been configured for uninstallation.</dd>
+ <dt><code>item-enabled</code> </dt>
+ <dd>An item has been configured for enabling.</dd>
+ <dt><code>item-disabled</code> </dt>
+ <dd>An item has been configured for disabling.</dd>
+</dl>
+
+<h2 id="Things_This_Upgrade_Does_Not_Do" name="Things_This_Upgrade_Does_Not_Do">Things This Upgrade Does Not Do</h2>
+
+<h3 id="Replace_RDF.2FXML_as_a_Storage_Format" name="Replace_RDF.2FXML_as_a_Storage_Format">Replace RDF/XML as a Storage Format</h3>
+
+<p>The RDF/XML datasource back end creates unneccessary and undesirable complexity when saving data. It also makes it more difficult to support multiple instances of a single extension at different Install Locations due to the singleton nature of RDF resources. Extension metadata is structured and not relational in the sense encouraged by RDF, and so a simple text storage format is probably desirable. Making the database file format human readable would also help developers debug their installation problems.</p>
+
+<h2 id="Footnotes" name="Footnotes">Footnotes</h2>
+
+<ol>
+ <li>The term "Extension" is used in this document to imply any item managed by the Extension Manager, including themes.</li>
+ <li>The term "Firefox" is used in this document to imply any application built on XULRunner that uses the Extension System.</li>
+</ol>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): Ben Goodger</li>
+ <li>Last Updated Date: April 18, 2005</li>
+ <li>Copyright Information: Copyright (C) Ben Goodger</li>
+</ul>
+</div>
+
+<div class="noinclude"> </div>

@@ -1,0 +1,93 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>Find a specified property and retrieve its value.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">bool
+JS_GetProperty(JSContext *cx, JS::HandleObject obj, const char *name,
+               JS::MutableHandleValue vp);
+
+bool
+JS_GetUCProperty(JSContext *cx, JS::HandleObject obj,
+                 const char16_t *name, size_t namelen,
+                 JS::MutableHandleValue vp);
+
+bool
+JS_GetPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                   JS::MutableHandleValue vp); // Added in SpiderMonkey 1.8.1
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>A context. {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>Object to search on for the property.</td>
+  </tr>
+  <tr>
+   <td><code>name</code> <em>or</em> <code>id</code></td>
+   <td><code>const char *</code> <em>or</em> <code>const char16_t *</code> <em>or</em> {{jsapixref("jsid", "JS::HandleId")}}</td>
+   <td>Name of the property to look up.</td>
+  </tr>
+  <tr>
+   <td><code>namelen</code></td>
+   <td><code>size_t</code></td>
+   <td><em>(in <code>JS_GetUCProperty</code> only)</em> The length of <code>name</code>, in characters; or <code>-1</code> to indicate that <code>name</code> is null-terminated.</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("JS::Value", "JS::MutableHandleValue")}}</td>
+   <td>Out parameter. On success, <code>*vp</code> receives the current value of the property, or <code>undefined</code> if no such property is found.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS_GetProperty</code></strong> examines a specified JS object <code>obj</code> and its prototype chain for a property with the specified <code>name</code>. It behaves like the JavaScript expression <code>obj[name]</code>. <strong><code>JS_GetUCProperty</code></strong> is the Unicode version of the function. <strong><code>JS_GetPropertyById</code></strong> is the same but takes a {{jsapixref("jsid", "JS::HandleId")}} for the property name.</p>
+
+<p>In the simplest case, JS_GetProperty stores the value of the property in *vp and returns <code>true</code>. However, several different hooks can affect property gets. The full algorithm is described below.</p>
+
+<h3 id="Details">Details</h3>
+
+<p>First, a property lookup is performed. If the lookup proceeds without error, exactly one of the following cases applies:</p>
+
+<ul>
+ <li>If the property is not found, then <code>*vp</code> is set to <code>undefined</code>. Then the {{jsapixref("JSPropertyOp", "JSClass.getProperty")}} hook of <code>obj</code>'s class is called with the arguments <code>(cx, obj, id, vp)</code>. For many objects, including objects of standard classes such as <code>Object</code> and <code>Array</code>, this hook does nothing and returns <code>true</code>, so the property get succeeds and <code>undefined</code> is left in <code>*vp</code>.</li>
+ <li>If the property is found on a non-native object, get handler of {{jsxref("Proxy")}} (only if the object is a Proxy) or its {{jsapixref("JSObjectOps.getProperty")}} method is called.</li>
+ <li>Otherwise the property is found on a native object. If the property has a <a class="internal" href="/en/Core_JavaScript_1.5_Guide/Creating_New_Objects/Defining_Getters_and_Setters" title="en/Core JavaScript 1.5 Guide/Creating New Objects/Defining Getters and Setters">JavaScript getter</a>, it is called. Otherwise <code>*vp</code> is set to the property's {{jsapixref("Stored_value", "stored value", "", 1)}}, or <code>undefined</code> if the property does not have a stored value, and then the property's getter is called with the arguments <code>(cx, obj, id, vp)</code>. For many properties, the getter does nothing and returns <code>true</code>, so the property get succeeds and the property's stored value is left in <code>*vp</code>.</li>
+</ul>
+
+<p>Internally, property retrieval, including all the behavior described above, is implemented by <code>obj</code>'s {{jsapixref("JSObjectOps.getProperty")}} callback.</p>
+
+<p>On success, these functions set <code>*vp</code> to the current value of the property, or <code>undefined</code> if <code>obj</code> has no such property, and return <code>true</code>. On an error or exception, these functions return <code>false</code>, and the value left in <code>*vp</code> is undefined.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_GetProperty") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_GetUCProperty") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_GetPropertyById") }}</li>
+ <li><a href="/En/SpiderMonkey/JSAPI_Phrasebook#Getting_a_property" title="en/JSAPI_Phrasebook#Getting_a_property">Example in the JSAPI Phrasebook</a></li>
+ <li>{{jsapixref("JS_DefineProperty")}}</li>
+ <li>{{jsapixref("JS_DefinePropertyWithTinyId")}}</li>
+ <li>{{jsapixref("JS_DeleteProperty")}}</li>
+ <li>{{jsapixref("JS_DeleteProperty2")}}</li>
+ <li>{{jsapixref("JS_LookupProperty")}}</li>
+ <li>{{jsapixref("JS_PropertyStub")}}</li>
+ <li>{{jsapixref("JS_SetProperty")}}</li>
+ <li>{{bug(461163)}}</li>
+</ul>

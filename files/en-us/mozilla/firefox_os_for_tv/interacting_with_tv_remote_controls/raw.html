@@ -1,0 +1,172 @@
+<p class="summary" id="Interacting_with_TV_remote_controls">One of the most notable differences between phones and TVs is the available input mechanisms. In general, a TV doesn’t include a touch screen, so apps can’t be controlled by mouse events or touch events. Instead, your apps will probably need to be operated by button events sent by the TV when its remote control buttons are pressed. This article discusses the basics of how to develop appropriate control mechanisms for your TV app.</p>
+
+<h2 id="Focus">Focus</h2>
+
+<p>Focus is a major issue that needs to be highlighted when implementing controls for TV apps. It’s important to make sure that the focus is on the right element at all times, since you can’t touch elements in a TV app directly.</p>
+
+<p>When we decided to build B2G for Smart TVs, the first issue we solved was the UI controls — unlike a desktop computer of touchscreen phone, a TV generally has no touchscreen or mouse available. The experience is more like an older feature phone, or controlling web browsing on desktop with only the keyboard — you've got several buttons available on the TV remote control that can be used to provide input. We wanted to redesign the UI for B2G on TVs, and carefully considered the controls as part of this.</p>
+
+<h3 id="Spatial_navigation">Spatial navigation</h3>
+
+<p>Generally, such keyboard/button manipulation is called <a href="https://en.wikipedia.org/wiki/Spatial_navigation" id="docs-internal-guid-68ef0258-987c-0821-01a2-e6f9b05463cf" style="text-decoration: none;"><u>Spatial Navigation</u></a><span style="background-color: transparent; color: #000000; font-family: arial; font-size: 14.666666666666666px; font-style: normal; font-variant: normal; font-weight: 400; text-decoration: none; vertical-align: baseline;">. </span>Most people are quite familiar with this mechanism: we always use arrow keys to move around focusable elements on feature phones, and many games console browsers follow the same pattern; Android browsers (including Firefox for Android) generally have the same mechanism available.</p>
+
+<h3 id="Simple_spat_nav_in_Firefox_for_Android">Simple spat nav in Firefox for Android</h3>
+
+<p>To implement the mechanism, we first studied the existing implementation in Firefox for Android. The source code is quite <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/modules/SpatialNavigation.jsm" id="docs-internal-guid-68ef0258-987d-45a9-611f-58b876b8be5d" style="text-decoration: none;"><u>easy to find</u></a>, but unfortunately the functionality is too simple to be customized; it is an advanced “Tab” key switching function only. This is not a criticism: we understand that the purpose of supporting Spatial Navigation on Firefox for Android is to make sure every page is “basically workable.” In other words, Firefox for Android doesn’t have to optimize keyboard manipulation; developers rarely create web pages with TV optimization in mind.</p>
+
+<p>However, if we wanted to create TV apps with web technologies, such as the Home screen, Application List, EPG (Electronic program guide), Settings, and so on, “basically workable” is not enough. For example, let’s take a look at the Home screen on a Firefox OS TV.</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/13286/1.jpg" style="display: block; height: 389px; margin: 0px auto; width: 600px;"></p>
+
+<p>Based on the UX design, when a user is currently focusing on “Devices” app in the middle of the screen, the "Search" (magnifying glass) icon should be focused next after pressing the Up arrow key. According to the algorithm on Firefox for Android, however, the “Settings" (gear) icon to its right is the next focusing target. As another example, when “Search” is focused, pressing the Down arrow key should move the focus back to “Devices.” However, Gecko will (theoretically at least) always focuses on the nearest icon, which is not what we want.</p>
+
+<h3 id="Directional_focus_navigation">Directional focus navigation</h3>
+
+<p>To solve the issue, we turned to the <a href="https://drafts.csswg.org/css-ui/#intro">CSS Basic User Interface Module Level 3</a> — its <a href="https://drafts.csswg.org/css-ui/#nav-dir">Directional focus navigation</a> functionality is what we need. Let’s take a look at how this works:</p>
+
+<pre class="brush: css">button { position:absolute }
+
+button#b1 {
+  top:0; left:50%;
+  nav-right:#b2; nav-left:#b4;
+  nav-down:#b2; nav-up:#b4;
+}
+
+button#b2 {
+  top:50%; left:100%;
+  nav-right:#b3; nav-left:#b1;
+  nav-down:#b3; nav-up:#b1;
+}
+
+button#b3 {
+  top:100%; left:50%;
+  nav-right:#b4; nav-left:#b2;
+  nav-down:#b4; nav-up:#b2;
+}
+
+button#b4 {
+  top:50%; left:0;
+  nav-right:#b1; nav-left:#b3;
+  nav-down:#b1; nav-up:#b3;
+}</pre>
+
+<p>The draft defines four CSS properties: {{cssxref("nav-left")}}, {{cssxref("nav-right")}}, {{cssxref("nav-up")}}, and {{cssxref("nav-down")}}. With these properties, you can specify the next element that should be focused when you are focused on a certain element, and move in a certain direction with spatial navigation. Or you can specify <code>auto</code>, which hints to the browser to calculate the correct elements to move to. The specification also defines how to handle moving the focus to elements inside embedded frames.</p>
+
+<p>There is one problem here — the specification is still a draft, and is not yet implemented by most modern browsers (including Gecko).</p>
+
+<p>Even if this functionality was available, some secondary questions would still remain. Going back to the Home screen example, we can of course direct all apps to “Search” with nav-up. However, because the last focused app may vary, we cannot pre-define the <code>nav-down</code> property of "Search", for example. Moreover, if a modal dialog pops up on the screen, we should prevent the focus from moving out of the dialog even though the elements beneath are still visible.</p>
+
+<h2 id="A_JavaScript_solution_spatial_navigator.js">A JavaScript solution: spatial_navigator.js</h2>
+
+<p>The above constraints led us to using JavaScript to implement this functionality, and dynamically change the values of <code>nav-up</code>/<code>down</code>/<code>left</code>/<code>right</code> in different contexts. Prior to specifying elements' directional focus with JavaScript, we might need another API to retrieve focus elements based on the same algorithm as the <code>auto</code> value discussed above. Only with this API can we maintain consistancy when combining JavaScript interactions with CSS rules. Unfortunately, the API doesn’t exist yet ({{bug(449165)}}).</p>
+
+<p>Since we have to write some JavaScript code, why not imitate the aspects of <code>nav-*</code> and implement a library with pure JavaScript? In this way, web pages can support spatial navigation right away before the API is ready.</p>
+
+<p>We implemented a <a href="https://github.com/luke-chang/gaia/blob/master/shared/js/smart-screen/spatial_navigator.js" id="docs-internal-guid-68ef0258-98b5-7865-4894-5d00e77cfeba" style="text-decoration: none;"><u>spatial_navigator.js</u></a> library in the Gaia code base. For a currently focused element, this simple library calculates the nearest element in all four directions. We first applied the library to the TV Home screen, which was under development. During the testing iteration, we gradually improved its navigation algorithm to meet users’ expectations. For more information on the algorithm, please refer to the <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Firefox_OS/TV/TV_remote_control_navigation#Algorithm_design" id="docs-internal-guid-68ef0258-98b6-65af-47fe-7dcef1181462" style="text-decoration: none;"><u>MDN documentation</u></a><span style="background-color: transparent; color: #000000; font-family: arial; font-size: 14.666666666666666px; font-style: normal; font-variant: normal; font-weight: 400; text-decoration: none; vertical-align: baseline;">.</span></p>
+
+<p>Since this library was originally designed for Gaia only, it was not fully compatiable with other browsers due to usage of ES6 syntax and list dependency on Gaia libraries. Therefore, we came up with a refactoring plan to make it more cross-browser compatible — the result is the <a href="https://github.com/luke-chang/js-spatial-navigation" id="docs-internal-guid-68ef0258-98b7-0723-3b0b-31e7c00da31c" style="text-decoration: none;"><u>js-spatial-navigation library</u></a>.</p>
+
+<p>Briefly, js-spatial-navigation can be defined as a cross-browser wrapper for the navigating algorithm used in <code>spatial_navigator.js</code>.</p>
+
+<h3 id="A_simple_example">A simple example</h3>
+
+<p>Let's take a look at a basic example that demonstrates the simplest way of using js-spatial-navigation.</p>
+
+<p>To prepare our example page, let's add some elements into the <code>&lt;body&gt;&lt;/body&gt;</code> that we want to be navigable. We will add a <code>focusable</code> class to first two <code>&lt;div&gt;s</code> in order to seperate them from the unnavigable <code>&lt;div&gt;</code> element (the last one).</p>
+
+<pre class="brush: html">&lt;a href="#"&gt;Link 1&lt;/a&gt;
+&lt;a href="#"&gt;Link 2&lt;/a&gt;
+&lt;div class="focusable"&gt;Div 1&lt;/div&gt;
+&lt;div class="focusable"&gt;Div 2&lt;/div&gt;
+&lt;div&gt;This is not navigable&lt;/div&gt;</pre>
+
+<p>We need to define styling for each navigable element when focused, so users know which item they are focussing on. Because users are not using the mouse, we have to make the focused element extra easily-identifiable, or they will get lost easily after pressing an arrow key. The styling is as follows:</p>
+
+<pre class="brush: css">:focus {
+  outline: 2px solid red;
+}</pre>
+
+<p>After the preparation, we can start to set up js-spatial-navigation. The following example code works only if all navigable elements are rendered, so we recommend that you include this code in a <code>DOMContentLoaded</code> or <code>load</code> event handler.</p>
+
+<p>Now we can move on to implementing the JavaScript.</p>
+
+<ol>
+ <li>Initialize SpatialNavigation to bind the keyboard events, so it starts to react to the arrow keys.
+  <pre class="brush: js">SpatialNavigation.init();</pre>
+ </li>
+ <li>Define which elements are navigable. The example below demonstrates how to make all <code>&lt;a&gt;</code> elements and other elements containing the <code>focusable</code> class navigable. We add a rule via <code>SpatialNavigation.add()</code>. The <code>selector</code> property is used for filtering the elements you want to navigate. In addition to <code>selector</code>, you can also set other configuration items here. Please refer to <a href="https://github.com/luke-chang/js-spatial-navigation#configuration">this GitHub documentation</a> for more details.
+  <pre class="brush: js">SpatialNavigation.add({
+  selector: 'a, .focusable'
+});</pre>
+ </li>
+ <li><code>&lt;div&gt;</code> elements are not focusable by default — we have to assign a <code>tabindex</code> attribute. To save you the trouble of having to add these attributes manually, you can use the<code> SpatialNavigation.makeFocusable()</code> helper function:
+  <pre class="brush: js">SpatialNavigation.makeFocusable();</pre>
+ </li>
+ <li>Finally, you may want to assign an element that is initially focused when the app is first loaded. <code>SpatialNavigation.focus()</code> can accept an element as its first argument and focus it immediately. If you omit the argument, <code>SpatialNavigation</code> will focus the first navigable element matching the <code>selector</code> defined above.
+  <pre class="brush: js">SpatialNavigation.focus();</pre>
+ </li>
+</ol>
+
+<p>The complete code looks like this:</p>
+
+<pre class="brush: html">&lt;head&gt;
+  &lt;script src="spatial_navigation.js"&gt;&lt;/script&gt;
+  &lt;script&gt;
+    window.addEventListener('load', function() {
+      SpatialNavigation.init();
+      SpatialNavigation.add({
+        selector: 'a, .focusable'
+      });
+      SpatialNavigation.makeFocusable();
+      SpatialNavigation.focus();
+    });
+  &lt;/script&gt;
+  &lt;style&gt;
+    :focus {
+      outline: 2px solid red;
+    }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;a href="#"&gt;Link 1&lt;/a&gt;
+  &lt;a href="#"&gt;Link 2&lt;/a&gt;
+  &lt;div class="focusable"&gt;Div 1&lt;/div&gt;
+  &lt;div class="focusable"&gt;Div 2&lt;/div&gt;
+  &lt;div&gt;This is not navigable.&lt;/div&gt;
+&lt;/body&gt;</pre>
+
+<p>You can find <a href="http://luke-chang.github.io/js-spatial-navigation/demo/" id="docs-internal-guid-68ef0258-98b7-dd20-06d8-3998692b17c9" style="text-decoration: none;"><u>more examples on GitHub</u></a><span style="background-color: transparent; color: #000000; font-family: arial; font-size: 14.666666666666666px; font-style: normal; font-variant: normal; font-weight: 400; text-decoration: none; vertical-align: baseline;">.</span></p>
+
+<p>The library introduces the concept of "section", which can separate all focusable elements on the screen into different scopes and apply different navigating rules to each section. For example, modal dialogs can be an independent section with a limited navigation scope.</p>
+
+<h3 id="Other_uses">Other uses</h3>
+
+<p>As well as being used in the key built-in apps in the first version of Firefox OS TV, and being useful for building general web apps, we also used it in the following TV projects.</p>
+
+<h4 id="TV_marketplace">TV marketplace</h4>
+
+<p>The <a href="https://marketplace.firefox.com/tv/" id="docs-internal-guid-68ef0258-98b8-5ad0-18f6-4b22e59d1af8" style="text-decoration: none;"><u>TV-specific marketplace website</u></a> uses our spatial navigation library to implement the keyboard navigation. Because the library is cross-browser compatiable, you can navigate it with various desktop browsers smoothly.</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/13288/2.png" style="display: block; height: 337px; margin: 0px auto; width: 600px;"></p>
+
+<h4 id="TV_settings_app">TV settings app</h4>
+
+<p>Meanwhile, for developing and testing purposes, we reworked the Firefox OS phone Settings App to correctly work on TV before building the TV-specific version, using js-spatial-navigation for the controls. The following video shows the real interactions. You can also experience it by checking out Gaia master branch and building the TV profile on your own computer.</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/13290/3.gif" style="display: block; height: 338px; margin: 0px auto; width: 600px;"></p>
+
+<h4 id="A_Youtube_prototype">A "Youtube" prototype?</h4>
+
+<p>During development, we tested the library out by imitating the UIs of existing TV optimized websites — this is helpful for discovering shortcomings so we can improve on them and make the library better. The following is a Youtube TV UI-like demo page (not completed yet). You can find the <a href="https://github.com/luke-chang/js-spatial-navigation/blob/demo_3.2/demo/3.2_like_youtube_tv.html" id="docs-internal-guid-68ef0258-98b9-4372-5868-b7072525e84d" style="text-decoration: none;"><u>source code here</u></a>.</p>
+
+<p><img alt="" src="https://mdn.mozillademos.org/files/13292/4.gif" style="display: block; height: 405px; margin: 0px auto; width: 600px;"></p>
+
+<h2 id="Conclusion">Conclusion</h2>
+
+<p>We believe JavaScript-based spatial navigation is just transitional functionality. In the long term, browsers should natively support Spatial Navigation-related APIs. For now, we have made <a href="https://github.com/luke-chang/js-spatial-navigation" id="docs-internal-guid-68ef0258-98b7-0723-3b0b-31e7c00da31c" style="text-decoration: none;"><u>js-spatial-navigation</u></a> available to help anyone with similar problems to ours. The library still has a long way to go; if you have any ideas or feedback, or wish to contribute to the project, please get in touch with: <a href="https://github.com/luke-chang/js-spatial-navigation">https://github.com/luke-chang/js-spatial-navigation</a>.</p>
+
+<p>For more information and example code, please refer to the <a href="https://developer.mozilla.org/en-US/docs/Mozilla/Firefox_OS_for_TV/TV_remote_control_navigation" id="docs-internal-guid-68ef0258-98b9-7d7d-2ad6-e096c4c4c43e" style="text-decoration: none;"><u>Implementing TV remote control navigation</u></a> documentation on MDN.</p>
+
+<div class="note">
+<p><strong>Note</strong>: TV remote control keys are defined in the W3C <em>DOM Level 3 KeyboardEvent key Values</em> spec; see the <a href="http://www.w3.org/TR/DOM-Level-3-Events-key/#keys-media-controller">Media Controller Keys</a> section.</p>
+</div>

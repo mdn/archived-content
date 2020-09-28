@@ -1,0 +1,103 @@
+<p></p><section class="Quick_links" id="Quick_Links"><ol><li><strong><a href="/en-US/docs/Mozilla/Firefox_OS/API/WiFi_Information_API">WiFi Information API</a></strong></li><li><strong><a href="/en-US/docs/Mozilla/Firefox_OS/API/Archive"><code>Archive</code></a></strong></li><li data-default-state="open"><a href="#"><strong>Events</strong></a><ol><li><a href="/en-US/docs/Web/Events/statuschange"><code>statuschange</code></a></li><li><a href="/en-US/docs/Web/Events/connectioninfoupdate"><code>connectioninfoupdate</code></a></li></ol></li><li data-default-state="open"><a href="#"><strong>Related pages for WiFi Information API</strong></a><ol><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiCapabilities"><code>MozWifiCapabilities</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiConnection"><code>MozWifiConnection</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiConnectionInfo"><code>MozWifiConnectionInfo</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiConnectionInfoEvent"><code>MozWifiConnectionInfoEvent</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiManager"><code>MozWifiManager</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiNetwork"><code>MozWifiNetwork</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiStationChangeEvent"><code>MozWifiStationChangeEvent</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/MozWifiStatusChangeEvent"><code>MozWifiStatusChangeEvent</code></a></li><li><a href="/en-US/docs/Mozilla/Firefox_OS/API/WifiManager"><code>WifiManager</code></a></li></ol></li></ol></section><div class="warning">
+    <p style="text-align: center;">This API is available on <a href="/en-US/docs/Mozilla/Firefox_OS">Firefox OS</a> for <a href="/en-US/docs/Mozilla/Firefox_OS/Security/Application_security#App_Types">internal applications</a> only.</p>
+</div><p></p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>The <code>wps</code> method is used to handle a <a href="http://en.wikipedia.org/wiki/Wi-Fi_Protected_Setup" title="http://en.wikipedia.org/wiki/Wi-Fi_Protected_Setup">WPS</a> connection with networks supporting that feature.</p>
+
+<p>A network supporting a WPS connection has the string <code>WPS</code> available within the <a href="/en-US/docs/Web/API/WifiManager/capabilities" title="The documentation about this has not yet been written; please consider contributing!"><code>WifiManager.capabilities</code></a> Array.</p>
+
+<p>A <a class="external" href="http://en.wikipedia.org/wiki/Wi-Fi_Protected_Setup" title="http://en.wikipedia.org/wiki/Wi-Fi_Protected_Setup">WPS connection</a> is a simpler way to connect a device to a network. It requires less knowledge from the user and makes things easier for him. Basically, when a user has a WPS-enabled WiFi router, he can choose that method to connect his device to the network instead of typing its password.</p>
+
+<p>There are two ways of initiating a WPS connection up to the user:</p>
+
+<ul>
+ <li>The easiest one is by pressing a dedicated button on the WiFi router.</li>
+ <li>An alternative is by entering a PIN number provided by the WiFi router. There are two use cases here:
+  <ol>
+   <li>The WiFi router will send a PIN number to the device and the user has to type it on the WiFi router interface.</li>
+   <li>The WiFi router expects the user to type a PIN number on his device (usually, such a PIN number is displayed on the WiFi router itself).</li>
+  </ol>
+ </li>
+</ul>
+
+<h2 id="Syntax">Syntax</h2>
+
+<pre>var request = navigator.mozWifiManager.wps(param);</pre>
+
+<h3 id="Parameters">Parameters</h3>
+
+<dl>
+ <dt>param</dt>
+ <dd>A configuration object with the following properties:
+ <ul>
+  <li><code>method</code>: A string, one of the following:
+   <ul>
+    <li><code>cancel</code> to abort a WPS connection attempt.</li>
+    <li><code>pbs</code> to try a connection by pushing the physical button on the WiFi router.</li>
+    <li><code>pin</code> to try a connection with a pin number.</li>
+   </ul>
+  </li>
+  <li><code>bssid</code>: A string representing the bssid of the network to connect to. It is mandatory if the <code>method</code> property is set to <code>pin</code>.</li>
+  <li><code>pin</code>: A string representing the pin number typed by the user. It is mandatory if the <code>method</code> property is set to <code>pin</code> and the user had to type the pin on his device.</li>
+ </ul>
+ </dd>
+</dl>
+
+<h3 id="Returns">Returns</h3>
+
+<p>It returns a <a href="https://developer.mozilla.org/en-US/docs/Web/API/DOMRequest" title="/en-US/docs/Web/API/DOMRequest"><code>DOMRequest</code></a> to handle the success or error of the operation.</p>
+
+<p>When the <code>method</code> property is set to <code>pin</code>, if the operation is successful and if the user must type a pin number on his WiFi router interface, the request's <code>result</code> is a string representing the PIN number to type.</p>
+
+<h2 id="Example">Example</h2>
+
+<pre class="brush: js">var wifi = navigator.mozWifiManager;
+
+var request = wifi.getNetworks();
+
+request.onsuccess = function () {
+  // Let's get the first network
+  var network = this.result[0];
+  var isWPSEnabled = network.capabilities.indexOf('WPS') &gt; -1;
+  var wpsRequest;
+
+  if (isWPSEnabled) {
+    if (comfirm('Do you want to use the push button to connect your device?')) {
+      wpsRequest = wifi.wps({
+        method : 'pbs'
+      });
+    }
+
+    else if (confirm('Do you want to type a PIN number on your WiFI router interface?')){
+      wpsRequest = wifi.wps({
+        method : 'pin',
+        bssid  : network.bssid
+      })
+
+      wpsRequest.onsuccess = function () {
+        alert('Please, type that number on your WiFi router interface: ' + this.result)
+      }
+    }
+
+    else {
+      wpsRequest = wifi.wps({
+        method : 'pin',
+        bssid  : network.bssid
+        pin    : prompt('Please, provide the PIN number of your WiFi router.')
+      })
+    }
+  }
+}</pre>
+
+<h2 id="Specification" name="Specification">Specification</h2>
+
+<p>Not part of any specification.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/API/WifiManager" title="The documentation about this has not yet been written; please consider contributing!"><code>WifiManager</code></a></li>
+ <li>The <a href="/en-US/docs/WebAPI/WiFi_Information" title="/en-US/docs/WebAPI/WiFi_Information">WifI Information API</a></li>
+</ul>

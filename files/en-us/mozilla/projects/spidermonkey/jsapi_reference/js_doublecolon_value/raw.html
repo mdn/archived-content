@@ -1,0 +1,155 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p><strong><code>JS::Value</code></strong> is the type of JavaScript values in the JSAPI.</p>
+</div>
+
+<p>A C++ variable of type <code>JS::Value</code> represents a value in JavaScript: a string, number, object (including arrays and functions), boolean, symbol, <code>null</code>, or <code>undefined</code>.</p>
+
+<p><code>JS::Value</code> is a class whose internal structure is an implementation detail. Embeddings should not rely on observed representation details or upon the size of <code>JS::Value</code>.</p>
+
+<p>The data in a <code>JS::Value</code> can be accessed using these member functions:</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>JS type</th>
+   <th><code>JS::Value</code> type tests</th>
+   <th>Constructor</th>
+   <th>Accessors</th>
+   <th>Mutators</th>
+  </tr>
+  <tr>
+   <td><code>null</code></td>
+   <td><code>val.isNull()</code></td>
+   <td>{{jsapixref("JS::NullValue", "JS::NullValue()")}}</td>
+   <td>N/A</td>
+   <td><code>val.setNull()</code></td>
+  </tr>
+  <tr>
+   <td><code>undefined</code></td>
+   <td><code>val.isUndefined()</code></td>
+   <td>{{jsapixref("JS::UndefinedValue", "JS::UndefinedValue()")}}</td>
+   <td>N/A</td>
+   <td><code>val.setUndefined()</code></td>
+  </tr>
+  <tr>
+   <td>boolean</td>
+   <td><code>val.isBoolean()</code>, <code>val.isTrue(), val.isFalse()</code></td>
+   <td>{{jsapixref("JS::BooleanValue", "JS::BooleanValue(bool)")}}, {{jsapixref("JS::TrueValue", "JS::TrueValue()")}}, {{jsapixref("JS::FalseValue", "JS::FalseValue()")}}</td>
+   <td><code>val.toBoolean()</code></td>
+   <td><code>val.setBoolean(bool)</code></td>
+  </tr>
+  <tr>
+   <td>number</td>
+   <td><code>val.isInt32()</code>, <code>val.isDouble(), val.isNumber()</code></td>
+   <td>{{jsapixref("JS::NumberValue", "JS::NumberValue(any number type)")}}, {{jsapixref("JS::Int32Value", "JS::Int32Value(int32_t)")}}, {{jsapixref("JS::DoubleValue", "JS::DoubleValue(double)")}}, {{jsapixref("JS::Float32Value", "JS::Float32Value(float)")}}</td>
+   <td><code>val.toInt32()</code>, <code>val.toDouble()</code>, <code>val.toNumber()</code></td>
+   <td><code>val.setInt32(int32_t)</code>, <code>val.setNumber(uint32_t)</code>, <code>val.setNumber(double)</code></td>
+  </tr>
+  <tr>
+   <td>string</td>
+   <td><code>val.isString()</code></td>
+   <td>{{jsapixref("JS::StringValue", "JS::StringValue(JSString*)")}}</td>
+   <td><code>val.toString()</code></td>
+   <td><code>val.setString(JSString *)</code></td>
+  </tr>
+  <tr>
+   <td>object</td>
+   <td><code>val.isObject()</code></td>
+   <td>{{jsapixref("JS::ObjectValue", "JS::ObjectValue(JSObject&amp;)")}}, {{jsapixref("JS::ObjectOrNullValue", "JS::ObjectOrNullValue(JSObject*)")}}</td>
+   <td><code>val.toObject()</code></td>
+   <td><code>val.setObject(JSObject &amp;)</code></td>
+  </tr>
+  <tr>
+   <td>symbol</td>
+   <td><code>val.isSymbol()</code></td>
+   <td>{{jsapixref("JS::SymbolValue", "JS::SymbolValue(JS::Symbol*)")}}</td>
+   <td><code>val.toSymbol()</code></td>
+   <td><code>val.setSymbol(JS::Symbol &amp;)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Numbers are stored in a <code>JS::Value</code> either as a <code>double</code> or as an <code>int32_t</code>. The different representations are visible using the separate int32/double methods but do not affect observable semantics (ignoring performance). The number mutators attempt to use <code>int32_t</code> representation for compatible input values, returning <code>true</code> when <code>int32</code> could be used and <code>false</code> when <code>double</code> representation was required. Any <code>double</code> value may be stored in a <code>JS::Value</code>, in one of these two representations. The only exception is that only a single <code>NaN</code> value can be represented. (Note that both <code>-0</code> and <code>+0</code> are allowed, and the latter may sometimes be stored using the <code>int32_t</code> representation.)</p>
+
+<p><code>JS::Value</code> further provides these methods combining various aspects of the above methods:</p>
+
+<ul>
+ <li>{{jsapixref("JS::ObjectOrNullValue", "JS::ObjectOrNullValue(JSObject*)")}} returns an object value corresponding to the given non-null pointer, or a <code>null</code> value if the pointer is null.</li>
+ <li><code>val.setObjectOrNull(JSObject *)</code> sets the given value to the specified object, or to <code>null</code> if the pointer was null.</li>
+ <li><code>val.isObjectOrNull()</code> returns <code>true</code> if the value is either an object or <code>undefined</code>.</li>
+ <li>Correspondingly, <code>val.toObjectOrNull()</code> returns a non-null <code>JSObject *</code> if the value is an object, and <code>NULL</code> if the value is <code>null</code>.</li>
+ <li><code>val.isPrimitive()</code> returns <code>true</code> if the value is a primitive value -- that is, not an object. It is equivalent to <code>!val.isObject()</code>.</li>
+ <li><code>val.isNullOrUndefined()</code> returns <code>true</code> if the value is either <code>null</code> or <code>undefined</code>.</li>
+ <li><code>val.isGCThing()</code> returns <code>true</code> if a JS value has a type that is subject to garbage collection.</li>
+</ul>
+
+<p>The are two major issues to be aware of when using <code>JS::Value</code>.</p>
+
+<dl>
+ <dt><code>JS::Value</code> is not inherently type-safe</dt>
+ <dd>It is an error to call any accessor method on a value of a non-matching type: <code>val.toInt32()</code> must only be called if <code>val.isInt32()</code>, <code>val.toString()</code> must only be called if <code>val.isString()</code>, and so on.</dd>
+ <dd>In particular, note that <strong>it is an error to call <code>val.toObject()</code> when <code>val.isNull()</code></strong>. The now-deprecated <code>jsval</code> methods allowed <code>JSVAL_TO_OBJECT(val)</code> when <code>JSVAL_IS_NULL(val)</code>, but this was a source of constant bugs. <strong><code>val.toObject()</code> is only permitted when <code>val.isObject()</code>.</strong> An assertion is thrown in the case that the type is not correct (<code>val.isX()</code> is called for each <code>val.toX()</code>, where <code>X</code> is the type).</dd>
+ <dd><strong>It is highly recommended that you develop and test with an <code>--enable-debug</code> build to detect most <code>JS::Value</code> misuse.</strong> Debug builds will assert correct JSAPI use in many other instances as well.</dd>
+ <dt><code>JS::Value</code> is subject to garbage collection</dt>
+ <dd>A <code>JS::Value</code> can refer to a string or object located in SpiderMonkey's garbage-collected heap.</dd>
+ <dd>The garbage collector is designed to automatically free unreachable memory. It is rather eager about its job. It's like a robot that goes around picking up everything that isn't nailed down and putting it in the trash. If an application has a <code>JS::Value</code> variable that refers to a <code>JSObject</code>, the garbage collector might not know you're using the <code>JSObject</code>. So it might free it, leaving a dangling pointer. The solution is to tell SpiderMonkey that you're using the object, then tell it again when you're done.</dd>
+ <dd>In short, every <code>JS::Value</code> must be <em>rooted</em> or your program will randomly crash. In some places, SpiderMonkey provides already-rooted <code>JS::Value</code>s which you can use for variables. See <a href="/SpiderMonkey/GC_Rooting_Guide" title="en/SpiderMonkey_Garbage_Collection_Tips">SpiderMonkey GC Rooting Guide</a>.</dd>
+</dl>
+
+<h3 id="jsval_is_not_particularly_type-safe" name="jsval_is_not_particularly_type-safe"><code>The jsval</code> <code>typedef</code> for <code>JS::Value</code></h3>
+
+<p><code>JS::Value</code> was historically known in the JSAPI as <code>jsval</code>. SpiderMonkey 1.8.5 made <code>jsval</code> into a C <code>struct</code> and exposed it in C++ through the full-fledged <code>JS::Value</code> class. As of SpiderMonkey 17, <code>jsval</code> is a <code>typedef</code> of <code>JS::Value</code>, and SpiderMonkey is gradually transitioning to a new C++ JSAPI, at whose heart lies <code>JS::Value</code>.</p>
+
+<p><code>jsval</code> is deprecated; new code should use <code>JS::Value</code>. The old <code>JSVAL_IS_*</code> methods, <code>JSVAL_*</code> constants and <code>*_TO_JSVAL</code> methods, and <code>JSVAL_TO_*</code> methods are also deprecated; uses of each should be replaced with use of the corresponding <code>val.is*()</code>, <code>*Value()</code>, and <code>val.to*()</code> methods.</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>JS type</th>
+   <th><code>jsval</code> type tests</th>
+   <th><code>jsval</code> constants and constructors</th>
+   <th><code>jsval</code> accessors</th>
+  </tr>
+  <tr>
+   <td><code>null</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_NULL" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_NULL">JSVAL_IS_NULL</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_NULL" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_NULL">JSVAL_NULL</a></code></td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td><code>undefined</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_VOID" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_VOID">JSVAL_IS_VOID</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_VOID" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_VOID">JSVAL_VOID</a></code></td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>boolean</td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_BOOLEAN" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_BOOLEAN">JSVAL_IS_BOOLEAN</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TRUE" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TRUE">JSVAL_TRUE</a></code>, <code><a href="/en/JSVAL_FALSE" title="en/JSVAL_FALSE">JSVAL_FALSE</a></code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/BOOLEAN_TO_JSVAL" title="en/SpiderMonkey/JSAPI_Reference/BOOLEAN_TO_JSVAL">BOOLEAN_TO_JSVAL</a>(b)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_BOOLEAN" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_BOOLEAN">JSVAL_TO_BOOLEAN</a>(v)</code></td>
+  </tr>
+  <tr>
+   <td>number</td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_NUMBER" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_NUMBER">JSVAL_IS_NUMBER</a>(v)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_INT" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_INT">JSVAL_IS_INT</a>(v)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_DOUBLE" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_DOUBLE">JSVAL_IS_DOUBLE</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_ZERO" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_ZERO">JSVAL_ZERO</a></code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_ONE" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_ONE">JSVAL_ONE</a></code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/INT_TO_JSVAL" title="en/SpiderMonkey/JSAPI_Reference/INT_TO_JSVAL">INT_TO_JSVAL</a>(i)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/DOUBLE_TO_JSVAL" title="en/SpiderMonkey/JSAPI_Reference/DOUBLE_TO_JSVAL">DOUBLE_TO_JSVAL</a>(d)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_INT" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_INT">JSVAL_TO_INT</a>(v)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_DOUBLE" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_DOUBLE">JSVAL_TO_DOUBLE</a>(v)</code></td>
+  </tr>
+  <tr>
+   <td>string</td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_STRING" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_STRING">JSVAL_IS_STRING</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/STRING_TO_JSVAL" title="en/SpiderMonkey/JSAPI_Reference/STRING_TO_JSVAL">STRING_TO_JSVAL</a>(str)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_STRING" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_STRING">JSVAL_TO_STRING</a>(v)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringChars" title="en/SpiderMonkey/JSAPI_Reference/JS_GetStringChars">JS_GetStringChars</a>(str)</code>, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringLength" title="en/SpiderMonkey/JSAPI_Reference/JS_GetStringLength">JS_GetStringLength</a>(str)</code></td>
+  </tr>
+  <tr>
+   <td>object</td>
+   <td><code>!<a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_OBJECT" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_IS_PRIMITIVE">JSVAL_IS_PRIMITIVE</a>(v)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/OBJECT_TO_JSVAL" title="en/SpiderMonkey/JSAPI_Reference/OBJECT_TO_JSVAL">OBJECT_TO_JSVAL</a>(obj)</code></td>
+   <td><code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_OBJECT" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_OBJECT">JSVAL_TO_OBJECT</a>(v)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<p><br>
+ There was also a further method, <code><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSVAL_IS_OBJECT" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JSVAL_IS_OBJECT">JSVAL_IS_OBJECT</a>(v)</code>, which did not what you would expect -- return <code>true</code> if the value was an object -- but rather returned true if the value was an object <em>or if it was <code>null</code></em>. These confusing semantics led to this method being removed from the JSAPI in more recent releases, but older code might still use it. Uses of this method should be replaced with <code>v.isObjectOrNull()</code>.</p>

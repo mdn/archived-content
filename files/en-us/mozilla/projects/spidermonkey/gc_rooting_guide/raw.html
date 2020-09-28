@@ -1,0 +1,374 @@
+<div>{{SpiderMonkeySidebar("General")}}</div>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>This guide explains the basics of interacting with SpiderMonkey's <a href="#defineGC" title="#defineGC">GC</a> as a SpiderMonkey API user.  Since SpiderMonkey has a moving GC, it is very important that it knows about each and every pointer to a GC thing in the system.  SpiderMonkey's rooting API tries to make this task as simple as possible.</p>
+
+<h2 id="What_is_a_GC_thing_pointer">What is a GC thing pointer?</h2>
+
+<p>"GC thing" is the term used to refer to memory allocated and managed by the SpiderMonkey garbage collector.  The main types of GC thing pointer are:</p>
+
+<ul>
+ <li>JS::Value</li>
+ <li>JSObject*</li>
+ <li>JSString*</li>
+ <li>JSScript*</li>
+ <li>jsid</li>
+</ul>
+
+<p>Note that JS::Value and jsid can contain pointers internally even though they are not a normal pointer type, hence their inclusion in this list.</p>
+
+<p>If you use these types directly, or create classes, structs or arrays that contain them, you must follow the rules set out in this guide.  If you do not your program will not work correctly - if it works at all.</p>
+
+<h2 id="GC_things_on_the_stack">GC things on the stack</h2>
+
+<h3 id="JSRooted&lt;T>">JS::Rooted&lt;T&gt;</h3>
+
+<p>All GC thing pointers stored <strong>on the stack</strong> (i.e., local variables and parameters to functions) must use the <code>JS::Rooted&lt;T&gt;</code> class.  This is a template class where the template parameter is the type of the GC thing it contains.  From the user perspective, a <code>JS::Rooted&lt;T&gt;</code> instance behaves exactly as if it were the underlying pointer.</p>
+
+<p><code>JS::Rooted</code> must be constructed with a <code>JSContext*</code>, and optionally an initial value.</p>
+
+<p>There are typedefs available for the main types. Within SpiderMonkey, it is suggested that these are used in preference to the template class (Gecko uses the template versions):</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Template class</th>
+   <th scope="col">Typedef</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>JS::Rooted&lt;JS::Value&gt;</td>
+   <td>JS::RootedValue</td>
+  </tr>
+  <tr>
+   <td>JS::Rooted&lt;JSObject*&gt;</td>
+   <td>JS::RootedObject</td>
+  </tr>
+  <tr>
+   <td>JS::Rooted&lt;JSString*&gt;</td>
+   <td>JS::RootedString</td>
+  </tr>
+  <tr>
+   <td>JS::Rooted&lt;JSScript*&gt;</td>
+   <td>JS::RootedScript</td>
+  </tr>
+  <tr>
+   <td>JS::Rooted&lt;jsid&gt;</td>
+   <td>JS::RootedId</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>For example, instead of this:</p>
+
+<pre>JSObject* localObj = JS_GetObjectOfSomeSort(cx);</pre>
+
+<p>You would write this:</p>
+
+<pre>JS::RootedObject localObj(cx, JS_GetObjectOfSomeSort(cx));
+</pre>
+
+<p>SpiderMonkey makes it easy to remember to use <code>JS::Rooted&lt;T&gt;</code> types instead of a raw pointer because all of the API methods that may GC take a <code>JS::Handle&lt;T&gt;</code>, as described below, and <code>JS::Rooted&lt;T&gt;</code> autoconverts to <code>JS::Handle&lt;T&gt;</code> but a bare pointer does not.</p>
+
+<h3 id="JSHandle&lt;T>">JS::Handle&lt;T&gt;</h3>
+
+<p>All GC thing pointers that are parameters to a function must be wrapped in <code>JS::Handle&lt;T&gt;</code>. A <code>JS::Handle&lt;T&gt;</code> is a reference to a <code>JS::Rooted&lt;T&gt;</code>, and is created implicitly by referencing a <code>JS::Rooted&lt;T&gt;</code>: It is not valid to create a <code>JS::Handle&lt;T&gt;</code> manually (the whole point of a Handle is that it only reference pointers that the GC knows about so it can update them when they move). Like <code>JS::Rooted&lt;T&gt;</code>, a <code>JS::Handle&lt;T&gt;</code> can be used as if it were the underlying pointer.</p>
+
+<p>Since only a <code>JS::Rooted&lt;T&gt;</code> will cast to a <code>JS::Handle&lt;T&gt;</code>, the compiler will enforce correct rooting of any parameters passed to a function that may trigger GC. <code>JS::Handle&lt;T&gt;</code> exists because creating and destroying a <code>JS::Rooted&lt;T&gt;</code> is not free (though it only costs a few cycles). Thus, it makes more sense to only root the GC thing once and reuse it through an indirect reference. Like a reference, a <code>JS::Handle</code> is immutable: it can only ever refer to the <code>JS::Rooted&lt;T&gt;</code> that it was created for.</p>
+
+<p>Similarly to <code>JS::Rooted&lt;T&gt;</code>, there are typedefs available for the main types:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Template class</th>
+   <th scope="col">Typedef</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>JS::Handle&lt;JS::Value&gt;</td>
+   <td>JS::HandleValue</td>
+  </tr>
+  <tr>
+   <td>JS::Handle&lt;JSObject*&gt;</td>
+   <td>JS::HandleObject</td>
+  </tr>
+  <tr>
+   <td>JS::Handle&lt;JSString*&gt;</td>
+   <td>JS::HandleString</td>
+  </tr>
+  <tr>
+   <td>JS::Handle&lt;JSScript*&gt;</td>
+   <td>JS::HandleScript</td>
+  </tr>
+  <tr>
+   <td>JS::Handle&lt;jsid&gt;</td>
+   <td>JS::HandleId</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>You should use <code>JS::Handle&lt;T&gt;</code> for all function parameters taking GC thing pointers (except out-parameters, which are described below).  For example, instead of:</p>
+
+<pre>JSObject *
+someFunction(JSContext *cx, JSObject* obj) {
+    // ...
+}
+</pre>
+
+<p>You should write:</p>
+
+<pre>JSObject *
+someFunction(JSContext *cx, JS::HandleObject obj) {
+    // ...
+}
+</pre>
+
+<h3 id="JSMutableHandle&lt;T>">JS::MutableHandle&lt;T&gt;</h3>
+
+<p>All GC thing pointers that are used as out-parameters must be wrapped in a <code>JS::MutableHandle&lt;T&gt;</code>. A <code>JS::MutableHandle&lt;T&gt;</code> is a reference to a <code>JS::Rooted&lt;T&gt;</code> that, unlike a normal handle, may modify the underlying <code>JS::Rooted&lt;T&gt;</code>. All <code>JS::MutableHandle&lt;T&gt;</code>s are created through an explicit "&amp;" - address of operator - on a <code>JS::Rooted&lt;T&gt;</code> instance. <code>JS::MutableHandle&lt;T&gt;</code> is exactly like a <code>JS::Handle&lt;T&gt;</code> except that it adds a <code>.set(T &amp;t)</code> method and must be created from a <code>JS::Rooted&lt;T&gt;</code> explicitly.</p>
+
+<p>There are typedefs for <code>JS::MutableHandle&lt;T&gt;</code>, the same as for the other templates:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Template class</th>
+   <th scope="col">Typedef</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>JS::MutableHandle&lt;JS::Value&gt;</td>
+   <td>JS::MutableHandleValue</td>
+  </tr>
+  <tr>
+   <td>JS::MutableHandle&lt;JSObject*&gt;</td>
+   <td>JS::MutableHandleObject</td>
+  </tr>
+  <tr>
+   <td>JS::MutableHandle&lt;JSString*&gt;</td>
+   <td>JS::MutableHandleString</td>
+  </tr>
+  <tr>
+   <td>JS::MutableHandle&lt;JSScript*&gt;</td>
+   <td>JS::MutableHandleScript</td>
+  </tr>
+  <tr>
+   <td>JS::MutableHandle&lt;jsid&gt;</td>
+   <td>JS::MutableHandleId</td>
+  </tr>
+ </tbody>
+</table>
+
+<p><code>JS::MutableHandle&lt;T&gt;</code> should be used for all out-parameters, for example instead of:</p>
+
+<pre>bool
+maybeGetValue(JSContext *cx, JS::Value* valueOut) {
+    // ...
+    if (!wasError)
+        *valueOut = resultValue;
+    return wasError;
+}
+
+void
+otherFunction(JSContext *cx) {
+    JS::Value value;
+    bool success = maybeGetValue(cx, &amp;value);
+    // ...
+}
+</pre>
+
+<p>You should write:</p>
+
+<pre>bool
+maybeGetValue(JSContext *cx, JS::MutableHandleValue valueOut) {
+    // ...
+    if (!wasError)
+        valueOut.set(resultValue);
+    return wasError;
+}
+
+void
+otherFunction(JSContext *cx) {
+    JS::RootedValue value(cx);
+    bool success = maybeGetValue(cx, &amp;value);
+    // ...
+}</pre>
+
+<h3 id="Return_values">Return values</h3>
+
+<p>It's ok to return raw pointers!  These do not need to be wrapped in any of rooting classes, but they should be immediately used to initialize a <code>JS::Rooted&lt;T&gt;</code> if there is any code that could GC before the end of the containing function; a raw pointer must never be stored on the stack during a GC.</p>
+
+<p>One rare but especially tricky case to watch out for is where an RAII destructor could GC in a function that is returning a bare pointer. Consider:</p>
+
+<pre>JSObject*
+someFunction(JSContext* cx) {
+    JS::Rooted&lt;JSObject*&gt; obj(cx, foo());
+    EventLogger logger(cx);
+    ...code...
+    return obj;
+}
+</pre>
+
+<p>Say that ~EventLogger constructs some sort of object in its destructor, which could trigger a GC. What will happen is that the return statement will pull the bare JSObject* out of the rooted obj variable and either put it in the stack or store it in the return value register. Then ~EventLogger will fire and trigger a GC, invalidating that unrooted stack/register pointer. This scenario is rare but very difficult to notice manually, and will probably be caught by the static rooting hazard analysis. There are two different approaches to resolving this; use whichever better fits your situation:</p>
+
+<pre>void
+someFunction(JSContext* cx, JS::MutableHandleObject obj) {
+    EventLogger(cx);
+    ...code...
+    obj.set(foo());
+}
+</pre>
+
+<p>(note that the above should probably check the return value and propagate an error on null), or:</p>
+
+<pre>JSObject*
+someFunction(JSContext* cx) {
+    JS::Rooted&lt;JSObject*&gt; obj(cx, foo());
+    { // Make a scope to force the destructor to run before obj is unwrapped.
+        EventLogger(cx);
+        ...code...
+    }
+    return obj;
+}
+</pre>
+
+<h3 id="AutoRooters">AutoRooters</h3>
+
+<p>GC thing pointers that appear as part of a stack-allocated aggregates (array, structure, class, union) should use <code>JS::Rooted&lt;T&gt;</code> when possible.</p>
+
+<p>There are some situations when using <code>JS::Rooted&lt;T&gt;</code> is not possible, or is undesirable for performance reasons.  To cover these cases, there are various <code>AutoRooter</code> classes that can be used.</p>
+
+<p>Here are the main AutoRooters defined:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Type</th>
+   <th scope="col">AutoRooter class</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>JS::Value[]</td>
+   <td>AutoArrayRooter</td>
+  </tr>
+  <tr>
+   <td>js::Vector&lt;JS::Value&gt;</td>
+   <td>AutoValueVector</td>
+  </tr>
+  <tr>
+   <td>js::Vector&lt;jsid&gt;</td>
+   <td>AutoIdVector</td>
+  </tr>
+  <tr>
+   <td>js::Vector&lt;JSObject*&gt;</td>
+   <td>AutoObjectVector</td>
+  </tr>
+  <tr>
+   <td>js::Vector&lt;JSScript*&gt;</td>
+   <td>AutoScriptVector</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>If your case is not covered by one of these, it is possible to write your own by deriving from <code>JS::CustomAutoRooter</code> and overriding the virtual <code>trace()</code> method.  The implementation should trace all the GC things contained in the object by calling <code>JS::TraceEdge</code>.</p>
+
+<h2 id="GC_things_on_the_heap">GC things on the heap</h2>
+
+<h3 id="JSHeap&lt;T>">JS::Heap&lt;T&gt;</h3>
+
+<p>GC thing pointers on the heap must be wrapped in a <code>JS::Heap&lt;T&gt;</code>. The only exception to this is if they are added as roots with the JS::PersistentRooted class, but don't do this unless it's really necessary.  <strong><code>JS::Heap&lt;T&gt;</code> pointers must also continue to be traced in the normal way</strong>, which is covered below.</p>
+
+<p><code>JS::Heap&lt;T&gt;</code> doesn't require a <code>JSContext*</code>, and can be constructed with or without an initial value parameter.  Like the other template classes, it functions as if it were the GC thing pointer itself.</p>
+
+<p>One consequence of having different rooting requirements for heap and stack data is that a single structure containing GC thing pointers cannot be used on both the stack and the heap.  In this case, separate structures must be created for the stack and the heap.</p>
+
+<p>There are currently no convenience typedefs for <code>JS::Heap&lt;T&gt;</code>.</p>
+
+<p>For example, instead of this:</p>
+
+<pre>struct HeapStruct
+{
+    JSObject*  mSomeObject;
+    JS::Value  mSomeValue;
+};</pre>
+
+<p>You should write:</p>
+
+<pre>struct HeapStruct
+{
+    JS::Heap&lt;JSObject*&gt;  mSomeObject;
+    JS::Heap&lt;JS::Value&gt;  mSomeValue;
+};</pre>
+
+<h3 id="Tracing">Tracing</h3>
+
+<h4 id="jsNativeObject">js::NativeObject</h4>
+
+<p>All GC pointers stored on the heap must be traced. For regular <code>js::NativeObject</code>s, this is normally done by storing them in slots, which are automatically traced by the GC.</p>
+
+<h4 id="Other_JSObjects">Other JSObjects</h4>
+
+<p>When defining a JSObject subclass that contains <code>Heap&lt;T&gt;</code> fields, <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JSTraceOp">set the trace hook</a> to invoke a function that traces those fields.</p>
+
+<h4 id="General_ClassesStructures">General Classes/Structures</h4>
+
+<p>For a regular <code>struct</code> or <code>class</code>, tracing must be triggered manually. The usual way is to define a <code>void trace(JSTracer* trc, const char* name)</code> method on the class -- which is already enough be able to create a <code>JS::Rooted&lt;YourStruct&gt;</code> on the stack -- and then arrange for it to be called during tracing. If a pointer to your structure is stored in the private field of a JSObject, the usual way would be to define a trace hook on the JSObject (see above) that casts the private pointer to your structure and invokes <code>trace()</code> on it:</p>
+
+<pre>class MyObject : public JSObject {
+{
+    ...
+    static void trace(JSTracer* trc, JSObject* obj) {
+        MyClass* mine = static_cast&lt;MyClass*&gt;(obj-&gt;getPrivate());
+        mine-&gt;trace(trc, "MyClass private field");
+    }
+}
+
+class MyClass {
+    Heap&lt;JSString*&gt; str;
+  public:
+    void trace(JSTracer* trc, const char* name) {
+        JS::TraceEdge(trc, &amp;str, "my string");
+    }
+}
+</pre>
+
+<p>If a pointer to your structure is stored in some other structure, then its <code>trace()</code> method should invoke yours:</p>
+
+<pre>struct MyOwningStruct {
+    MyClass* mything;
+    void trace(JSTracer* trc, const char* name) {
+        if (mything)
+            mything-&gt;trace(trc, "my thing");
+    }
+}
+</pre>
+
+<p>If the toplevel structure is not stored in a <code>JSObject</code>, then how it gets traced depends on why it should be alive. The simplest approach is to use <code>JS::PersistentRooted</code> (usable on anything with a trace method with the appropriate signature):</p>
+
+<pre>JS::PersistentRooted&lt;MyOwningStruct&gt; immortalStruct;</pre>
+
+<p>But note that <code>JS::PersistentRooted</code> in a struct or class is a rather dangerous thing to use -- it will keep a GC thing alive, and most GC things end up keeping their global alive, so if your class/struct is reachable in any way from that global, then nothing will ever be cleaned up by the GC.</p>
+
+<p> </p>
+
+<h2 id="Summary">Summary</h2>
+
+<ul>
+ <li>Use <code>JS::Rooted&lt;T&gt;</code> typedefs for local variables on the stack.</li>
+ <li>Use <code>JS::Handle&lt;T&gt;</code> typedefs for function parameters.</li>
+ <li>Use <code>JS::MutableHandle&lt;T&gt;</code> typedefs for function out-parameters.</li>
+ <li>Use an implicit cast from <code>JS::Rooted&lt;T&gt;</code> to get a <code>JS::Handle&lt;T&gt;</code>.</li>
+ <li>Use an explicit address-of-operator on <code>JS::Rooted&lt;T&gt;</code> to get a <code>JS::MutableHandle&lt;T&gt;</code>.</li>
+ <li>Return raw pointers from functions.</li>
+ <li>Use <code>JS::Rooted&lt;T&gt;</code> fields when possible for aggregates, otherwise use an AutoRooter.</li>
+ <li>Use <code>JS::Heap&lt;T&gt;</code> members for heap data. <strong>Note: <code>Heap&lt;T&gt;</code> are not "rooted": they must be traced!</strong></li>
+ <li>Do not use <code>JS::Rooted&lt;T&gt;</code>, <code>JS::Handle&lt;T&gt;</code> or <code>JS::MutableHandle&lt;T&gt;</code> on the heap.</li>
+ <li>Do not use <code>JS::Rooted&lt;T&gt;</code> for function parameters.</li>
+ <li>Use <code>JS::PersistentRooted&lt;T&gt;</code> for things that are alive until the process exits (or until you manually delete the PersistentRooted for a reason not based on GC finalization.)</li>
+</ul>

@@ -1,0 +1,58 @@
+<p> </p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:More_Tree_Features" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Custom_Tree_Views">Next  »</a></p>
+</div>
+<p>The section will describe how to get and set the selected items in a tree.</p>
+<h3 id="Getting_the_Selected_Tree_Items" name="Getting_the_Selected_Tree_Items">Getting the Selected Tree Items</h3>
+<p>Each item in a tree (that corresponds to <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treeitem" title="treeitem">treeitem</a></code></code> element, if using content tree view) may be selected individually. If you add the <code><code id="a-seltype"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/seltype">seltype</a></code></code> attribute to the tree, set to the value <code>single</code>, the user may only select one row at a time. Otherwise, the user may select multiple rows, which will not necessarily be contiguous. The tree provides a number of functions which can be used to determine whether an item is selected.</p>
+<h4 id="Handling_the_Select_Event" name="Handling_the_Select_Event">Handling the Select Event</h4>
+<p>First, let's see how we can determine when an item is selected. The <code><a href="/en/XUL/Attribute/tree.onselect" title="en/XUL/Attribute/tree.onselect">onselect()</a></code> event handler may be added to the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/tree" title="tree">tree</a></code></code> element. When the user selects an item from the tree, the event handler is called. The user may also change the selection by using the cursor keys. If the user holds down the cursor key to rapidly scroll through the items, the event handler is not called until the user stops. This results in a performance improvement. This also means that the highlight will appear on several items even though the select event is never fired for those items.</p>
+<p>The syntax of the <code>onselect()</code> event handler is shown below.</p>
+<pre>&lt;tree id="treeset" onselect="alert('You selected something!');"&gt;
+</pre>
+<h4 id="Tree_Indicies" name="Tree_Indicies">Tree Indices</h4>
+<p>The tree has a property <code><code><span><a href="https://developer.mozilla.org/en-US/docs/XUL/Property/currentIndex">currentIndex</a></span></code></code>, which can be used to get the currently selected item, where the first row is 0.</p>
+<p>Child items are included in the count just after their parents. This means that if there are 3 top-level items and each has two child items, there will be a total of 9 items. The first item (at index 0) will be the first top-level item. The next item at index 1 will be its first child. The second child will be at index 2 and the second parent item will be at position 3 and so on.</p>
+<div class="float-right">
+  <img alt="Image:seltree1.png" class="internal" src="/@api/deki/files/848/=Seltree1.png"></div>
+<p>In the image, there are eight rows displayed, of which two are selected. The first selected row has an index of 4 and the second has an index of 7. The rows that are not displayed are not included in the index count.</p>
+<h4 id="Multiple_Selection" name="Multiple_Selection">Multiple Selection</h4>
+<p>For trees that allow multiple selection, getting the list of selected rows is a bit more complicated. The tree's view has a selection property which holds information about the selected rows. This selection will be an <a href="/en/XPCOM_Interface_Reference/nsITreeSelection" title="en/XPCOM Interface Reference/nsITreeSelection">nsITreeSelection</a> object. The view doesn't need to implement this object itself, the tree will assign a selection object to the view's selection property when the view is attached to a tree. From the tree, you can get the selection using the tree's <code>view</code> property and then retrieve the view's <code>selection</code> property. You can use the methods of the selection object to retrieve the set of selected items or modify the selection.</p>
+<p>Because the selected items in a multiple selection tree are not necessarily contiguous, you can retrieve each block of contigous selections using the <code>getRangeCount()</code> and <code>getRangeAt()</code> functions. The first function returns the number of selection ranges there are. If only one value is selected, this value will be 1. You would then write a loop for the number of ranges, calling <code>getRangeAt()</code> to get the actual indices of the start and end of the range.</p>
+<p>The <code>getRangeAt()</code> function takes three arguments.</p>
+<ul>
+  <li>The first is the range index.</li>
+  <li>The second is an object which will be filled in by the function with the index of the first selected item.</li>
+  <li>The third argument is an object which will be filled in with the index of the last selected item.</li>
+</ul>
+<h5 id="getRangeAt_Example" name="getRangeAt_Example">getRangeAt Example</h5>
+<pre>var start = new Object();
+var end = new Object();
+var numRanges = tree.view.selection.getRangeCount();
+
+for (var t = 0; t &lt; numRanges; t++){
+  tree.view.selection.getRangeAt(t,start,end);
+  for (var v = start.value; v &lt;= end.value; v++){
+    alert("Item " + v + " is selected.");
+  }
+}
+</pre>
+<p>We create two objects called 'start' and 'end'. Then, we iterate over the set of ranges, the number of which is returned by the <code>getRangeCount()</code> function. The <code>getRangeAt()</code> function is called passing the range index and the start and end objects. This function will fill in the start and end indicies by assigning them to the 'value' property. So if the first range is from the third item to the seventh item, 'start.value' will be 2 (remember that indices start with 0, so we subtract one.) and 'end.value' will be 6. An alert is displayed for each index.</p>
+<p>If you just want to find out if a specific row is selected, use can use the <code>isSelected()</code> function. It takes a row index as an argument and returns true if that row is selected.</p>
+<pre>alert(tree.view.selection.isSelected(3));
+</pre>
+<h3 id="Modifying_the_Tree_Selection" name="Modifying_the_Tree_Selection">Modifying the Tree Selection</h3>
+<p>The selection object has a number of functions which may be used to change the selection. The simplest function is the <code><a href="/en/XUL/Method/select" title="en/XUL/Method/select">select()</a></code> function, which deselects any rows that are currently selected and selects one specific row. For example, the following code will select the row at index 5:</p>
+<pre>tree.view.selection.select(5);
+</pre>
+<p>Note that you should not just change the tree's <code><code><span><a href="https://developer.mozilla.org/en-US/docs/XUL/Property/currentIndex">currentIndex</a></span></code></code> property to change the selection. Instead, you should use the selection's select function as in the example above. You can select all rows with the <code><a href="/en/XUL/Method/selectAll" title="en/XUL/Method/selectAll">selectAll()</a></code> function. Note that rows nested inside containers that are not open will not be selected. Naturally, this will only have any effect for trees that use multiple selection. There is also a <code><a href="/en/XUL/Method/clearSelection" title="en/XUL/Method/clearSelection">clearSelection()</a></code> function to clear the selection, and an <code><a href="/en/XUL/Method/invertSelection" title="en/XUL/Method/invertSelection">invertSelection</a></code> function to reverse the selection, that is, deselect all selected rows and select all unselected rows.</p>
+<p>To select specific rows, use the <code>rangedSelect()</code> function which selects all rows in between two indices. Here is an example which selects rows between index 2 and 7. Note that rows 2 and 7 will also be selected.</p>
+<pre>tree.view.selection.rangedSelect(2,7,true);
+</pre>
+<p>The last argument indicates whether to add to the current selection or not. If true, the range will be added to the existing selection. If false, all existing selected rows will be deselected first. Finally, the <code>clearRange()</code> function may be used to deselect a range of rows, leaving rows outside the range unaffected.</p>
+<pre>tree.view.selection.clearRange(2,7);
+</pre>
+<p>Next, we'll find out how to create a <a href="/en/XUL_Tutorial/Custom_Tree_Views" title="en/XUL_Tutorial/Custom_Tree_Views">custom view for a tree</a>.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:More_Tree_Features" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Custom_Tree_Views">Next  »</a></p>
+</div>

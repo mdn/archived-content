@@ -1,0 +1,208 @@
+<p>Instances of OS.File.Info represent file metadata, such as the size of the file, its last modification date, etc. Due to differences between operating systems, the information available depends on the platform.</p>
+
+<p>Instances of OS.File.Info may be obtained by:</p>
+
+<ul>
+ <li>calling global method <code>OS.File.stat()</code> either <a href="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.stat" title="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread">from the main thread</a> or <a href="/en-US/docs/JavaScript_OS.File/OS.File_for_workers#OS.File.stat" title="/en-US/docs/JavaScript_OS.File/OS.File_for_workers">from a worker thread</a>;</li>
+ <li>calling instance method <code>stat()</code> of <code>OS.File</code> either <a href="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.prototype.stat" title="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.prototype.stat">from the main thread</a> or <a href="/en-US/docs/JavaScript_OS.File/OS.File_for_workers#OS.File.prototype.stat" title="/en-US/docs/JavaScript_OS.File/OS.File_for_workers#OS.File.prototype.stat">from a worker thread</a>.</li>
+</ul>
+
+<h2 id="Using_OS.File.Info">Using OS.File.Info</h2>
+
+<h3 id="Example_Determining_if_a_file_is_a_regular_file">Example: Determining if a file is a regular file</h3>
+
+<p>The following snippet uses the main thread API to determine (asynchronously) whether some path is a regular file, or a directory, or a symbolic link:</p>
+
+<pre class="brush: js">let promise = OS.File.stat(somePath);
+promise.then(
+  function onSuccess(info) { // |info| is an instance of |OS.File.Info|
+    if (info.isDir) {
+      // |somePath| represents a directory
+    } else if (info.isSymLink) {
+      // |somePath| represents a symbolic link
+    } else {
+      // |somePath| represents a regular file
+    }
+  },
+  function onFailure(reason) {
+    if (reason instanceof OS.File.Error &amp;&amp; reason.becauseNoSuchFile) {
+      // |somePath| does not represent anything
+    } else {
+      // some other error
+    }
+  }
+)
+</pre>
+
+<h3 id="Example_Determining_the_owner_of_a_file">Example: Determining the owner of a file</h3>
+
+<pre class="brush: js">let promise = OS.File.stat()
+promise.then(
+  function onSuccess(info) {
+    if ("unixOwner" in info) {
+       // info.unixOwner holds the owner of the file
+    } else {
+       // Information is not available on this platform
+    }
+  }
+);
+
+</pre>
+
+<div class="note">
+<p><strong>Evolution of this example</strong><br>
+ <br>
+ <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=802534" title="https://bugzilla.mozilla.org/show_bug.cgi?id=802534">Bug 802534</a> will introduce the ability to check whether field <code>unixOwner</code> appears in <code>OS.File.Info.prototype</code>, which will make it possible to write faster code.</p>
+</div>
+
+<h2 id="Global_object_OS.File.Info">Global object OS.File.Info</h2>
+
+<h4 id="Methods">Methods</h4>
+
+<table>
+ <tbody>
+  <tr>
+   <td>object <a href="#OS.File.toMsg" title="#OS.File.toMsg">toMsg</a>(in OS.File.Info value)</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="OS.File.toMsg_2">OS.File.toMsg<a name="OS.File.toMsg"></a></h4>
+
+<p>Convert an instance of OS.File.Info to a form that can be serialized and transmitted between threads or processes.</p>
+
+<pre class="brush: js">object toMsg(
+  in OS.File.Info value
+)</pre>
+
+<h5 id="Arguments">Arguments</h5>
+
+<h5 id="Returns">Returns</h5>
+
+<p>An object with the same fields as value but that may be serialized and transmitted between threads or processes.</p>
+
+<dl>
+ <dt>value</dt>
+ <dd>An instance of OS.File.Info.</dd>
+</dl>
+
+<h2 id="Instances_of_OS.File.Info">Instances of OS.File.Info</h2>
+
+<h4 id="Cross-platform_Attributes_2">Cross-platform Attributes</h4>
+
+<table>
+ <tbody>
+  <tr>
+   <td>isDir</td>
+   <td>true if the file is a directory, false otherwise.</td>
+  </tr>
+  <tr>
+   <td>isSymLink</td>
+   <td>true if the false is a symbolic link, false otherwise. (As of Firefox 38 this is always true on all systems, this is a bug: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1145885">Bugzilla 1145885</a>) (On Windows this returns false for hard links)</td>
+  </tr>
+  <tr>
+   <td>size</td>
+   <td>The number of bytes in the file.</td>
+  </tr>
+  <tr>
+   <td>creationDate</td>
+   <td><strong>Deprecated in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=807875">Bugzilla :: Bug 807875</a>. </strong>Before deprecation, this used to be the date at which the file was created on Windows and Mac OS X, as a JavaScript Date object. On Unix systems it was returning the last modified date and thus it was deprecated. There is talk of reinstating this with proper functionality in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1167143">Bugzilla :: Bug 1167143</a>. The <code>creationDate </code>can be obtained on Windows by <code>winBirthDate </code>and on Mac OS X by <code>macBirthDate</code>. On older Unix filesystems it is not possible to get a creation date as it was never stored, on new Unix filesystems creation date is stored but the method to obtain this date differs per filesystem, <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1167143">Bugzilla :: Bug 1167143</a> explores implementing solutions for all these different filesystems)</td>
+  </tr>
+  <tr>
+   <td>lastAccessDate</td>
+   <td>The Date at which the file was last accessed, as a JavaScript Date object. Note that the definition of <em>last access</em> may depend on the underlying operating system and file system.</td>
+  </tr>
+  <tr>
+   <td>lastModificationDate</td>
+   <td>The Date at which the file was last modified, as a JavaScript Date object.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Platform-specific_attributes">Platform-specific attributes<a name="Cross-platform_Attributes"></a></h4>
+
+<h5 id="Unix">Unix</h5>
+
+<table style="height: 137px; width: 599px;">
+ <tbody>
+  <tr>
+   <td>unixOwner</td>
+   <td>A number holding the identifier of the Unix owner of this file.</td>
+  </tr>
+  <tr>
+   <td>unixGroup</td>
+   <td>A number holding the identifier of the Unix group of this file.</td>
+  </tr>
+  <tr>
+   <td>unixMode</td>
+   <td>A number holding the Unix access rights to this file.</td>
+  </tr>
+  <tr>
+   <td>unixLastStatusChangeDate</td>
+   <td>Date. This is the date of the latest write/renaming/mode change/... where ... is any write/set of inode information (such as owner, group, link count, mode, etc).</td>
+  </tr>
+ </tbody>
+</table>
+
+<h5 id="Windows">Windows</h5>
+
+<table style="height: 167px; width: 732px;">
+ <tbody>
+  <tr>
+   <td>winBirthDate</td>
+   <td>A Date representing the time at which the file was created. May not be exact on all file systems.</td>
+  </tr>
+  <tr>
+   <td>winAttributes</td>
+   <td>
+    <table>
+     <tbody>
+      <tr>
+       <td>hidden</td>
+       <td>Boolean</td>
+      </tr>
+      <tr>
+       <td>readOnly</td>
+       <td>Boolean</td>
+      </tr>
+      <tr>
+       <td>system</td>
+       <td>Boolean</td>
+      </tr>
+     </tbody>
+    </table>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h5 id="MacOS_X">MacOS X</h5>
+
+<table style="height: 25px; width: 599px;">
+ <tbody>
+  <tr>
+   <td>macBirthDate</td>
+   <td>A Date representing the time at which the file was created. May not be exact on all file systems. (As of Firefox 38 this attribute is not found, see screen shots below, <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1156060">Bugzilla :: Bug 1156060</a>)</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Screenshot_of_Info_object_in_Variable_Viewer">Screenshot of Info object in Variable Viewer</h3>
+
+<h4 id="MacOSX_10.10.1">MacOSX 10.10.1</h4>
+
+<p><img alt="" src="http://i.imgur.com/JjFrICV.png" style="height: 276px; width: 429px;"></p>
+
+<h4 id="Ubuntu_14.04.1">Ubuntu 14.04.1</h4>
+
+<p><img alt="" src="http://i.imgur.com/B6d8UHW.png" style="height: 266px; width: 618px;"></p>
+
+<h4 id="Windows_8.1">Windows 8.1</h4>
+
+<p><img alt="" src="http://i.imgur.com/w6vi4R7.png"></p>
+
+<h2 id="See_Also">See Also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/OSFile.jsm/OS.File.DirectoryIterator.Entry">OS.File.DirectoryIterator.Entry</a></li>
+</ul>

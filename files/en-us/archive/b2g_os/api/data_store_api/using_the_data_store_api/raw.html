@@ -1,0 +1,269 @@
+<div>{{non-standard_header}} {{ B2GOnlyHeader2('certified') }}</div>
+
+<div class="summary">
+<p>The Data Store API is a Firefox OS-only API for client-side data storage. It is designed to work alongside other client-side storage mechanisms to provide data that can be read and written to by multiple apps. In this article we'll cover the basics of how to use this API to build up some examples.</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: The Data Store API is available in <a href="/en-US/docs/Web/Guide/Performance/Using_web_workers">Web Workers</a>, from Firefox 32 onwards (Firefox OS 2.0; see {{ Bug("949325") }}.)</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: The Data Store API should not be confused with the <a href="/en-US/docs/Web/API/Device_Storage_API">Device Storage API</a>, which is for accessing (reading and writing to) the device's file system(s) — internal memory, SDCards, etc. — manipulating the files contained within.</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: Be aware that to test data store examples you need to make sure your apps are internal/certified (see above for manifest fields needed), and use App Manager or WebIDE to simulate an environment where a internal/certified app can be run. Follow these links to find out how to do this using each tool: <a href="/en-US/Firefox_OS/Using_the_App_Manager#Debugging_Certified_Apps_2">App Manager: Debugging Certified Apps</a> and <a href="/en-US/docs/Tools/WebIDE#Debugging_certified_apps_%28including_main_process%29">WebIDE: Debugging Certified Apps</a>.</p>
+</div>
+
+<h2 id="Our_examples">Our examples</h2>
+
+<p>To explain the main functionality of Data Store, we have build two examples that work together (you can download these from Github using the code below, and experiment with them as you wish):</p>
+
+<p><a href="https://github.com/mdn/data-store-contacts-editor">Contacts Editor</a>: This app populates a data store called 'contacts' with some sample data, and also allows you to enter new contacts as you wish. You can also delete contacts.</p>
+
+<p><img alt="a table showing contact information including names, phone numbers, etc." src="https://mdn.mozillademos.org/files/8885/contacts-editor.png" style="display: block; height: 543px; margin: 0px auto; width: 700px;"><br>
+ <br>
+ <a href="https://github.com/mdn/data-store-contacts-viewer">Contacts Viewer</a>: This app reads the same 'contacts' data store, but does not change the data in any way. It shows the available contacts in a list, and also plots their location on a Google map.</p>
+
+<p><img alt="a two panel user interface with contact names on the left, and a map showing contact location on the right." src="https://mdn.mozillademos.org/files/8887/contacts-viewer.png" style="display: block; height: 543px; margin: 0px auto; width: 700px;"></p>
+
+<h2 id="Setting_the_correct_permissions_in_the_manifest">Setting the correct permissions in the manifest</h2>
+
+<p>Both apps are very similar in terms of their <a href="/en-US/Apps/Build/Manifest">manifest.webapp</a> structure, containing the usual <code>name</code>, <code>description</code>, <code>icons</code>, etc. What is more interesting is that each one contains a <code>type</code> field to specify that this app is certified and should be treated like so:</p>
+
+<pre class="brush: json">"type": "certified"</pre>
+
+<p>In addition, we've specified the following field to lock the apps' orientation into landscape, as things like lists and tables look bad on really narrow screen sizes:</p>
+
+<pre class="brush: json">"orientation": "landscape"</pre>
+
+<p>Where things differ between the two apps is the datastore permissions. The Contacts Editor owns the data store, so uses the <code>datastores-owned</code> field to declare this:</p>
+
+<pre class="brush: json">"datastores-owned": {
+  "contacts": {
+    "access" : "readwrite",
+    "description": "The contacts data store for the Data Store API Contacts Editor."
+  }
+}</pre>
+
+<p>In actual fact, this is all you need to do to create the contacts data store: with this permission specified, the store is created when the device is booted up with the app present on it.</p>
+
+<p>Now on to the Contacts Viewer app — this is not the data store owner, so it instead uses the <code>datastores-access</code> field:</p>
+
+<pre class="brush: json">"datastores-access": {
+  "contacts": {
+    "access" : "readonly",
+    "description": "The contacts data store owned by the Data Store API Contacts Editor, here we are just accessing it readonly to read and display the data."
+  }
+}</pre>
+
+<p>Note how in this case the access is set to readonly, although this app could request readwrite if it wanted to. However, if the owner of the datastore had readonly access, this app would only have a maximum of readonly, even if it specified readwrite.</p>
+
+<h3 id="Privileged_homescreen_apps">Privileged homescreen apps</h3>
+
+<p>As of Firefox 42, the Data Store API is available to privileged homescreen apps. This is so that 3rd party homescreen apps can access the same data stores as the default homescreen app and provide equivalent functionality (see {{Bug("1181329")}} for feature implementation details.) This means you need to include the following <code>type</code> field in such apps:</p>
+
+<pre class="brush: json">"type": "privileged"</pre>
+
+<p>You need to also include the <code>datastores-access</code> field so that your 3rd party homescreen can access the same datastores as the default homescreen (see the <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/homescreen/manifest.webapp#L30-L43">homescreen source code</a>):</p>
+
+<pre class="brush: json">"datastores-access": {
+  "bookmarks_store": {
+    "readonly": true,
+    "description": "View bookmarks."
+  },
+  "places": {
+    "readonly": true,
+    "description": "View data about browsing history."
+  },
+  "icons": {
+    "readonly": true,
+    "description": "Retrieve cached website icons."
+  }
+},</pre>
+
+<p>Finally, you need to have the following <code>role</code> field set:</p>
+
+<pre class="brush: json">"role": "homescreen",</pre>
+
+<h2 id="Initializing_the_data_store">Initializing the data store</h2>
+
+<p>Now let's study the Contacts Editor app in detail, to see how it works.</p>
+
+<p>As we said earlier, the contacts data store has already been created by the inclusion of the <code>datastores-owned</code> field in the manifest. If you don't see any data appearing in the app, then try restarting the simulator/device you are using and trying again. The data store is only created when the app is booted up with the app present on it, so this is how you emulate that.</p>
+
+<p>To access the data store in the first place, you need to use the {{domxref("Navigator.getDataStores","navigator.getDataStores")}} method, which returns a promise. The promise resolves with an array of all the data stores on the device that have the name provided as the method's argument, in this case contacts. Since there is usually only one datastore with each name, you can access this specific data store inside the promise with <code>contacts[0]</code>. This is a {{domxref("DataStore")}} object that can be used to manipulate the Data Store we want to work with.<br>
+ <br>
+ The next thing we do is to use the {{domxref("DataStore.getLength")}} method immediately inside the promise to return another promise. This promise resolves with a double indicating the number of records in the data store. We use this to check whether the data store has no records in it. If so, we loop through an array of default records called <code>contactsInit</code> and add each one to the data store using the <code>addContact()</code> function.</p>
+
+<p>If the store has got some records in it already we don't need to initialize the data store like this, and instead create a cursor using the {{domxref("DataStore.sync")}} method then run through reinitializing the data display using the <code>runNextTask()</code> function.</p>
+
+<pre class="brush: js">navigator.getDataStores('contacts').then(function(stores) {
+  stores[0].getLength().then(function(storeLength) {
+    if(storeLength == 0) {
+      for(i = 0; i &lt; contactsInit.length; i++) {
+        addContact(stores[0],contactsInit[i]);
+      };
+    } else {
+      var cursor = stores[0].sync();
+      runNextTask(cursor);
+    }
+  });
+});</pre>
+
+<h2 id="Adding_contacts_to_the_data_store">Adding contacts to the data store</h2>
+
+<p>In the <code>addContact()</code> function, we use the {{domxref("DataStore.add")}} method to add the current data object (<code>obj</code>) to the data store. This method also returns a promise, which resolves with the <code>id</code> of the newly added record. When this occurs we create a table row, populate it with that record's data, and add it to the data table in the app's UI so we can see the change visually too.</p>
+
+<p>The last thing we do here is add the <code>id</code> of the current record to the table row inside a <code>data-id</code> attribute, and attach an <code>onclick</code> handler to the table row so that when a row is tapped in the UI the <code>deleteItem()</code> function is invoked, which handles deleting both the row from the UI, and the corresponding record from the data store.</p>
+
+<pre class="brush: js">function addContact(store, obj) {
+  store.add(obj).then(function(id) {
+    var tableRow = document.createElement('tr');
+    tableRow.innerHTML = '&lt;td&gt;' + obj.lName +
+                         '&lt;/td&gt;&lt;td&gt;' + obj.fName +
+                         '&lt;/td&gt;&lt;td&gt;' + obj.phone +
+                         '&lt;/td&gt;&lt;td&gt;' + obj.email +
+                         '&lt;/td&gt;&lt;td&gt;' + obj.address + '&lt;/td&gt;';
+    tBody.appendChild(tableRow);
+    var myId = id;
+    console.log(myId);
+    tableRow.setAttribute('data-id', myId);
+
+    tableRow.onclick = function(event) {
+      deleteItem(event);
+    }
+  });
+}</pre>
+
+<h2 id="Syncing_data_store_changes">Syncing data store changes</h2>
+
+<p>To sync the data an app has access to when the data store is changed, you generally use the {{domxref("DataStore.sync")}} method, which creates a cursor you can use to go through each task that's happened to the data store since it was created — such as adding records, updating, deleting, etc.<br>
+ <br>
+ Data Store also has the {{domxref("DataStore.onchange")}} event handler available, which you can use to fire a sync operation whenever the data store is changed (and whatever else you want.) We'll see that in action later, when we look at the Contacts Viewer app. In this case, we only want to fire the sync operation whenever the app starts up and the data store isn't empty, in which case we just want to go through each item added to the store and display them in our contacts table.<br>
+ <br>
+ Earlier on, we invoked the <code>runNextTask()</code> function and passed it the cursor. To deal with the first task, we run the {{domxref("DataStoreCursor.next")}} method, which returns a promise resolving with a {{domxref("DataStoreTask")}} object representing the current task we want to deal with — in this case, the task of adding the first record to the data store.</p>
+
+<pre class="brush: js">function runNextTask(cursor) {
+ cursor.next().then(function(task) {
+   manageTask(cursor, task);
+ });
+}</pre>
+
+<p>We then invoke the <code>manageTask()</code> function, passing it the current task and the cursor. This runs through each task in the cursor, checking each one and then running the next task by recursively calling <code>runNextTask()</code> again.</p>
+
+<p>If the {{domxref("DataStoreTask.operation")}} type is <code>done</code>, we've reached the end of the cursor so we stop cycling through. If the task type is <code>add</code>, we run the <code>displayExisting()</code> function, passing it the {{domxref("DataStoreTask.id")}} and {{domxref("DataStoreTask.data")}} to use for redisplaying the data. We don't care about other task types for this particular app.</p>
+
+<pre class="brush: js">function manageTask(cursor, task) {
+  if (task.operation == 'done') {
+    // Finished adding contacts!
+    return;
+  }
+
+  if (task.operation == 'add') {
+    // Add the contacts that are different to how it was before
+    displayExisting(task.id, task.data);
+  }
+
+  runNextTask(cursor);
+}</pre>
+
+<p>If you look at the <code>displayExisting()</code> function in the code, you'll notice that it is very similar to the <code>addContact()</code> function we discussed earlier, except that in this case we don't have to access the data store — we've already got the data we want to display from the task item.</p>
+
+<div class="note">
+<p><strong>Note</strong>: The {{domxref("DataStore.sync")}} method can optionally be passed a <code>revisionId</code>, which can be grabbed from {{domxref("DataStore.revisionId")}} — this <code>id</code> represents the state of the database at that point, in the same way as different revisions in a versioning system. If you want to sync all changes from a certain point in the data store history, pass it the <code>revisionId</code> from that point. If you don't pass it a <code>revisionId</code>, it just syncs all changes from the very beginning of the data store's history.</p>
+</div>
+
+<h2 id="Adding_user_data_to_the_datastore">Adding user data to the datastore</h2>
+
+<p>When a user submits the form, the <code>addUserData()</code> function is run to add the contact data to the data store and display it in the table. After a bit of (very basic!) error handling, we create a <code>tempDataobject</code> to insert into the data store, clear the form fields ready for the next contact to be entered, and then call the contacts data store and invoke the <code>addContact()</code> function again, as before:</p>
+
+<pre class="brush: js">function addUserData(event) {
+  event.preventDefault();
+
+  if(lNameInput.value == '' || fNameInput.value == '' || phoneInput.value == '' || emailInput.value == '' || addressInput.value == '' || latInput.value == '' || longInput.value == '') {
+    alert('Please fill in all fields');
+    return;
+  }
+
+  var tempData = { lName:lNameInput.value, fName:fNameInput.value, phone:phoneInput.value , email:emailInput.value, address:addressInput.value, lat:latInput.value, long:longInput.value }
+  lNameInput.value = '';
+  fNameInput.value = '';
+  phoneInput.value = '';
+  emailInput.value = '';
+  addressInput.value = '';
+  latInput.value = '';
+  longInput.value = '';
+
+  navigator.getDataStores('contacts').then(function(stores) {
+    addContact(stores[0],tempData);
+  });
+}
+
+form.addEventListener('submit',addUserData,false);</pre>
+
+<h2 id="Removing_data_from_the_data_store">Removing data from the data store</h2>
+
+<p>The only function we've not discussed so far from Contacts Editor is <code>deleteItem()</code>, invoked when a row is clicked on. This quite simply:</p>
+
+<ul>
+ <li>Grabs the <code>id</code> from the table row's <code>data-id</code> attribute, making sure to turn it into a number so data store can understand it as an <code>id</code>.</li>
+ <li>Gets the data store and runs the {{domxref("DataStore.remove")}} method, passing it the <code>id</code> we grabbed earlier to remove the correct record from the store.</li>
+ <li>Deletes the actual table row for the display table. That horrible line of code is correct: in JavaScript, there is no 'removeSelf' DOM method, so you have to ask the parent node to delete the current child.</li>
+</ul>
+
+<pre class="brush: js">function deleteItem(event) {
+  var id = Number(event.target.parentNode.getAttribute('data-id'));
+
+  navigator.getDataStores('contacts').then(function(stores) {
+    stores[0].remove(id).then(function(success) {
+      if (success) {
+        console.log('The object has been deleted.');
+      } else {
+        console.log('The object has failed to be deleted.');
+      };
+    });
+  });
+
+  event.target.parentNode.parentNode.removeChild(event.target.parentNode);
+};</pre>
+
+<h2 id="The_viewer_app_syncing_data_from_the_editor_app">The viewer app: syncing data from the editor app</h2>
+
+<p>We're not going to go through every part of the Contacts Viewer application, because a lot of the code is very similar to what we've already seen. One part that is different is that when the app is first initialized, we not only run the syncing mechanism (just like we did in Contact Editor), but we also include that same code again, wrapped in a {{domxref("DataStore.onchange")}} event handler:</p>
+
+<pre class="brush: js">stores[0].onchange = function() {
+  contactList.innerHTML = '';
+  var cursor = stores[0].sync();
+  runNextTask(cursor);
+}</pre>
+
+<p>This is so that, if the Contacts Editor app makes a change to the contacts data store, we can sync the display in this app.</p>
+
+<section id="Quick_Links">
+<h3 id="Quicklinks">Quicklinks</h3>
+
+<ol>
+ <li data-default-state="open"><strong><a href="#">Guides</a></strong>
+
+  <ol>
+   <li><a href="/en-US/docs/Web/API/Data_Store_API/Using_the_Data_Store_API">Using the Data Store API</a></li>
+  </ol>
+ </li>
+ <li data-default-state="open"><strong><a href="#">Examples</a></strong>
+  <ol>
+   <li><a href="https://github.com/mdn/data-store-contacts-editor">Data Store Contacts Editor</a></li>
+   <li><a href="https://github.com/mdn/data-store-contacts-viewer">Data Store Contacts Viewer</a></li>
+  </ol>
+ </li>
+ <li data-default-state="open"><strong><a href="#">Interfaces</a></strong>
+  <ol>
+   <li>{{domxref("DataStore")}}</li>
+   <li>{{domxref("DataStoreCursor")}}</li>
+   <li>{{domxref("DataStoreChangeEvent")}}</li>
+   <li>{{domxref("DataStoreTask")}}</li>
+  </ol>
+ </li>
+</ol>
+</section>

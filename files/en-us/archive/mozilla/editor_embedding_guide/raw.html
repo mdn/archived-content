@@ -1,0 +1,1030 @@
+<h2 id="In_the_Beginning_there_is_MakeEditable" name="In_the_Beginning_there_is_MakeEditable">In the Beginning there is MakeEditable</h2>
+
+<p>Given an <code>nsIWebBrowser</code> instance, get an <code>nsIDOMWindow</code> from the <code>GetContentDOMWindow</code> call. Then simply call <code>nsIWebBrowser-&gt;do_GetInterface</code> on the <code>nsIWebBrowser</code> to retrieve the <code>nsIEditingSession</code> from it. From there you call <code>editingSession-&gt;MakeWindowEditable(domWindow, editortype, PR_TRUE)</code>. The first parameter is the <code>nsIDOMWindow</code> you just retrieved, the second is the editor type you want to create, and the third is whether you want the window editable immediately or when the document is done loading. In calling this method, the editor is created underneath and the event listeners are all prepa if (NS_FAILED(rv)) return NS_ERROR_FAILURE; // we are not setup??!! nsCOMPtr&lt;nsIEditingSession&gt; editingSession; nsIWebBrowser-&gt;do_GetInterface(getter_AddRefs(editingSession)); if (editingSession) editingSession-&gt;MakeWindowEditable(domWindow, "html", PR_TRU?E);</p>
+
+<p>The valid editor types are:</p>
+
+<ul>
+ <li>"text" (similar to NotePad or a textarea; does not allow for html)</li>
+ <li>"textmail" (similar to "text" but html can be inserted; intended for plaintext mail usage and handling of citations)</li>
+ <li>"html" (this is the default type if no type is specified; it allows for all html tags to be inserted)</li>
+ <li>"htmlmail" (this is much like "html" except there are a few editing rules/behaviors that differ such as splitting of mail quotes)</li>
+</ul>
+
+<h2 id="Editor_Commands" name="Editor_Commands">Editor Commands</h2>
+
+<p>You need to call commands and receive updates in order to make any changes to the content on the browser. Below is the sequence of steps that need to be followed for the same:</p>
+
+<p>1. Get the <code>nsICommandManager</code> from the <code>nsIWebBrowser</code> using <code>do_GetInterface</code>:</p>
+
+<pre>nsCOMPtr&lt;nsICommandManager&gt; commandManager;
+nsIWebBrowser-&gt;do_GetInterface(getter_AddRefs(commandMgr));
+</pre>
+
+<p>2. Call a command -- <code>DoCommand</code>:</p>
+
+<pre>commandManager-&gt;DoCommand(aCommand, aCommandParams);
+</pre>
+
+<p><code>aCommand</code> is a const char * to a supported command name (see list below).<br>
+ <code>aCommandParams</code> could possibly be a null pointer or a pointer to a valid structure filled with relative parameters to aCommand (see list below for legal params).</p>
+
+<p>3. Verify if a command is enabled -- <code>IsCommandEnabled:</code></p>
+
+<pre>commandManager-&gt;IsCommandDisabled(aCommand, retval)
+</pre>
+
+<p>4. Get the current command state of a given command -- <code>GetCommandState</code>:</p>
+
+<pre>commandManager-&gt;GetCommandState(aCommand,aCommandParams)
+</pre>
+
+<h3 id="Index_of_Commands_and_Parameters" name="Index_of_Commands_and_Parameters">Index of Commands and Parameters</h3>
+
+<h4 id="cmd_bold" name="cmd_bold">cmd_bold</h4>
+
+<p>Toggles bold style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <strong>bold</strong></dd>
+</dl>
+
+<h4 id="cmd_italics" name="cmd_italics">cmd_italics</h4>
+
+<p>Toggles italics style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <em>italics</em></dd>
+</dl>
+
+<h4 id="cmd_underline" name="cmd_underline">cmd_underline</h4>
+
+<p>Toggles underline on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <u>underline</u></dd>
+</dl>
+
+<h4 id="cmd_tt" name="cmd_tt">cmd_tt</h4>
+
+<p>Toggles teletype style (monospace font) on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <code>teletype</code></dd>
+</dl>
+
+<h4 id="cmd_strikethrough" name="cmd_strikethrough">cmd_strikethrough</h4>
+
+<p>Toggles strikethrough style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <s>strikethrough</s></dd>
+</dl>
+
+<h4 id="cmd_superscript" name="cmd_superscript">cmd_superscript</h4>
+
+<p>Toggles superscript style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <sup>superscript</sup></dd>
+</dl>
+
+<h4 id="cmd_subscript" name="cmd_subscript">cmd_subscript</h4>
+
+<p>Toggles subscript style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Example</dt>
+ <dd>normal <sub>subscript</sub></dd>
+</dl>
+
+<h4 id="cmd_nobreak" name="cmd_nobreak">cmd_nobreak</h4>
+
+<p>Toggles nobreak style on selection. Text is not wrapped by word.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This one is not visually notable in the general case.</dd>
+</dl>
+
+<h4 id="cmd_em" name="cmd_em">cmd_em</h4>
+
+<p>Toggles emphasis on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. Most browsers display it the same as italics.</dd>
+</dl>
+
+<h4 id="cmd_strong" name="cmd_strong">cmd_strong</h4>
+
+<p>Toggles strong on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. Most browsers display it the same as bold.</dd>
+</dl>
+
+<h4 id="cmd_cite" name="cmd_cite">cmd_cite</h4>
+
+<p>Toggles cite on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. It is visually the same as italics.</dd>
+</dl>
+
+<h4 id="cmd_abbr" name="cmd_abbr">cmd_abbr</h4>
+
+<p>Toggles abbreviation on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommandblock</dt>
+ <dd>&gt;all string </dd>
+</dl>
+
+<h4 id="cmd_acronym" name="cmd_acronym">cmd_acronym</h4>
+
+<p>Toggles acronym on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style.</dd>
+</dl>
+
+<h4 id="cmd_code" name="cmd_code">cmd_code</h4>
+
+<p>Toggles code on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "s</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. Typically it is displayed with monospace font.</dd>
+</dl>
+
+<h4 id="cmd_samp" name="cmd_samp">cmd_samp</h4>
+
+<p>Toggles program output sample style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. Typically it is displayed with monospace font.</dd>
+</dl>
+
+<h4 id="cmd_var" name="cmd_var">cmd_var</h4>
+
+<p>Toggles variable style on selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_all"(boolean), "state_begin"(boolean), "state_end"(boolean), "state_mixed"(boolean), "state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>This is logical style. Typically it is displayed with monospace font.</dd>
+</dl>
+
+<h4 id="cmd_removeLinks" name="cmd_removeLinks">cmd_removeLinks</h4>
+
+<p>Removes the existing link from the selection (if any).</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean), ???</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_ol" name="cmd_ol">cmd_ol</h4>
+
+<p>Makes ordered list from selection or inserts new list if there is no selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>See also <a href="#cmd_removeList">cmd_removeList</a></dd>
+</dl>
+
+<h4 id="cmd_ul" name="cmd_ul">cmd_ul</h4>
+
+<p>Makes unordered list from selection or inserts new list if there is no selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>See also <a href="#cmd_removeList">cmd_removeList</a></dd>
+</dl>
+
+<h4 id="cmd_dt" name="cmd_dt">cmd_dt</h4>
+
+<p>Inserts list item (dt element).</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>See also <a href="#cmd_removeList">cmd_removeList</a></dd>
+</dl>
+
+<h4 id="cmd_dd" name="cmd_dd">cmd_dd</h4>
+
+<p>Inserts list item (dd element).</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>See also <a href="#cmd_removeList">cmd_removeList</a></dd>
+</dl>
+
+<h4 id="cmd_removeList" name="cmd_removeList">cmd_removeList</h4>
+
+<p>Removes list from selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>???</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_indent" name="cmd_indent">cmd_indent</h4>
+
+<p>Indents current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean), ???</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_outdent" name="cmd_outdent">cmd_outdent</h4>
+
+<p>Outdents current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean), ???</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_increaseFont" name="cmd_increaseFont">cmd_increaseFont</h4>
+
+<p>Increases font size (uses <span class="nowiki">&lt;big&gt;</span> tag).</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_decreaseFont" name="cmd_decreaseFont">cmd_decreaseFont</h4>
+
+<p>Decreases font size (uses <span class="nowiki">&lt;small&gt;</span> tag).</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+</dl>
+
+<h4 id="cmd_undo" name="cmd_undo">cmd_undo</h4>
+
+<p>Undoes last executed command.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>Only available if txmgr.dll is present.</dd>
+</dl>
+
+<h4 id="cmd_redo" name="cmd_redo">cmd_redo</h4>
+
+<p>Redoes last executed command.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled"(boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameters</dd>
+ <dt>Note</dt>
+ <dd>Only available if txmgr.dll is present.</dd>
+</dl>
+
+<h4 id="cmd_fontColor" name="cmd_fontColor">cmd_fontColor</h4>
+
+<p>Acts upon the current selection to set the font color.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>DoCommand</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>Note</dt>
+ <dd>For color values, use the cstring representation of RRGGBB, e.g., RED="#FF0000" and BLACK="#000000".</dd>
+</dl>
+
+<h4 id="cmd_backgroundColor" name="cmd_backgroundColor">cmd_backgroundColor</h4>
+
+<p>Sets the background color of the document.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>DoCommand</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>Note</dt>
+ <dd>For color values, use the cstring representation of RRGGBB, e.g., RED="#FF0000" and BLACK="#000000".</dd>
+</dl>
+
+<h4 id="cmd_fontFace" name="cmd_fontFace">cmd_fontFace</h4>
+
+<p>Sets the font face for the current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>DoCommand</dt>
+ <dd>"state_attribute" (cstring or string)
+ <dl>
+  <dd>
+  <dl>
+   <dd>"Helvetica, Arial, sans-serif"</dd>
+   <dd>"Times New Roman, Times, serif"</dd>
+   <dd>"Courier New, Courier, monospace"</dd>
+  </dl>
+  </dd>
+ </dl>
+ </dd>
+ <dd>Any string is acceptable. The above strings should be considered examples of base functionality and in no way imply that this command won't handle other fonts.</dd>
+</dl>
+
+<h4 id="cmd_align" name="cmd_align">cmd_align</h4>
+
+<p>Sets the alignment for the lines contained in the current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>DoCommand</dt>
+ <dd>"state_attribute" (cstring)<br>
+ "left", "right", "center", "justify"</dd>
+</dl>
+
+<h4 id="cmd_insertHTML" name="cmd_insertHTML">cmd_insertHTML</h4>
+
+<h4 id="cmd_insertLinkNoUI" name="cmd_insertLinkNoUI">cmd_insertLinkNoUI</h4>
+
+<h4 id="cmd_insertImageNoUI" name="cmd_insertImageNoUI">cmd_insertImageNoUI</h4>
+
+<h4 id="cmd_insertHR" name="cmd_insertHR">cmd_insertHR</h4>
+
+<h4 id="cmd_charSet" name="cmd_charSet">cmd_charSet</h4>
+
+<p>Sets the charset for the document.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>DoCommand</dt>
+ <dd>"state_attribute" (cstring)</dd>
+ <dt>Note</dt>
+ <dd>There must be a clear undo stack or this will not work.</dd>
+</dl>
+
+<h4 id="cmd_copy" name="cmd_copy">cmd_copy</h4>
+
+<p>Copies current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_cut" name="cmd_cut">cmd_cut</h4>
+
+<p>Cuts current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_delete" name="cmd_delete">cmd_delete</h4>
+
+<p>Deletes current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_paste" name="cmd_paste">cmd_paste</h4>
+
+<p>Pastes into current selection or if there is no selection at the cursor position.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_cutOrDelete" name="cmd_cutOrDelete">cmd_cutOrDelete</h4>
+
+<p>Cuts or deletes current selection.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteCharBackward" name="cmd_deleteCharBackward">cmd_deleteCharBackward</h4>
+
+<p>Deletes one character backward relative to the current selection end point. Acts like backspace key.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteCharForward" name="cmd_deleteCharForward">cmd_deleteCharForward</h4>
+
+<p>Deletes one character forward relative to the current selection end point. Acts like delete key.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteWordBackward" name="cmd_deleteWordBackward">cmd_deleteWordBackward</h4>
+
+<p>Deletes from beginning of word to the current selection end point. Acts as Ctrl+Backspace.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteWordForward" name="cmd_deleteWordForward">cmd_deleteWordForward</h4>
+
+<p>Deletes from current selection end point to the end of word. Acts as Ctrl+Delete.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteToBeginningOfLine" name="cmd_deleteToBeginningOfLine">cmd_deleteToBeginningOfLine</h4>
+
+<p>Deletes everything from beginning of line to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteToEndOfLine" name="cmd_deleteToEndOfLine">cmd_deleteToEndOfLine</h4>
+
+<p>Deletes everything from current selection end point to the end of line.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_deleteToEndOfLine_2" name="cmd_deleteToEndOfLine_2">cmd_deleteToEndOfLine</h4>
+
+<p>Deletes everything from current selection end point to the end of line.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_scrollTop" name="cmd_scrollTop">cmd_scrollTop</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_scrollBottom" name="cmd_scrollBottom">cmd_scrollBottom</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_scrollPageUp" name="cmd_scrollPageUp">cmd_scrollPageUp</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_scrollPageDown" name="cmd_scrollPageDown">cmd_scrollPageDown</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectTop" name="cmd_selectTop">cmd_selectTop</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectBottom" name="cmd_selectBottom">cmd_selectBottom</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectLineNext" name="cmd_selectLineNext">cmd_selectLineNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectLinePrevious" name="cmd_selectLinePrevious">cmd_selectLinePrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectCharPrevious" name="cmd_selectCharPrevious">cmd_selectCharPrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectCharNext" name="cmd_selectCharNext">cmd_selectCharNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectBeginLine" name="cmd_selectBeginLine">cmd_selectBeginLine</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectEndLine" name="cmd_selectEndLine">cmd_selectEndLine</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectWordPrevious" name="cmd_selectWordPrevious">cmd_selectWordPrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_selectWordNext" name="cmd_selectWordNext">cmd_selectWordNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_movePageUp" name="cmd_movePageUp">cmd_movePageUp</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_movePageDown" name="cmd_movePageDown">cmd_movePageDown</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_moveTop" name="cmd_moveTop">cmd_moveTop</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_moveBottom" name="cmd_moveBottom">cmd_moveBottom</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_lineNext" name="cmd_lineNext">cmd_lineNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_linePrevious" name="cmd_linePrevious">cmd_linePrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_charPrevious" name="cmd_charPrevious">cmd_charPrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_charNext" name="cmd_charNext">cmd_charNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_beginLine" name="cmd_beginLine">cmd_beginLine</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_endLine" name="cmd_endLine">cmd_endLine</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_wordPrevious" name="cmd_wordPrevious">cmd_wordPrevious</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h4 id="cmd_wordNext" name="cmd_wordNext">cmd_wordNext</h4>
+
+<p>Scrolls relative to the current selection end point.</p>
+
+<dl>
+ <dt>GetCommandState</dt>
+ <dd>"state_enabled" (boolean)</dd>
+ <dt>DoCommand</dt>
+ <dd>no parameter</dd>
+ <dt>Note</dt>
+ <dd>GetCommandState in these cases will return whether or not it is possible to call DoCommand. This will not really give you any concrete information on the state of the command.</dd>
+</dl>
+
+<h2 id="nsICommandParams" name="nsICommandParams">nsICommandParams</h2>
+
+<h3 id="Creating" name="Creating">Creating</h3>
+
+<p><em>How do you create an nsICommandParams? -saari</em></p>
+
+<h3 id="Writing" name="Writing">Writing</h3>
+
+<p>Once you have created an <code><a href="/en-US/docs/NsICommandParams" title="NsICommandParams">nsICommandParams</a></code> you call the "Set" methods.</p>
+
+<ul>
+ <li><code>SetBooleanValue</code></li>
+ <li><code>SetLongValue</code></li>
+ <li><code>SetDoubleValue</code></li>
+ <li><code>SetStringValue</code></li>
+ <li><code>SetCStringValue</code></li>
+ <li><code>SetISupportsValue</code></li>
+ <li><code>RemoveValue</code></li>
+</ul>
+
+<p>Each will take a name value pair. In the case of <code>SetBooleanValue</code> for example you use a boolean as the second parameter.</p>
+
+<pre>commandParam-&gt;SetCStringValue("state_attribute","left");
+</pre>
+
+<h3 id="Reading" name="Reading">Reading</h3>
+
+<p>For reading you may go after individual name/value pairs you know are there or you may iterate through all the name/value pairs and programatically pull off data.</p>
+
+<ul>
+ <li><code>First</code></li>
+ <li><code>GetNext</code> (returns the next name in the name/value pair list)</li>
+ <li><code>HasMoreElements</code></li>
+ <li><code>GetValueType</code> (numeric enum type see <code><a href="/en-US/docs/NsICommandParams" title="NsICommandParams">nsICommandParams</a></code> for values)</li>
+</ul>
+
+<p>If the name/value pair is known or it was obtained using the methods described above, it is possible to call the following methods:</p>
+
+<ul>
+ <li><code>GetBooleanValue</code></li>
+ <li><code>GetLongValue</code></li>
+ <li><code>GetDoubleValue</code></li>
+ <li><code>GetStringValue</code></li>
+ <li><code>GetCStringValue</code></li>
+ <li><code>GetISupportsValue</code></li>
+</ul>
+
+<p>All of these take pointers to values except for <code>GetStringValue</code> which demands a reference to an <code><a href="/en-US/docs/Mozilla_internal_string_guide#The_Abstract_Classes" title="Mozilla_internal_string_guide#The_Abstract_Classes">nsAString</a></code>.</p>
+
+<pre>commandParam-&gt;GetBooleanValue("state_enabled",&amp;boolval);
+</pre>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Authors: Michael Judge (<a class="link-mailto" href="mailto:mjudge@netscape.com">mjudge@netscape.com</a>)</li>
+ <li>Contributor: Kathleen Brade (<a class="link-mailto" href="mailto:brade@netscape.com">brade@netscape.com</a>)</li>
+ <li>Last Updated Date: March 27, 2003</li>
+ <li>Original Document: <a href="http://lxr.mozilla.org/mozilla1.8/source/editor/docs/Editor_Embedding_Guide.html">A Guide to Embedding The Gecko Editor</a></li>
+</ul>
+</div>
+
+<p> </p>

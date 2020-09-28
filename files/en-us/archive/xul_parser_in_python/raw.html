@@ -1,0 +1,78 @@
+<div class="blockIndicator warning">
+<p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> This article is from 2000.</p>
+</div>
+
+<p>v.00001</p>
+
+<p>To celebrate ActiveState's recent <a class="external" href="http://www.upside.com/Open_Season/392eeb7b0_yahoo.html"><s>announcement</s></a> about support for Perl and Python in Mozilla, I have put together this little Python script that parses your local XUL and builds a list of all the XUL elements and their attributes in an HTML page.</p>
+
+<p>With new widgets and attributes landing all the time, I wanted to get some quicker way of looking at the XUL--at particular builds, at particular widgets, at which elements had which attributes, etc.</p>
+
+<p>The script writes out all the attributes and none of the values, but the parser itself is seeing the elements, their attributes, and the values of those attributes, and you just have to ask for them if you want them. For example, you could easily adapt this to:</p>
+
+<ul>
+ <li>return the id values of all the elements</li>
+ <li>take elements on the command line and only spell them out</li>
+ <li>build new chrome subdirectories (i.e. new "packages") on the fly using search and replace.</li>
+</ul>
+
+<p>As I adapt the script in these ways and try to further generalize the actual code as I get time, I will make it available here. In the <a href="#How_the_script_works">explanation</a> section below, I try to say a little something about how this script works. It's really just a wrapper around Python's xmllib XML Parser, but I had to sort of fool around with it. Python's support for XML (and potential with XUL) is extensive, and so it's more a matter of choosing an approach and hooking things up than anything else.</p>
+
+<h3 id="Source_code" name="Source_code">Source code</h3>
+
+<p>The <a href="en/XUL_Parser_in_Python%2f%2fsource">source code for the XUL parser</a> is available.</p>
+
+<p>It only runs as a hard-coded script right now, so if you want to use it you have to go in and changes some of the stuff like CHROME_DIR and which information you want out. It also, I'm afraid, only works on the win32 platform, where the &lt;tt&gt;dir&lt;/tt&gt; command it depends on gets you your XUL files. Again, you can easily use &lt;tt&gt;ls&lt;/tt&gt; instead, as I should have done, and pick up some extra support. I will make these adjustments and change it into a real module when I get a second, so that someone can instantiate the parser from their own scripts and use it more flexibly:</p>
+
+<pre class="eval">&gt;&gt;&gt; import XULTool
+&gt;&gt;&gt; myXP = XULParser()
+&gt;&gt;&gt; CHROME_DIR = 'D:\src\mozilla\xpfe'
+&gt;&gt;&gt; res = myXP.parseXUL(CHROME_DIR, 'window', 'id')
+</pre>
+
+<p>Where something like the above would write out all the XUL window ids in the build. Something like that, anyway.</p>
+
+<h3 id="Results" name="Results">Results</h3>
+
+<p>The results from the script are written to a file called res.html. This is another hard-coded thing I have to open up. If you want to test this script you should change the filename "res.html" specified in the fourth line and compare different results files. Note also that I wrote the build number into the header myself, and haven't figured out yet how to get that written automatically. I guess you could get a modify date from the files as you open them.</p>
+
+<h3 id="How_the_script_works" name="How_the_script_works">How the script works</h3>
+
+<p>As I said before, there isn't too much to explain in this script, particularly if you have used Python's xmllib parser before. At the middle of it is a subclass of the xmllib parser that overrides that parser's <strong>unknown_starttag</strong> method and asks it to do all the work. The unknown_starttag handler is fed the tag name, the attributes of that tag, and the attributes' values, so all you have to do as you hit each XUL element is build up a nested dictionary of elements and their associated attributes. After all the XUL files in the specified directory and its subdirectories are fed to the parser and parsed (using the win32 system's &lt;tt&gt;dir /s /b *.xul&lt;/tt&gt; command), the dictionary of dictionaries is sorted and written into an HTML table.</p>
+
+<p>The xml namespace support in xmllib was resolving the xul and html namespaces in a very annoying way, so I have an additional function, strip(), that takes off the whole namespace that xmllib is trying to tack onto the front of each item it finds in the XML.</p>
+
+<p>Some modifications to this script may suggest other uses. The parser provides the tag name itself as a string and the attributes and their values in a dictionary, "a". If you want to look for certain widgets within the XUL files, you can get the filename from the calling method p.feed(data) and create a condition that only gets the elements specified in sys.argv[1].</p>
+
+<p>Or, since the dictionary is already storing the values of all the attributes it finds, you can write the values of a particular attribute (e.g., id) to the results file by checking the attribute in sys.argv[1]:</p>
+
+<pre class="eval">for attr in a.keys():
+  <strong>if strip(attr) == sys.argv[1]:</strong>
+    el_list[name][strip(attr)] = strip(a[attr])
+
+</pre>
+
+<p>and writing the<em>values</em> to the HTML results file instead of the<em>keys</em><span class="nowiki">: </span></p>
+
+<pre class="eval">for item in elements:
+	w.write('&lt;tr&gt;&lt;td class="head"&gt;' + item + '&lt;/td&gt;&lt;/tr&gt;\n')
+	for a in el_list[item].<strong>values</strong>():
+		w.write('&lt;tr&gt;&lt;td class="at"&gt;' + a + '&lt;/td&gt;')
+
+</pre>
+
+<p>With these modifications, the script creates an output more like a <a class="external" href="http://www.mozilla.org/docs/xul/xulnotes/resid.html">Periodic Table of XUL Elements</a>.</p>
+
+<p>Until I spruce it up a little, this is just a very basic demonstration of using Python's XML parser with XUL. But Mozilla's upcoming support for languages like Perl and Python will really open up the Mozilla platform to tools and approaches of this kind--and make now a good time to start thinking about how these various technologies will be put together. The first level of support for Python in Mozilla will apparently be for Python modules made available as XPCOM objects. Extending on the approach in this script, then, you could imagine a kind of introspective XUL chrome that could modify and replicate itself by calling services from the XULParser and XULWriter XPCOM objects.</p>
+
+<p> </p>
+
+<p>Please feel free to suggest changes, change the format of the results output, or adapt this script in any way you want. I have probably made some errors and undoubtedly written some strange, graceless Python. Most of all, please feel free to experiment with the Mozilla development platform in this way or in any other way you can imagine.</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_document_information" name="Original_document_information">Original document information</h2>
+
+<ul>
+ <li>Author: <a class="link-mailto" href="mailto:oeschger@netscape.com">Ian Oeschger</a></li>
+</ul>
+</div>

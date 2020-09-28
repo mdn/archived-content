@@ -1,0 +1,154 @@
+---
+title: Embedding Tips
+slug: Mozilla/Gecko/Embedding_Mozilla/FAQ/How_do_I...
+tags:
+  - Embedding Mozilla
+  - Mozilla_Embedding_FAQ
+---
+<h3 id="What_is_a_service.3F" name="What_is_a_service.3F">What is a service?</h3>
+
+<p>A service is a singleton object implementing one or more XPCOM interfaces and registered with Gecko during startup. Normally it provide some functionality that is required from lots of places such as looking up preference settings, creating new windows, locating files, displaying prompt or password dialog boxes and so on.</p>
+
+<p>Embedders may wish to override some of the default service implementations with their own. For example, the default prompt service uses XUL to render prompt dialogs and embedders may wish to render them in a way more appropriate for their application and platform..</p>
+
+<h3 id="How_do_I_load_a_page.3F" name="How_do_I_load_a_page.3F">How do I load a page?</h3>
+
+<p>Get thensIWebNavigation interface on your webbrowser and call the loadURI method with the appropriate URI and flags. This interface also has methods for reloading, stopping a load and going back and forward in the history.</p>
+
+<h3 id="How_do_I_block_a_load.3F" name="How_do_I_block_a_load.3F">How do I block a load?</h3>
+
+<p>Implement the nsIWebProgressListener interface and register it with the appropriate web browser object via the nsIWebBrowser::addWebBrowserListener() method. Use the callbacks for after-the-fact cancellation. Alternatively, implement a nsIURIContentListener as described below.</p>
+
+<h3 id="How_do_I_watch.2Fintercept_a_load_before_it_happens.3F" name="How_do_I_watch.2Fintercept_a_load_before_it_happens.3F">How do I watch/intercept a load before it happens?</h3>
+
+<p>Implement the nsIURIContentListener interface, and register it with the appropriate web browser object via the nsIWebBrowser::parentURIContentListener attribute. Watch for changes in nsIURIContentListener::OnStartURIOpen(). You can abort the URI load at this point if you don't want it to proceed.</p>
+
+<p>If necessary you may also implement the nsIURIContentListener::IsPreferred(), returning PR_TRUE to ensure you are always the preferred URI handler and are called no matter what the content type.</p>
+
+<h3 id="How_do_I_copy_items_to_the_clipboard.3F" name="How_do_I_copy_items_to_the_clipboard.3F">How do I copy items to the clipboard?</h3>
+
+<p>Obtain the nsIClipboardCommands interface from the appropriate web browser object via nsIServiceProvider::GetInterface (or the do_GetInterface() helper method).</p>
+
+<h3 id="How_do_I_save_a_document_or_data_to_disk.3F" name="How_do_I_save_a_document_or_data_to_disk.3F">How do I save a document or data to disk?</h3>
+
+<p>Query for the nsIWebBrowserPersist interface implemented on the web browser object and call the saveURI() or saveDocument() methods on that.</p>
+
+<p>Alternatively, create a standalone webbrowser persist object and call the nsIWebBrowserPersist interface on that to save URIs and documents. This is recommended if you intend anything other than the uri or document your browser is looking at. Register your own nsIWebProgressListener object to listen for progress and state notifications.</p>
+
+<h3 id="How_do_I_save_.2F_upload_a_document_.2F_data_to_a_web_or_ftp_site.3F" name="How_do_I_save_.2F_upload_a_document_.2F_data_to_a_web_or_ftp_site.3F">How do I save / upload a document / data to a web or ftp site?</h3>
+
+<p>Again, use the webbrowser persist object, but specify a remote location as the target URI.</p>
+
+<p>Your web progress listener must also implement nsIAuthPrompt if you want to be able to upload to a password protected location (e.g. an ftp site). The nsIAuthPrompt interface allows the networking layer to pose a user / password prompt to obtain the values needed for authentication. Your own implementation should pose this dialog, or fill in the values that are needed for the upload to succeed.</p>
+
+<h3 id="How_do_I_know_when_saving_is_done.2C_monitor_progress_etc..3F" name="How_do_I_know_when_saving_is_done.2C_monitor_progress_etc..3F">How do I know when saving is done, monitor progress etc.?</h3>
+
+<p>Register your ownnsIWebProgressListener object to listen for progress and state notifications.</p>
+
+<p>Here is a <a href="http://developer.mozilla.org/samples/SimplePersist.cpp" class="external">simple example</a> which demonstrates the principle. The SimplePersist() function takes a string URL and a string file path. In response it creates a persist object, creates a listener and starts the operation. As the operation progresses, methods on the listener such as OnStateChange, OnProgressChange etc. are called, allowing the embedder to know what is happening. When the operation is completed, the OnStateChange will be notified by a combination of STATE_STOP | STATE_IS_NETWORK state flags.</p>
+
+<p>You may also use the progress listener to query the request supplied in OnStateChange for more information. For example, if you wanted to check the server response headers, you might check OnStateChange for STATE_START | STATE_IS_REQUEST flags, and from the nsIRequest argument QI fornsIHttpChanne and call methods on that to determine response codes and other information from the server.</p>
+
+<p>It is left as an exercise to make this sample synchronous, i.e. wait for persistence to complete before returning. Hint, add a native message processing loop after the call to SaveURI that terminates when OnStateChange indicates persistence has finished..</p>
+
+<h3 id="How_do_I_print_a_page.3F" name="How_do_I_print_a_page.3F">How do I print a page?</h3>
+
+<p>Query the web browser object for nsIWebBrowserPrint. Call the nsIWebBrowserPrint::Print() method supplying a print settings object (e.g. that returned from nsIWebBrowserPrint::GetGlobalPrintSettings) that you wish to print the page with.</p>
+
+<h3 id="How_do_I_print_preview_a_page.3F" name="How_do_I_print_preview_a_page.3F">How do I print preview a page?</h3>
+
+<p>Query the web browser object for the nsIWebBrowserPrint interface. Call the nsIWebBrowserPrint::PrintPreview() method supplying a print settings object (e.g. that returned from nsIWebBrowserPrint::GetGlobalPrintSettings()) that you wish to preview the page with.</p>
+
+<p>The nsIWebBrowserPrint::PrintPreviewNavigate() method can be used to step through the pages.</p>
+
+<p>When finished with preview mode, call nsIWebBrowserPrint::ExitPrintPreview().</p>
+
+<h3 id="How_do_I_get_popup_windows_working.3F" name="How_do_I_get_popup_windows_working.3F">How do I get popup windows working?</h3>
+
+<p>Implement and register a nsIWindowCreator object with the window watcher service. The nsIWindowCreator::CreateChromeWindow method will be called whenever Gecko needs to open a new window. This method should create the new browser window in the specified style and hand back the nsIWebBrowserChrome interface to it.</p>
+
+<pre>nsCOMPtr&lt;nsIWindowWatcher&gt; wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
+if (wwatch) {
+  wwatch-&gt;SetWindowCreator(myWindowCreator);
+}
+</pre>
+
+<h3 id="I_need_the_Javascript_inside_the_browser_window_to_talk_to_my_embedding_client.__How_do_I_do_it.3F" name="I_need_the_Javascript_inside_the_browser_window_to_talk_to_my_embedding_client.__How_do_I_do_it.3F">I need the JavaScript inside the browser window to talk to my embedding client. How do I do it?</h3>
+
+<p>At startup use the category manager to register properties of the global object in JavaScript like this:</p>
+
+<pre>nsCOMPtr&lt;nsICategoryManager&gt; catman =
+      do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
+  if (!catman)
+    return NS_ERROR_FAILURE;
+
+  nsXPIDLCString previous;
+  catman-&gt;AddCategoryEntry(JAVASCRIPT_GLOBAL_PROPERTY_CATEGORY,
+                         "my_prop_name", "my_prop_contract_id",
+                         PR_TRUE, PR_TRUE, getter_Copies(previous));
+</pre>
+
+<p>This will cause a component with the contract id <code>my_prop_contract_id</code> to be lazily created when the <code>my_prop_name</code> is resolved in any JavaScript window scope.</p>
+
+<p>If you want to create your component multiple times within the browser window, you can use a JavaScript constructor instead of a JavaScript property:</p>
+
+<pre>catman-&gt;AddCategoryEntry("JavaScript global <strong>constructor</strong>",
+                         "my_prop_name", "my_prop_contract_id",
+                         PR_TRUE, PR_TRUE, getter_Copies(previous));</pre>
+
+<p>That way you will be able to do:</p>
+
+<pre>var my_comp = new my_prop_name();
+</pre>
+
+<p>This was taken from WeirdAl's excellent <a href="http://weblogs.mozillazine.org/weirdal/archives/017188.html" class="external" title="http://weblogs.mozillazine.org/weirdal/archives/017188.html">"Burning Chrome" article</a>.</p>
+
+<h3 id="How_do_I_specify_alternate_locations_for_profiles.3F" name="How_do_I_specify_alternate_locations_for_profiles.3F">How do I specify alternate locations for profiles?</h3>
+
+<p>Specify a profile directory in your implementation of nsIDirectoryServiceProvider passed to XRE_InitEmbedding. Use XRE_NotifyProfile to make gecko actually use a profile location.</p>
+
+<h3 id="How_do_I_change_the_user_agent_string.3F" name="How_do_I_change_the_user_agent_string.3F">How do I change the user agent string?</h3>
+
+<p>The default useragent is set using the value from your application.ini/nsXREAppData. You can override this default using the "general.useragent.override" preference.</p>
+
+<h3 id="How_do_I_display_my_own_message.2C_alert_and_prompt_boxes.3F" name="How_do_I_display_my_own_message.2C_alert_and_prompt_boxes.3F">How do I display my own message, alert and prompt boxes?</h3>
+
+<p>You need to implement and register your own prompt service.</p>
+
+<h3 id="How_do_I_get_the_DOM_document_from_the_web_browser_object.3F" name="How_do_I_get_the_DOM_document_from_the_web_browser_object.3F">How do I get the DOM document from the web browser object?</h3>
+
+<pre>nsCOMPtr&lt;nsIDOMDocument&gt; doc;
+nsCOMPtr&lt;nsIDOMWindow&gt; window;
+webBrowser-&gt;GetContentDOMWindow(getter_AddRefs(window));
+if (window) {
+  window-&gt;GetDocument(getter_AddRefs(doc));
+}
+</pre>
+
+<h3 id="What_is_the_docshell.3F" name="What_is_the_docshell.3F">What is the docshell?</h3>
+
+<p>A description of the docshell may be found <a href="http://www.mozilla.org/projects/embedding/docshell.html" class="external">here</a>.</p>
+
+<h3 id="How_do_I_implement_context_menus.3F" name="How_do_I_implement_context_menus.3F">How do I implement context menus?</h3>
+
+<p>Make your chrome object implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContextMenuListener" title="">nsIContextMenuListener</a></code> or <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContextMenuListener2" title="">nsIContextMenuListener2</a></code>. The nsIContextMenuListener::OnShowContextMenu() method will be called with the DOM node that the context applies, the DOM event plus some flag combinations that assist in determining what menu to display (document, link, image, selected text etc.)</p>
+
+<h3 id="How_do_I_implement_tool_tips.3F" name="How_do_I_implement_tool_tips.3F">How do I implement tool tips?</h3>
+
+<p>Make your chrome object implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITooltipListener" title="">nsITooltipListener</a></code> interface. Methods to hide or show the tool tips will automatically be called upon it when the user hovers over an item with TITLE text. The contract ID is defined <a href="https://dxr.mozilla.org/mozilla-central/source/embedding/browser/webBrowser/nsCTooltipTextProvider.h" rel="custom">here</a>.</p>
+
+<p>For an example, see <a href="https://dxr.mozilla.org/mozilla-central/source/embedding/tests/mfcembed/BrowserImpl.cpp" rel="custom">BrowserImpl.cpp</a> in mfcembed and its simple <a href="https://dxr.mozilla.org/mozilla-central/source/embedding/tests/mfcembed/BrowserToolTip.cpp" rel="custom">CBrowserToolTip</a> class implemented in MFC.</p>
+
+<h3 id="How_do_I_disable_drag.2Fdrop_support.3F" name="How_do_I_disable_drag.2Fdrop_support.3F">How do I disable drag/drop support?</h3>
+
+<p>When setting up your browser add a hook to the command manager which points to your <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIWebBrowserChrome" title="">nsIWebBrowserChrome</a></code> implementation. This implementation should also implement <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIClipboardDragDropHooks" title="">nsIClipboardDragDropHooks</a></code>. Deny the drop by setting the return value of the AllowDrop() function.</p>
+
+<pre>nsCOMPtr&lt;nsICommandManager&gt; CommandManager = do_GetInterface(iWebBrowser);
+if (CommandManager)
+{
+  nsCOMPtr&lt;nsIDOMWindow&gt; theDOMWindow = do_GetInterface(iWebBrowser);
+  nsCOMPtr&lt;nsICommandParams&gt; cmdParamsObj = do_CreateInstance(NS_COMMAND_PARAMS_CONTRACTID,&amp;rv);
+  cmdParamsObj-&gt;SetISupportsValue("addhook", reinterpret_cast&lt;nsISupports*&gt;(iChromeImplementation));
+  CommandManager-&gt;DoCommand("cmd_clipboardDragDropHook", cmdParamsObj, theDOMWindow);
+}
+</pre>

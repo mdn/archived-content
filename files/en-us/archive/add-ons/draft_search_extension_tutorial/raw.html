@@ -1,0 +1,253 @@
+<h1 id="Changing_Default_Search_Setting_from_Extensions">Changing Default Search Setting from Extensions</h1>
+<p>Many add-ons, for monetization or other reasons, change several search-related settings at install time. While this is generally considered acceptable behavior, considerable care must be taken to avoid violating the <a href="/en-US/docs/Addons/Add-on_guidelines">Mozilla add-on guidelines</a> or creating an adverse user experience.</p>
+<p>Due to the large volume of user complaints regarding hidden settings being changed against their will, and not being restored after the add-ons responsible are disabled, Mozilla will take any steps necessary to mitigate the impact of offending add-ons. In particular, changing the location bar search keyword URL in a way which is not automatically reset when the add-on is removed will result in a reset prompt for users. Other settings violations designed to restrict user choice will result in stronger action, such as blacklisting of the add-ons in question.</p>
+<p>The most technically sound method of achieving this, and the only acceptable way of changing preferences such that they are automatically restored on add-on uninstall, is to make such changes in the default preference branch, as explained below.</p>
+<p>While the technical details below are important to understand, a library which encapsulates the appropriate logic is provided along with the example add-on at the end, and should be used where possible.</p>
+<h2 id="Changing_Default_Preference_Values">Changing Default Preference Values</h2>
+<p>There are two common ways of changing default preference values. The simplest, which works only for traditional, non-restartless add-ons, is to <a href="/en-US/docs/Default_Preferences">add the preference changes to a file in an extension's <code>defaults/preferences/</code> directory</a>. The following file, for instance, would change the default keyword search engine, assuming that an engine with the name <em>Example Engine</em> is installed, as described below:</p>
+<pre class="brush: javascript">// This is a localizable preference, so it must contain a URL which
+// points at a properties file containing the preference name as a
+// property. We use a data: URL for simplicity.
+pref("browser.search.defaultenginename", "data:text/plain,browser.search.defaultenginename=Example Engine");</pre>
+<p>In the case or restartless extensions, the preferences need to be changed manually, and reverted when the extension is disabled if they have not been changed in the meantime. While changes to default preference values will not persist across sessions, restartless extensions must nevertheless restore them for the balance of the session after they have been disabled. The following example <code>bootstrap.js</code> file illustrates the method:</p>
+<pre class="brush: javascript">const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+
+// Import the Services module.
+Cu.import("resource://gre/modules/Services.jsm");
+
+// Keep track of whether this is the first run.
+var firstRun = false;
+
+// Get the root user preference branch.
+var userPrefs = Services.prefs.getBranch("");
+// Get the root default preference branch.
+var defaultPrefs = Services.prefs.getDefaultBranch("");
+
+// Save the original values.
+var savedPrefs = {}
+
+// Change the default value of the preference *name* to *value*.
+// A default for this preference must exist, and it must be a
+// character preference.
+function setPref(name, value, localized) {
+    // If this is a localized preference, transform the value into an
+    // appropriate data: URL.
+    if (localized)
+        value = "data:text/plain," + encodeURIComponent(name + "=" + value.replace(/ /g, "\\u0020"));
+
+    // Save the original and new values.
+    savedPrefs[name] = [defaultPrefs.getCharPref(name), value];
+
+    // Change the default
+    defaultPrefs.setCharPref(name, value);
+
+    // Clear the user value if this is the first run, or the
+    // new default is the same as the user value.
+    if (firstRun || userPrefs.getCharPref(name) == value)
+        userPrefs.clearUserPref(name);
+}
+
+function startup(data, reason) {
+    firstRun = reason == ADDON_INSTALL;
+
+    // Change the default engine name.
+    // An engine with this name must already exist.
+    setPref("browser.search.defaultenginename", "Example Engine", true);
+}
+
+function shutdown(data, reason) {
+    // No need to do this if this is app shutdown.
+    if (reason == APP_SHUTDOWN)
+        return;
+
+    // Reset our changes if the values have not been changed
+    // in the meantime.
+    for (let [name, [origValue, value]] in Iterator(savedPrefs)) {
+        if (defaultPrefs.getCharPref(name) == value)
+            defaultPrefs.setCharPref(name, origValue);
+    }
+}
+
+function install() {}
+function uninstall() {}
+</pre>
+<h2 id="Changing_the_Default_Search_Engine">Changing the Default Search Engine</h2>
+<p>This change comes in two parts: 1) installing a new search engine (and removing it when your extension is disabled), and 2) setting it as a default (and restoring the previous default when your extension is uninstalled).</p>
+<h3 id="Adding_a_New_Search_Engine">Adding a New Search Engine</h3>
+<p>Search engines may be added either directly via an API call, or indirectly via an XML description file. While the former is the simpler method, it does not support complex descriptions containing suggestion URLs or separate keyword search URLs.</p>
+<p><b>Note:</b> Example uninstall code is only provided for restartless extensions. A separate tutorial exists for <a href="/en-US/docs/XUL/School_tutorial/Appendix_B:_Install_and_Uninstall_Scripts#Uninstall_Scripts">running code at uninstall in non-restartless extensions</a>.</p>
+<p>An example bootstrap.js file illustrating the simple method follows:</p>
+<pre class="brush: javascript">const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+
+// Import the Services module.
+Cu.import("resource://gre/modules/Services.jsm");
+
+// The details of the engine to add
+const ENGINE_DETAILS = {
+    name: "Example Engine",
+    iconURL: "data:image/png;base64,...",
+    alias: "example-engine",
+    description: "An example search engine",
+    method: "GET", // The HTTP request method
+    url: "https://www.example.com/?q=_searchTerms_"
+};
+
+// Keep track of whether this is the first run.
+var firstRun = false;
+// Decide whether to select the search engine.
+var selectSearch = false;
+
+function startup(data, reason) {
+    firstRun = reason == ADDON_INSTALL;
+    // Re-select the search engine if this is the first run
+    // or we're being re-enabled.
+    selectSearch = firstRun || reason == ADDON_ENABLE;
+
+    // Only add the engine if it doesn't already exist.
+    if (!Services.search.getEngineByName(ENGINE_DETAILS.name)) {
+        Services.search.addEngineWithDetails.apply(Services.search,
+            ["name", "iconURL", "alias", "description", "method", "url"].map(
+                function (k) ENGINE_DETAILS[k]))
+    }
+
+    let engine = Services.search.getEngineByName(ENGINE_DETAILS.name);
+
+    // If the engine is not hidden and this is the first run, move
+    // it to the first position in the engine list and select it
+    if (selectSearch &amp;&amp; !engine.hidden) {
+        Services.search.moveEngine(engine, 0);
+        Services.search.currentEngine = engine;
+    }
+}
+
+function shutdown(data, reason) {
+    // Clean up the search engine on uninstall or disabled.
+    if (reason == ADDON_UNINSTALL || reason == ADDON_DISABLE) {
+        let engine = Services.search.getEngineByName(ENGINE_DETAILS.name);
+        // Only remove the engine if it appears to be the same one we
+        // added.
+        if (engine &amp;&amp; engine.getSubmission("_searchTerms_").uri.spec == ENGINE_DETAILS.url)
+            Services.search.removeEngine(engine);
+    }
+}
+
+function install() {}
+function uninstall() {}
+</pre>
+<p>The complex method requires two files, an XML search description file and a JavaScript file to register the engine. In non-restartless extensions, the XML search description may instead simply be placed in the <code>searchplugins/</code> directory in the root of your XPI, as <code>em:unpack</code> is specified in your <code>install.rdf</code> file. As above, install and uninstall code is only provided for restartless add-ons but can be adapted for traditional add-ons.</p>
+<h5 id="search.xml"><code>search.xml</code></h5>
+<pre class="brush: xml">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;SearchPlugin xmlns="http://www.mozilla.org/2006/browser/search/"&gt;
+    &lt;ShortName&gt;Example Engine&lt;/ShortName&gt;
+    &lt;Description&gt;Example search engine&lt;/Description&gt;
+    &lt;InputEncoding&gt;UTF-8&lt;/InputEncoding&gt;
+    &lt;Image width="16" height="16" type="image/png"&gt;data:image/png;base64,
+        ...
+    &lt;/Image&gt;
+    &lt;Url type="application/x-suggestions+json" template="https://api.example.com/suggestions"&gt;
+        &lt;Param name="q" value="{searchTerms}"/&gt;
+    &lt;/Url&gt;
+    &lt;Url type="text/html" method="GET" template="https://www.example.com/search"&gt;
+        &lt;Param name="q" value="{searchTerms}"/&gt;
+        &lt;Param name="source" value="search-box"/&gt;
+    &lt;/Url&gt;
+    &lt;Url type="application/x-moz-keywordsearch" method="GET" template="https://www.example.com/search"&gt;
+        &lt;Param name="q" value="{searchTerms}"/&gt;
+        &lt;Param name="source" value="keyword"/&gt;
+    &lt;/Url&gt;
+    &lt;SearchForm&gt;https://www.example.com/search&lt;/SearchForm&gt;
+&lt;/SearchPlugin&gt;
+</pre>
+<h5 id="bootstrap.js"><code>bootstrap.js</code></h5>
+<pre class="brush: javascript">const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+
+// Import the Services module.
+Cu.import("resource://gre/modules/Services.jsm");
+
+// These must be the same details as in your search.xml file.
+const ENGINE_DETAILS = {
+    name: "Example Engine",
+    url: "https://www.example.com/search?q=_searchTerms_&amp;source=search-box"
+};
+
+// Get the engine URL based on our URL.
+const ENGINE_URL = "chrome://example-engine/content/search.xml";
+
+// Keep track of whether this is the first run.
+var firstRun = false;
+// Decide whether to select the search engine.
+var selectSearch = false;
+
+function removeObserver() {
+    try {
+        Services.obs.removeObserver(searchObserver, ENGINE_ADDED);
+    }
+    // If we've already removed this observer, ignore the error.
+    catch (e) {}
+}
+
+// Observer called after our engine has been successfully added
+function searchObserver(engine, topic, data) {
+    if (data != "engine-added")
+        return;
+
+    engine.QueryInterface(Ci.nsISearchEngine);
+    if (engine.name == ENGINE_DETAILS.name) {
+        // Remove our observer now that we're done with it.
+        removeObserver();
+
+        // If the engine is not hidden and this is the first run, move
+        // it to the first position in the engine list and select it
+        if (selectSearch &amp;&amp; !engine.hidden) {
+            Services.search.moveEngine(engine, 0);
+            Services.search.currentEngine = engine;
+        }
+    }
+}
+// Observer topic
+const ENGINE_ADDED = "browser-search-engine-modified";
+
+function startup(data, reason) {
+
+    firstRun = reason == ADDON_INSTALL;
+    // Re-select the search engine if this is the first run
+    // or we're being re-enabled.
+    selectSearch = firstRun || reason == ADDON_ENABLE;
+
+    // Only add the engine if it doesn't already exist.
+    let engine = Services.search.getEngineByName(ENGINE_DETAILS.name);
+    if (engine)
+        searchObserver(engine, ENGINE_DETAILS);
+    else {
+        // Register an observer to detect when the engine has been added, if
+        // necessary.
+        if (selectSearch)
+            Services.obs.addObserver(searchObserver, ENGINE_ADDED, false);
+
+        Services.search.addEngine(ENGINE_URL, Ci.nsISearchEngine.DATA_XML,
+                                  null, false);
+    }
+}
+
+function shutdown(data, reason) {
+    // Remove our observer, if necessary
+    if (reason != APP_SHUTDOWN)
+        removeObserver();
+
+    // Clean up the search engine on uninstall or disabled.
+    if (reason == ADDON_UNINSTALL || reason == ADDON_DISABLE) {
+        let engine = Services.search.getEngineByName(ENGINE_DETAILS.name);
+        // Only remove the engine if it appears to be the same one we
+        // added.
+        if (engine &amp;&amp; engine.getSubmission("_searchTerms_").uri.spec == ENGINE_DETAILS.url)
+            Services.search.removeEngine(engine);
+    }
+}
+
+function install() {}
+function uninstall() {}
+</pre>
+<h2 id="Changing_the_Location_Bar_Keyword_URL">Changing the Location Bar Keyword URL</h2>
+<p>The preferred method for changing the keyword URL is to add a new search engine as described above and change the <code>browser.search.defaultenginename</code> preference to its name. A separate URL for keyword can be set by adding a <code>type="application/x-moz-keywordsearch"</code> URL to the search description file if desired. While it is possible to achieve similar effects by changing the <code>keyword.URL</code> preference, this method is deprecated and should not be used.</p>
+<h2 id="Example_Extension_and_Utility_Module">Example Extension and Utility Module</h2>
+<p>In order to simplify the process of correctly changing these kinds of settings, we've developed a <a href="https://github.com/mozilla/example-search-addon">reusable utility module, and an example add-on</a> to demonstrate its use. This module should be preferred to custom search management code where at all possible.</p>

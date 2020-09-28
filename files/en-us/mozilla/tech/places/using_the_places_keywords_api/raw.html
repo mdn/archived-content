@@ -1,0 +1,68 @@
+<p></p>
+
+<h2 id="Using_the_Places_keywords_API">Using the Places keywords API</h2>
+
+<p>The Places keywords API allows to assign a keyword to an URL. Keywords represent an alias for the given URL in the autocomplete (AKA Awesomebar) field, with smart replacement of query terms.</p>
+
+<p>A keyword can only be associated to a given url, it's not possible to associate the same keyword with multiple urls (doing so will just update the url it's pointing to). Each keyword can be associated with POST data, in such a case a POST action will be executed when the given URL is selected from the Awesomebar. Different keywords can reference the same url, if their POST data differ.</p>
+
+<p>Keywords in Firefox are currently created through the <em>Add Keyword For this search</em> contextual menu option in form text fields.</p>
+
+<p>Note this is the same feature previously known as <a href="/en-US/docs/Bookmark_Keywords">Bookmark keywords</a>, the key difference is that keywords are not bound to a specific bookmark, but to a specific URL.</p>
+
+<h3 id="Using_the_keywords_API">Using the keywords API</h3>
+
+<p>The keywords API is a <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">promise-based</a> API available through the PlacesUtils module:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+</pre>
+
+<h3 id="Setting_a_keyword_for_an_URL">Setting a keyword for an URL</h3>
+
+<p>The insert() method accepts a keyword entry object describing the keyword to insert. It has the following properties:</p>
+
+<ul>
+ <li>keyword: string representing the keyword</li>
+ <li>url: either a <a href="/en-US/docs/Web/API/URL/URL">URL</a> or spec represeting the URL to associate to</li>
+ <li>postData: optional POST data string. Should be omitted if there's no POST data.</li>
+</ul>
+
+<pre class="brush: js">PlacesUtils.keywords.insert({ keyword:  "my_keyword",
+                              url:      "http://www.example.com/"
+                              postData: "post+data=1&amp;test=2"
+                            }).then(() =&gt; { /* success */ },
+                                     e =&gt; { /* failure */ });</pre>
+
+<p>Note that setting an already existing keyword to a different URL, will silently update the existing keyword to the new URL.</p>
+
+<h3 id="Fetching_an_entry_by_keyword">Fetching an entry by keyword</h3>
+
+<p>The fetch() method acceps a keyword string (or an object having a keywords property) and might resolve to a keyword entry with the following properties:</p>
+
+<ul>
+ <li>keyword: string representing the keyword</li>
+ <li>url: the <a href="/en-US/docs/Web/API/URL/URL">URL</a> represeted by the keyword</li>
+ <li>postData: optional POST data string. Not defined if there's no POST data.</li>
+</ul>
+
+<p>If no keyword exists, will resolve to null.</p>
+
+<pre>PlacesUtils.keywords.fetch("my_keyword").then(entry =&gt; { /* entry is either null, or a keyword entry */ },
+                                                  e =&gt; { /* failure */});</pre>
+
+<h3 id="Fetching_entries_by_URL">Fetching entries by URL</h3>
+
+<p>The fetch() method also accepts a keyword entry, where it's possible to specify keyword, url, or both. If both are specified it will try to fetch an exact match. Specifying only an url, will fetch all the keywords associated to such an URL. Note that fetch() always resolves to a single entry, to fetch all of the entries it's necessary to provide a callback function.</p>
+
+<pre>PlacesUtils.keywords.fetch({ url: "http://www.example.com/" },
+                           entry =&gt; { /* Invoked for each found keyword entry */ })
+                    .then(oneEntry =&gt; { /* oneEntry is either null, or one of the keyword entries */ },
+                                 e =&gt; { /* failure */});</pre>
+
+<h3 id="Removing_a_keyword">Removing a keyword</h3>
+
+<p>The remove() method accepts a keyword string.</p>
+
+<pre class="brush: js">PlacesUtils.keywords.remove("my_keyword").then(() =&gt; { /* success */ },
+                                                e =&gt; { /* failure */ });</pre>

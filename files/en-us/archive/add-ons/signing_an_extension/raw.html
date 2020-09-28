@@ -1,0 +1,90 @@
+<div class="note"><em><strong>Note: These instructions are outdated. For an extension to work in Firefox it must be signed by Mozilla, not by yourself. See <a href="https://developer.mozilla.org/en-US/Add-ons/Distribution">Signing and distributing your add-on</a>.</strong></em></div>
+
+<p>This article describes how to digitally sign your <a href="/en/Extensions" title="en/Extensions">extension</a> for Firefox and Thunderbird, with a code signing certificate for Object Signing. The following instructions also apply to a <a href="/en/Themes" title="en/Themes">theme</a> and other <a href="/en/XPI" title="en/XPI">XPI</a> files.</p>
+
+<p>These instructions assume you're working on Mac and you've already got a valid certificate from CA.</p>
+
+<h2 id="Get_the_signing_tool">Get the signing tool</h2>
+
+<p>We use <a href="/en/NSS" title="en/NSS">NSS</a> to sign an extension. This can be easily installed with <a class="external" href="http://www.macports.org/">MacPorts</a>.</p>
+
+<pre>sudo port install nss</pre>
+
+<h2 id="Export_your_certificate">Export your certificate</h2>
+
+<p>If you have your certificate in Firefox, export it by following the steps below. The certificate which the author purchased from VeriSign was directly installed to Firefox.</p>
+
+<ol>
+ <li>Click the Firefox button and select Options.</li>
+ <li>In the Options window, open the Advanced panel, then select the Encryption tab.</li>
+ <li>Click View Certificates.</li>
+ <li>In the Certificate Manager, select the Your Certificates tab.</li>
+ <li>Select your organization's certificate and click Backup.</li>
+ <li>Enter the file name, e.g. <code>codesign.p12</code>.</li>
+ <li>Enter the password to protect your certificate backup and click OK.</li>
+ <li>A P12 file will be exported on your desktop.</li>
+</ol>
+
+<h2 id="Create_a_certificate_database">Create a certificate database</h2>
+
+<p>First, create a certificate database that will be used for signing.</p>
+
+<pre>mkdir keystore
+cd keystore
+nss-certutil -N -d .</pre>
+
+<p>You will be asked for the password. Use a strong password to protect your database. Then <code>cert8.db</code>, <code>key3.db</code> and <code>secmod.db</code> will be generated. Next, import your certificate.</p>
+
+<pre>nss-pk12util -i codesign.p12 -d .</pre>
+
+<p>Show the certificate list in your database.</p>
+
+<pre>nss-certutil -L -d .</pre>
+
+<p>Set the trust for the root and intermediate certificates. Here's an example of VeriSign:</p>
+
+<pre>nss-certutil -M -n "Verisign Class 3 Public Primary Certification Authority" -t "C,C,C" -d .
+nss-certutil -M -n "VeriSign Class 3 Public Primary Certification Authority - G5 - VeriSign, Inc." -t "C,C,C" -d .
+nss-certutil -M -n "VeriSign Class 3 Code Signing 2010 CA - VeriSign, Inc." -t "C,C,C" -d .</pre>
+
+<p>It's all done.</p>
+
+<h2 id="Sign">Sign</h2>
+
+<p>The basic usage of the signing tool is as follows:</p>
+
+<pre>nss-signtool \
+ -d (path to the directory that contains your certificate database files) \
+ -k (your certificate nickname) \
+ -p (your certificate password) \
+ -X -Z (output path/name of signed file) \
+ (path to your extension working directory that contains
+   chrome directory, chrome.manifest file, install.rdf file, etc.)
+</pre>
+
+<p>Writing your password directly in the script is dangerous. For production, use such a code:</p>
+
+<pre>echo "Enter password for Object Signing:"
+read MYPASSWORD
+nss-signtool \
+ -d <em>/Volumes/Codesign/keystore</em> \
+ -k "<em>My Company's VeriSign, Inc. ID</em>" \
+ -p $MYPASSWORD \
+ -X -Z <em>~/Desktop/MyExtension/dest/MyExtension-1.0.xpi</em> \
+ <em>~/Desktop/MyExtension/source</em>
+unset MYPASSWORD</pre>
+
+<p>Then a signed XPI file will be generated.</p>
+
+<h2 id="Verify">Verify</h2>
+
+<p>Drag and drop the XPI file into the content area of Firefox. On the installation dialog, you can see your organization name along with the file name.</p>
+
+<h2 id="References">References</h2>
+
+<ul>
+ <li><a href="/en/Signing_a_XPI" title="en/Signing_a_XPI">Signing a XPI</a> - more detailed instructions including test procedures.</li>
+ <li><a class="link-https" href="https://addons.mozilla.org/en-US/firefox/addon/4471">Key Manager</a> - a Firefox extention that has the ability to sign XPI files.</li>
+ <li><a class="external" href="http://oyoy.eu/huh/firefox-extension-code-signed-with-spc-pvk/">Signing a Firefox extension with a Windows Authenticode SSL certificate / key</a> - Note that some CAs do not allow (or support) to divert an Authenticode certificate to Object Signing. Please check the terms of service.</li>
+ <li><a href="/en/Signing_an_executable_with_Authenticode" title="en/Signing_an_executable_with_Authenticode">Signing an executable with Authenticode</a> - for signing executable file (exe)</li>
+</ul>

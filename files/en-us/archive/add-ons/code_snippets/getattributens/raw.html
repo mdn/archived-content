@@ -1,0 +1,66 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>As some browsers do not support getAttributeNS, the following might be used to work on them as well. While namespaced attributes are less common than namespaced elements, some standards such as <a href="/en/XLink" title="en/XLink">XLink</a> depend on them.</p>
+
+<div class="note">Note that all Gecko-based browsers (including Firefox) support <a href="/en/DOM/element.getAttributeNS" title="en/DOM/element.getAttributeNS">DOM:element.getAttributeNS</a>. This function is not necessary for Gecko-based browsers.</div>
+
+<pre class="brush: js">function getAttributeNSWrapper (thisitem, ns, nsatt) {
+    if (thisitem === null) {
+        return false;
+    }
+    if (thisitem.getAttributeNS) {
+        return thisitem.getAttributeNS(ns, nsatt);
+    }
+    else if (ns === null) {
+        return thisitem.getAttribute(nsatt);
+    }
+    else if (ns === 'http://www.w3.org/XML/1998/namespace') { // This is assumed so don't try to get an xmlns for the 'xml' prefix
+        return thisitem.getAttribute('xml:'+nsatt); // Prefix must be 'xml' per the specs
+    }
+    var attrs2, result;
+    var attrs = thisitem.attributes;
+    var prefixAtt = new RegExp('^(.*):'+nsatt.replace(/\./g, '\\.')+'$'); // e.g., xlink:href  // Find any prefixes with the local-name being searched (escape period since only character (besides colon) allowed in an XML Name which needs escaping)
+    for (var j = 0; j &lt; attrs.length; j++) { // thisitem's atts // e.g.,  abc:href, xlink:href
+          while (((result = prefixAtt.exec(attrs[j].nodeName)) !== null) &amp;&amp;
+                  thisitem.nodeName !== '#document' &amp;&amp; thisitem.nodeName !== '#document-fragment') {
+            var xmlnsPrefix = new RegExp('^xmlns:'+result[1]+'$'); // e.g., xmnls:xl, xmlns:xlink
+            // CHECK HIGHER UP FOR XMLNS:PREFIX
+            // Check the current node and if necessary, check for the next matching local name up in the hierarchy (until reaching the document root)
+            while (thisitem.nodeName !== '#document' &amp;&amp; thisitem.nodeName !== '#document-fragment')  {
+              attrs2 = thisitem.attributes;
+              for (var i = 0; i &lt; attrs2.length; i++) { // Search for any prefixed xmlns declaration on thisitem which match prefixes found above with desired local name
+                if (attrs2[i].nodeName.match(xmlnsPrefix) &amp;&amp;
+                      attrs2[i].nodeValue === ns ) { // e.g., 'xmlns:xlink' and 'http://www.w3.org/1999/xlink'
+                  return attrs[j].nodeValue;
+                }
+              }
+              thisitem = thisitem.parentNode;
+            }
+          }
+    }
+    return ''; // if not found (some implementations return 'null' but this is not standard)
+}
+alert(getAttributeNSWrapper (someElement, 'http://www.w3.org/1999/xlink', 'href')); // gets xlink:href, xl:href, etc. on current element, conditionally on whether its prefix matches a declared namespace
+</pre>
+
+<h3 id="See_also">See also</h3>
+
+<ul>
+ <li><a class="external" href="http://www.w3.org/TR/DOM-Level-3-Core/namespaces-algorithms.html#lookupNamespaceURIAlgo" rel="freelink">http://www.w3.org/TR/DOM-Level-3-Cor...mespaceURIAlgo</a></li>
+</ul>

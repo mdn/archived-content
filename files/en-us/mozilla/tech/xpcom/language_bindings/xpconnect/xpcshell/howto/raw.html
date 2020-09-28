@@ -1,0 +1,64 @@
+<h2 id="Async_network_requests">Async network requests</h2>
+<p>Problem</p>
+<p>You want to make network requests or do other asynchronous work in xpcshell. However, when you start your script, it exits immediately, before the network request returns.</p>
+<p>Solution</p>
+<p>1. Put the following at the end of your script:</p>
+<pre>// Do async processing
+// From &lt;https://developer.mozilla.org/en/XPConnect/xpcshell/HOWTO&gt;
+print("Doing async work");
+gScriptDone = false;
+var gThreadManager = Cc["@mozilla.org/thread-manager;1"]
+    .getService(Ci.nsIThreadManager);
+var mainThread = gThreadManager.currentThread;
+
+while (!gScriptDone)
+  mainThread.processNextEvent(true);
+while (mainThread.hasPendingEvents())
+  mainThread.processNextEvent(true);
+</pre>
+<p>2. In <strong>all</strong> callbacks where your script is finished, i.e. both success and error callbacks, put:</p>
+<pre>gScriptDone = true;</pre>
+<p>If you forget some condition where your script should exit but you don't add this statement, your script will hang (busy wait).</p>
+<p>This is of course a massive, ugly hack prone to error, but this is what the xpcshell test harness does. There should really be a better solution in xpcshell.</p>
+<h2 id="Using_JS_modules_and_non-UI_JavaScript_chrome_files">Using JS modules and non-UI JavaScript chrome files</h2>
+<p>Problem</p>
+<p>You want to write a JavaScript file, and run it in xpcshell. The file uses JS modules. Maybe it even uses JavaScript files from chrome:// URLs.</p>
+<p>E.g., you use:</p>
+<pre class="bz_comment_text" id="comment_text_0">Components.utils.import("resource://app/modules/gloda/log4moz.js");
+</pre>
+<p>However, you get (for that particular line, which is the first import):</p>
+<pre class="bz_comment_text" id="comment_text_0">uncaught exception: [Exception... "Component returned failure code: 0x80040111 (NS_ERROR_NOT_AVAILABLE)
+[nsIXPCComponents_Utils.import]"  nsresult: "0x80040111 (NS_ERROR_NOT_AVAILABLE)"  location: "JS frame ::
+file.js :: &lt;TOP_LEVEL&gt; :: line 12"  data: no]
+</pre>
+<p> </p>
+<p>Solution 1</p>
+<pre><code>var loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]<br>   .getService(Components.interfaces.mozIJSSubScriptLoader);</code>
+<code>loader.loadSubScript("chrome://myall/content/file.jsm");</code>
+</pre>
+<p>See:  <a class=" external" href="http://mxr.mozilla.org/comm-central/source/mailnews/base/test/unit/test_autoconfigUtils.js#54" rel="freelink">http://mxr.mozilla.org/comm-central/...figUtils.js#54</a></p>
+<p>Solution 2</p>
+<p>Append the following at the top of your JS file which you want to run in xpcshell</p>
+<pre class="bz_comment_text" id="comment_text_0">{
+  // &lt;https://developer.mozilla.org/en/XPConnect/xpcshell/HOWTO&gt;
+  // &lt;https://bugzilla.mozilla.org/show_bug.cgi?id=546628&gt;
+  let Cc = Components.classes;
+  let Ci = Components.interfaces;
+
+  // Register resource://app/ URI
+  let ios = Cc["@mozilla.org/network/io-service;1"]
+    .getService(Ci.nsIIOService);
+  let resHandler = ios.getProtocolHandler("resource")
+      .QueryInterface(Ci.nsIResProtocolHandler);
+  let mozDir = Cc["@mozilla.org/file/directory_service;1"]
+      .getService(Ci.nsIProperties)
+      .get("CurProcD", Ci.nsILocalFile);
+  let mozDirURI = ios.newFileURI(mozDir);
+  resHandler.setSubstitution("app", mozDirURI);
+
+  // register chrome://* URIs
+  let cr = Cc["@mozilla.org/chrome/chrome-registry;1"]
+        .getService(Ci.nsIChromeRegistry);
+  cr.checkForNewChrome();
+}</pre>
+<p><a class=" link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=546628" title="https://bugzilla.mozilla.org/show_bug.cgi?id=546628">Bug 546628</a> would make this unnecessary.</p>

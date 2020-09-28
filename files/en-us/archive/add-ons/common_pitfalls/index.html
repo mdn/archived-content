@@ -1,0 +1,56 @@
+---
+title: Common Pitfalls
+slug: Archive/Add-ons/Common_Pitfalls
+tags:
+  - Add-ons
+  - Developing Mozilla
+  - Extensions
+---
+<p>There are some common pitfalls that should be avoided when writing either extensions or core Mozilla code. These are the sort of things that super-review should be catching for code that goes into the tree; avoiding these to start with saves super-reviewers a lot of effort.
+</p><p><br>
+</p><p>The first couple of items deal with loading content from a URI. It's important to create the URI correctly, and then check that it's secure to load. This will shield you from loading &lt;tt&gt;javascript:&lt;/tt&gt; or &lt;tt&gt;chrome:&lt;/tt&gt; URIs when you shouldn't.
+</p>
+<h3 id="How_to_create_a_URI_object" name="How_to_create_a_URI_object"> How to create a URI object </h3>
+<p>In almost all cases, when creating a URI object you want to use the <code>newURI</code> method on the <code><a href="en/NsIIOService">nsIIOService</a></code> interface, like so:
+</p><p>JavaScript: </p>
+<pre class="eval">try {
+  var ioServ = Components.classes["@mozilla.org/network/io-service;1"]
+                         .getService(Components.interfaces.nsIIOService);
+  var uriObj = ioServ.newURI(uriString, uriCharset, baseURI);
+} catch (e) {
+  // May want to catch NS_ERROR_MALFORMED_URI for some applications
+}
+</pre>
+<p>C++:
+</p>
+<pre class="eval">nsresult rv;
+nsCOMPtr&lt;nsIIOService&gt; ioServ =
+  do_GetService("@mozilla.org/network/io-service;1");
+NS_ENSURE_SUCCESS(rv, rv);
+nsCOMPtr&lt;nsIURI&gt; uriObj;
+rv = ioServ-&gt;NewURI(uriString, uriCharset, baseURI,
+                    getter_AddRefs(uriObj));
+if (NS_FAILED(rv)) {
+  // May want to handle NS_ERROR_MALFORMED_URI for
+  // some applications
+  return rv;
+}
+</pre>
+<p>or, if the code can include nsNetUtil.h:
+</p>
+<pre class="eval">nsCOMPtr&lt;nsIURI&gt; uriObj;
+nsresult rv =
+  NS_NewURI(getter_AddRefs(uriObj), uriString, uriCharset, baseURI);
+</pre>
+<p>In all cases the <code>baseURI</code> can be <code>null</code> if the <code>uriString</code> should be treated as an absolute URI and <code>uriCharset</code> can be <code>null</code> if there is no clear origin charset for the string (e.g. it's something the user typed in the URL bar).
+</p><p>The one exception to all of the above, that is the one case in which creating a specific URI class via <code>createInstance</code> is acceptable, is when one is implementing a protocol handler's <code>newURI</code> method. In that case you may not be able to use the I/O service because that service calls the <code>newURI</code> method on the appropriate protocol handler, which may be your own handler.
+</p>
+<h3 id="How_to_do_security_checks_for_URI_loads" name="How_to_do_security_checks_for_URI_loads"> How to do security checks for URI loads </h3>
+<p>Before loading a URI, one of two security checks needs to be performed:
+</p>
+<ol><li> If the URI is a string that will be loaded via passing the string to <code>nsIWebNavigation::LoadURI</code>, the one must call <b><code>CheckLoadURIStrWithPrincipal</code></b> and pass the principal that the URI originates from as the first argument and the URI string as the second argument.
+</li><li> In all other cases, one should call <b><code>CheckLoadURIWithPrincipal</code></b> and pass the principal that the URI originates from as the first argument and an <code>nsIURI</code> object representing the URI as the second argument. If there is no <code>nsIURI</code> object on hand, it is secure to call <b><code>CheckLoadURIStrWithPrincipal</code></b>, but this will perform a more stringent security check than is strictly necessary.
+</li></ol>
+<h4 id="What_Not_To_Do" name="What_Not_To_Do"> What Not To Do </h4>
+<p>All other security checks (including calls to <b><code>CheckLoadURI</code></b> and <b><code>CheckLoadURIStr</code></b>) are <b><span class="highlightred">incorrect</span></b>, because they do not properly capture the originating principal. Those methods should be removed.
+</p>

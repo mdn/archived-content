@@ -1,0 +1,148 @@
+<p>This article describes how to read textual data from streams, files and sockets.</p>
+
+<p>In order to read textual data, you need to know which <strong><a href="/en/Character_encoding" title="en/Character_encoding">character encoding</a></strong> the data is in. Files and network sockets contain bytes, not characters - to give these bytes a meaning, you need to know the character encoding.</p>
+
+<p>XXX: Document nsIUnicharStreamListener (gecko 1.8) XXX: Also document nsIStreamListener here?</p>
+
+<h3 id="Determining_the_character_encoding_of_data" name="Determining_the_character_encoding_of_data">Determining the character encoding of data</h3>
+
+<p>If you have a network channel (<code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIChannel" title="">nsIChannel</a></code>), you can try the contentCharset property of it. Note that not all channels know the character encoding of the data. You can fallback to the default character encoding stored in preferences (<code>intl.charset.default</code>, a localized pref value)</p>
+
+<p>When reading from a file, the question is harder to answer. Using the system character encoding may work (XXX insert text how to get it), or again the default character encoding from preferences.</p>
+
+<h3 id="Converting_read_data">Converting read data</h3>
+
+<p>If you read data from <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableInputStream" title="">nsIScriptableInputStream</a></code> as described on the file I/O code snippets page, you can convert it to UTF-8</p>
+
+<pre class="brush: js">// sstream is nsIScriptableInputStream
+var str = sstream.read(4096);
+var utf8Converter = Components.classes["@mozilla.org/intl/utf8converterservice;1"].
+    getService(Components.interfaces.nsIUTF8ConverterService);
+var data = utf8Converter.convertURISpecToUTF8 (str, "UTF-8"); </pre>
+
+<h3 id="Gecko_1.8_and_newer" name="Gecko_1.8_and_newer">Gecko 1.8 and newer</h3>
+
+<h4 id="Reading_strings" name="Reading_strings">Reading strings</h4>
+
+<p>Starting with Gecko 1.8 (SeaMonkey 1.0, Firefox 1.5), you can use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIConverterInputStream" title="">nsIConverterInputStream</a></code> to read strings from a stream (<code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIInputStream" title="">nsIInputStream</a></code>). This work was done in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=295047" title="FIXED: Want unicode stream readers/writers">bug 295047</a>.</p>
+
+<p>Usage:</p>
+
+<pre class="brush: js">var charset = /* Need to find out what the character encoding is. Using UTF-8 for this example: */ "UTF-8";
+const replacementChar = Components.interfaces.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER;
+var is = Components.classes["@mozilla.org/intl/converter-input-stream;1"]
+                   .createInstance(Components.interfaces.nsIConverterInputStream);
+is.init(fis, charset, 1024, replacementChar);
+</pre>
+
+<p>Now you can read string from <code>is</code>:</p>
+
+<pre class="brush: js">var str = {};
+var numChars = is.readString(4096, str);
+if (numChars != 0 /* EOF */)
+  var read_string = str.value;
+</pre>
+
+<p>To read the entire stream and do something with the data:</p>
+
+<pre class="brush: js">var str = {};
+while (is.readString(4096, str) != 0) {
+  processData(str.value);
+}
+</pre>
+
+<p>Don't forget to close the stream when you're done with it (<code>is.close()</code>). Not doing so can cause problems if you try to rename or delete the file at a later time on some platforms.</p>
+
+<p>Note that you may get less characters than you asked for, especially (but not only) at the end of the file (stream).</p>
+
+<h5 id="Unsupported_byte_sequences" name="Unsupported_byte_sequences">Unsupported byte sequences</h5>
+
+<p>You can specify what should happen with byte sequences that do not correspond to a valid character. The last (4th) argument to init specifies which character they get replaced with; nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER is U+FFFD REPLACEMENT CHARACTER, which is often a good choice.</p>
+
+<p>If you do not want any replacement, you can specify 0x0000 as replacement character; that way, <code>readString</code> will throw an exception when reaching unsupported bytes.</p>
+
+<h4 id="Reading_lines" name="Reading_lines">Reading lines</h4>
+
+<p>The <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIUnicharLineInputStream" title="">nsIUnicharLineInputStream</a></code> interface provides an easy way to read entire lines from a unichar stream. It can be used like <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILineInputStream" title="">nsILineInputStream</a></code>, except that it supports non-ASCII characters, and has no problems with charsets with embedded nulls (like UTF-16 and UTF-32).</p>
+
+<p>It can be used like this:</p>
+
+<pre class="brush: js">var charset = /* Need to find out what the character encoding is. Using UTF-8 for this example: */ "UTF-8";
+var is = Components.classes["@mozilla.org/intl/converter-input-stream;1"]
+                   .createInstance(Components.interfaces.nsIConverterInputStream);
+// This assumes that fis is the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIInputStream" title="">nsIInputStream</a></code> you want to read from
+is.init(fis, charset, 1024, 0xFFFD);
+is.QueryInterface(Components.interfaces.nsIUnicharLineInputStream);
+
+if (is instanceof Components.interfaces.nsIUnicharLineInputStream) {
+  var line = {};
+  var cont;
+  do {
+    cont = is.readLine(line);
+
+    // Now you can do something with line.value
+  } while (cont);
+}
+</pre>
+
+<p>The above example reads an entire stream until EOF. See <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIConverterInputStream" title="">nsIConverterInputStream</a></code> for <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIConverterInputStream#init()">nsIConverterInputStream.init()</a></code> arguments.</p>
+
+<h3 id="Earlier_versions" name="Earlier_versions">Earlier versions</h3>
+
+<h4 id="Reading_strings_2" name="Reading_strings_2">Reading strings</h4>
+
+<p>Earlier versions of gecko do not provide easy ways to read unicode data from a stream. You will have to manually read a block of data and convert it using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableUnicodeConverter" title="">nsIScriptableUnicodeConverter</a></code>.</p>
+
+<p>For example:</p>
+
+<pre class="brush: js">// First, get and initialize the converter
+var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"]
+                          .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+converter.charset = /* The character encoding you want, using UTF-8 here */ "UTF-8";
+
+// Now, read from the stream
+// This assumes istream is the stream you want to read from
+var scriptableStream = Components.classes["@mozilla.org/scriptableinputstream;1"]
+                                 .createInstance(Components.interfaces.nsIScriptableInputStream);
+scriptableStream.init(istream);
+var chunk = scriptableStream.read(4096);
+var text = converter.ConvertToUnicode(chunk);
+</pre>
+
+<p>However, you must be aware that this method <strong>will not work</strong> for character encodings that have embedded null bytes, such as UTF-16 or UTF-32.</p>
+
+<h4 id="Reading_Lines" name="Reading_Lines">Reading Lines</h4>
+
+<p>There is no easy, general way to read a unicode line from a stream.</p>
+
+<p>For the limited use case of reading lines from a local file, the following code using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableUnicodeConverter" title="">nsIScriptableUnicodeConverter</a></code> works. <strong>This code will not work for character encodings that contain embedded nulls</strong> such as UTF-16 and UTF-32</p>
+
+<pre class="brush: js">// First, get and initialize the converter
+var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"]
+                          .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+converter.charset = /* The character encoding you want, using UTF-8 here */ "UTF-8";
+
+// This assumes that 'file' is a variable that contains the file you want to read, as an nsIFile
+var fis = Components.classes["@mozilla.org/network/file-input-stream;1"]
+                    .createInstance(Components.interfaces.nsIFileInputStream);
+fis.init(file, -1, -1, 0);
+
+var lis = fis.QueryInterface(Components.interfaces.nsILineInputStream);
+var lineData = {};
+var cont;
+do {
+  cont = lis.readLine(lineData);
+  var line = converter.ConvertToUnicode(lineData.value);
+
+  // Now you can do something with line
+
+} while (cont);
+fis.close();
+</pre>
+
+<h3 id="See_also" name="See_also">See also</h3>
+
+<ul>
+ <li><a href="/en/Writing_textual_data" title="en/Writing_textual_data">Writing textual data</a></li>
+ <li><a class="external" href="http://www.joelonsoftware.com/articles/Unicode.html">Joel on Software: The Absolute Minimum Every Software Developer Absolutely, Positively Must Know About Unicode and Character Sets</a></li>
+</ul>

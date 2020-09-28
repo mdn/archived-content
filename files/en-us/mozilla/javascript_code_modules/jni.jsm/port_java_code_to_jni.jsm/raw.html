@@ -1,0 +1,381 @@
+<p>{{jsctypesSidebar("Examples")}}</p>
+
+<div class="warning">
+<p>This article is a work in progress and is based on <a href="https://gist.github.com/Noitidart/400261f83b1be721a93a#gistcomment-1492825">GitHubGIST :: _ff-addon-tutorial-jniAndroidToast.js</a></p>
+</div>
+
+<p>This article will follow the <a href="http://developer.android.com/guide/topics/ui/notifiers/toasts.html">Android Developers :: API Guides - Toasts</a> tutorial. It will use the <a href="/en-US/docs/Mozilla/JavaScript_code_modules/JNI.jsm">JNI.jsm</a> module that is available in Firefox for Android since version 17. This article teaches developers how to port Java code to JNI by reading the Java and Android documentation.</p>
+
+<h2 id="Toast_description">Toast description</h2>
+
+<p>A toast provides simple feedback about an operation in a small popup. It only fills the amount of space required for the message, and the current activity remains visible and interactive. For example, navigating away from an email before you send it triggers a "Draft saved" toast to let you know that you can continue editing later. Toasts automatically disappear after a timeout.</p>
+
+<p>Toasts do not have to be created with JNI; they are exposed by the NativeWindow feature on Firefox for Android, see <a href="/en-US/Add-ons/Firefox_for_Android/API/NativeWindow/toast">toast</a> documentation.</p>
+
+<h2 id="Java_code">Java code</h2>
+
+<p>Let's start with the following Java code, which invokes a toast and says "Hello, Firefox!".</p>
+
+<pre class="brush: java"><span class="typ">Context</span><span class="pln"> context </span><span class="pun">=</span><span class="pln"> getApplicationContext</span><span class="pun">();</span>
+<span class="typ">CharSequence</span><span class="pln"> text </span><span class="pun">=</span><span class="pln"> </span><span class="str">"Hello, Firefox!"</span><span class="pun">;</span>
+<span class="kwd">int</span><span class="pln"> duration </span><span class="pun">=</span><span class="pln"> </span><span class="typ">Toast</span><span class="pun">.</span><span class="pln">LENGTH_SHORT</span><span class="pun">;</span>
+
+<span class="typ">Toast</span><span class="pln"> toast </span><span class="pun">=</span><span class="pln"> </span><span class="typ">Toast</span><span class="pun">.</span><span class="pln">makeText</span><span class="pun">(</span><span class="pln">context</span><span class="pun">,</span><span class="pln"> text</span><span class="pun">,</span><span class="pln"> duration</span><span class="pun">);</span>
+<span class="pln">toast</span><span class="pun">.</span><span class="pln">show</span><span class="pun">();</span></pre>
+
+<h2 id="NativeWindow_code">NativeWindow code</h2>
+
+<p>As mentioned earlier, toasts are a very popular feature, so Mozilla developers chose to bring it to the privileged JavaScript scope via the NativeWindow object. The Java code example above can be done with privileged JavaScript from Firefox for Android with the following code:</p>
+
+<pre class="brush: js  language-js"><code class="language-js">window.NativeWindow.toast.show("Hello, Firefox!", "short"); </code></pre>
+
+<h2 id="Converting_Java_to_JNI.jsm">Converting Java to JNI.jsm</h2>
+
+<p>The first step is to look at the Java code and see all the different types, methods, constructors, and fields that are being used. In the toast code we have the following:</p>
+
+<ul>
+ <li>Types - Context, CharSequence, int, Toast, and void</li>
+ <li>Methods - makeText, show</li>
+ <li>Fields - LENGTH_SHORT</li>
+</ul>
+
+<p>No constructors are used.</p>
+
+<h3 id="Declare_the_types">Declare the types</h3>
+
+<p>We will start by declaring the types needed. In JNI, there is the all-important property called sig. When something is declared, we are stating the sig and the name. The sig's will be represented as JavaScript strings in JNI.jsm, and the sig's of the types are as follows:</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Java Type</th>
+   <th scope="col">Signature</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>boolean</td>
+   <td>Z</td>
+  </tr>
+  <tr>
+   <td>byte</td>
+   <td>B</td>
+  </tr>
+  <tr>
+   <td>char</td>
+   <td>C</td>
+  </tr>
+  <tr>
+   <td>class/object</td>
+   <td>L<strong><em><u>class name in slash notation here</u></em></strong>;</td>
+  </tr>
+  <tr>
+   <td>double</td>
+   <td>D</td>
+  </tr>
+  <tr>
+   <td>float</td>
+   <td>F</td>
+  </tr>
+  <tr>
+   <td>int</td>
+   <td>I</td>
+  </tr>
+  <tr>
+   <td>long</td>
+   <td>J</td>
+  </tr>
+  <tr>
+   <td>short</td>
+   <td>S</td>
+  </tr>
+  <tr>
+   <td>void</td>
+   <td>V</td>
+  </tr>
+  <tr>
+   <td>array of type</td>
+   <td>[<em><u><strong>sig here</strong></u></em></td>
+  </tr>
+  <tr>
+   <td>method format</td>
+   <td>(<em><strong><u>sig of type of each argument here</u></strong></em>)<u><em><strong>sig of the return type here</strong></em></u></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Declaring a class/object is done in a special way. For example, if the class is blah.foo.bar then the signature of this will be this in slash notation with an L and ; around it. So this would be Lblah/foo/bar;. If there is a sub class such as blah.foo.bar.subclass then a dollar sign is used in the slash notation, so this would be Lblah/foo/bar$subclass;.</p>
+
+<p>When declaring methods, the signatures of the types go right next to each other without any spacing. The arguments are within the parenthesis, and the return type is immediately following. More on this later.</p>
+
+<p>So let us now declare the types for our toast example. We see we have three classes and two basic types (int and void). The class signature is looked up on the Android documentation. For instance, we go to <a href="http://developer.android.com/reference/android/content/Context.html">Android Reference :: Context</a> and we see:</p>
+
+<p><img alt="How to look up the signature of a class/object on Android documentation." src="https://mdn.mozillademos.org/files/11333/class%20sig%20doc.png" style="height: 167px; width: 215px;"></p>
+
+<p>We see that the signature in dot notation is android.content.Context. So this will be written as Landroid/content/Context;. For convenience, let's make an object called SIG and populate it with our types.</p>
+
+<pre class="brush: js">let SIG = {
+    Context: 'Landroid/content/Context;',
+    CharSequence; 'Ljava/lang/CharSequence;',
+    int: 'I',
+    Toast: 'Landroid/widget/Toast;',
+    void: 'V',
+};
+</pre>
+
+<h3 id="Get_Java_environment">Get Java environment</h3>
+
+<p>Before we go on to declare the other important features, we need to load our environment variable. We want to wrap this in a try-catch statement so if any errors occur we make sure to unload the classes and the Java environment, this is good for performance.</p>
+
+<p>This is the template that will follow our object of signatures:</p>
+
+<pre class="brush: js">var my_jenv = null;
+try {
+    my_jenv = JNI.GetForThread();
+
+    // do the jni work here
+
+} finally {
+    if (my_jenv) {
+        JNI.UnloadClasses(my_jenv);
+    }
+}</pre>
+
+<p>The reason we choose <code>my_jenv</code> for a variable name, and not <code>jenv</code>, is because the global privileged window scope of Firefox for Android has a variable <code>jenv</code> already, and we don't want to mix.</p>
+
+<h3 id="Declare_constructors_methods_and_fields">Declare constructors, methods, and fields</h3>
+
+<p>Now that the sig's and Java environment is ready, it is now possible to declare the constructors, methods, and fields.</p>
+
+<h4 id="Load_the_class">Load the class</h4>
+
+<p>The first step is to load the class. Every constructor, method, and field belongs to a class. In our case, we have a class called Toast, and to this belongs makeText, show, and LENGTH_SHORT. To load the class the following is done:</p>
+
+<pre class="brush: js">let Toast = JNI.LoadClass(my_jenv, SIG.Toast.substr(1, SIG.Toast.length - 2), {
+    // declares of constructors, static_methods, methods, fields, and static_fields go here
+});</pre>
+
+<p>The variable name of Toast was used, but it does not matter, you can use whatever you want.</p>
+
+<p>The first argument to LoadClass is the Java environment variable, my_jenv.</p>
+
+<p>The second argument is the class sig without the surrounding L and ;. Because we don't want to keep typing string signatures everywhere, we can end up with typos and hard to trace back errors, we use the SIG object. We see <code>SIG.Toast.substr(1, SIG.Toast.length - 2)</code> was written, this can be replaced with <code>'android/widget/Toast'</code>.</p>
+
+<p>The third argument is an object of our declares.</p>
+
+<h4 id="Declare_constructors">Declare constructors</h4>
+
+<p>In our Toast example, we do not have any constructors.</p>
+
+<h4 id="Determine_static-ness_of_methods_declare_them">Determine static-ness of methods declare them</h4>
+
+<p>There are two types of methods, chainable and static. If it is static, this means that it can be called directly from the class. If it is not static, then it cannot be used on an instance of that class.</p>
+
+<p>How is it determined if a method is static or not? The documentation tells us. For example, in our case we have a method makeText and show, looking that up on the Android documentation page shows this:</p>
+
+<p><img alt='This is how to read the documentation to see if it is static. We see before the return type is the word "static" this means it is a static and cannot be chained on an instance, it must be chained after the class only.' src="https://mdn.mozillademos.org/files/11337/static%20method%20in%20doc.png" style="height: 68px; width: 664px;"></p>
+
+<p><img alt='The documentation does not have the word "static" in front of the return type, indicating this is a chainable.' src="https://mdn.mozillademos.org/files/11335/chainable%20method%20in%20docs.png" style="height: 71px; width: 444px;"></p>
+
+<p>There are two columns, the first column is the return, and the second column is the method name and arguments. We see that makeText returns static Toast. This means it is a static method. We see that the return column of the show method does not contain the word static. Therefore, it is a plain method. Let's declare these methods in the third argument of LoadClass we add a key-value pair, with the key being static_methods and methods and the value being an array.</p>
+
+<pre class="brush: js">var Toast = JNI.LoadClass(my_jenv, SIG.Toast.substr(1, SIG.Toast.length - 2), {
+    static_methods: [
+        { name: 'makeText', sig: '()' }
+    ],
+    methods: [
+        { name: 'show', sig: '()' }
+    ]
+});
+</pre>
+
+<p>The sig of methods is always in the format of "method format" from our types table above. The reason is that methods accept arguments and return something.</p>
+
+<p>We need to declare now the arguments and return type for each of the methods. The documentation says makeText takes three arguments, the types are Context, int, and int and returns a Toast. For example, let's declare this with strings:</p>
+
+<pre class="brush: js">{ name: 'makeText', sig: '(Landroid/content/Context;II)Landroid/widget/Toast;' }</pre>
+
+<p>We see there are no separating characters between the arguments. Because we want to avoid typos, we will avoid typing the signatures and user our SIG object.</p>
+
+<pre class="brush: js">{ name: 'makeText', sig:
+    '(' +
+        SIG.Context +    // context
+        SIG.int +        // resId
+        SIG.int +        // duration
+    ')' +
+    SIG.Toast            // return
+}</pre>
+
+<p>Let's do the same for show and here are our methods placed into our third argument of LoadClass:</p>
+
+<pre class="brush: js">static_methods: [
+    { name: 'makeText', sig:
+        '(' +
+            SIG.Context +    // context
+            SIG.int +        // resId
+            SIG.int +        // duration
+        ')' +
+        SIG.Toast            // return
+    }
+],
+methods: [
+    { name: 'show', sig:
+        '()' +        // no arguments
+        SIG.void    // return
+    }
+]</pre>
+
+<h4 id="Determine_static-ness_of_fields_declare_them">Determine static-ness of fields declare them</h4>
+
+<p>Just like methods, fields have two types, static and not. We look up the documentation for our field, which is LENGTH_SHORT, and we see it is static. So we will not need a group in the third argument of LoadClass for fields, we will only need static_fields. Fields do not accept arguments, so the "method format" is not used, we simply tell the sig the type of the field, which we find out from the Android documentation website.</p>
+
+<p>This is what our fields array will look like:</p>
+
+<pre class="brush: js">static_fields: [
+    { name: 'LENGTH_SHORT', sig: SIG.int }
+]</pre>
+
+<h4 id="Wrap_it_all_up">Wrap it all up</h4>
+
+<p>Here is the code for our completed Toast class:</p>
+
+<pre class="brush: js">var Toast = JNI.LoadClass(my_jenv, SIG.Toast.substr(1, SIG.Toast.length - 2), {
+    static_methods: [
+        { name: 'makeText', sig:
+            '(' +
+                SIG.Context +    // context
+                SIG.int +        // resId
+                SIG.int +        // duration
+            ')' +
+            SIG.Toast            // return
+        }
+    ],
+    methods: [
+        { name: 'show', sig:
+            '()' +        // no arguments
+            SIG.void    // return
+        }
+    ],
+    static_fields: [
+        { name: 'LENGTH_SHORT', sig: SIG.int }
+    ]
+});</pre>
+
+<h3 id="getApplicationContext">getApplicationContext()</h3>
+
+<p>Many JNI codes need an entry point, sometimes it is the context, sometimes it is the activity. In our Toasts example, we need the context. Our application is Firefox for Android, so we need to tap into the Firefox classes to get its context. We search DXR, and we find a getContext static method belonging to the GeckoAppShell class.</p>
+
+<p>To figure out the sig for Firefox classes, we have to search on DXR. We find an XML file showing the sig for GeckoAppShell is org.mozilla.gecko.GeckoAppShell. We will add this to our SIG object in slash notation:</p>
+
+<pre class="brush: js">GeckoAppShell: 'Lorg/mozilla/gecko/GeckoAppShell;'</pre>
+
+<p>We then instantiate the GeckoAppShell class in JNI and declare the getContext method; DXR showed that this method accepted no arguments and returns a Context, and we already had the sig for Context in our SIG object.</p>
+
+<pre class="brush: js">var geckoAppShell = JNI.LoadClass(my_jenv, SIG.GeckoAppShell.substr(1, SIG.GeckoAppShell.length - 2), {
+    static_methods: [
+        { name: 'getContext', sig: '()' + SIG.Context }
+    ]
+});</pre>
+
+<h3 id="Porting_the_Java_code">Porting the Java code</h3>
+
+<p>Now that all the declarations are complete, we can now side-by-side port the Java code to JNI.</p>
+
+<pre class="brush: js">// Context context = getApplicationContext();
+var context = geckoAppShell.getContext();
+
+// CharSequence text = 'Hello toast!';
+var text = 'Hello toast!';
+
+// int duration = Toast.LENGTH_SHORT;
+var duration = Toast.LENGTH_SHORT;
+
+// Toast toast = Toast.makeText(context, text, duration);
+var toast = Toast.makeText(context, text, duration);
+
+// toast.show();
+toast.show();
+</pre>
+
+<p>Notice that the CharSequence was not created with a constructor. This is special: Because a CharSequence is an array of byte characters, we can pass simple JavaScript strings to JNI.jsm wherever a CharSequence is needed. This tells us we don't even need the sig for CharSequence in our SIG object, so let's remove it.</p>
+
+<h2 id="Final_JNI_ported_code">Final JNI ported code</h2>
+
+<p>Here's converted code.</p>
+
+<pre class="brush: js">var my_jenv = null;
+try {
+    my_jenv = JNI.GetForThread();
+
+    // We declare the classes, methods, etc we will be using: this part is not seen in the native example
+    var SIG = {
+        Context: 'Landroid/content/Context;',
+        GeckoAppShell: 'Lorg/mozilla/gecko/GeckoAppShell;',
+        int: 'I',
+        Toast: 'Landroid/widget/Toast;',
+        void: 'V'
+    };
+
+    var Toast = JNI.LoadClass(my_jenv, SIG.Toast.substr(1, SIG.Toast.length - 2), {
+        static_methods: [
+            { name: 'makeText', sig:
+                '(' +
+                    SIG.Context +    // context
+                    SIG.int +        // resId
+                    SIG.int +        // duration
+                ')' +
+                SIG.Toast            // return
+            }
+        ],
+        methods: [
+            { name: 'show', sig:
+                '()' +        // no arguments
+                SIG.void    // return
+            }
+        ]
+        static_fields: [
+            { name: 'LENGTH_SHORT', sig: SIG.int }
+        ]
+    });
+
+    var geckoAppShell = JNI.LoadClass(my_jenv, SIG.GeckoAppShell.substr(1, SIG.GeckoAppShell.length - 2), {
+        static_methods: [
+            { name: 'getContext', sig: '()' + SIG.Context }
+        ]
+    });
+
+    // ok this ends the JNI declare stuff, now below you will see native-by-jni side-by-side
+
+    // Context context = getApplicationContext();
+    var context = geckoAppShell.getContext();
+
+    // CharSequence text = 'Hello toast!';
+    var text = 'Hello toast!';
+
+    // int duration = Toast.LENGTH_SHORT;
+    var duration = Toast.LENGTH_SHORT;
+
+    // Toast toast = Toast.makeText(context, text, duration);
+    var toast = Toast.makeText(context, text, duration);
+
+    // toast.show();
+    toast.show();
+
+} finally {
+    if (my_jenv) {
+        JNI.UnloadClasses(my_jenv);
+    }
+}</pre>
+
+<h2 id="References">References</h2>
+
+<ul>
+ <li><a href="https://docs.oracle.com/javase/7/docs/technotes/guides/jni/spec/types.html#wp9502">Oracle :: JNI Types and Data Structures</a> and <a href="http://www.rgagnon.com/javadetails/java-0286.html">Determine the signature of a method</a> - These articles are crucial because it tells us how to create our JNI signatures. We cannot use the typical js-ctypes data types.</li>
+ <li> <a href="http://developer.android.com/guide/index.html">Google Developer :: Android APIs</a> - Documentation for the Android APIs. The go-to resource for learning about the API when writing scripts for Fennec.</li>
+</ul>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/JNI.jsm">JNI.jsm</a> - How to import and use the JNI functions used in this article</li>
+</ul>

@@ -1,0 +1,78 @@
+<h3 id="Prerequisites" name="Prerequisites">Prerequisites</h3>
+<ul>
+  <li><a class="external" href="http://www.selenic.com/mercurial/wiki/">Mercurial</a> 1.0 is needed to access source repositories. Make sure that the <a class="external" href="http://www.selenic.com/mercurial/wiki/index.cgi/MqExtension">mq extension</a> is enabled.</li>
+  <li><a href="/en/SpiderMonkey" title="en/SpiderMonkey">SpiderMonkey</a> provides scripting capabilities for <a href="/en/Dehydra" title="en/Dehydra">Dehydra</a>.</li>
+  <li><a class="external" href="http://gcc.gnu.org/">GCC</a> 4.5, with the package <span style="font-family: Courier New;">gcc-4.5-plugin-dev</span> installed. (Alternately, build from source)</li>
+  <li>A modern Linux distribution. Dehydra is not supported on Mac OS X.</li>
+</ul>
+<h3 id="Building_SpiderMonkey">Building SpiderMonkey</h3>
+<p>It is recommended that you use SpiderMonkey revision <code>AURORA_BASE_20110705</code> when building Dehydra.</p>
+<pre class="eval">cd $HOME
+<span>hg clone <a class="external" href="http://hg.mozilla.org/mozilla-central/" title="http://hg.mozilla.org/mozilla-central/">http://hg.mozilla.org/mozilla-central/</a></span>
+cd mozilla-central
+hg update AURORA_BASE_20110705
+cd js/src
+autoconf-2.13
+mkdir $HOME/obj-js
+cd $HOME/obj-js
+$HOME/mozilla-central/js/src/configure --enable-optimize --disable-debug
+make
+</pre>
+<p>It has to be checked whether later/newer branches (like <code>AURORA_BASE_20120131</code>) are working, too.</p>
+<p>Please also note that autoconf v2.13 is really needed: it does not work with e.g. v2.68.</p>
+<p>There is no need for some installation after <code>make</code>.</p>
+<p>You can skip the next section "Building GCC 4.5" if you are using gcc 4.6 or above.</p>
+<h3 id="Building_GCC_4.5">Building GCC 4.5</h3>
+<p>For Treehydra's <a href="/En/Treehydra_Manual" title="Treehydra Manual">process_tree_decl</a> to work, when compiling with g++, you must use a patched GCC 4.5 before building Dehydra.</p>
+<pre class="eval">cd $HOME
+# obtain GCC 4.5.3 (see <a class="external" href="http://gcc.gnu.org/mirrors.html">http://gcc.gnu.org/mirrors.html</a> for alternate mirrors)
+wget <a class="external" href="http://www.netgull.com/gcc/releases/gcc-4.5.3/gcc-4.5.3.tar.bz2">http://www.netgull.com/gcc/releases/gcc-4.5.3/gcc-4.5.3.tar.bz2</a>
+tar -jxvf gcc-4.5.3.tar.bz2
+
+# apply PLUGIN_FINISH_DECL patch
+wget <a class="link-https" href="https://bug559964.bugzilla.mozilla.org/attachment.cgi?id=457606" rel="freelink">https://bug559964.bugzilla.mozilla.o....cgi?id=457606</a> -O finish_decl.diff
+cd gcc-4.5.3
+patch -p0 &lt; ../finish_decl.diff
+
+# build GCC
+cd ..
+mkdir gcc-objdir
+mkdir gcc-dist
+
+cd gcc-objdir
+../gcc-4.5.3/configure --disable-bootstrap --enable-languages=c,c++ --prefix=$PWD/../gcc-dist
+make
+make install
+</pre>
+<h3 id="Building_Dehydra_and_Treehydra">Building Dehydra and Treehydra</h3>
+<p>Building Dehydra requires SpiderMonkey development headers from the previous step. CXX should point to your copy of GCC 4.5.</p>
+<p>It is recommended to get the latest Dehydra sources by checking out from Mercurial. (Obsolete Dehydra releases can be found on the <a class="external" href="http://ftp.mozilla.org/pub/mozilla.org/static-analysis/dehydra/">Mozilla ftp site</a>.)</p>
+<pre class="eval"><span>hg clone <a class="external" href="http://hg.mozilla.org/rewriting-and-analysis/dehydra/" title="http://hg.mozilla.org/rewriting-and-analysis/dehydra/">http://hg.mozilla.org/rewriting-and-analysis/dehydra/</a></span>
+cd dehydra
+export CXX=/usr/bin/g++
+./configure \
+   --js-headers=$HOME/obj-js/dist/include \
+   --js-libs=$HOME/obj-js
+make
+
+# run dehydra and treehydra tests
+make check
+</pre>
+<h3 id="Usage" name="Usage">Usage</h3>
+<p>Dehydra checking can be performed directly within the Mozilla build. To enable static checking of a Mozilla build, see <a href="/en/Building_with_static_checking" title="en/Building_with_static_checking">Building with static checking</a>.</p>
+<p>To run Dehydra manually using G++, add the <code>-fplugin</code> and <code>-fplugin-arg</code>-gcc_dehydra-script/<code>-fplugin-arg</code>-gcc_treehydra-script flags to specify the location of the plugin and the location of the analysis script:</p>
+<pre class="eval">g++ -quiet -fplugin=$HOME/dehydra/gcc_dehydra.so -fplugin-arg-gcc_dehydra-script=$DEHYDRA_SCRIPT \
+  -fshort-wchar $CPPFILE -S -o /dev/null
+</pre>
+<p>For example, in the tests directory created by the installation procedure, I can run a Dehydra script 'a.js' on a Mozilla file like this:</p>
+<pre class="eval">g++ -quiet -fplugin=../gcc_dehydra.so \
+-fplugin-arg=a.js -fshort-wchar -fpreprocessed \
+/home/dmandelin/builds/dehydra-gcc/browser/app/nsBrowserApp.ii -o /dev/null
+</pre>
+<p>The <code>-fshort-wchar</code> is required for running against Firefox, but not necessarily for other codebases.</p>
+<p>To generate preprocessed Mozilla source files (*.ii), see the <a class="internal" href="/en/Installing_Pork#Building_Mozilla_with_MCPP" title="en/Installing Pork#Building Mozilla with MCPP">Pork Install Instructions</a>.</p>
+<h3 id="See_Also" name="See_Also">See Also</h3>
+<ul>
+  <li><a href="/En/Dehydra/Function_Reference" title="en/Dehydra_Manual">Dehydra_Manual</a></li>
+  <li><a href="/en/Treehydra_Build_Instructions" title="en/Treehydra_Build_Instructions">Treehydra Build Instructions</a></li>
+</ul>

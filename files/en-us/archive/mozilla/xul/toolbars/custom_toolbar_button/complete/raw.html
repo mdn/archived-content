@@ -1,0 +1,168 @@
+<div style="padding: 4px; margin-left: -4px; border: 1px solid red;">
+  <p>This article is not finished yet. When it is finished, it will get a category and links from other pages.</p>
+</div>
+<p>This page is for readers who have followed the <a href="/en-US/docs/Custom_Toolbar_Button">Custom Toolbar Button</a> tutorial for Firefox, Thunderbird and Sunbird, or the <a href="/en-US/docs/Custom_Toolbar_Button/SeaMonkey">Custom Toolbar Button:SeaMonkey</a> tutorial for SeaMonkey, and who want to learn more about developing extensions.</p>
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+<p>You can use the Custom Toolbar Button tutorial as a very simple introduction to extensions. However, because it is so simple it does not support some of the usual features of extensions.</p>
+<p>This page describes how to structure the extension in a more conventional way.</p>
+<p>This page is <i>not</i> a step-by-step tutorial. Instead it explains the missing features, and outlines how to add them.</p>
+<p>If you want to see these techniques in action, then you can download and install the complete AllCustom extension:</p>
+
+<p><span style="color: gray;">allcustom.xpi</span> (The link is external only because this wiki does not support XPI files.)</p>
+<p>The extension does not contain any useful functions. It is just an extended code sample. To see the code, use a jar tool or zip tool to unpack the XPI file that you downloaded.</p>
+<p>For more information about developing extensions, see the main <a href="/en-US/docs/Extensions">Extensions</a> page here.</p>
+<h3 id="Features_of_this_extension" name="Features_of_this_extension">Features of this extension</h3>
+<p>This extension is a more complex version of the original Custom Toolbar Button extension.</p>
+<p>It provides a user interface in two languages (English and French).</p>
+<p>It supports Firefox, Thunderbird, Sunbird and Flock—these are referred to as "Firefox <i>etc.</i>" in the rest of this page. It also supports SeaMonkey.</p>
+<p>In SeaMonkey it supports two themes (Classic and Modern).</p>
+<p>It provides all five custom toolbar buttons on all the toolbars, and it provides corresponding menu choices in SeaMonkey's ChatZilla window.</p>
+<p>The following sections describe this extension's overall structure, and how it implements languages and themes.</p>
+<h2 id="Overall_structure" name="Overall_structure">Overall structure</h2>
+<p>This extension's internal name is <code>allcustom</code>. It uses this name as the default file name throughout. Where you see a URL in the code with no file name, the application uses this default file name and an extension appropriate for the type of file expected.</p>
+<p>The extension is supplied as a XPI, which is compressed to reduce download times. The XPI contains:</p>
+<table style="margin-left: 2em; font-size: 1em;">
+  <tbody>
+    <tr>
+      <td><code>install.rdf</code></td>
+      <td>Information about the extension</td>
+    </tr>
+    <tr>
+      <td><code>chrome.manifest</code></td>
+      <td>Registration data for Firefox <i>etc.</i></td>
+    </tr>
+    <tr>
+      <td><code>install.js</code></td>
+      <td>Installation script for SeaMonkey</td>
+    </tr>
+    <tr>
+      <td><code>chrome</code></td>
+      <td>Directory containing the extension code</td>
+    </tr>
+    <tr>
+      <td><code>chrome/allcustom.jar</code></td>
+      <td>The extension jar</td>
+    </tr>
+    <tr>
+      <td><code>defaults/preferences</code></td>
+      <td>Directory containing a preferences file</td>
+    </tr>
+  </tbody>
+</table>
+<p>Inside the jar there are three directories:</p>
+<table style="margin-left: 2em; font-size: 1em;">
+  <tbody>
+    <tr>
+      <td><code>content</code></td>
+      <td>XUL, JavaScript and other content that does not depend on the locale or theme</td>
+    </tr>
+    <tr>
+      <td><code>locale</code></td>
+      <td>Files for each locale</td>
+    </tr>
+    <tr>
+      <td><code>skin</code></td>
+      <td>Files for each theme</td>
+    </tr>
+  </tbody>
+</table>
+<h3 id="Version_checks" name="Version_checks">Version checks</h3>
+<p>Firefox <i>etc.</i> check extensions for compatibility before installing them. These version checks depend on the version numbers specified in the <code>install.rdf</code> file. There are two approaches: pessimistic and optimistic.</p>
+<p>The approach that is normally recommended is pessimistic. The extension is assumed to fail in any future version of the application. To adopt this approach, set the <code>maxVersion</code> to the latest actual version where you have tested your extension. The problem with this approach is that you have to release a new XPI every time there is a new release of any of the applications it supports. If you delay releasing a new XPI, you risk annoying users who cannot upgrade until you do.</p>
+<p>The approach used here is optimistic. The extension is assumed to work in any future version of the application. To adopt this approach, set the <code>maxVersion</code> to a large number like 99. The problem with this approach is that when changes in an application do make the extension fail, users might have bad experiences ranging from error messages that they cannot understand to crashes and data loss.</p>
+<p>For more information about version checks, see: <a href="/en-US/docs/Extension_Versioning%2c_Update_and_Compatibility">Extension Versioning, Update and Compatibility</a></p>
+<h3 id="The_installed_jar" name="The_installed_jar">The installed jar</h3>
+<p>To use disk space efficiently on the end user's computer, the three directories (<code>content</code>, <code>locale</code>, <code>skin</code>) are packed in a jar file. It is normally uncompressed, trading off some disk space for speed.</p>
+<p>This jar file will be installed as-is on the end user's computer, and unpacked at run-time by the application. To tell the application that the files it needs are in a jar, there are changes to <code>chrome.manifest</code> (for Firefox <i>etc.</i>) and to <code>install.js</code> (for SeaMonkey).</p>
+<p>For example, <code>chrome.manifest</code> originally had:</p>
+<p><code>content custombutton chrome/</code></p>
+<p>Now it has:</p>
+<pre><code>content allcustom jar:chrome/allcustom.jar!/content/allcustom/</code></pre>
+<p>You can see the other changes if you unpack the XPI.</p>
+<h2 id="Languages" name="Languages">Languages</h2>
+<p>Extensions can be installed by users who have different language and regional preferences. A combination of language and regional preferences is known as a <i>locale</i>.</p>
+<p>Locales are named with a two-part code. For example, the code <code>en-US</code> means English language (<code>en</code>) for the United States (<code>US</code>).</p>
+<p>To make it eaiser to support different locales, developers usually place anything that might depend on the locale in separate files in a separate directory.</p>
+<p>In the Custom Toolbar Button extension, the only things that might depend on the locale are the text strings displayed in the user interface. These are in the files <code>button.xul</code> and <code>button.js</code>.</p>
+<p><a href="/en-US/docs/XUL">XUL</a> and <a href="/en-US/docs/JavaScript">JavaScript</a> each have mechanisms for loading text strings from the correct locale directory. This extension only uses the XUL method. Its JavaScript code gets the text strings it needs from the XUL.</p>
+<p>For more information about working with locales, see the main <a href="/en-US/docs/Localization">Localization</a> page here.</p>
+<h3 id="How_a_text_sting_gets_localized" name="How_a_text_sting_gets_localized">How a text sting gets localized</h3>
+<p>When you press button 1 you see an message in English or French, depending on your application's locale. This is how it happens:</p>
+<p>For example, if your locale is <code>fr-FR</code>, it loads:</p>
+<pre><code>locale/fr-FR/allcustom/allcustom.dtd</code></pre>
+<p>from inside the jar file.</p>
+<ul>
+  <li>When you restart after installing the extension, the locales <code>en-US</code> and <code>fr-FR</code> are both registered for the component <code>allcustom</code>. You can see the registration details in <code>chrome.manifest</code> (Firefox, <i>etc.</i>) or in <code>installed-chrome.txt</code> and <code>chrome.rdf</code> (SeaMonkey).</li>
+  <li>When the XUL file, <code>allcustom.xul</code> is loaded, the DOCTYPE declaration near the top loads a DTD from <code><a>chrome://allcustom/locale/</a></code>. The application's chrome registry converts this URL to the correct DTD file for the locale you are using.</li>
+  <li>The XUL <code>toolbarbutton</code> tag contains an entity <code>&amp;allcustom.alert.1;</code>. The DTD resolves this into a text string in the appropriate language.</li>
+  <li>When you press the button, the code in the XUL element sends the text string to the extension's JavaScript code in <code>allcustom.js</code>. The extension's JavaScript code displays the text.</li>
+</ul>
+<h3 id="File_structure" name="File_structure">File structure</h3>
+<p>In the new file structure, there is a <code>locale</code> directory for all the locales. Each locale has its own directory there.</p>
+<p>In each locale's directory, there is an <code>allcustom</code> directory. This is useful when files from various components and extensions and all unpacked in the same place—it keeps each set of files separate.</p>
+<p>In the <code>allcustom</code> directory, the file <code>allcustom.dtd</code> contains the translated strings. The file <code>contents.rdf</code> contains registration data used by SeaMonkey.</p>
+<h3 id="Localizing_the_description" name="Localizing_the_description">Localizing the description</h3>
+<p>Firefox <i>etc.</i> display a description of the extension in the Extensions window. The description in <code>install.rdf</code> is the default. For each supported locale, a description in <code>install.properties</code> overrides the default.</p>
+<p>A preference setting in <code>defaults/preferences/allcustom.js</code> makes the connection between the description and the properties file, specifying the URL:</p>
+<pre><code><a>chrome://allcustom/locale/install.properties</a></code></pre>
+<p>Again, the application's chrome registry converts this URL to the correct file for the locale you are using.</p>
+<p>For example, if your locale is <code>fr-FR</code>, it gets the description from:</p>
+<pre><code>locale/fr-FR/allcustom/install.properties</code></pre>
+<h3 id="Testing_a_locale" name="Testing_a_locale">Testing a locale</h3>
+<p>To test the alternative locale, install the extension in the normal way.</p>
+<p>Restart the application using the command line switch:</p>
+<pre>-uiLocale fr-FR</pre>
+<p>(Of course, if your application is already in French, specify <code>en-US</code> here to switch the extension to English.)</p>
+<p><b>Notes:</b></p>
+<ul>
+  <li>If you use a shortcut or launcher icon to start the application, then you can add the command line switch by editing the icon's properties.</li>
+  <li>The application's user interface only switches language if you have the appropriate language pack installed. But this extension switches between English and French without needing any language pack.</li>
+  <li>Some versions of Firefox <i>etc.</i> have a bug that prevents this from working. To work around the bug, close the application, delete the file <code>XUL.mfl</code> in its profile, then restart it with the command line switch.</li>
+  <li>Firefox <i>etc.</i> support specifying the language alone, without any region—for example, just: <code>-uiLocale fr</code> SeaMonkey does not support this.</li>
+</ul>
+<h2 id="Themes" name="Themes">Themes</h2>
+<p>A theme changes the appearance of the user interface, affecting fonts, colours, graphics, and sometimes layout.</p>
+<p>A theme consists of a skin for each component. This extension is just one component, <code>allcustom</code>, so it contains a skin for this component in each of the themes that it supports. These themes are:</p>
+<ul>
+  <li>Classic for Firefox <i>etc.</i></li>
+  <li>Classic for SeaMonkey</li>
+  <li>Modern for SeaMonkey</li>
+</ul>
+<p>To make it easier to support different themes, developers place anything that might depend on the theme in separate files in a separate directory.</p>
+<p>In this extension, the only things that depend on the theme are the icon images on the buttons and the <a href="/en-US/docs/CSS">CSS</a> style rules.</p>
+<p>For more information about themes, see the main <a href="/en-US/docs/Themes">Themes</a> page here.</p>
+<h3 id="How_a_button_gets_themed" name="How_a_button_gets_themed">How a button gets themed</h3>
+<p>When you look at button 1 in SeaMonkey, you see an image or style that depends on your theme. This is how it happens:</p>
+<p>This extension does not support <code>modern</code> in Firefox <i>etc.</i>, but you can see the registration details for <code>classic</code> in <code>chrome.manifest</code>.</p>
+<p>For example, if you are using Modern, it loads:</p>
+<pre><code>skin/modern/allcustom/seamonkey/allcustom.css</code></pre>
+<p>from inside the jar.</p>
+<ul>
+  <li>When you restart after installing the extension, the skins <code>classic</code> and <code>modern</code> are both registered for the component <code>allcustom</code>. You can see the registration details in <code>installed-chrome.txt</code> and <code>chrome.rdf</code>.</li>
+  <li>When the XUL file, <code>allcustom.xul</code> is loaded, the <code>stylesheet</code> declaration near the top loads a stylesheet from <code><a>chrome://allcustom/skin/</a></code>. The application's chrome registry converts this to the correct CSS file for the theme you are using.</li>
+  <li>The XUL <code>toolbarbutton</code> tag has an ID <code>all-custom-1</code>. The CSS stylesheet uses the corresponding selector <code>#all-custom-1</code> to provide the appropriate image: <code>button-1.png</code></li>
+</ul>
+<h3 id="File_structure_2" name="File_structure_2">File structure</h3>
+<p>In the new file structure, there is a <code>skin</code> directory for all the themes. Each theme has its own directory there.</p>
+<p>In each theme's directory, there is an <code>allcustom</code> directory. This is useful when files from various components and extensions and all unpacked in the same place—it keeps each set of files separate.</p>
+<p>The <code>allcustom</code> directory contains the icon images and the CSS stylesheet. The file <code>contents.rdf</code> contains registration data used by SeaMonkey.</p>
+<h3 id="Testing_a_theme" name="Testing_a_theme">Testing a theme</h3>
+<p>To test a theme in SeaMonkey, choose View – Apply Theme, then choose the theme. Restart SeaMonkey.</p>
+<h2 id="Application_differences" name="Application_differences">Application differences</h2>
+<p>Some differences between Firefox <i>etc.</i> and SeaMonkey cause complications for this extension.</p>
+<p>To resolve the differences, the extension uses Firefox <i>etc.</i> and SeaMonkey's different registration mechanisms to register different files where this is needed.</p>
+<h3 id="Toolbar_conflicts" name="Toolbar_conflicts">Toolbar conflicts</h3>
+<p>There are some conflicts between toolbars in Firefox <i>etc.</i> and toolbars in SeaMonkey. To avoid these conflicts, this extension uses a separate XUL file for SeaMonkey.</p>
+<p>Firefox <i>etc.</i> use: <code>content/allcustom/allcustom.xul</code> This file is specified in <code>chrome.manifest</code>, which only Firefox <i>etc.</i> use.</p>
+<p>SeaMonkey uses: <code>content/allcustom/seamonkey/allcustom.xul</code> This file is specified in <code>content/allcustom/contents.rdf</code>, which only SeaMonkey uses.</p>
+<h3 id="Theme_conflicts" name="Theme_conflicts">Theme conflicts</h3>
+<p>The Classic theme for Firefox <i>etc.</i> is different from the Classic theme for SeaMonkey, but the internal name <code>classic/1.0</code> is the same.</p>
+<p>To resolve the conflict, this extension registers SeaMonkey's skins in a <code>seamonkey</code> subdirectory.</p>
+<p>Firefox <i>etc.</i> use: <code>skin/classic/allcustom/</code> This directory is specified in <code>chrome.manifest</code>, which only Firefox <i>etc.</i> use.</p>
+<p>SeaMonkey uses: <code>skin/classic/allcustom/seamonkey/</code> This directory is specified in <code>install.js</code>, which only SeaMonkey uses.</p>
+<p>A similar structure is used for Modern, even though there is no conflict.</p>
+<h2 id="Package_structure" name="Package_structure">Package structure</h2>
+<p>Here is the complete package structure for this extension.</p>
+<p>This diagram shows all the directories but only a few of the files. You can see all the files if you unpack the XPI and the jar.</p>
+<div>
+  <img alt="Image:allcustom-package-structure.png"></div>

@@ -1,0 +1,186 @@
+<p></p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/Updating_an_extension_to_support_multiple_Mozilla_applications" style="float: left;">« Previous</a><br></p>
+</div><p></p>
+
+<p></p>
+
+<p>This article shows you how to use worker threads in extensions to perform tasks in the background without blocking the user interface.</p>
+
+<p>If you haven't already created an extension, or would like to refresh your memory, take a look at the previous articles in this series:</p>
+
+<ul>
+ <li><a href="/en-US/docs/Creating_a_status_bar_extension" title="/en-US/docs/Creating_a_status_bar_extension">Creating a status bar extension</a></li>
+ <li><a href="/en-US/docs/Creating_a_dynamic_status_bar_extension" title="/en-US/docs/Creating_a_dynamic_status_bar_extension">Creating a dynamic status bar extension</a></li>
+ <li><a href="/en-US/docs/Adding_preferences_to_an_extension" title="/en-US/docs/Adding_preferences_to_an_extension">Adding preferences to an extension</a></li>
+ <li><a href="/en-US/docs/Localizing_an_extension" title="/en-US/docs/Localizing_an_extension">Localizing an extension</a></li>
+ <li><a class="internal" href="/en-US/docs/Updating_an_extension_to_support_multiple_Mozilla_applications" title="/en-US/docs/Updating an extension to support multiple Mozilla applications">Updating an extension to support multiple Mozilla applications</a></li>
+</ul>
+
+<h2 id="Download_the_sample">Download the sample</h2>
+
+<p>You may download the complete example:</p>
+
+<ul>
+ <li><a class="internal" href="/@api/deki/files/3145/=stockwatcher2%2540example.com.zip" title="/@api/deki/files/3145/=stockwatcher2@example.com.zip">Download the example.</a></li>
+</ul>
+
+<h2 id="How_this_differs_from_previous_versions">How this differs from previous versions</h2>
+
+<p>This version of the stock ticker extension moves the <a class="internal" href="/en-US/docs/XMLHttpRequest" title="/en-US/docs/XMLHttpRequest"><code>XMLHttpRequest</code></a> call that fetches updated stock information into a worker thread, which then passes that information back to the main body of the extension's code to update the display in the status bar. This demonstrates not only how to use workers in an extension, but also how to perform <code>XMLHttpRequest</code> in a worker, and how workers and main thread code can pass data back and forth.</p>
+
+<h2 id="The_worker">The worker</h2>
+
+<p>The worker thread's job in this example is to issue the <code>XMLHttpRequest</code> calls that fetch the updated stock information. That's all it does. Every 10 minutes, it calls <code>XMLHttpRequest</code>, and, when the results are received, sends an event back to the main thread with the received data.</p>
+
+<p>So we need to move the <code>refreshInformation()</code> method from the <code>stockwatcher2.js</code> file into a separate file that will host the worker thread. That file, <code>ticker_worker.js</code>, is shown here:</p>
+
+<pre class="brush: js">var symbol = "";
+
+function refreshInformation() {
+  if (!symbol) {
+    throw "No symbol set!";
+  }
+
+  var fullUrl =
+    "http://quote.yahoo.com/d/quotes.csv?f=sl1d1t1c1ohgv&amp;e=.csv&amp;s=" + symbol;
+
+  function infoReceived()
+  {
+    var output = httpRequest.responseText;
+    if (output) {
+      postMessage(output.trim());
+    }
+    httpRequest = null;
+  }
+
+  var httpRequest = new XMLHttpRequest();
+  httpRequest.open("GET", fullUrl, true);
+  httpRequest.onload = infoReceived;
+  httpRequest.send(null);
+}
+
+setInterval(function() {
+  refreshInformation();
+}, 10*60*1000);
+
+onmessage = function(event) {
+  if (event.data) {
+    symbol = event.data.toUpperCase();
+  }
+  refreshInformation();
+}</pre>
+
+<p>When the worker thread is started, the main body of this code (in lines 26-35) is executed. It starts by setting up an interval handler (in lines 26-28) that calls <code>refreshInformation()</code> every 10 minutes.</p>
+
+<p>Then it sets the worker's <code>onmessage</code> event handler to a function which looks at the event passed into it, and does one of two things:</p>
+
+<ul>
+ <li>If there is a data field on the event, the stock symbol being tracked is set to the upper case version of that value. This is used to initialize the worker, and to change which stock is being monitored.</li>
+ <li>If there is no data field, the <code>refreshInformation()</code> method is called to fetch the latest information about the stock and pass it back to the main thread. This provides a way for the main thread to specifically request that the worker update the stock information at once.</li>
+</ul>
+
+<p>The <code>refreshInformation()</code> method is fairly similar to the previous versions, with two notable exceptions:</p>
+
+<ul>
+ <li>If the ticker symbol has not been set yet, an exception is thrown (lines 4-6).</li>
+ <li>When the result is received from <code>XMLHttpRequest</code>, instead of immediately updating the displayed information in the status bar, a message is sent to the main thread using the worker's <code>postMessage()</code> method. This is because only the main thread is allowed to access the user interface.</li>
+</ul>
+
+<h2 id="The_main_thread">The main thread</h2>
+
+<p>The changes here are also relatively minor, but crucial.</p>
+
+<h3 id="The_startup()_method">The startup() method</h3>
+
+<p>This method is called when the extension is first loaded, and needs to be updated to start up and configure the worker. Let's take a look:</p>
+
+<pre class="brush: js">  startup: function()
+  {
+    // Register to receive notifications of preference changes
+
+    this.prefs = Components.classes["@mozilla.org/preferences-service;1"]
+        .getService(Components.interfaces.nsIPrefService)
+        .getBranch("stockwatcher2.");
+    this.prefs.QueryInterface(Components.interfaces.nsIPrefBranch2);
+    this.prefs.addObserver("", this, false);
+
+    this.tickerSymbol = this.prefs.getCharPref("symbol").toUpperCase();
+
+    this.worker = new Worker("chrome://stockwatcher2/content/ticker_worker.js");
+
+    // Small little dance to get 'this' to refer to StockWatcher, not the
+    // worker, when a message is received.
+    var self = this;
+    this.worker.onmessage = function(event) {
+      self.onworkermessage.call(self, event);
+    };
+
+    this.worker.postMessage(this.tickerSymbol);
+  },
+</pre>
+
+<p>The worker is set up and configured here in lines 13-22:</p>
+
+<ul>
+ <li>Line 13 instantiates a new worker, specifying the URI of the <code>ticker_worker.js</code> file.</li>
+ <li>Lines 17-20 change the definition of the worker's <code>onmessage</code> handler so that when the worker calls back to the main thread, the main thread's value of this is correctly the main thread's object instead of the worker's.</li>
+ <li>Line 22 sends a message to the ticker thread to tell it what symbol to monitor.</li>
+</ul>
+
+<h2 id="The_observe()_method">The observe() method</h2>
+
+<p>This method's job is to update which stock is being monitored when the user changes the preferences. It needs to be updated to post a message to the worker to tell it which stock symbol to track.</p>
+
+<pre class="brush: js">  observe: function(subject, topic, data)
+  {
+    if (topic != "nsPref:changed") {
+      return;
+    }
+
+    switch(data) {
+      case "symbol":
+        this.tickerSymbol = this.prefs.getCharPref("symbol").toUpperCase();
+        this.worker.postMessage(this.tickerSymbol);
+        break;
+    }
+  },
+</pre>
+
+<p>The key here is line 10, which sends the new ticker symbol to monitor to the ticker thread by calling its <code>postMessage()</code> method. This results in the ticker's <code>onmessage</code> handler being called.</p>
+
+<h2 id="The_watchStock()_and_refreshInformation()_methods">The watchStock() and refreshInformation() methods</h2>
+
+<p>These two methods are very simple. <code>watchStock()</code> is updated to pass the symbol to the ticker thread, and <code>refreshInformation()</code>, whose main functionality is now in the worker, is updated to simply pass an empty message to the worker, which tells the worker to refresh the stock information immediately.</p>
+
+<pre class="brush: js">  watchStock: function(newSymbol)
+  {
+    this.tickerSymbol = newSymbol.toUpperCase();
+    this.prefs.setCharPref("symbol", newSymbol);
+    this.worker.postMessage(this.tickerSymbol);
+  },
+
+  refreshInformation: function()
+  {
+    // Empty message just means 'refresh'.
+    this.worker.postMessage("");
+  },
+</pre>
+
+<h2 id="The_onworkermessage()_method">The onworkermessage() method</h2>
+
+<p>This method is called when the worker posts a message back to the main thread. Its job is to update the ticker information that's currently displayed in the status bar, as well as to update the tooltip that appears while the mouse cursor is hovering over the ticker. This code is essentially identical to what's done in the previous version, except that it's done in response to an event instead of within the <code>refreshInformation()</code> method.</p>
+
+<p></p><div class="headingWithIndicator">
+    <h2 id="A_note_about_ChromeWorkers">A note about ChromeWorkers</h2>
+    <span class="indicatorInHeadline minVer geckoMinVerMethod">Requires Gecko 2.0(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)</span>
+</div><p></p>
+
+<p><span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span> added the new <a href="/en-US/docs/Web/API/ChromeWorker" title="If you're developing privileged code, and would like to create a worker that can use js-ctypes to perform calls to native code, you can do so by using ChromeWorker instead of the standard Worker object. It works exactly like a standard Worker, except that it has access to js-ctypes via a global ctypes object available in the global scope of the worker. Examples of ChromeWorker's using js-ctypes are availabe on Github and are linked to from the See Also section below. To use a postMessage with callback version of ChromeWorker that features promises, see PromiseWorker."><code>ChromeWorker</code></a> object, which provides a special chrome-only worker that can be used by applications and extensions. This worker object has access to <a href="/en-US/docs/js-ctypes" title="/en-US/docs/js-ctypes">js-ctypes</a>, which standard workers do not have.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a class="internal" href="/en-US/docs/Using_web_workers" title="/en-US/docs/Using DOM workers">Using web workers</a></li>
+ <li><a href="/en-US/docs/Web/API/Worker" title="The Worker interface of the Web Workers API represents a background task that can be easily created and can send messages back to its creator. Creating a worker is as simple as calling the Worker() constructor and specifying a script to be run in the worker thread."><code>Worker</code></a></li>
+ <li><a href="/en-US/docs/Web/API/ChromeWorker" title="If you're developing privileged code, and would like to create a worker that can use js-ctypes to perform calls to native code, you can do so by using ChromeWorker instead of the standard Worker object. It works exactly like a standard Worker, except that it has access to js-ctypes via a global ctypes object available in the global scope of the worker. Examples of ChromeWorker's using js-ctypes are availabe on Github and are linked to from the See Also section below. To use a postMessage with callback version of ChromeWorker that features promises, see PromiseWorker."><code>ChromeWorker</code></a></li>
+</ul>

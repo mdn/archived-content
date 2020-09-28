@@ -1,0 +1,311 @@
+<p>TPS is an end to end test for Sync. It's name stands for Testing and Profiling tool for Sync (which is a misnomer, since it doesn't do any profiling), and it should not be confused with the <a href="https://wiki.mozilla.org/Buildbot/Talos/Tests#tps">similarly named tests in Talos</a>.</p>
+
+<p>TPS consists of a Firefox extension of the same name, along with a python test runner, both of which live inside mozilla-central. The python test runner will read a test file (in JavaScript format), setup one or more Firefox profiles with the necessary extensions and preferences, then launch Firefox and pass the test file to the extension. The extension will read the test file and perform a series of actions specified therein, such as populating a set of bookmarks, syncing to the Sync server, making bookmark modifications, etc.</p>
+
+<p>A test file may contain an arbitrary number of sections, each involving the same or different profiles, so that one test file may be used to test the effect of syncing and modifying a common set of data (from a single Sync account) over a series of different events and clients.</p>
+
+<h2 id="Set_up_an_environment_and_run_a_test">Set up an environment and run a test</h2>
+
+<p>To run TPS, you should <a href="https://accounts.firefox.com/">create a new firefox account</a> using a <a href="http://restmail.net/">restmail.net</a> email address (Strictly speaking, restmail isn't required, but it will allow TPS to automatically do account confirmation steps for you. Even if you opt not to use restmail, <strong>do not</strong> use your personal firefox account, as TPS will delete and replace the data in it many times, not to mention the first run is very likely to fail, since it expects a clean start).</p>
+
+<div class="note">
+<p>Note: Be prepared not to use your computer for 15 or so minutes after starting a full run of TPS, as it will open and close a fairly large number of Firefox windows.</p>
+</div>
+
+<h3 id="Steps">Steps</h3>
+
+<ol>
+ <li>
+  <h4 id="Get_the_source_code">Get the source code</h4>
+
+  <p>Clone mozilla-central (choose your flavor):</p>
+
+  <ul>
+   <li>
+    <pre>hg clone hg.mozilla.org/mozilla-central</pre>
+    or</li>
+   <li>
+    <pre>git clone github.com/mozilla/gecko-dev</pre>
+   </li>
+  </ul>
+ </li>
+ <li>
+  <h4 id="cd_into_the_tps_folder">cd into the tps folder</h4>
+
+  <pre>cd testing/tps</pre>
+ </li>
+ <li>
+  <h4 id="Create_the_environment">Create the environment</h4>
+
+  <p>I suggest the path to be outside of the mc source tree</p>
+
+  <pre>python create_venv.py --username=%EMAIL% --password=%PASSWORD% %PATH%</pre>
+
+  <p><strong>NOTE</strong>: If you are updating the TPS environment and want to keep your existing config (eg, the existing username and password), you should instead execute:</p>
+
+  <pre>python create_venv.py --keep-config %PATH%</pre>
+ </li>
+ <li>
+  <h4 id="Activate_the_environment">Activate the environment</h4>
+
+  <pre>source %PATH%/bin/activate</pre>
+ </li>
+ <li>
+  <h4 id="Run_some_tests">Run some tests</h4>
+
+  <p>Note that the testfile is NOT a path, it should only be the filename from <code>services/sync/tests/tps/</code></p>
+
+  <pre>runtps --debug --testfile %TEST_FILE_NAME% --binary %FIREFOX_BINARY_PATH%</pre>
+
+  <ol>
+   <li>Additionally, omitting a <code>--testfile</code> parameter will cause it to run all TPS tests listed in <code>services/sync/tests/tps/all_tests.json</code></li>
+   <li>You can also prefix with <code>MOZ_HEADLESS=1</code> to run in <a href="/en-US/docs/Mozilla/Firefox/Headless_mode">headless mode </a> (recommended)</li>
+  </ol>
+ </li>
+</ol>
+
+<div>An example on OSX, for headlessly running just the <code>test_sync.js</code> testfile against a locally built firefox (where the mozconfig set the objdir to <code>obj-ff-artifact</code>):</div>
+
+<div></div>
+
+<pre>MOZ_HEADLESS=1 runtps --debug --testfile test_sync.js --binary obj-ff-artifact/dist/Nightly.app/Contents/MacOS/firefox</pre>
+
+<div></div>
+
+<h2 id="Running_TPS_against_stage_or_dev_FxA">Running TPS against stage, or dev FxA</h2>
+
+<div>TPS can be configured using the <code>$TPS_VENV_PATH/config.json</code> file. In particular, it will set preferences from the <code>"preferences"</code> property, and so you can set the <code>"identity.fxaccounts.autoconfig.uri"</code> preference to point to any FxA server you want. For example, a (partial) tps config for testing against stage might look like:</div>
+
+<div></div>
+
+<pre>{
+  // ...
+  "fx_account": {
+    "username": "foobar@restmail.net",
+    "password": "hunter2"
+  },
+  "preferences": {
+    // use "https://stable.dev.lcip.org" for dev instead of stage
+    "identity.fxaccounts.autoconfig.uri": "https://accounts.stage.mozaws.net"
+    // possibly more preferences...
+  },
+  // ...
+}</pre>
+
+<div>Note that in this example, the <code>foobar@restmail.net</code> account must be registered on stage, otherwise authentication will fail (and the whole test will fail as well.  You can sign up for an FxA account on stage or dev by creating an FxA account after adding the <code>identity.fxaccounts.autoconfig.uri</code> preference (with the appropriate value) to <code>about:config</code>. Additionally, note that the config file must parse as valid JSON, and so you can't have comments in it (sorry, I know this is annoying). One alternative is to put underscores before the "disabled" preferences, e.g. <code>"_identity.fxaccounts.autoconfig.uri": "..."</code>.</div>
+
+<h2 id="Writing_TPS_tests">Writing TPS tests</h2>
+
+<p>Each TPS test is run as a series of "phases". A phase runs in some firefox profile, and contains some set of actions to perform or check on that profile. Phases have an N to M relationship with profiles, where N &gt;= M (there can never be more phases than profiles). Typically there are two profiles used, but any number of profiles could be used in theory (other than 0).</p>
+
+<p>After the phases run, two additional "cleanup" phases are run, to unregister the devices with FxA. This is an implementation detail, but if you work with TPS for any amount of time you will almost certainly see <code>cleanup-profile1</code> or similar in the logs. That's what that phase is doing, it does any necessary cleanup for the phase, primarially unregistering the device associated with that profile.</p>
+
+<p>TPS tests tend to be broken down into three sections, in the following order (we'll cover these out of order, for the sake of simplicity)</p>
+
+<ol>
+ <li>Phase declarations (mandatory).</li>
+ <li>Data definitions/asset list (optional, but all current tests have them).</li>
+ <li>Phase implementation (mandatory)</li>
+</ol>
+
+<ol>
+</ol>
+
+<p>It's worth noting that some parts of TPS assume that it can read the number off the end of the phase or profile to get to the next one, so try to stick to the convention established in the other tests. Yes, this is cludgey, but it's effective enough and nobody has changed it.</p>
+
+<h3 id="Phase_Declarations">Phase Declarations</h3>
+
+<p>These map the phases to profiles. Both python and JavaScript read them in. They <em><strong>must</strong></em> look like:</p>
+
+<pre class="brush: js"> var phases = { "phase1": "profile1", "phase2": "profile2", "phase3": "profile1" };</pre>
+
+<div class="warning">
+<p>Between <code>{</code> and <code>}</code> it must be <em><strong>strict JSON</strong></em>. e.g. quoted keys, no trailing parentheses, etc. The python testrunner will be parsing it with an unforgiving call to <code>json.loads</code>, so anything other than strict JSON will fail.</p>
+</div>
+
+<p>You can use as many profiles or phases as you need, but every phase you define later must be declared here, or it will not be run by the python test runner. Any phases declared here but not implemented later will cause the test to fail when it hits that phase.</p>
+
+<h3 id="Asset_lists">Asset lists</h3>
+
+<p>A test file will contain one or more asset lists, which are lists of bookmarks, passwords, or other types of browser data that are relevant to Sync. The format of these asset lists vary somwhat depending on asset type.</p>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_Bookmark_Lists" title="en/TPS/TPS Bookmark Lists">Bookmarks</a></li>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_Password_Lists" title="en/TPS/TPS Password Lists">Passwords</a></li>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_History_Lists" title="en/TPS/TPS History Lists">History</a></li>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_Tab_Lists" title="en/TPS/TPS Tab Lists">Tabs</a></li>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_Formdata_Lists" title="en/TPS/TPS Formdata Lists">Form Data</a></li>
+ <li><a href="/en-US/docs/Mozilla/Projects/TPS/TPS_Pref_Lists" title="en/TPS/TPS Pref Lists">Prefs</a></li>
+</ul>
+
+<h3 id="Test_Phases">Test Phases</h3>
+
+<p>The phase blocks are where the action happens! They tell TPS what to do. Each phase block contains the name of a phase, and a list of actions. TPS iterates through the phase blocks in alphanumeric order, and for each phase, it does the following:</p>
+
+<ol>
+ <li>Launches Firefox with the profile from the <code>phases</code> object that corresponds to this test phase.</li>
+ <li>Performs the specified actions in sequence.</li>
+ <li>Determines if the phase passed or failed; if it passed, it continues to the next phase block and repeats the process.</li>
+</ol>
+
+<p>A phase is defined by calling the <code>Phase</code> function with the name of the phase and a list of actions to perform:</p>
+
+<pre class="brush: js">Phase('phase1', [
+  [Bookmarks.add, bookmarks_initial],
+  [Passwords.add, passwords_initial],
+  [History.add, history_initial],
+  [Sync, SYNC_WIPE_SERVER],
+]);
+</pre>
+
+<p>Each action is an array, the first member of which is a function reference to call, the other members of which are parameters to pass to the function.  Each type of asset list has a number of built-in functions you can call, described in the section on Asset lists; there are also some additional built-in functions.</p>
+
+<h3 id="Built-in_functions">Built-in functions</h3>
+
+<p><strong>Sync(options)</strong></p>
+
+<p>Initiates a Sync operation.  If no options are passed, a default sync operation is performed.  Otherwise, a special sync can be performed if one of the following are passed:  <code>SYNC_WIPE_SERVER</code>, <code>SYNC_WIPE_CLIENT</code>, <code>SYNC_RESET_CLIENT</code>. This will cause TPS to set the firstSync pref to the relevant value before syncing, so that the described actionwill take place</p>
+
+<p><strong>Logger.logInfo(msg)</strong></p>
+
+<p>Logs the given message to the TPS log.</p>
+
+<p><strong>Logger.AssertTrue(condition, msg)</strong></p>
+
+<p>Asserts that condition is true, otherwise an exception is thrown and the test fails.</p>
+
+<p><strong>Logger.AssertEqual(val1, val2, msg)</strong></p>
+
+<p>Asserts that val1 is equal to val2, otherwise an exception is thrown and the test fails.</p>
+
+<h3 id="Custom_functions">Custom functions</h3>
+
+<p>You can also write your own functions to be called as actions.  For example, consider the first action in the phase above:</p>
+
+<pre class="brush: js">[Bookmarks.add, bookmarks_initial]
+</pre>
+
+<p>You could rewrite this as a custom function so as to add some custom logging:</p>
+
+<pre class="brush: js">[async () =&gt; {
+  Logger.logInfo("adding bookmarks_initial");
+  await Bookmarks.add(bookmarks_initial);
+}]
+</pre>
+
+<p>Note that this is probably best used for debugging, and new tests that want custom behavior should add it to the TPS addon so that other tests can use it.</p>
+
+<h3 id="Example_Test">Example Test</h3>
+
+<p>Here's an example TPS test to tie it all together.</p>
+
+<pre class="brush: js">// Phase declarations
+var phases = { "phase1": "profile1",
+               "phase2": "profile2",
+               "phase3": "profile1" };
+
+// Asset list
+
+// the initial list of bookmarks to be added to the browser
+var bookmarks_initial = {
+  "menu": [
+    { uri: "http://www.google.com",
+      title "google.com",
+      changes: {
+        // These properties are ignored by calls other than Bookmarks.modify
+        title: "Google"
+      }
+    },
+    { folder: "foldera" },
+    { folder: "folderb" }
+  ],
+  "menu/foldera": [
+    { uri: "http://www.yahoo.com",
+      title: "testing Yahoo",
+      changes: {
+        location: "menu/folderb"
+      }
+    }
+  ]
+};
+
+// The state of bookmarks after the first 'modify' action has been performed
+// on them. Note that it's equivalent to what you get after applying the properties
+// from "changes"
+var bookmarks_after_first_modify = {
+  "menu": [
+    { uri: "http://www.google.com",
+      title "Google"
+    },
+    { folder: "foldera" },
+    { folder: "folderb" }
+  ],
+  "menu/folderb": [
+    { uri: "http://www.yahoo.com",
+      title: "testing Yahoo"
+    }
+  ]
+};
+
+// Phase implementation
+
+Phase('phase1', [
+  [Bookmarks.add, bookmarks_initial],
+  [Sync, SYNC_WIPE_SERVER]
+]);
+
+Phase('phase2', [
+  [Sync],
+  [Bookmarks.verify, bookmarks_initial],
+  [Bookmarks.modify, bookmarks_initial],
+  [Bookmarks.verify, bookmarks_after_first_modify],
+  [Sync]
+]);
+
+Phase('phase3', [
+  [Sync],
+  [Bookmarks.verify, bookmarks_after_first_modify]
+]);
+</pre>
+
+<p>The effects of this test file will be:</p>
+
+<ol>
+ <li>Firefox is launched with profile1, the TPS extension adds the two bookmarks specified in the <code>bookmarks_initial</code> array, then they are synced to the Sync server. The <code>SYNC_WIPE_SERVER</code> argument causes TPS to set the <code>firstSync="wipeServer"</code> pref before syncing, in case the Sync account already contains data (this is typically unnecessary, and done largely as an example). Firefox closes.</li>
+ <li>Firefox is launched with profile2, and all data is synced from the Sync server. The TPS extension verifies that all bookmarks in the <code>bookmarks_initial</code> list are present. Then it modifies those bookmarks by applying the "changes" property to each of them. E.g., the title of the first bookmark is changed from "google.com" to "Google". Next, the changes are synced to the Sync server. Finally, Firefox closes.</li>
+ <li>Firefox is launched with profile1 again, and data is synced from the Sync server. The TPS extension verifies that the bookmarks in <code>bookmarks_after_first_modify</code> list are present; i.e., all the changes performed in profile2 have successfully been synced to profile1. Lastly, Firefox closes and the tests ends.</li>
+ <li>(Implementation detail) Two final cleanup phases are run to wipe the server state and unregister devices.</li>
+</ol>
+
+<ul>
+</ul>
+
+<h2 id="Troubleshooting_and_debugging_tips_for_writing_and_running_TPS_tests">Troubleshooting and debugging tips for writing and running TPS tests</h2>
+
+<ol>
+ <li>TPS evaluates the whole file in every phase, so any syntax error(s) in the file will get reported in phase 1, even though the error may not be in phase 1 itself.</li>
+ <li>Inspect tps.log. When a tps test fails, the log is dumped to tps.log in the virtualenv.</li>
+ <li>Inspect about:sync-log. Every sync should have a log and every item synced should have a record.</li>
+ <li>Run <code>runtps</code> with <code>--debug</code>. This will enable much more verbose logging in all engines.</li>
+ <li>Check the <code>tps.log</code> file written out after TPS runs. It will include log output written by the python driver, which includes information about where the temporary profiles it uses are stored.</li>
+ <li>run test_sync.js. This test generally validates your tps setup and does a light test of a few engines.</li>
+ <li>Comment out the goQuitApplication() calls in services/sync/tps/extensions/tps/modules/tps.jsm (remember to undo this later!).
+  <ol>
+   <li>You will have to manually quit the browser at each phase, but you will be able to inspect the browser state manually.</li>
+   <li>Using this technique in conjunction with <a href="https://addons.mozilla.org/en-US/firefox/addon/about-sync/">aboutsync</a> is helpful. (Note that the python testrunner will generally still kill firefox after a TPS test runs for 5 or so minutes, so it's often helpful to kill the python testrunner outright, and then use aboutsync in a different instance of the browser).</li>
+  </ol>
+ </li>
+ <li>A TPS failure may not point directly to the problem. For example,
+  <ol>
+   <li>Most errors involving bookmarks look like "Places Item not found in expected index", which could mean a number of issues. The other engines are similarly unhelpful, and will likely fail if there's any problem, without really indicating what the problem is.</li>
+   <li>It's common for the phase after the problem to be the one reporting errors (e.g. if one phase doesn't upload what it should, we won't notice until the next phase).</li>
+  </ol>
+ </li>
+ <li>TPS runs one "cleanup" phase for each profile (even for failed tests), which means most tests have two cleanup phases. This has a couple side effects
+  <ol>
+   <li>You usually need to scroll up a bit in the log past the end of the test to find the actual failure.</li>
+   <li>When one of the cleanup phases fails (often possible if firefox crashes or TPS hangs), there's no guarantee that the data was properly cleaned up, and so the next TPS test you run may fail due to the leftover data. This means <strong>you may want to run a TPS test twice</strong> to see if it really failed, or it just started with garbage.</li>
+  </ol>
+ </li>
+ <li>Feel free to ask for help with setting up and running TPS in the <code>#sync</code> IRC channel!</li>
+</ol>

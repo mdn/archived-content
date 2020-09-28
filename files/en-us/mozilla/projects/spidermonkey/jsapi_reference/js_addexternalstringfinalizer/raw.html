@@ -1,0 +1,71 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("jsapi13") }}</p>
+
+<div class="summary">
+<p>Register a custom string memory manager.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">int
+JS_AddExternalStringFinalizer(JSStringFinalizeOp finalizer);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>finalizer</code></td>
+   <td><code>JSStringFinalizeOp</code></td>
+   <td>Pointer to a callback function, described below. The JS engine will automatically call this function each time a string created by {{jsapixref("JS_NewExternalString")}} is garbage-collected.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Callback_syntax" name="Callback_syntax">Callback syntax</h3>
+
+<pre class="brush: cpp">typedef void
+(*JSStringFinalizeOp)(JSContext *cx, JSString *str);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to a JSContext which the finalizer may use for certain very limited operations <em>(not documented)</em>. Since the JSStringFinalizeOp callback is called during garbage collection, it must avoid most JSAPI functions. <em>(Is cx guaranteed to be non-NULL?)</em></td>
+  </tr>
+  <tr>
+   <td><code>str</code></td>
+   <td>{{jsapixref("JSString", "JSString *")}}</td>
+   <td>The string being finalized. This is always a string that the application previously created by calling {{jsapixref("JS_NewExternalString")}}. The callback may use <code>{{jsapixref("JS_GetStringChars")}}(str)</code> to get a pointer to the character buffer, which is the pointer which the application passed to <code>JS_NewExternalString()</code> when creating the string. It is the callback's responsibility to free the memory. After this callback, the JS engine will not use that memory anymore and will not keep a pointer to it.
+    <p>The callback may not keep a reference to this <code>JSString</code>, as its memory is about to be freed.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>Add a finalizer for external strings created by {{jsapixref("JS_NewExternalString")}} using a type-code returned from this function, and that understands how to free or release the memory pointed at by <code>{{jsapixref("JS_GetStringChars")}}(str)</code>.</p>
+
+<p>Returns a nonnegative type index if there is room for <code>finalizer</code> in the global GC finalizers table, else returns <code>-1</code>. In a {{jsapixref("JS_THREADSAFE")}} build, this function must be invoked on the primordial thread only, at startup—or else the entire program must single-thread itself while loading a module that calls this function.</p>
+
+<p>To remove an external string finalizer, use {{jsapixref("JS_RemoveExternalStringFinalizer")}}.</p>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{jsapixref("JS_RemoveExternalStringFinalizer")}}</li>
+ <li>{{bug(724810)}}</li>
+</ul>

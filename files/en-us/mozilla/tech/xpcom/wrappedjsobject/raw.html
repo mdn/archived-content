@@ -1,0 +1,111 @@
+<p><code>wrappedJSObject</code> is a property sometimes available on <a href="en/XPConnect">XPConnect</a> wrappers. When available, it lets you access the JavaScript object hidden by the wrapper.</p>
+
+<p>There are two kinds of XPConnect wrappers that support the <code>wrappedJSObject</code> property:</p>
+
+<ul>
+ <li><a href="en/XPCNativeWrapper">XPCNativeWrappers</a> which are used to protect the chrome code working with content objects. See <a href="en/XPCNativeWrapper">XPCNativeWrapper</a> for detailed documentation.</li>
+ <li>Regular XPConnect wrappers which you can encounter, for example, when using XPCOM components implemented in JS.</li>
+</ul>
+
+<p>This article focuses on the latter kind of wrappers, which hide any properties or methods on the component that are not part of the supported interfaces as declared in xpidl.</p>
+
+<p>The rest of this article demonstrates what XPConnect wrappers do and how <code>wrappedJSObject</code> can be used to bypass them.</p>
+
+<h3 id="Example_component" name="Example_component">Example component</h3>
+
+<p>To see how the <code>wrappedJSObject</code> property works, we need an example XPCOM component implemented in JS. See <a href="en/How_to_Build_an_XPCOM_Component_in_Javascript">How to Build an XPCOM Component in Javascript</a> for details on creating one.</p>
+
+<p>For simplicity we omit the component registration code. Suppose we register the component below with the <code>@myself.com/my-component;1</code> contract.</p>
+
+<pre class="eval">// constructor
+function HelloWorld() {
+};
+
+HelloWorld.prototype = {
+  hello: function() {
+    return "Hello World!";
+  },
+
+  QueryInterface: function(aIID)
+  {
+    if (!aIID.equals(Components.interfaces.nsISupports) &amp;&amp;
+        !aIID.equals(Components.interfaces.nsIHelloWorld))
+      throw Components.results.NS_ERROR_NO_INTERFACE;
+    return this;
+  }
+};
+</pre>
+
+<h3 id="XPConnect_wrapping" name="XPConnect_wrapping">XPConnect wrapping</h3>
+
+<p>Now let's get a reference to our component. In this example we use <code>getService</code>, but as long as we get the reference from XPCOM, our component gets wrapped by XPConnect in the same way:</p>
+
+<pre class="eval">var comp = Components.classes["@myself.com/my-component;1"].getService();
+</pre>
+
+<p>If we try to call the <code>hello()</code> method we defined in our component implementation, we get:</p>
+
+<pre class="eval">&gt; comp.hello();
+TypeError on line 1: comp.hello is not a function
+</pre>
+
+<p>This happens because, as we mentioned earlier, <code>comp</code> is not the <code>HelloWorld</code> JS object itself, but an XPConnect wrapper around it:</p>
+
+<pre class="eval">&gt; dump(comp);
+[xpconnect wrapped nsISupports]
+</pre>
+
+<p>The idea of these wrappers is to make the JavaScript-implemented XPCOM components look just like any other XPCOM component to the user. This also makes the public interface of the component clearer and provides protection for the component's internal data.</p>
+
+<p>Calling <code>QueryInterface</code> on the wrapper works, because it is defined in the <code>nsISupports</code> interface, and the wrapper knows the underlying object implements <code>nsISupports</code>:</p>
+
+<pre class="eval">&gt; comp.QueryInterface(Components.interfaces.nsIHelloWorld);
+[xpconnect wrapped (nsISupports, nsIHelloWorld)]
+</pre>
+
+<p>As you can see, the <code>QueryInterface</code> call also made the wrapper know about the other interface our component supports. Assuming the <code>nsIHelloWorld</code> interface defines the <code>hello</code> method, we can now call it:</p>
+
+<pre class="eval">&gt; comp.hello()
+Hello World!
+</pre>
+
+<p>While this behavior is nice for production code as it forces you to clearly define the interfaces that should be used to access the component, it's inconvenient to write the interfaces (and recompile each time you change them) when working on a prototype of the component.</p>
+
+<h3 id="Meet_wrappedJSObject" name="Meet_wrappedJSObject">Meet <code>wrappedJSObject</code></h3>
+
+<p>XPConnect lets you bypass its wrappers and access the underlying JS object directly using the <code>wrapper.wrappedJSObject</code> property if the wrapped object allows this.</p>
+
+<p>More specifically, as <a href="https://dxr.mozilla.org/mozilla-central/source/js/src/xpconnect/idl/nsIXPConnect.idl" rel="custom">XPConnect source comments</a> say, you can get <code>comp.wrappedJSObject</code> if three conditions are met:</p>
+
+<ul>
+ <li><code>comp</code> really is an XPConnect wrapper around a JS object. Wrappers around non-JS objects don't have this property.</li>
+ <li>The underlying object has a <code>wrappedJSObject</code> property that returns a JS object.</li>
+ <li><code>nsIXPCSecurityManager</code> allows access (see the source code comments for details; this is usually not an issue for Mozilla extensions and applications)</li>
+</ul>
+
+<p>This means that in order to access the JS object implementing our component directly, we must modify the component. For example:</p>
+
+<pre class="eval">function HelloWorld() {
+  <strong>this.wrappedJSObject = this;</strong>
+};
+</pre>
+
+<p>Now we can get the component directly:</p>
+
+<pre class="eval">var comp = Components.classes["@myself.com/my-component;1"]
+                     .getService()<strong>.wrappedJSObject</strong>;
+</pre>
+
+<p>This is a real JS object:</p>
+
+<pre class="eval">&gt; comp
+[object Object]
+</pre>
+
+<p>So we can access any property on it:</p>
+
+<pre class="eval">&gt; comp.hello();
+Hello World!
+</pre>
+
+<p>This functionality can be used for quick prototyping, as well as to painlessly pass arbitrary JS values to the component (which can be used for <a href="en/Working_with_windows_in_chrome_code#Using_an_XPCOM_singleton_component">sharing complex JS data</a> in particular).</p>

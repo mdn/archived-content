@@ -1,0 +1,116 @@
+<p></p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/Drag_and_Drop" style="float: left;">« Previous</a><a href="/en-US/docs/Drag_and_Drop_Example">Next  »</a></p>
+</div><p></p>
+<p> </p>
+<div class="warning">Gecko 1.9.1 (Firefox 3.5) and later supports <a href="/En/DragDrop/Drag_and_Drop" title="en/DragDrop/Drag and Drop">a newer and simpler API</a>.</div>
+<p>This section describes how to use the <a href="/en/JavaScript" title="en/JavaScript">JavaScript</a> wrapper for <a href="/en/Drag_and_Drop" title="en/Drag_and_Drop">drag and drop</a>.</p>
+<h3 id="The_JavaScript_Drag_and_Drop_Wrapper" name="The_JavaScript_Drag_and_Drop_Wrapper">The JavaScript Drag and Drop Wrapper</h3>
+<p>The JavaScript wrapper to drag and drop simplifies the process by handling all of the <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> interfaces for you. It works by providing an object which implements the event handlers. All you have to do is write some simpler functions which work with the data being dragged.</p>
+<p>This drag and drop interface is stored in the global package, in the file <code><a class=" external" rel="freelink">chrome://global/content/nsDragAndDrop.js</a></code>. You can include this file in your XUL file with the <code>script</code> tag in the same way you would include your own scripts. The library also depends on another script library, which you should also include, usually at the top of your XUL file. You can look at the contents of these files to see how drag and drop is done at a lower level.</p>
+<p>Note that you can only use these libraries from within XUL loaded via a <a href="/en/Chrome" title="en/Chrome">chrome URL</a>.</p>
+<pre class="eval">&lt;script src="<a class=" external" rel="freelink">chrome://global/content/nsDragAndDrop.js</a>" /&gt;
+&lt;script src="<a class=" external" rel="freelink">chrome://global/content/nsTransferable.js</a>" /&gt;
+</pre>
+<p>This drag and drop library creates an object stored in the variable <code>nsDragAndDrop</code>. The object contains a series of functions, one for each event handler (except for <code>dragenter</code> where it has nothing special to do). Each of the functions takes two parameters, the first is the event object and the second is an observer object that you create. More on that in a moment.</p>
+<p>The following is an example of calling the <code>nsDragAndDrop</code> object.</p>
+<pre class="eval">&lt;button label="Drag Me" ondraggesture="nsDragAndDrop.startDrag(event,buttonObserver);" /&gt;
+</pre>
+<p>The function <code>startDrag</code> will be called when a drag starts on the button. The first parameter is the event object, available in all event handlers. The second parameter to this function is the observer, which we'll create soon. In this case we only do anything special when the button drag is started. If we wanted to handle the other cases also, we can call the other functions, as in the following example:</p>
+<pre class="eval">&lt;description value="Click and drag this text."
+             ondraggesture="nsDragAndDrop.startDrag(event,textObserver)"
+             ondragover="nsDragAndDrop.dragOver(event,textObserver)"
+             ondragexit="nsDragAndDrop.dragExit(event,textObserver)"
+             ondragdrop="nsDragAndDrop.drop(event,textObserver)" /&gt;
+</pre>
+<p>As mentioned earlier, there is nothing special that happens during a <code>dragenter</code> event, so you can just write that yourself.</p>
+<p>The functions are implemented by the <code>nsDragAndDrop</code> object, which is declared in the file <code>nsDragAndDrop.js</code>, which was included in one of the <code>script</code> tags. They handle the event, handle the XPCOM interfaces and pass a simpler data structure to functions of the observer object.</p>
+<p>The observer is an object that you declare yourself. In the above examples, this observer is stored in the <code>buttonObserver</code> and <code>textObserver</code> variables. The observer is declared in a script which you would include in the XUL file using the <code>script</code> tag. The observer is an object which may have a number of properties, each set to a function which handles a particular aspect of drag and drop. Five functions may be defined. You only have to define the ones that you need.</p>
+<dl> <dt>onDragStart(event, transferData, action) </dt> <dd>Define this function to have something happen when a drag starts. It takes three arguments, the event object as was originally passed to the event handler, the data to drag and the type of drag action. This function should add the data to drag to the <code>transferData</code> object.</dd> <dt>onDragOver(event, flavor, session) </dt> <dd>This function should be defined when you want something to happen when an element is dragged over. The first argument is the event object, the second is the flavor of the data and the third is a drag session object which provides more details about the drag that is occurring. You should define this function for elements that allow dragged data to be dropped on them.</dd> <dt>onDragExit(event, session) </dt> <dd>This function should be defined when something should happen on a drag exit. It has two arguments, the event object and the drag session.</dd> <dt>onDrop(event, dropData, session) </dt> <dd>This function should be defined when you want something to happen when an object is dropped. The first argument is the event object and the second is the data being dragged. The third argument is the drag session.</dd> <dt>getSupportedFlavours() </dt> <dd>This function should return a list of flavors that the object being dragged over can accept. This function takes no arguments. This function is necessary so that the wrapper can determine the best flavour to pass to the other functions.</dd>
+</dl>
+<p>For an observer that is observing an element that can start a drag, you should define at least the <code>onDragStart</code> function. For elements that can have objects dropped on them, you should define <code>onDragOver</code>, <code>onDrop</code> and <code>getSupportedFlavours</code> (and, if desired, <code>onDragExit</code>).</p>
+<p>The type of data being dragged is stored as a set of flavors. Often, a dragged object will be available in a number of flavors. That way, a drop target can accept the flavor it finds most suitable. For example, a file may come in two flavors, the file itself and the text name of the file. If the file is dragged and dropped onto a directory, the file flavor will be used. If the file is dropped onto a textbox, the text name flavor will be used. The text is therefore used to insert the name of the file when files can't be dropped directly.</p>
+<p>A flavor object has a name, which is a formatted like a MIME type, such as 'text/unicode'. Within the <code>onDragStart</code> function, you specify what flavours are available for the item being dragged. To do this, add data and flavours to the <code>transferData</code> object, which is the second argument to <code>onDragStart</code>.</p>
+<p>An example should help here. The <code>onDragStart</code> function adds data to the <code>transferData</code> object.</p>
+<pre class="eval">var textObserver = {
+  onDragStart: function (event, transferData, action) {
+    var htmlText  = "&lt;strong&gt;Cabbage&lt;/strong&gt;";
+    var plainText = "Cabbage";
+    transferData.data = new TransferData();
+    transferData.data.addDataForFlavour("text/html",htmlText);
+    transferData.data.addDataForFlavour("text/unicode",plainText);
+  }
+}
+</pre>
+<p>Here, an observer has been declared and stored in the variable <code>textObserver</code>. It has one property called <code>onDragStart</code>. (In JavaScript, properties can be declared with the syntax <code>name : value</code>). This property is a function which sets the data that is being dragged.</p>
+<p>Once called, it starts a drag for the string data "Cabbage". Of course, you would want to calculate this value from the element that was clicked on. Conveniently, this element is available from the event object's <code>target</code> property. The event object is passed as the first argument to <code>onDragStart</code>.</p>
+<p>We create a <code>TransferData</code> object which can be used to hold all the data to be dragged. We add two pieces of data to the transfer data. The first is a string of HTML text and the second is a string of plain text. If the user drops onto an area which can accept HTML (such as Mozilla's editor window), the HTML flavour will be used and the text will appear bold. Otherwise, the plain text version will be used instead.</p>
+<p>Usually you will want to provide a text version of the data so that more applications can accept the data. The order that you define the flavours should be from the best match to the weakest match. In this case above, the HTML flavour (text/html) comes first and then the text flavour (text/unicode).</p>
+<p>The example below shows how to set the data to be dragged from the element's <code>label</code> attribute. In this case we only provide the data in one flavour.</p>
+<pre class="eval">var textObserver = {
+  onDragStart: function (event) {
+    var txt = event.target.getAttribute("label");
+    transferData.data = new TransferData();
+    transferData.data.addDataForFlavour("text/unicode",txt);
+  }
+}
+</pre>
+<p>This might be useful when implementing drag and drop for cells in a tree. You can use the value of a cell, or some resource from an <a href="/en/RDF" title="en/RDF">RDF</a> file if the tree is built from a template, as the value of a drag. If you store it as a string, any object that accepts strings dragged onto it can grab the dragged data.</p>
+<p>If you want to send more then one data object, (for example multiple files) you must use an <code>TransferDataSet</code> as follows:</p>
+<pre class="eval">var textObserver = {
+  onDragStart: function (event) {
+    var txt1 = 'hello';
+    var txt2 = 'there';
+    transferData.data = new TransferDataSet();
+
+    var tmp = new TransferData();
+    tmp.addDataForFlavour("text/unicode",txt1);
+    transferData.data.push(tmp);
+
+    new TransferData();
+    tmp.addDataForFlavour("text/unicode",txt2);
+    transferData.data.push(tmp);
+  }
+}
+</pre>
+<p>You will need to add an observer to each element that can either start a drag action or can accept dropped objects. You can reuse the same observer for multiple elements. For an element that can start a drag, <code>onDragStart</code> is all that is necessary to implement.</p>
+<p>For an element that can be dropped on, the observer will need to implement at least the <code>getSupportedFlavours</code>, <code>onDragOver</code> and <code>onDrop</code> functions. Some elements may be able to initiate a drag and accept a drop. In this case, the <code>onDragStart</code> function will be necessary as well.</p>
+<p>The <code>getSupportedFlavours</code> function should return a list of flavours that the element being dragged over can accept for dropping. A file system directory view might accept files and perhaps text, but wouldn't accept HTML text. Below, we'll define a <code>getSupportedFlavours</code> function. We'll allow only one flavour here, that for a string.</p>
+<pre class="eval">var textObserver = {
+  getSupportedFlavours : function () {
+    var flavours = new FlavourSet();
+    flavours.appendFlavour("text/unicode");
+    return flavours;
+  }
+}
+</pre>
+<p>The flavours list contains only one flavour, which is 'text/unicode'. The <code>FlavourSet</code> object can be used to hold a list of flavours. In some cases, you must provide the XPCOM interface as well. For example, for files:</p>
+<pre class="eval">var textObserver = {
+  getSupportedFlavours : function () {
+    var flavours = new FlavourSet();
+    flavours.appendFlavour("application/x-moz-file","nsIFile");
+    flavours.appendFlavour("text/unicode");
+    return flavours;
+  }
+}
+</pre>
+<p>The <code>onDragOver</code> function defines what happens when an object is dragged over. You might use it to change the appearance of the element as it is being dragged over. In many cases the function can do nothing. It must be defined for elements that accept dragged data however.</p>
+<p>Next, the <code>onDrop</code> function should be created. Its second argument is the transfer data object that holds the data being dragged. By the time <code>onDrop</code> is called, the wrapper has called <code>getSupportedFlavours</code> to determine the best flavour for the drop, so the transfer object only contains the data for the best matching flavour.</p>
+<p>The transfer object has two properties, <code>data</code> which holds the data and <code>flavour</code> which holds the flavour of the data. Once you have the data, you can add it to the element is some way. For example, you might set the value of a textbox.</p>
+<pre class="eval">var textObserver = {
+  onDrop : function (event, transferData, session) {
+    event.target.setAttribute("value",transferData.data);
+  }
+}
+</pre>
+<p>The flavour system used allows multiple objects of various types to be dragged at once and also allows alternative forms of the data to be dragged. The following table describes some of the flavours you might use. You can also make up your own flavours if necessary.</p>
+<table> <tbody> <tr> <td>text/unicode</td> <td>Text data</td> </tr> <tr> <td>text/html</td> <td>HTML data</td> </tr> <tr> <td>text/x-moz-url</td> <td>A URL</td> </tr> <tr> <td>application/x-moz-file</td> <td>A local file</td> </tr> </tbody>
+</table>
+<p>See <a class="external" href="http://www-archive.mozilla.org/xpfe/xptoolkit/DataFlavors.html" title="http://www-archive.mozilla.org/xpfe/xptoolkit/DataFlavors.html">here</a> for an overview of more data flavours.</p>
+<p></p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/Drag_and_Drop" style="float: left;">« Previous</a><a href="/en-US/docs/Drag_and_Drop_Example">Next  »</a></p>
+</div><p></p>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+<ul> <li>Author(s): <a class="link-mailto" href="mailto:enndeakin@sympatico.ca">Neil Deakin</a></li> <li>Original Document: <a class=" external" href="http://xulplanet.com/tutorials/mozsdk/dragwrap.php" rel="freelink">http://xulplanet.com/tutorials/mozsdk/dragwrap.php</a></li> <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:enndeakin@sympatico.ca">Neil Deakin</a></li>
+</ul>
+</div>

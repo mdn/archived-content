@@ -1,0 +1,1129 @@
+---
+title: CustomizableUI.jsm
+slug: Mozilla/JavaScript_code_modules/CustomizableUI.jsm
+tags:
+  - JavaScript
+  - Method
+  - Reference
+---
+<div class="note">This module is only available from Firefox 29 onwards.</div>
+
+<p>The <code>CustomizableUI.jsm</code> JavaScript code module allows you to interact with customizable buttons and items in Firefox's main window UI.</p>
+
+<p>It is available in the Firefox window as the <code>CustomizableUI</code> property on the window. If you want to use it from a JSM or another context without a window reference, you need to import it yourself:</p>
+
+<pre class="eval"><span class="nowiki">Components.utils.import("resource:///modules/CustomizableUI.jsm");</span>
+</pre>
+
+<h2 id="Introduction">Introduction</h2>
+
+<p>The module is intended for two primary purposes:</p>
+
+<ol>
+ <li>Allow adding, moving and removing customizable widgets.</li>
+ <li>Manage the areas in which these widgets are shown.</li>
+</ol>
+
+<p>Note that it is expressly not really aware about the specific UI used by users to make customizations. This is handled by <code>CustomizeMode.jsm</code>, which interacts with CustomizableUI through a listener mechanism.</p>
+
+<h2 id="Areas">Areas</h2>
+
+<p>Areas are parts of the user interface in which customizable widgets can be placed. CustomizableUI assumes that each area it is told about is present in every browser window. CustomizableUI is aware of two types of areas: toolbars and the menu panel.</p>
+
+<p>Areas are registered using the <a href="#registerArea()">registerArea</a> method and unregistered using the <a href="#unregisterArea()">unregisterArea</a> method. When a customizable toolbar's XBL binding is constructed (generally, that is when a <code>&lt;toolbar customizable="true"/&gt;</code> node is appended to the document and isn't invisible), the binding will call into CustomizableUI and register the toolbar's node as being one of the concrete instances of its area.</p>
+
+<p>For each area, CustomizableUI keeps track of a list of the widgets they contain, generally refered to as 'placements'. This is analogous to the old currentset attribute. If consumers make a change to the placements in an area, CustomizableUI will update the actual nodes in each area instance for them.</p>
+
+<p>Toolbars generally function the same way they always have. However, they can now be 'overflowable', that is, if there are too many widgets to fit in the toolbar's horizontal space, the excess widgets will be placed in a panel accessible from an anchor (chevron) in the toolbar. In order to register such a toolbar, set the 'overflowable' property to true, and provide the id of the anchor in the 'anchor' property.</p>
+
+<h2 id="Widgets">Widgets</h2>
+
+<p>Widget is the term that CustomizableUI uses for each of the items in a customizable area. Note that these are also abstract cross-window objects; CustomizableUI will manage the actual DOM manipulation involved with adding/moving/removing widgets in all windows for you.</p>
+
+<p>There are three main types of widgets:</p>
+
+<ol>
+ <li>'legacy' XUL widgets, which are the way CustomizableUI represents widgets whose DOM representation is present (or overlaid) into a window;</li>
+ <li>API-style widgets, which are the new widgets CustomizableUI can create and manage for you. These come in 3 types themselves:
+  <dl>
+   <dt>button</dt>
+   <dd>which are simple toolbar buttons which do something when clicked</dd>
+   <dt>view</dt>
+   <dd>which are toolbar buttons with a 'view' of further options. The view can be shown as its own panel when such a widget is in the toolbar, or as a sliding 'subview' of the menu panel when such a widget is in the menu panel.</dd>
+   <dt>custom</dt>
+   <dd>which are widgets that are custom-created by some JS supplied by the consumer</dd>
+  </dl>
+  For more details, see <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/API-provided_widgets">API-provided widgets</a>.</li>
+ <li>'special' widgets: these are the representations of XUL <code>&lt;toolbarseparator&gt;</code>, <code>&lt;toolbarspring&gt;</code> and <code>&lt;toolbarspacer&gt;</code> elements.</li>
+</ol>
+
+<p>CustomizableUI provides APIs to add, move and remove all these different widgets, and mostly abstracts the DOM away from you.</p>
+
+<p>The lifetime of your widget should be identical to the lifetime of the add-on - it's process-global, so if you call createWidget on bootstrap's "startup" and destroyWidget on bootstrap's "shutdown", that's enough.</p>
+
+<h2 id="Listeners">Listeners</h2>
+
+<p>CustomizableUI provides a way to listen for various bits of customization happening. This can be useful if other parts of the code need to react to changes in the customization of the user interface.</p>
+
+<p>In order to use this facility, you should create a plain JS object which defines some of the event handlers defined below. Not all event handler methods need to be defined. CustomizableUI will catch exceptions. Events are dispatched synchronously on the UI thread, so if you can delay any/some of your processing, that is advisable.</p>
+
+<p>The following event handlers are supported:</p>
+
+<dl>
+ <dt>onWidgetAdded(aWidgetId, aArea, aPosition)</dt>
+ <dd>Fired when a widget is added to an area. <code>aWidgetId</code> is the widget that was added, <code>aArea</code> the area it was added to, and <code>aPosition</code> the position in which it was added.</dd>
+ <dt>onWidgetMoved(aWidgetId, aArea, aOldPosition, aNewPosition)</dt>
+ <dd>Fired when a widget is moved within its area. <code>aWidgetId</code> is the widget that was moved, <code>aArea</code> the area it was moved in, <code>aOldPosition</code> its old position, and <code>aNewPosition</code> its new position.</dd>
+ <dt>onWidgetRemoved(aWidgetId, aArea)</dt>
+ <dd>Fired when a widget is removed from its area. <code>aWidgetId</code> is the widget that was removed, <code>aArea</code> the area it was removed from.</dd>
+ <dt>onWidgetBeforeDOMChange(aNode, aNextNode, aContainer, aIsRemoval)</dt>
+ <dd>Fired <strong>before</strong> a widget's DOM node is acted upon by CustomizableUI (to add, move or remove it). <code>aNode</code> is the DOM node changed, <code>aNextNode</code> the DOM node (if any) before which a widget will be inserted, <code>aContainer</code> the <strong>actual</strong> DOM container (could be an overflow panel in case of an overflowable toolbar), and <code>aWasRemoval</code> is true iff the action about to happen is the removal of the DOM node.</dd>
+ <dt>onWidgetAfterDOMChange(aNode, aNextNode, aContainer, aWasRemoval)</dt>
+ <dd>Like <code>onWidgetBeforeDOMChange</code>, but fired after the change to the DOM node of the widget.</dd>
+ <dt>onWidgetReset(aNode, aContainer)</dt>
+ <dd>Fired after a reset to default placements moves a widget's node to a different location. <code>aNode</code> is the widget's node, <code>aContainer</code> is the area it was moved into (NB: it might already have been there and been moved to a different position!)</dd>
+ <dt>onWidgetUndoMove(aNode, aContainer)</dt>
+ <dd>Fired after undoing a reset to default placements moves a widget's node to a different location. <code>aNode</code> is the widget's node, <code>aContainer</code> is the area it was moved into (NB: it might already have been there and been moved to a different position!)</dd>
+ <dt>onAreaReset(aArea, aContainer)</dt>
+ <dd>Fired after a reset to default placements is complete on an area's DOM node. Note that this is fired for each DOM node. <code>aArea</code> is the area that was reset, <code>aContainer</code> the DOM node that was reset.</dd>
+ <dt>onAreaNodeUnregistered(aArea, aNode, aReason)</dt>
+ <dd>Fired when an area's DOM node is unregistered. <code>aArea</code> is the area for which a node was unregistered, <code>aNode</code> the DOM node which was unregistered, and <code>aReason</code> indicates whether the area as a whole was unregistered (<code>REASON_AREA_UNREGISTERED</code>), or whether a window closed (<code>REASON_WINDOW_CLOSED</code>).</dd>
+ <dt>onAreaNodeRegistered(aArea, aNode)</dt>
+ <dd>Fired after an area node is first built when it is registered. This is often when the window has opened, but in the case of add-ons, could fire when the node has just been registered with CustomizableUI after an add-on update or disable/enable sequence.</dd>
+ <dt>onWidgetCreated(aWidgetId)</dt>
+ <dd>Fired when a widget with id <code>aWidgetId</code> has been created, but before it is added to any placements or any DOM nodes have been constructed. Only fired for API-based widgets.</dd>
+ <dt>onWidgetAfterCreation(aWidgetId, aArea)</dt>
+ <dd>Fired after a widget with id <code>aWidgetId</code> has been created, and has been added to either its default area or the area in which it was placed previously. If the widget has no default area and/or it has never been placed anywhere, <code>aArea</code> may be null. Only fired for API-based widgets.</dd>
+ <dt>onWidgetDestroyed(aWidgetId)</dt>
+ <dd>Fired when widgets are destroyed. <code>aWidgetId</code> is the widget that is being destroyed. Only fired for API-based widgets.</dd>
+ <dt>onWidgetInstanceRemoved(aWidgetId, aDocument)</dt>
+ <dd>Fired when a window is unloaded and a widget's instance is destroyed because of this. <code>aWidgetId</code> is the widget whose instance is being destroyed, <code>aDocument</code> the document in which this is happening. Only fired for API-based widgets.</dd>
+ <dt>onWidgetDrag(aWidgetId, aArea)</dt>
+ <dd>Fired both when and after customize mode drag handling system tries to determine the width and height of widget <code>aWidgetId</code> when dragged to a different area. <code>aArea</code> will be the area the item is dragged to, or undefined after the measurements have been done and the node has been moved back to its 'regular' area.</dd>
+ <dt>onCustomizeStart(aWindow)</dt>
+ <dd>Fired when opening customize mode in <code>aWindow</code>.</dd>
+ <dt>onCustomizeEnd(aWindow)</dt>
+ <dd>Fired when exiting customize mode in <code>aWindow</code>.</dd>
+ <dt>onWidgetOverflow(aNode, aContainer)</dt>
+ <dd>Fired when a widget's DOM node is overflowing its container, a toolbar, and will be displayed in the overflow panel.</dd>
+ <dt>onWidgetUnderflow(aNode, aContainer)</dt>
+ <dd>Fired when a widget's DOM node is <em>not</em> overflowing its container, a toolbar, anymore.</dd>
+ <dt>onWindowOpened(aWindow)</dt>
+ <dd>Fired when a new customizable (ie browser) window is opened.</dd>
+ <dt>onWindowClosed(aWindow)</dt>
+ <dd>Fired when a customizable (ie browser) window is closed.</dd>
+</dl>
+
+<h2 id="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>void <a href="#addListener()">addListener</a>(aListener);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeListener()">removeListener</a>(aListener);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#registerArea()">registerArea</a>(aAreaId, aProperties);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#registerToolbarNode()">registerToolbarNode</a>(aToolbar, aExistingChildren);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#registerMenuPanel()">registerMenuPanel</a>(aPanel);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#unregisterArea()">unregisterArea</a>(aAreaId, aDestroyPlacements);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#addWidgetToArea()">addWidgetToArea</a>(aWidgetId, aAreaId, [optional] aPosition);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeWidgetFromArea()">removeWidgetFromArea</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#moveWidgetWithinArea()">moveWidgetWithinArea</a>(aWidgetId, aPosition);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#ensureWidgetPlacedInWindow()">ensureWidgetPlacedInWindow</a>(aWidgetId, aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#beginBatchUpdate()">beginBatchUpdate</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#endBatchUpdate()">endBatchUpdate</a>(aForceDirty);</code></td>
+  </tr>
+  <tr>
+   <td><code>WidgetGroupWrapper <a href="#createWidget()">createWidget</a>(aWidgetSpecification);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#destroyWidget()">destroyWidget</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code>WidgetGroupWrapper <a href="#getWidget()">getWidget</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array">Array</a> <a href="#getUnusedWidgets()">getUnusedWidgets</a>(aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array">Array</a> <a href="#getWidgetIdsInArea()">getWidgetIdsInArea</a>(aAreaId);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array">Array</a> <a href="#getWidgetsInArea()">getWidgetsInArea</a>(aAreaId);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">String</a> <a href="#getAreaType()">getAreaType</a>(aAreaId);</code></td>
+  </tr>
+  <tr>
+   <td><code>DOMElement <a href="#getCustomizeTargetForArea()">getCustomizeTargetForArea</a>(aAreaId, aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#reset()">reset</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#undoReset()">undoReset</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removeExtraToolbar()">removeExtraToolbar</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a> <a href="#getPlacementOfWidget()">getPlacementOfWidget</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">bool</a> <a href="#isWidgetRemovable()">isWidgetRemovable</a>(aWidgetNodeOrWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">bool</a> <a href="#canWidgetMoveToArea()">canWidgetMoveToArea</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#getLocalizedProperty()">getLocalizedProperty</a>(aWidget, aProp, aFormatArgs, aDef);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#hidePanelForNode()">hidePanelForNode</a>(aNode);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">bool</a> <a href="#isSpecialWidget()">isSpecialWidget</a>(aWidgetId);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#addPanelCloseListeners()">addPanelCloseListeners</a>(aPanel);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#removePanelCloseListeners()">removePanelCloseListeners</a>(aPanel);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#onWidgetDrag()">onWidgetDrag</a>(aWidgetId, aArea);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#notifyStartCustomizing()">notifyStartCustomizing</a>(aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#notifyEndCustomizing()">notifyEndCustomizing</a>(aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#dispatchToolboxEvent()">dispatchToolboxEvent</a>(aEvent, aDetails, aWindow);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">bool</a> <a href="#isAreaOverflowable()">isAreaOverflowable</a>(aAreaId);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#setToolbarVisibility()">setToolbarVisibility</a>(aToolbarId, aIsVisible);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">String</a> <a href="#getPlaceForItem()">getPlaceForItem</a>(aElement);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean">bool</a> <a href="#isBuiltinToolbar()">isBuiltinToolbar</a>(aToolbarId);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="addListener()">addListener()</h3>
+
+<p>Add a <a href="#Listeners">listener object</a> that will get fired for various events regarding customization.</p>
+
+<h6 id="Parameters">Parameters</h6>
+
+<dl>
+ <dt>aListener</dt>
+ <dd>the listener object to add</dd>
+</dl>
+
+<h3 id="removeListener()">removeListener()</h3>
+
+<p>Remove a <a href="#Listeners">listener</a> added with addListener.</p>
+
+<h6 id="Parameters_2">Parameters</h6>
+
+<dl>
+ <dt>aListener</dt>
+ <dd>the listener object to remove</dd>
+</dl>
+
+<h3 id="registerArea()">registerArea()</h3>
+
+<p>Register a customizable area with CustomizableUI.</p>
+
+<h6 id="Parameters_3">Parameters</h6>
+
+<dl>
+ <dt>aAreaId</dt>
+ <dd>The name of the area to register. Can only contain alphanumeric characters, dashes (-) and underscores (_).</dd>
+ <dt>aProperties</dt>
+ <dd>The properties of the area. The following properties are recognized:
+ <table style="width: auto;" class="standard-table">
+  <tbody>
+   <tr>
+    <td class="header">Property</td>
+    <td class="header">Description</td>
+   </tr>
+   <tr>
+    <td><code>type</code></td>
+    <td>The type of area. Either TYPE_TOOLBAR (default) or TYPE_MENU_PANEL.</td>
+   </tr>
+   <tr>
+    <td><code>anchor</code></td>
+    <td>For a menu panel or overflowable toolbar, the anchoring node for the panel.</td>
+   </tr>
+   <tr>
+    <td><code>legacy</code></td>
+    <td>Set to true if you want CustomizableUI to automatically migrate the currentset attribute.</td>
+   </tr>
+   <tr>
+    <td><code>overflowable</code></td>
+    <td>Set to true if your toolbar is overflowable. This requires an anchor, and only has an effect for toolbars.</td>
+   </tr>
+   <tr>
+    <td><code>defaultPlacements</code></td>
+    <td>An array of widget IDs making up the default contents of the area.</td>
+   </tr>
+   <tr>
+    <td><code>defaultCollapsed</code></td>
+    <td>(INTERNAL ONLY) Only applied to TYPE_TOOLBAR areas. Set to true if the toolbar should be collapsed by default. Defaults to true. Set to null to ensure that reset/inDefaultState don't care about the toolbar's collapsed state.</td>
+   </tr>
+  </tbody>
+ </table>
+ </dd>
+</dl>
+
+<h3 id="registerToolbarNode()">registerToolbarNode()</h3>
+
+<p>Register a concrete node for a registered area. This method is automatically called from any toolbar in the main browser window that has its customizable attribute set to true. There should normally be no need to call it yourself.</p>
+
+<p>Note that ideally, you should register your toolbar using registerArea before any of the toolbars have their XBL bindings constructed (which will happen when they're added to the DOM and are not hidden). If you don't, and your toolbar has a defaultset attribute, CustomizableUI will register it automatically. If your toolbar does not have a defaultset attribute, the node will be saved for processing when you call <code>registerArea</code>. Note that CustomizableUI won't restore state in the area, allow the user to customize it in customize mode, or otherwise deal with it, until the area has been registered.</p>
+
+<h3 id="registerMenuPanel()">registerMenuPanel()</h3>
+
+<p>Register the menu panel node. This method should not be called by anyone apart from the built-in PanelUI.</p>
+
+<h6 id="Parameters_4">Parameters</h6>
+
+<dl>
+ <dt>aPanel</dt>
+ <dd>the panel DOM node being registered.</dd>
+</dl>
+
+<h3 id="unregisterArea()">unregisterArea()</h3>
+
+<p>Unregister a customizable area. The inverse of registerArea.</p>
+
+<p>Unregistering an area will remove all the (removable) widgets in the area, which will return to the panel, and destroy all other traces of the area within CustomizableUI. Note that this means the <strong>contents</strong> of the area's DOM nodes will be moved to the panel or removed, but the area's DOM node(s) <strong>themselves</strong> will stay.</p>
+
+<p>Furthermore, by default the placements of the area will be kept in the saved state (!) and restored if you re-register the area at a later point. This is useful for add-ons that get disabled and then re-enabled (e.g., when they update).</p>
+
+<p>You can override this last behavior (and destroy the placements information in the saved state) by passing true for aDestroyPlacements.</p>
+
+<h6 id="Parameters_5">Parameters</h6>
+
+<dl>
+ <dt>aName</dt>
+ <dd>the name of the area to unregister.</dd>
+ <dt>aDestroyPlacements</dt>
+ <dd>whether to destroy the placements information for the area, too.</dd>
+</dl>
+
+<h3 id="addWidgetToArea()">addWidgetToArea()</h3>
+
+<p>Add a widget to an area.</p>
+
+<p>If the area to which you try to add is not known to CustomizableUI, this will throw.</p>
+
+<p>If the area to which you try to add has not yet been restored from its legacy state (currentset attribute), this will postpone the addition.</p>
+
+<p>If the area to which you try to add is the same as the area in which the widget is currently placed, this will do the same as moveWidgetWithinArea.</p>
+
+<p>If the widget cannot be removed from its original location, this will no-op.</p>
+
+<p>Otherwise, this will fire an <code>onWidgetAdded</code> notification, and an <code>onWidgetBeforeDOMChange</code> and <code>onWidgetAfterDOMChange</code> notification for each window CustomizableUI knows about.</p>
+
+<h6 id="Parameters_6">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget to add</dd>
+ <dt>aAreaId</dt>
+ <dd>the ID of the area to add the widget to</dd>
+ <dt>[optional] aPosition</dt>
+ <dd>the position at which to add the widget. If you do not pass a position, the widget will be added to the end of the area.</dd>
+</dl>
+
+<h3 id="removeWidgetFromArea()">removeWidgetFromArea()</h3>
+
+<p>Remove a widget from its area.</p>
+
+<p>If the widget cannot be removed from its area, or is not in any area, this will no-op.</p>
+
+<p>Otherwise, this will fire an <code>onWidgetRemoved</code> notification, and an <code>onWidgetBeforeDOMChange</code> and <code>onWidgetAfterDOMChange</code> notification for each window CustomizableUI knows about.</p>
+
+<h6 id="Parameters_7">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget to remove</dd>
+</dl>
+
+<h3 id="moveWidgetWithinArea()">moveWidgetWithinArea()</h3>
+
+<p>Move a widget within an area.</p>
+
+<p>If the widget is not in any area, or if the widget is already at the indicated position, this will no-op.<br>
+ <br>
+ Otherwise, this will move the widget and fire an <code>onWidgetMoved</code> notification, and an <code>onWidgetBeforeDOMChange</code> and <code>onWidgetAfterDOMChange</code> notification for each window CustomizableUI knows about.</p>
+
+<h6 id="Parameters_8">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget to move</dd>
+ <dt>aPosition</dt>
+ <dd>the position to move the widget to. Negative values or values greater than the number of widgets will be interpreted to mean moving the widget to respectively the first or last position.</dd>
+</dl>
+
+<h3 id="ensureWidgetPlacedInWindow()">ensureWidgetPlacedInWindow()</h3>
+
+<p>Ensure a XUL-based widget created in a window after areas were initialized moves to its correct position. This is roughly equivalent to manually looking up the position and using insertItem in the old API, but a lot less work for consumers. Always prefer this over using <code>toolbar.insertItem()</code> (which might no-op because it delegates to <code>addWidgetToArea</code>) or, worse, moving items in the DOM yourself.<br>
+ <br>
+ NB: why is this API per-window, you wonder? Because if you need this, presumably you yourself need to create the widget in all the windows and need to loop through them anyway, and there's no point in attempting to do this for all windows if the widget hasn't been created yet in those windows.</p>
+
+<h6 id="Parameters_9">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget that was just created</dd>
+ <dt>aWindow</dt>
+ <dd>the window in which you want to ensure it was added.</dd>
+</dl>
+
+<h3 id="beginBatchUpdate()">beginBatchUpdate()</h3>
+
+<p>Start a batch update of items. During a batch update, the customization state is not saved to the user's preferences file, in order to reduce (possibly sync) IO.</p>
+
+<p>Calls to begin/endBatchUpdate may be nested.<br>
+ <br>
+ Callers should ensure that <strong>NO MATTER WHAT HAPPENS</strong> they call <code>endBatchUpdate</code> once for each call to beginBatchUpdate, even if there are exceptions in the code in the batch update. Otherwise, for the duration of the Firefox session, customization state is never saved. Typically, you would do this using a <code>try...finally</code> block wrapped around your insertion code.</p>
+
+<h3 id="endBatchUpdate()">endBatchUpdate()</h3>
+
+<p>End a batch update. See the documentation for <code>beginBatchUpdate</code> above.<br>
+ <br>
+ State is not saved if we believe it is identical to the last known saved state. State is only ever saved when all batch updates have finished (that is, there has been 1 <code>endBatchUpdate</code> call for each<code> beginBatchUpdate</code> call). If any of the <code>endBatchUpdate</code> calls pass <code>aForceDirty=true</code>, we will flush to the prefs file.</p>
+
+<h6 id="Parameters_10">Parameters</h6>
+
+<dl>
+ <dt>aForceDirty</dt>
+ <dd>force CustomizableUI to flush to the prefs file when all batch updates have finished.</dd>
+</dl>
+
+<h3 id="createWidget()">createWidget()</h3>
+
+<p>Create a widget.</p>
+
+<p>To create a widget, you should pass an object with its desired properties. For a list of supported properties, see <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/API-provided_widgets">API-provided widgets</a>.</p>
+
+<h6 id="Parameters_11">Parameters</h6>
+
+<dl>
+ <dt>aProperties</dt>
+ <dd>the specification for the widget</dd>
+</dl>
+
+<h6 id="Return_value">Return value</h6>
+
+<p>A <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">wrapper</a> around the created widget.</p>
+
+<div class="note"><strong>Note</strong>: if your extension is compatible with versions of Firefox below 29, i.e. before CustomizableUI was introduced, then you have to make sure that in case of running on newer browsers, XUL overlay does not contain description of the button that you are creating with createWidget() method. Otherwise, conflicting static XUL overlay button and dynamic CustomizableUI buttons might cause the created button to be unstable or create a double button. To avoid that, update your Chrome Manifest file with links to two different versions of XUL overlay, using <a href="/en-US/docs/Chrome_Registration#Manifest_Flags">Manifest Flags</a>.</div>
+
+<div class="note"><strong>Note</strong>: unlike button described with XUL overlay, widget-button created via createWidget() method cannot have references to other overlay elements transferred directly as parameters. For example, if there is a need to create a button with dynamically assignable tooltip, the node for static tooltip should be deleted as soon as the widget will be created, and node-reference to popup tooltip element has to be added. For that, this function has to be used (see more <a href="/en-us/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/API-provided_widgets#Event_handlers">here</a>):<br>
+<br>
+onCreated: function(node)<br>
+{<br>
+         node.removeAttribute("tooltiptext");<br>
+         node.tooltip = "[reference to popup tooltip element, described in XUL overlay, or created in any other way]";<br>
+},</div>
+
+<h3 id="destroyWidget()">destroyWidget()</h3>
+
+<p>Destroy a widget</p>
+
+<p>If the widget is part of the default placements in an area, this will remove it from there. It will also remove any DOM instances. However, it will keep the widget in the placements for whatever area it was in at the time. You can remove it from there yourself by calling <code>CustomizableUI.removeWidgetFromArea(aWidgetId)</code>.</p>
+
+<h6 id="Parameters_12">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget to destroy</dd>
+</dl>
+
+<h3 id="getWidget()">getWidget()</h3>
+
+<p>Get a <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">wrapper object</a> with information about the widget.</p>
+
+<h6 id="Parameters_13">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget whose information you need</dd>
+</dl>
+
+<h6 id="Return_value_2">Return value</h6>
+
+<p>A <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">wrapper around the widget</a> as described above, or null if the widget is known not to exist (any more). NB: non-<code>null</code> return is no guarantee the widget exists because we cannot know in advance if an XUL widget exists or not.</p>
+
+<h3 id="getUnusedWidgets()">getUnusedWidgets()</h3>
+
+<p>Get an array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">widget wrappers</a> for all the widgets which are currently not in any area (so which are in the palette).</p>
+
+<h6 id="Parameters_14">Parameters</h6>
+
+<dl>
+ <dt>aWindowPalette</dt>
+ <dd>the palette (and by extension, the window) in which CustomizableUI should look. This matters because of course XUL-provided widgets could be available in some windows but not others, and likewise API-provided widgets might not exist in a private window (because of the <code>showInPrivateBrowsing</code> property).</dd>
+</dl>
+
+<h6 id="Return_value_3">Return value</h6>
+
+<p>An array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">widget wrappers</a>.</p>
+
+<h3 id="getWidgetIdsInArea()">getWidgetIdsInArea()</h3>
+
+<p>Get an array of all the widget IDs placed in an area. This is roughly equivalent to fetching the currentset attribute and splitting by commas in the legacy APIs. Modifying the array will not affect CustomizableUI.</p>
+
+<p>NB: will throw if called too early (before placements have been fetched) or if the area is not currently known to CustomizableUI.</p>
+
+<h6 id="Parameters_15">Parameters</h6>
+
+<dl>
+ <dt>aArea</dt>
+ <dd>the ID of the area whose placements you want to obtain.</dd>
+</dl>
+
+<h6 id="Return_value_4">Return value</h6>
+
+<p>An array containing the widget IDs that are in the area.</p>
+
+<h3 id="getWidgetsInArea()">getWidgetsInArea()</h3>
+
+<p>Get an array of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers">widget wrappers</a> for all the widgets in an area. This is the same as calling <code>getWidgetIdsInArea</code> and <code>.map()</code>-ing the result through <code>CustomizableUI.getWidget</code>. Careful: this means that if there are IDs in there which don't have corresponding DOM nodes (like in the old-style currentset attribute), there might be <code>null</code>s in this array, or items for which <code>wrapper.forWindow(win)</code> will return <code>null</code>.</p>
+
+<p>NB: will throw if called too early (before placements have been fetched) or if the area is not currently known to CustomizableUI.</p>
+
+<h6 id="Parameters_16">Parameters</h6>
+
+<dl>
+ <dt>aArea</dt>
+ <dd>the ID of the area whose widgets you want to obtain.</dd>
+</dl>
+
+<h6 id="Return_value_5">Return value</h6>
+
+<p>An array containing the widget wrappers and/or null values for the widget IDs placed in an area.</p>
+
+<h3 id="getAreaType()">getAreaType()</h3>
+
+<p>Check what kind of area (toolbar or menu panel) an area is. This is useful if you have a widget that needs to behave differently depending on its location. Note that widget wrappers have a convenience getter property (<a href="/en-US/docs/Mozilla/JavaScript_code_modules/CustomizableUI.jsm/Widget_Wrappers#Properties"><code>areaType</code></a>) for this purpose.</p>
+
+<h6 id="Parameters_17">Parameters</h6>
+
+<dl>
+ <dt>aArea</dt>
+ <dd>the ID of the area whose type you want to know</dd>
+</dl>
+
+<h6 id="Return_value_6">Return value</h6>
+
+<p><code>TYPE_TOOLBAR</code> or <code>TYPE_MENU_PANEL</code> depending on the area, <code>null</code> if the area is unknown.</p>
+
+<h3 id="getCustomizeTargetForArea()">getCustomizeTargetForArea()</h3>
+
+<p>Obtain the DOM node that is the customization target for an area in a specific window.</p>
+
+<p>Areas can have a customization target that does not correspond to the node itself. In particular, toolbars that have a <code>customizationtarget</code> attribute set will have their customization target set to that node. This means widgets will end up in the customization target, not in the DOM node with the ID that corresponds to the area ID. This is useful because it lets you have fixed content in a toolbar (e.g. the panel menu item in the navbar) and have all the customizable widgets use the customization target.</p>
+
+<p>Using this API yourself is discouraged; you should generally not need to be asking for the DOM container node used for a particular area. In particular, if you're wanting to check it in relation to a widget's node, your DOM node might not be a direct child of the customize target in a window if, for instance, the window is in customization mode, or if this is an overflowable toolbar and the widget has been overflowed.</p>
+
+<h6 id="Parameters_18">Parameters</h6>
+
+<dl>
+ <dt>aArea</dt>
+ <dd>the ID of the area whose customize target you want to have</dd>
+ <dt>aWindow</dt>
+ <dd>the window where you want to fetch the DOM node.</dd>
+</dl>
+
+<h6 id="Return_value_7">Return value</h6>
+
+<p>The customize target DOM node for <code>aArea</code> in <code>aWindow</code></p>
+
+<h3 id="reset()">reset()</h3>
+
+<p>Reset the customization state back to its default.</p>
+
+<p>This is the nuclear option. You should never call this except if the user explicitly requests it. Firefox does this when the user clicks the "Restore Defaults" button in customize mode.</p>
+
+<h3 id="undoReset()">undoReset()</h3>
+
+<p>Undoes a previous reset, restoring the state of the UI to the state prior to the reset. This can only be called immediately after reset(). If any of the UI is changed after calling reset(), then undoReset will be a no-op.</p>
+
+<h3 id="removeExtraToolbar()">removeExtraToolbar()</h3>
+
+<p>Remove a custom toolbar added in a previous version of Firefox or using an add-on. NB: only works on the customizable toolbars generated by the toolbox itself. Intended for use from CustomizeMode, not by other consumers.</p>
+
+<h6 id="Parameters_19">Parameters</h6>
+
+<dl>
+ <dt>aToolbarId</dt>
+ <dd>the ID of the toolbar to remove</dd>
+</dl>
+
+<h3 id="getPlacementOfWidget()">getPlacementOfWidget()</h3>
+
+<p>Get the placement of a widget. This is by far the best way to obtain information about what the state of your widget is. The internals of this call are cheap (no DOM necessary) and you will know where the user has put your widget.</p>
+
+<h6 id="Parameters_20">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget whose placement you want to know</dd>
+</dl>
+
+<h6 id="Return_value_8">Return value</h6>
+
+<p>A JS Object of the form:</p>
+
+<pre>{
+  area: "somearea", // The ID of the area where the widget is placed
+  position: 42      // the index in the placements array corresponding to your widget
+}
+</pre>
+
+<p>OR <code>null</code> if the widget is not placed anywhere (that is, it is in the palette).</p>
+
+<h3 id="isWidgetRemovable()">isWidgetRemovable()</h3>
+
+<p>Check if a widget can be removed from the area it's in.</p>
+
+<p>Note that if you're wanting to move the widget somewhere, you should generally be checking canWidgetMoveToArea, because that will return <code>true</code> if the widget is already in the area where you want to move it (!).</p>
+
+<p>NB: oh, also, this method might lie if the widget in question is a XUL-provided widget and there are no windows open, because it can obviously not check anything in this case. It will return <code>true</code>. You will be able to move the widget elsewhere. However, once the user reopens a window, the widget will move back to its 'proper' area automagically.</p>
+
+<h6 id="Parameters_21">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the widget ID or DOM node to check</dd>
+</dl>
+
+<h6 id="Return_value_9">Return value</h6>
+
+<p><code>true</code> if the widget can be removed from its area, false otherwise.</p>
+
+<h3 id="canWidgetMoveToArea()">canWidgetMoveToArea()</h3>
+
+<p>Check if a widget can be moved to a particular area. Like <code>isWidgetRemovable</code> but better, because it'll return true if the widget is already in the right area.</p>
+
+<h6 id="Parameters_22">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the widget ID or DOM node you want to move somewhere</dd>
+ <dt>aArea</dt>
+ <dd>the area ID you want to move it to.</dd>
+</dl>
+
+<h6 id="Return_value_10">Return value</h6>
+
+<p><code>true</code> if this is possible, <code>false</code> if it is not. The same caveats as for <code>isWidgetRemovable</code> apply, however, if no windows are open.</p>
+
+<h3 id="getLocalizedProperty()">getLocalizedProperty()</h3>
+
+<p>Get a localized property off a (widget) object.</p>
+
+<p>NB: this is unlikely to be useful unless you're in Firefox code, because this code uses the builtin widget stringbundle, and can't be told to use add-on-provided strings. It's mainly here as convenience for custom builtin widgets that build their own DOM but use the same stringbundle as the other builtin widgets.</p>
+
+<h6 id="Parameters_23">Parameters</h6>
+
+<dl>
+ <dt>aWidget</dt>
+ <dd>the object whose property we should use to fetch a localizable string</dd>
+ <dt>aProp</dt>
+ <dd>the property on the object to use for the fetching</dd>
+ <dt>aFormatArgs</dt>
+ <dd>(optional) any extra arguments to use for a formatted string</dd>
+ <dt>aDef</dt>
+ <dd>(optional) the default to return if we don't find the string in the stringbundle</dd>
+</dl>
+
+<h6 id="Return_value_11">Return value</h6>
+
+<p>The localized string, or <code>aDef</code> if the string isn't in the bundle.</p>
+
+<p>If <code>aDef</code> is not provided, and if aProp exists on aWidget, we'll return that, otherwise we'll return the empty string</p>
+
+<h3 id="hidePanelForNode()">hidePanelForNode()</h3>
+
+<p>Given a node, walk up to the first panel in its ancestor chain, and close it.</p>
+
+<h6 id="Parameters_24">Parameters</h6>
+
+<dl>
+ <dt>aNode</dt>
+ <dd>a node whose panel should be closed</dd>
+</dl>
+
+<h3 id="isSpecialWidget()">isSpecialWidget()</h3>
+
+<p>Check if a widget is a "special" widget: a spring, spacer or separator.</p>
+
+<h6 id="Parameters_25">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the widget ID to check.</dd>
+</dl>
+
+<h6 id="Return_value_12">Return value</h6>
+
+<p><code>true</code> if the widget is 'special', <code>false</code> otherwise.</p>
+
+<h3 id="addPanelCloseListeners()">addPanelCloseListeners()</h3>
+
+<p>Add listeners to a panel that will close it. For use from the menu panel and overflowable toolbar implementations, unlikely to be useful for consumers.</p>
+
+<h6 id="Parameters_26">Parameters</h6>
+
+<dl>
+ <dt>aPanel</dt>
+ <dd>the panel to which listeners should be attached.</dd>
+</dl>
+
+<h3 id="removePanelCloseListeners()">removePanelCloseListeners()</h3>
+
+<p>Remove close listeners that have been added to a panel with <code>addPanelCloseListeners</code>. For use from the menu panel and overflowable toolbar implementations, unlikely to be useful for consumers.</p>
+
+<h6 id="Parameters_27">Parameters</h6>
+
+<dl>
+ <dt>aPanel</dt>
+ <dd>the panel from which listeners should be removed.</dd>
+</dl>
+
+<h3 id="onWidgetDrag()">onWidgetDrag()</h3>
+
+<p>Notify listeners a widget is about to be dragged to an area. For use from Customize Mode only, do not use otherwise.</p>
+
+<h6 id="Parameters_28">Parameters</h6>
+
+<dl>
+ <dt>aWidgetId</dt>
+ <dd>the ID of the widget that is being dragged to an area.</dd>
+ <dt>aArea</dt>
+ <dd>the ID of the area to which the widget is being dragged.</dd>
+</dl>
+
+<h3 id="notifyStartCustomizing()">notifyStartCustomizing()</h3>
+
+<p>Notify listeners that a window is entering customize mode. For use from Customize Mode only, do not use otherwise.</p>
+
+<h6 id="Parameters_29">Parameters</h6>
+
+<dl>
+ <dt>aWindow</dt>
+ <dd>the window entering customize mode</dd>
+</dl>
+
+<h3 id="notifyEndCustomizing()">notifyEndCustomizing()</h3>
+
+<p>Notify listeners that a window is exiting customize mode. For use from Customize Mode only, do not use otherwise.</p>
+
+<h6 id="Parameters_30">Parameters</h6>
+
+<dl>
+ <dt>aWindow</dt>
+ <dd>the window exiting customize mode</dd>
+</dl>
+
+<h3 id="dispatchToolboxEvent()">dispatchToolboxEvent()</h3>
+
+<p>Notify toolbox(es) of a particular event. If you don't pass aWindow, all toolboxes will be notified. For use from Customize Mode only, do not use otherwise.</p>
+
+<h6 id="Parameters_31">Parameters</h6>
+
+<dl>
+ <dt>aEvent</dt>
+ <dd>the name of the event to send.</dd>
+ <dt>aDetails</dt>
+ <dd>optional, the details of the event.</dd>
+ <dt>aWindow</dt>
+ <dd>optional, the window in which to send the event.</dd>
+</dl>
+
+<h3 id="isAreaOverflowable()">isAreaOverflowable()</h3>
+
+<p>Check whether an area is overflowable.</p>
+
+<h6 id="Parameters_32">Parameters</h6>
+
+<dl>
+ <dt>aAreaId</dt>
+ <dd>the ID of an area to check for overflowable-ness</dd>
+</dl>
+
+<h6 id="Return_value_13">Return value</h6>
+
+<p><code>true</code> if the area is overflowable, <code>false</code> otherwise</p>
+
+<h3 id="setToolbarVisibility()">setToolbarVisibility()</h3>
+
+<p>Set a toolbar's visibility state in all windows.</p>
+
+<h6 id="Parameters_33">Parameters</h6>
+
+<dl>
+ <dt>aToolbarId</dt>
+ <dd>the ID of the toolbar whose visibility should be adjusted</dd>
+ <dt>aIsVisible</dt>
+ <dd>whether the toolbar should be visible</dd>
+</dl>
+
+<h3 id="getPlaceForItem()">getPlaceForItem()</h3>
+
+<p>Obtain a string indicating the place of an element. This is intended for use from customize mode. You should generally use <code>getPlacementOfWidget</code> instead, which is cheaper because it does not use the DOM.</p>
+
+<h6 id="Parameters_34">Parameters</h6>
+
+<dl>
+ <dt>aElement</dt>
+ <dd>the DOM node whose place we need to check</dd>
+</dl>
+
+<h6 id="Return_value_14">Return value</h6>
+
+<ul>
+ <li><code>"toolbar"</code> if the node is in a toolbar,</li>
+ <li><code>"panel"</code> if it is in the menu panel,</li>
+ <li><code>"palette"</code> if it is in the (visible!) customization palette,</li>
+ <li><code>undefined</code> otherwise.</li>
+</ul>
+
+<h3 id="isBuiltinToolbar()">isBuiltinToolbar()</h3>
+
+<p>Check if a toolbar is builtin or not.</p>
+
+<h6 id="Parameters_35">Parameters</h6>
+
+<dl>
+ <dt>aToolbarId</dt>
+ <dd>the ID of the toolbar you want to check</dd>
+</dl>
+
+<h6 id="Return_value_15">Return value</h6>
+
+<p><code>true</code> if the toolbar is builtin, <code>false</code> otherwise.</p>
+
+<h2 id="Properties">Properties</h2>
+
+<p>For readability, the properties are split according to purpose:</p>
+
+<h3 id="Dynamic_getters">Dynamic getters</h3>
+
+<table style="width: auto;" class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>areas</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array"><code>Array</code></a></td>
+   <td>Always returns an up to date Array of all the area IDs that are currently registered with CustomizableUI.</td>
+  </tr>
+  <tr>
+   <td><code>inDefaultState</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean"><code>bool</code></a></td>
+   <td>
+    <p>Whether we're in a default state. Note that non-removable non-default widgets and non-existing widgets are not taken into account in determining whether we're in the default state.</p>
+
+    <p>NB: this is a property with a getter. The getter is NOT cheap, because it does smart things with non-removable non-default items, non-existent items, and so forth. Please don't call unless necessary.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>canUndoReset</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean"><code>bool</code></a></td>
+   <td>Whether the "Restore Defaults" operation can be reverted. This is only true after "Restore Defaults" has been performed and no other UI changes happen after the "Restore Defaults" operation.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Area_constants">Area constants</h3>
+
+<table style="width: auto;" class="standard-table">
+ <tbody>
+  <tr>
+   <td class="header">Attribute</td>
+   <td class="header">Type</td>
+   <td class="header">Description</td>
+  </tr>
+  <tr>
+   <td><code>AREA_NAVBAR</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"nav-bar"</code>, a constant reference to the ID of the navigation toolbar.</td>
+  </tr>
+  <tr>
+   <td><code>AREA_TABSTRIP</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"TabsToolbar"</code>, a constant reference to the ID of the tabstrip toolbar.</td>
+  </tr>
+  <tr>
+   <td><code>AREA_MENUBAR</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"toolbar-menubar"</code>, a constant reference to the ID of the menubar's toolbar.</td>
+  </tr>
+  <tr>
+   <td><code>AREA_BOOKMARKS</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"PersonalToolbar"</code>, a constant reference to the ID of the bookmarks toolbar.</td>
+  </tr>
+  <tr>
+   <td><code>AREA_ADDONBAR</code> <span class="deprecated deprecatedInline inlineIndicator" title="This value should not be used.">Deprecated </span></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"addon-bar"</code>, a constant reference to the ID of the add-on toolbar shim. Do not use, this will be removed as soon as reasonably possible.</td>
+  </tr>
+  <tr>
+   <td><code>AREA_PANEL</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"PanelUI-contents"</code>, a constant reference to the ID of the menu panel.</td>
+  </tr>
+  <tr>
+   <td><code>TYPE_TOOLBAR</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"toolbar"</code>, a constant indicating the area is a toolbar.</td>
+  </tr>
+  <tr>
+   <td><code>TYPE_MENU_PANEL</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"menu-panel"</code>, a constant indicating the area is a menu panel.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Widget_constants">Widget constants</h3>
+
+<table style="width: auto;" class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>PROVIDER_XUL</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"xul"</code>, a constant indicating an XUL-type provider.</td>
+  </tr>
+  <tr>
+   <td><code>PROVIDER_API</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"api"</code>, a constant indicating an API-type provider.</td>
+  </tr>
+  <tr>
+   <td><code>PROVIDER_SPECIAL</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"special"</code>, a constant indicating dynamic (special) widgets: <code>spring</code>, <code>spacer</code>, and <code>separator</code>.</td>
+  </tr>
+  <tr>
+   <td><code>SOURCE_BUILTIN</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"builtin"</code>, a constant indicating the widget is built-in.</td>
+  </tr>
+  <tr>
+   <td><code>SOURCE_EXTERNAL</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"external"</code>, a constant indicating the widget is externally provided (e.g., by add-ons or other items not part of the builtin widget set).</td>
+  </tr>
+  <tr>
+   <td><code>WIDE_PANEL_CLASS</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/String"><code>String</code></a></td>
+   <td><code>"panel-wide-item"</code>, the class used to distinguish items that span the entire menu panel.</td>
+  </tr>
+  <tr>
+   <td><code>PANEL_COLUMN_COUNT</code></td>
+   <td><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number"><code>Number</code></a></td>
+   <td><code>3</code>, the (constant) number of columns in the menu panel.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Examples">Examples</h2>
+
+<h3 id="CreateWidget_-_Button_Type">CreateWidget - Button Type</h3>
+
+<p>This is likely the code you need for your widget. Only rare need a <code>type:custom</code> widget.</p>
+
+<pre class="brush: js">CustomizableUI.createWidget({
+    id: 'id_of_my_widget_within_customizableui_AND_dom',
+    defaultArea: CustomizableUI.AREA_NAVBAR,
+    label: 'My Widget',
+    // type: 'button', //we don't need to type this, the default type is button
+    tooltiptext: 'This is my widget created with CUI.jsm',
+    onCommand: function(aEvent) {
+        var thisDOMWindow = aEvent.target.ownerDocument.defaultView; //this is the browser (xul) window
+        var thisWindowsSelectedTabsWindow = thisDOMWindow.gBrowser.selectedTab.linkedBrowser.contentWindow; //this is the html window of the currently selected tab
+        thisWindowsSelectedTabsWindow.alert('alert from html window of selected tab');
+        thisDOMWindow.alert('alert from xul window');
+    }
+});</pre>
+
+<h4 id="Giving_the_button_an_icon_non-style_sheet_method">Giving the button an icon non-style sheet method</h4>
+
+<p>The style sheet method (below) is one way to add an icon. The other way is to watch for when your widget is dropped into an area, and give an appropriate icon. This way is simpler because you don't have to maintain a style sheet.</p>
+
+<pre class="brush: js">    var myWidgetListener = {
+        onWidgetAdded: function(aWidgetId, aArea, aPosition) {
+            console.log('a widget moved to an area, arguments:', arguments);
+            if (aWidgetId != 'noida') {
+                return
+            }
+            console.log('my widget moved');
+
+            var useIcon;
+            if (aArea == CustomizableUI.AREA_PANEL) {
+                useIcon = 'chrome://branding/content/icon32.png';
+            } else {
+                useIcon = 'chrome://branding/content/icon16.png';
+            }
+
+            var myInstances = CustomizableUI.getWidget('noida').instances;
+            for (var i=0; i&lt;myInstances.length; i++) {
+                myInstances[i].node.setAttribute('image', useIcon);
+            }
+
+        },
+        onWidgetDestroyed: function(aWidgetId) {
+            console.log('a widget destroyed so removing listener, arguments:', arguments);
+            if (aWidgetId != 'noida') {
+                return
+            }
+            console.log('my widget destoryed');
+            CustomizableUI.removeListener(myWidgetListener);
+        }
+    }
+    CustomizableUI.addListener(myWidgetListener);
+    CustomizableUI.createWidget({
+        id: 'noida',
+        defaultArea: CustomizableUI.AREA_NAVBAR,
+        label: 'My Widget',
+        tooltiptext: 'This is my widget created with CUI.jsm'
+    });</pre>
+
+<p>It is important we add the listener before creating the element, because otherwise, the icon will not be set as the buttons are added, then we register the listener. So if we register listener first, then it catches the initial adds. When the button is in the panel area, it needs a 32x32 icon, and when in other places it needs a 16x16 icon. One issue with this method, is that when the icon is removed to the "customize toolbox" (when you right click and say customize and it opens that tab), it doesn't give it the 32x32 icon it needs (i have to figure out how and update the docs, its probably onWidgetRemoved or something)</p>
+
+<h4 id="Giving_the_button_an_icon_via_style_sheet_method">Giving the button an icon via style sheet method</h4>
+
+<p>The above code creates your widget with click functionality. However it will not have an icon. We have to register a style sheet for that. This example here uses nsIStyleSheetService to do so. This is a complete example that can be copied and pasted into scratchpad:</p>
+
+<pre class="brush: js">//start - use CustomizableUI.jsm to create the widget
+Cu.import('resource:///modules/CustomizableUI.jsm');
+CustomizableUI.createWidget({
+    id: 'id_of_my_widget_within_customizableui_AND_dom',
+    defaultArea: CustomizableUI.AREA_NAVBAR,
+    label: 'My Widget',
+    // type: 'button', //we don't need to type this, the default type is button
+    tooltiptext: 'This is my widget created with CUI.jsm',
+    onCommand: function(aEvent) {
+        var thisDOMWindow = aEvent.target.ownerDocument.defaultView; //this is the browser (xul) window
+        var thisWindowsSelectedTabsWindow = thisDOMWindow.gBrowser.selectedTab.linkedBrowser.contentWindow; //this is the html window of the currently selected tab
+        thisWindowsSelectedTabsWindow.alert('alert from html window of selected tab');
+        thisDOMWindow.alert('alert from xul window');
+    }
+});
+//end - use CustomizableUI.jsm to create the widget
+
+//start - use style sheet service to style our widget to give it an icon
+Cu.import('resource://gre/modules/Services.jsm');
+var sss = Cc['@mozilla.org/content/style-sheet-service;1'].getService(Ci.nsIStyleSheetService);
+
+var css = '';
+css += '@-moz-document url("chrome://browser/content/browser.xul") {';
+css += '    #id_of_my_widget_within_customizableui_AND_dom {';
+css += '        list-style-image: url("chrome://branding/content/icon16.png")'; //a 16px x 16px icon for when in toolbar
+css += '    }';
+css += '    #id_of_my_widget_within_customizableui_AND_dom[cui-areatype="menu-panel"],';
+css += '        toolbarpaletteitem[place="palette"] &gt; #id_of_my_widget_within_customizableui_AND_dom {';
+css += '        list-style-image: url("chrome://branding/content/icon32.png");'; //a 32px x 32px icon for when in toolbar
+css += '    }';
+css += '}';
+
+var cssEnc = encodeURIComponent(css);
+var newURIParam = {
+    aURL: 'data:text/css,' + cssEnc,
+    aOriginCharset: null,
+    aBaseURI: null
+}
+var cssUri = Services.io.newURI(newURIParam.aURL, newURIParam.aOriginCharset, newURIParam.aBaseURI); //store this in a global var so you can call it when removing the widget
+sss.loadAndRegisterSheet(cssUri, sss.AUTHOR_SHEET);
+
+/**************/
+// When you want to remove this widget run this code:
+// sss.unregisterSheet(cssUri, sss.AUTHOR_SHEET); //remove the style sheet we applied
+// CustomizableUI.destroyWidget('id_of_my_widget_within_customizableui_AND_dom'); //remove the widget
+/**************/</pre>
+
+<h3 id="CreateWidget_-_Custom_Type_-_Simple">CreateWidget - Custom Type - Simple</h3>
+
+<p>This shows a simple example of how to make a widget with type custom. This example creates a simple button; type custom should not be used for such a simple widget. If this is your need see the example above <a href="#CreateWidget_-_Button_Type">CreateWidget - Button Type</a>. <strong>Note: the DOM node you construct should have the same ID as the <code>id</code> property described above, so that CustomizableUI can find the node again later.</strong></p>
+
+<pre>CustomizableUI.createWidget({
+    id: 'navigator-throbber', //id in cui.jsm // SHOULD match id of that in dom (Line #11)
+    type: 'custom',
+    defaultArea: CustomizableUI.AREA_NAVBAR,
+    onBuild: function(aDocument) {
+        var toolbaritem = aDocument.createElementNS('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul', 'toolbaritem');
+        var image = aDocument.createElementNS('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul', 'image');
+        image.setAttribute('src', '<span class="pl-s1">chrome://branding/content/icon16.png</span>');
+
+        var props = {
+            id: 'navigator-throbber', //id in dom // SHOULD match id of that in cui.jsm (Line #2)
+            title: 'Activity Indicator',
+            align: 'center',
+            pack: 'center',
+            mousethrough: 'always',
+            removable: 'true',
+            sdkstylewidget: 'true',
+            overflows: false
+        };
+        for (var p in props) {
+            toolbaritem.setAttribute(p, props[p]);
+        }
+
+        toolbaritem.appendChild(image);
+        return toolbaritem;
+    }
+});
+</pre>
+
+<p>When you want to remove this widget run this code:</p>
+
+<pre class="brush: js">CustomizableUI.destroyWidget('navigator-throbber-id-within-CustomizableUI-object');</pre>
+
+<h3 id="Custom_Type_-_Involved">Custom Type - Involved</h3>
+
+<p>The browser uses type custom for its zoom controls and edit controls in the Panel. The code is more advanced. It can be found summarized at this gist: <a href="https://gist.github.com/Noitidart/10902477">https://gist.github.com/Noitidart/10902477</a></p>

@@ -1,0 +1,57 @@
+---
+title: Memory Management
+slug: Mozilla/js-ctypes/Using_js-ctypes/Memory_Management
+tags:
+  - js-ctypes
+---
+<section class="Quick_links" id="Quick_Links">
+ <ol>
+  <li><a href="/en-US/docs/Mozilla/js-ctypes"><strong><em>js-ctypes</em></strong></a></li>
+  <li class="toggle">
+      <details open>
+        <summary>Introduction</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Debugging_Tips">Debugging Tips</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_calling_functions">Declaring and Calling Functions</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_and_Using_Callbacks">Declaring and Using Callbacks</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Declaring_types">Declaring types</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Memory_Management">Memory Management</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Standard_OS_Libraries">Standard OS Libraries</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Type_conversion">Type conversion</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_ArrayBuffers">Working with ArrayBuffers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/Working_with_data">Working with data</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Using_js-ctypes/ctypes.open">ctypes.open</a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>References</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ABI"><code>ABI</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ArrayType"><code>ArrayType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CData"><code>CData</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/FunctionType"><code>FunctionType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Int64"><code>Int64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/Library"><code>Library</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/PointerType"><code>PointerType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/StructType"><code>StructType</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/UInt64"><code>UInt64</code></a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/js-ctypes_reference/ctypes"><code>ctypes</code></a></li></ol>
+      </details>
+  </li>
+  <li class="toggle">
+      <details>
+        <summary>Examples</summary>
+        <ol><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Add_to_iPhoto">Add to iPhoto</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_C_structs_and_pointers">Using C struct and pointers</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_COM_from_js-ctypes">Using COM from js-ctypes</a></li><li><a href="/en-US/docs/Mozilla/js-ctypes/Examples/Using_Objective-C_from_js-ctypes">Using Objective-C from js-ctypes</a></li></ol>
+      </details>
+  </li>
+ </ol>
+</section>
+
+<h2 id="Memory_management">Memory management</h2>
+
+<p>If JS code creates a structure or an array, that memory will be valid as long as the JS object stays alive. Pointers to that memory must be carefully managed to make sure the underlying memory is still referenced.</p>
+
+<p>When binary code hands back a pointer/handle to allocated memory, the JS code must make sure to free that memory with the correct allocator. It is usually best to expose a freeing function from the binary.</p>
+
+<h3 id="Keeping_objects_alive">Keeping objects alive</h3>
+
+<p>The following js-ctypes objects will hold references to objects, keeping them alive. This is not an exhaustive list, but will help you to  understand memory management and how it affects your use of js-ctypes:</p>
+
+<ul>
+ <li>A function or static data declared using the <a href="/en-US/docs/js-ctypes/js-ctypes_reference/Library#declare()"><code>declare()</code></a> method will hold that library alive.</li>
+ <li>A <a href="/en-US/docs/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a> will hold referent <a href="/en-US/docs/js-ctypes/js-ctypes_reference/CType"><code>CType</code></a> objects alive.</li>
+ <li>A <code><a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData">CData</a></code> will hold referent <code><a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData">CData</a></code> objects alive, under specific circumstances. For example, a <code><a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData">CData</a></code> object produced by accessing a field of a structure or the internals of an array will hold the referent objects alive.</li>
+</ul>
+
+<h3 id="What_wont_keep_objects_alive">What won&apos;t keep objects alive</h3>
+
+<p>It&apos;s important to note that getting direct access to the contents of a <code><a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData">CData</a></code> object using <a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData#address()"><code>address()</code></a>, <a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData#addressOfElement()"><code>addressOfElement()</code></a>, or <a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData#contents"><code>contents</code></a>, will result in a <code><a href="/en-US/docs/js-ctypes/js-ctypes_reference/CData">CData</a></code> object that <strong>does not</strong> hold its referent alive. Be sure to hold an explicit reference so that the referent object doesn&apos;t get into garbage collection, before you&apos;re done using it.</p>
+
+<h3 id="Closures">Closures</h3>
+
+<p>You also need to be sure to retain references to any JavaScript code that native code may call back into. This should be obvious, but is important enough to be worth stating explicitly.</p>
+
+<h3 id="When_in_doubt_malloc">When in doubt, malloc()</h3>
+
+<p>When you need to keep data around, you can use <code>malloc()</code> to allocate it directly. This bypasses JavaScript&apos;s memory management and lets you handle memory management yourself.</p>

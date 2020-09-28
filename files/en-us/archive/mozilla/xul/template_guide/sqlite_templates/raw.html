@@ -1,0 +1,87 @@
+<p> </p><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:XML_Assignments" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Attribute_Substitution">Next  »</a></p>
+</div>
+<p>Templates may use a datasource that is retrieved from an Sqlite database, such as those used by the <a href="/en/Storage" title="en/Storage">mozStorage API</a>. This allows information from the database to be used to generate XUL content. To do this, set the <code id="a-querytype"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/querytype">querytype</a></code> attribute on the root node of the template to the value <code>storage</code>. This will cause the datasource to be treated as an Sqlite database.</p>
+<p>The <code id="a-datasources"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/datasources">datasources</a></code> attribute may be set to one of two possible types of values. First, it may a file URL pointing to a file on disk. In this case, you will often be setting the <code>datasources</code> attribute dynamically after determining the file path. (If you intend to set it by script, you must set <code>datasources</code> in the XUL to <code>rdf:null</code>). The second method involves using a special url form:</p>
+<pre>profile:filename.sqlite
+</pre>
+
+<p>This form with the 'profile' prefix is used to refer to files in the profile directory. This is useful for user data, and is suitable as you do not need to calculate where this directory is located. The file within this directory is specified after the colon, in this case 'filename.sqlite'. Sqlite files typically have the 'sqlite' extension.</p>
+<p>As with XML datasources, the <code id="a-ref"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ref">ref</a></code> attribute isn't currently used for Sqlite sources, so you should just set the <code>ref</code> attribute to a dummy value; '*' is typically used.</p>
+<p>The query for an Sqlite datasource is just an SQL select statement, as text inside the <code><a href="/en-US/docs/Mozilla/Tech/XUL/query" title="query">query</a></code> element. This simple example shows how to display a listbox containing the values in one column in a database table.</p>
+
+<pre class="brush: xml">&lt;listbox datasources="profile:userdata.sqlite" ref="*" querytype="storage"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      select name from myfriends
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;listitem uri="?" label="?name"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/listbox&gt;
+</pre>
+<p>The query returns the list of values from the 'name' column in the table 'myfriends'. The action body, starting at the node with uri="?" is repeated for each result returned from the query. If the query returns six results, six listitems will be generated. The labels have the special value '?name'. The syntax with the question mark is similar as with the other query types. It means, substitute the attribute value with the value of a column from the result. In this case, '?name' means replace this with the value of the name column. The effect is a listbox containing the names from the database.</p>
+<p>You can return multiple columns or filtered data by using a more complex query.</p>
+
+<pre class="brush: xml">&lt;vbox datasources="profile:userdata.sqlite" ref="*" querytype="storage"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      select name, email from myfriends where age &gt;= 30
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;hbox uri="?"&gt;
+        &lt;label value="?name"/&gt;
+        &lt;label value="?email"/&gt;
+      &lt;/hbox&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;</pre>
+
+<p>This template displays the results of two columns. Any occurance of a question mark in the action body is replaced with the value from the query results. Here, this is used two times, once to display the name and the second to display the email. The <code>uri</code> attribute on the <code>hbox</code> element is required on one element within the action body. For Sqlite queries it will almost always be on the outermost node.</p>
+<p>Note also that the query statement has a where clause which restricts the rows to those with an age greater or equal to 30.</p>
+<h3 id="Query_Parameters" name="Query_Parameters">Query Parameters</h3>
+<p>Sometimes, you will want to adjust the query depending on certain criteria. One possibility is to simply use methods to adjust the text within the <code>query</code> element and rebuild the template. However, this can become unweidly for more complex queries, and would be more error prone if values were not escaped properly to ensure that extraneous quotes, semicolons and other characters didn't appear in the values. This is especially important when you are taking values that were entered by the user.</p>
+<p>The solution is to use query parameters, using the <code><a href="/en-US/docs/Mozilla/Tech/XUL/param" title="param">param</a></code> element.</p>
+
+<pre class="brush: xml">&lt;query&gt;
+  select name, email from myfriends where gender = :wantedgender
+  &lt;param name="wantedgender"&gt;male&lt;/param&gt;
+&lt;/query&gt;
+</pre>
+
+<p>In this example, a parameter 'wantedgender' is used. This is a <code>param</code> element which should be used as a direct child of the <code>query</code> element. The <code>name</code> attribute is used to specify the parameter name, and the contents of the <code>param</code> element specify the value to use. When the name appears in the query, preceded by a colon, as ':wantedgender' does in the example above, the value of that parameter will be filled in to the query. The resulting query that gets used will be:</p>
+
+
+
+<pre class="brush:text">select name, email from myfriends where gender = 'male'
+</pre>
+
+<p>This technique is used as quotes or other special characters are handled automatically. If a quote appears in the value, it will escaped as needed. Now, to adjust the query to something else, say to look up females, all you need to do is get a reference to the <code>param</code> element and adjust the contents. You would likely want to add an id to the <code>param</code> element so that the <a href="/en/DOM/document.getElementById" title="en/DOM/document.getElementById">getElementById</a> method may be used to refer to it.</p>
+<p>You can add as many parameters as necessary for the query. The example above used a string parameter. If you want a numeric parameter, you should also set the <code>type</code> attribute.</p>
+<pre class="brush: xml">&lt;listbox id="friends" datasources="profile:userdata.sqlite" ref="*" querytype="storage"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      select name, from myfriends where age &gt;= :minage &amp;&amp; age &lt;= :maxage
+      &lt;param id="minage" name="minage" type="integer"&gt;30&lt;/param&gt;
+      &lt;param id="maxage" name="maxage" type="integer"&gt;40&lt;/param&gt;
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;listitem uri="?" label="?name"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/listbox&gt;
+</pre>
+<p>Here, the age is an integer number, so the <code>type</code> attribute is set to <code>integer</code>. Integers are 32-bit values, but you can use the value <code>int64</code> for 64-bit integers. You can also use the value <code>double</code> for double precision floating point values. If no type is specified, a string is assumed.</p>
+<p>We could later change the age to use in the query with a short script:</p>
+<pre class="brush: js">function adjustAge(min, max)
+{
+  document.getElementById("minage").textContent = min;
+  document.getElementById("maxage").textContent = max;
+  document.getElementById("friends").builder.rebuild();
+}
+</pre>
+<p>This function takes two arguments, the minimum and maximum values to use. We retrieve the <code>param</code> elements and set their <a href="/En/DOM/Node.textContent" title="En/DOM/Node.textContent">textContent</a> properties to the desired value. Finally, we rebuild the entire template.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:XML_Assignments" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Attribute_Substitution">Next  »</a></p>
+</div>

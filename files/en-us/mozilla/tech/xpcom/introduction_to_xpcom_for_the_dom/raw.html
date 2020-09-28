@@ -1,0 +1,382 @@
+<p>Warning: this document has not yet been reviewed by the DOM gurus, it might contain some errors.</p>
+
+<p>This document is an introduction to the <strong>use</strong> of XPCOM in the <strong>context of the DOM code</strong>. The use of XPCOM and nsCOMPtr's described in this document covers about 80% of what you need to know to read the DOM code, and even write some. For more advanced topics, please see <a href="/en/XPCOM" title="en/XPCOM">the XPCOM page</a>.</p>
+
+<p>The tracking bug for this document is <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=99592" title="FIXED: hacking the DOM feedback">bug 99592</a>.</p>
+
+<p>Target audience: People who would like a quick introduction to the use of C++ and XPCOM in the DOM code. The understanding of the content of this document is a requirement to read the rest of the <a class="external" href="http://www.mozilla.org/docs/dom/mozilla/hacking.html">DOM Hacking Guide</a>.</p>
+
+<div class="note">
+<p>Important note: This document assumes some knowledge of C++, specially the object-oriented part of it. I learned C++ by reading "C++ Primer" from Stanley Lippman and Josee Lajoie, then experimenting on the DOM code. I recommend that book to all the beginners out there.</p>
+</div>
+
+<h3 id="Introduction_to_the_introduction" name="Introduction_to_the_introduction">Introduction to the introduction</h3>
+
+<p>The DOM makes extensive use of XPCOM. In fact, to do anything with the DOM implementation you need XPCOM. You do not, however, need to know all the hairy details, if you just intend to read the code or to work with the existing framework. The numerous macros and facilities brought by the DOM, as well as nsCOMPtr's, make our life much easier. In this chapter I will attempt to cover the most widespread use of XPCOM in the DOM, avoiding the details as much as possible. I will introduce nsCOMPtr's, interfaces, reference counting, and the nsISupports interface. A tutorial about how to add a new interface is also provided, and eventually, a more detailed discussion of class inheritance in C++.</p>
+
+<h3 id="Interfaces" name="Interfaces">Interfaces</h3>
+
+<p>Object-oriented programming is based on the used of <strong>inheritance</strong> between <strong>classes</strong>. Furthermore, a class can be de declared to be "abstract" if it declares some methods but does not implement them entirely. Pushing this concept to its maximum, a class can be "purely virtual" if it declares methods without implementing any of them. Such a class is called an interface. The goal of interfaces is to have a single ... interface to a set of methods that manipulate an object (often represented by a class), without worrying about the details of the implementation. If you know a class implements an interface, just use the methods in the interface, and you don't have to care if the implementation of the interface (the concrete class) changes. XPCOM pushes this concept to the extreme. Pure virtual methods are declared with the following syntax:</p>
+
+<pre class="eval">virtual nsresult FunctionFoo() = 0;
+</pre>
+
+<p>An interface is thus simply a C++ class where all the member functions are declared as pure virtual functions. An interface can also be defined using <a href="/en/XPIDL" title="en/XPIDL">XPIDL</a>. This is described in Section 1.E, "How to add an interface".</p>
+
+<p>Since an interface doesn't have any implementation, it has to be implemented by a non-abstract class -- a concrete class. If the interface is called nsIFoo and the class is called nsFoo, we say that "nsFoo implements nsIFoo", or that "nsFoo inherits from nsIFoo". The C++ code is the following:</p>
+
+<pre class="eval">class nsFoo : public nsIFoo
+</pre>
+
+<p>For those unfamiliar with object-oriented C++, this means that nsFoo is declared as "derived from" nsIFoo, and that nsIFoo is a "base class" of nsFoo. For this introduction you don't need to know more about object-oriented C++. However the Section 1.F provides a more detailed discussion about it, and is necessary to understand most of the DOM code.</p>
+
+<p>An instance of a class (called an object) can be allocated dynamically (on the heap, or free store), using the syntax</p>
+
+<pre class="eval">nsFoo *fooptr = new nsFoo;
+</pre>
+
+<p>That object can then be manipulated only through fooptr. Let's consider what happens when the class nsFoo implements an interface nsIFoo. You can manipulate the nsFoo object directly through fooptr, however your code will not be very robust. Indeed, if someone decides to change the name or the signature of the methods you use, you will have to change all the calls to those methods throughout your code. As opposed to a concreate class, an interface is supposed to be more stable through time. Indeed, many interfaces in the Mozilla code are frozen (this is indicated by the comment @Frozen at the beginning of the interface definition). That means that the interface will never change anymore. The good thing is that your code will (in the best condition) last forever. The bad thing is that we have to find a way to improve those interfaces, and freezing them obliges implementers to create new interfaces. In summary, manipulate an interface rather than its implementation whenever possible! A pointer to an interface nsIFoo implemented by nsFoo can be declared as follows</p>
+
+<pre class="eval">nsIFoo *fooptr = new nsFoo;
+</pre>
+
+<p>A pointer such as fooptr is then called a "pointer to an interface nsIFoo implemented by an instance of the nsFoo class", or "pointer to nsIFoo" in short. From now on, when I speak of a "pointer to an interface", I really mean a "pointer to an interface implemented by an instance of a concrete C++ class". The important thing to note is that a pointer to nsIFoo can <em>only</em> call the methods defined on the nsIFoo interface, and on its parents. For instance, if nsFoo implements two different interfaces, nsIFoo and nsIBar, a pointer to nsIFoo cannot call the methods defined on nsIBar and vice-versa.</p>
+
+<p>Note: the previous paragraph is extremely important. If you haven't grasped it completely, there is no need to read further.</p>
+
+<p>Reference counting basics</p>
+
+<p>XPCOM uses a reference counting mechanism (refcount in short) to make sure that no object is deleted while interface pointers still point at that object. Indeed, dereferencing a pointer that points to a deleted object can have bad consequences. That is why each time a pointer to an interface is assigned the address of an object, we have to increase the reference count of that object by one. The function that does this is called "AddRef" and is defined in the nsISupports interface. When the pointer no longers holds the address of that object, it has to decrease the reference count of that object by one. This is done using the "Release" function, also defined in the nsISupports interface. When the reference count of an object hits 0 (zero), the object deletes itself. This is why it is very important to keep track of the reference count of each object. In the first case, if we forget to AddRef the object, the object may delete itself before we are done using the pointer, which would cause a crash when dereferencing it. In the second case, if we forget to Release the object, it will never delete itself, which will cause "memory leaks", i.e. the memory is never returned because we keep the object around even if we don't need it. In both cases it's very bad, and we have to be extremely careful with the refcounting.</p>
+
+<p>Fortunately, there are nsCOMPtr's to make our life easier.</p>
+
+<h3 id="nsCOMPtr" name="nsCOMPtr">nsCOMPtr</h3>
+
+<p>Scott Collins blessed us with the <a href="/en/Using_nsCOMPtr" title="en/Using_nsCOMPtr">nsCOMPtr</a>, now let's use them. nsCOMPtr's are an extension of the C auto_ptr, managing the reference counting operations for you, and providing several facilities for comparison, initialization, etc... An nsCOMPtr is used like an usual pointer to an interface in most cases. An usual pointer to an interface nsIFoo is declared as follows:</p>
+
+<pre class="eval">nsIFoo *fooptr;
+</pre>
+
+<p>An nsCOMPtr to the same nsIFoo interface is declared as follows:</p>
+
+<pre class="eval">nsCOMPtr&lt;nsIFoo&gt; fooptr;
+</pre>
+
+<p>The rest of the use of nsCOMPtr's is described in the next Section. For more information about nsCOMPtr's, please read the <a href="/en/Using_nsCOMPtr#Getting_Started_Guide" title="en/Using_nsCOMPtr#Getting_Started_Guide">User's Guide</a>.</p>
+
+<h3 id="QueryInterface.28.29" name="QueryInterface.28.29">QueryInterface()</h3>
+
+<p>Consider again the class nsFoo that implements two interfaces, nsIFoo and nsIFoo2:</p>
+
+<pre class="eval">class nsFoo : public nsIFoo, public nsIFoo2
+</pre>
+
+<p>Let's assume an instance of nsFoo was somehow created (this assertion is true most of the time). You would like to manipulate that object with a method defined on the nsIFoo interface. The goal is to retrieve a pointer to the nsIFoo interface. To do so, there are two main techniques, and the context should tell you what to use. The first technique is to use a "Getter", the second is to use a static cast on the "this" pointer.</p>
+
+<p>A getter is a function defined in global scope or in class scope that will "return" a pointer to the required interface. Generally getters work like this: First, declare a pointer to an interface, ifooptr without assigning it. Pass the address of the pointer to the getter function. The getter function will then assign to the pointer the correct address and will QueryInterface the pointer to that interface. ifooptr is now a pointer to an interface assigned to the address of a real object, and you can thus now call methods defined on nsIFoo through ifooptr. Here is some example code.</p>
+
+<pre class="eval">nsCOMPtr&lt;nsIFoo&gt; ifooptr;
+GetInterfaceIFoo(getter_AddRefs(ifooptr));
+ifooptr-&gt;FunctionOfnsIFoo();
+</pre>
+
+<p>The peculiar syntax, getter_AddRefs(pointer), is the nsCOMPtr counterpart to the usual "&amp;" (address-of) C operator. It means that the Getter method will call the AddRef method for you. This is a contract between the caller, who says "I don't add a reference to this object because you have already done it", and the callee who says "I add a reference to this object, so don't do it!". If both the caller and the callee perform the AddRef, the object will be leaked, because one of the two references will never be released!</p>
+
+<p>Please note that all Getter functions <strong>have to AddRef</strong> the returned pointer. If you're just using the Getter function though, you don't need to worry about it. More about this in the <a href="/en/XPCOM_ownership_guidelines" title="en/XPCOM_ownership_guidelines">XPCOM Ownership Guide</a>.</p>
+
+<p>Please also note that some interfaces are not refcounted, like the frames and views. For those you have to use raw interface pointers, and you don't have to perform any manual refcounting.</p>
+
+<p>Let's say that you now want to execute a function declared on the nsIFoo2 interface, also implemented by nsFoo. However, ifooptr does not give you access to that function, since it is a pointer to nsIFoo, for the reasons mentioned in Section 1.B. XPCOM provides a handy method to get a pointer to an interface when you have a pointer to another interface, and both interfaces are implemented by the same object. This method is QueryInterface(). It is defined on the nsISupports interface. <strong>Every single interface in Mozilla inherits from nsISupports</strong>. This is one of the main rules of XPCOM. The goal is the following: find out whether an object (an instance of a class) implements a given interface. This is what QueryInterface() does. You pass an interface and the address of a pointer to store the interface to QueryInterface(). If the interface is implemented by the object, the pointer passed in will be assigned to the address of the object. If the interface is not implemented by the object, QueryInterface() will return NS_NOINTERFACE, and the pointer passed in will be null.</p>
+
+<p>QueryInterface() is handy to hide the implementation of an object from the user. Just call QueryInterface() then call the method on the interface. You don't need to know anything else. So how do we use QueryInterface() to get a pointer to nsIFoo2 if we have a pointer to nsIFoo? Since we cannot re-use ifooptr, we create a new pointer to nsIFoo2, ifooptr2. The following syntax is the preferred one (to use only with nsCOMPtr's):</p>
+
+<pre class="eval">nsCOMPtr&lt;nsIFoo2&gt; ifooptr2 (do_QueryInterface(ifooptr));
+</pre>
+
+<p>That syntax is the preferred one to declare and initialize an nsCOMPtr at the same time. If you have to assign it another address later, you can easily do</p>
+
+<pre class="eval">ifooptr2 = do_QueryInterface(another_pointer);
+</pre>
+
+<p>This syntax however is just a convenient shortcut to the real function. Below is how one would use the QueryInterface() function with raw pointers.</p>
+
+<pre class="eval">nsIFoo2 *ifooptr2;
+ifooptr-&gt;QueryInterface(NS_GET_IID(nsIFoo2), (void **)&amp;ifooptr2);
+</pre>
+
+<p>NS_GET_IID is a macro that evaluates to the IID of the argument. It is a convenient way of comparing two interfaces for equality. We have already seen what getter_AddRefs() does to nsCOMPtr's. In this case we pass the address of the ifooptr2 pointer. Since nsFoo implements nsIFoo2, ifooptr2 will be assigned the address of the current instance of nsFoo. We can now call the methods defined on nsIFoo2 through ifooptr2:</p>
+
+<pre class="eval">ifooptr2-&gt;FunctionOfnsIFoo2();
+</pre>
+
+<p>If we now try to QueryInterface to an interface that is <em>not</em> implemented by nsFoo, the pointer passed in will be null. This is why, unless you are really really really sure of what you are doing, you should always check for the null-ness of the nsCOMPtr. The following example demonstrates this.</p>
+
+<pre class="eval">nsCOMPtr&lt;nsINotImplemented&gt; iptr(do_QueryInterface(ifooptr));
+if(!iptr) {
+  // nsFoo doesn't implement nsINotImplemented. iptr is thus null.
+  return NS_OK;
+}
+</pre>
+
+<p>It is also worth noting that QueryInterface is null-safe. For example, in the previous example, nothing bad will happen if ifooptr is null. Additionally, the return value of a call to QueryInterface should not be returned unless there is a good reason for that. If you are concerned that it could return NS_NOINTERFACE, return NS_OK, as the previous example shows.</p>
+
+<p>At the beginning of this section, I talked about a second solution to get a pointer to an interface. This should be used in the case a getter function is not available. As you probably know, the "this" member of an object is a pointer to that object. You can thus simply cast "this" statically to the desired interface. You should however be absolutely sure of what you are doing before coding such a cast. It can lead to troubles with refcounting.</p>
+
+<p>Here is a simple problem I encountered recently: In a member function of the nsHTMLAnchorElement class, I had to get a pointer to the nsIContent interface implemented by the nsHTMLAnchorElement object. However there is no such getter. I had to use the second solution:</p>
+
+<pre class="eval">nsCOMPtr&lt;nsIContent&gt; content = getter_AddRefs(NS_STATIC_CAST(nsIContent*, this));
+// Or, if you want to do the refcounting yourself,
+nsIContent *content = NS_STATIC_CAST(nsIContent*, this);
+</pre>
+
+<p>The second form should be used with care, and is recommended only for advanced XPCOM'ers.</p>
+
+<p>The use of XPCOM and nsCOMPtr's described until now covers about 80% of what you need to know to read the code, and even write some. I could go on about do_GetService, explain the implementation of QueryInterface, etc, but I feel this is not worth the trouble. For the more advanced topics of XPCOM, please see <a class="external" href="http://www.mozilla.org/projects/xpcom/">the XPCOM project page</a>.</p>
+
+<p>The next section is a tutorial on how to add a new interface to the Mozilla DOM, with build instructions et al, and the last section is a discussion of the more advanced topics of object-oriented C++ , interface inheritance, and other fun stuff.</p>
+
+<h3 id="Tutorial_:_How_to_add_a_new_interface" name="Tutorial_:_How_to_add_a_new_interface">Tutorial : How to add a new interface</h3>
+
+<h4 id="Introduction" name="Introduction">Introduction</h4>
+
+<p>The purpose of this tutorial is to describe the process of adding a new interface to the DOM and then implementing it. A good understanding of the previous sections is preferred to understand this tutorial. You could want to add a new interface for several reasons, like the addition of a new DOM object, or to respect an eventual "Interface freeze". First we will take a look at XPIDL and how it can help you define interfaces. Next we will describe the build system, makefiles, etc... And finally, we will look at the implementation of our new interface through the creation of an nsIDOMFabian interface (Fabian is my first name ;-).</p>
+
+<h4 id="XPIDL" name="XPIDL">XPIDL</h4>
+
+<p>XPIDL stands for Cross-Platform Interface Definition Language. Instead of coding interfaces directly in C++ , one can use XPIDL. It simplifies greatly the task of defining interfaces, and offers some interesting features, like automatic generation of documentation, and XPT generation. The first thing to do is to decide what our interface, nsIDOMFabian, will do. For the purpose of this document, I have chosen to implement a new HTML interface called nsIDOMFabian. It will be implemented by the class nsHTMLDocument.</p>
+
+<p>The syntax of XPIDL is straightforward:</p>
+
+<pre class="eval"><span class="nowiki">  #include "domstubs.idl";
+  [scriptable, uuid(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)]
+  interface nsIDOMFabian : nsISupports
+  {
+    void fabian();
+    readonly attribute boolean neat;
+  };  </span>
+</pre>
+
+<p>This is the definition of the nsIDOMFabian interface. The <em>uuid</em> of the interface is a unique identifier. Every interface needs one. You can generate them using guidgen on windows, or by issuing the command "mozbot uuid" in #mozilla on irc.mozilla.org.</p>
+
+<p>At compile-time, the XPIDL compiler will turn this interface definition into real C++ code, a header file that will contain the pure abstract class. This class will look like this:</p>
+
+<pre class="eval"><span class="nowiki">  #define NS_IDOMFABIAN_IID \    {0xxxxxxxxx, 0xxxxx, 0xxxxx, \      { 0xxx, 0xxx, 0xxx, 0xxx, 0xxx, 0xxx, 0xxx, 0xxx }}    class nsIDOMFabian : public nsISupports {   public:      NS_IMETHOD Fabian(void) = 0;    NS_IMETHOD GetNeat(PRBool *aNeat) = 0;    };    #define NS_DECL_NSIDOMFABIAN  #define NS_FORWARD_NSIDOMFABIAN(_to)  #define NS_FORWARD_SAFE_NSIDOMFABIAN(_to)  </span>
+</pre>
+
+<p>As we can see, the auto-generated header file contains the IID of our interface, and a "pure abstract class" is correctly defined. The XPIDL compiler turns the IDL methods and attributes into C++ functions according to the following rules:</p>
+
+<p>The methods of the interface keep the same name in C++ . However in IDL we have to use the so-called "interCaps" model. That means that the first letter is lower-cased, and the other letters that begin a new word are upper-cased. For example, in IDL we'd write getElementById, which in C++ would be translated to GetElementById.</p>
+
+<p>NS_IMETHOD is a macro that basically means "virtual nsresult". The argument list and return type are turned into correct C++ types according to rules not described here.</p>
+
+<p>The attributes of the interface become two functions: a getter, and a setter. In our example, since the attribute is declared as read-only, only a getter is defined: GetNeat. The argument is a pointer to an object of type PRBool, automatically generated by XPIDL. Clever uh. Note that the same interCaps model applies to IDL attributes as well.</p>
+
+<p>The three macros are explained in detail in Section 1.E.d. The next step is to build our new interface.</p>
+
+<h4 id="Build_System" name="Build_System">Build System</h4>
+
+<p>This is the really easy part: it's just copying what's already there. First, we have to decide in which directory we will place our interface. The most logical choice for us is in dom/public/idl/html, where all the HTML interfaces live. Next, we have to add nsIDOMFabian.idl to all the makefiles of this directory. This includes, if needed, "MANIFEST", "makefile.win", "Makefile.in", etc... Simply copy the existing entries for nsIDOMFabian. <strong>Warning: In Makefiles, there is a mix of TABS and whitespaces. Make sure you copy exactly the other entries</strong>.</p>
+
+<p>Then type "make" in dom/ to build the interface. If all goes well, a file nsIDOMFabian.h should be in dom/public/idl/html/_xpidlgen/, and it should contain the C++ code for our interface. From my own experience unfortunately it sometimes necessary to build "distclean" before it works.</p>
+
+<h4 id="Interface_implementation" name="Interface_implementation">Interface implementation</h4>
+
+<p>Let's take a closer look at how interfaces are implemented. We already know that an interface has to be implemented by a concrete C++ class. This class can implement multiple interfaces, directly or through inheritance (see the next section for a discussion of inheritance). We also saw that an interface defined in XPIDL contains methods and attributes, which are transformed into C++ functions by the XPIDL compiler. The class that implements the interface has to explicitly implement each method and implement the setter and the getter of each attribute defined on the interface. If the attribute is read-only, only a getter is necessary, of course.</p>
+
+<p>I have chosen to implement nsIDOMFabian in the nsHTMLDocument class, which is defined in <a href="https://dxr.mozilla.org/mozilla-central/source/content/html/document/src/nsHTMLDocument.h" rel="custom">nsHTMLDocument.h</a>. There are three things to do: modify the class declaration, the class body, then code the functions declared on the interface.</p>
+
+<p>Modification of the class declaration and class body:</p>
+
+<pre class="eval"><span class="nowiki">  #include "nsIDOMFabian.h"
+  class nsHTMLDocument: public ... ,
+                        public nsIDOMFabian
+  {
+    // ...
+    NS_DECL_NSIDOMFABIAN
+    // ...
+  };  </span>
+</pre>
+
+<p>First we have to declare nsHTMLDocument as inheriting from nsIDOMFabian. Then, in the class public interface, we use the macro NS_DECL_NSIDOMFABIAN to declare the methods necessary to the implementation of our interface. Remember, this macro is auto-generated by the XPIDL compiler. It declares all the methods that will be implemented on the class for the nsIDOMFabian interface. A typical NS_DECL_NSIFOO macro looks like this:</p>
+
+<pre class="eval"><span class="nowiki">  #define NS_DECL_NSIFOO \    NS_IMETHOD GetBar();  </span>
+</pre>
+
+<p>This macro has to be used in the class definition, and means that the class nsFoo will have a method nsFoo::GetBar(). Now that the functions are declared, we can finally code them.</p>
+
+<p>There are various possibilities to implement the functions. The first one is the most straightforward. The functions we have to implement are nsHTMLDocument::Fabian() and nsHTMLDocument::GetNeat(). So let's just code them.</p>
+
+<pre class="eval">NS_IMETHODIMP nsHTMLDocument::Fabian(void)
+{
+  printf("Hello from the nsIDOMFabian interface\n");
+  // Whatever you want...
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsHTMLDocument::GetNeat(PRBool *aNeat)
+{
+  if(!aNeat) {
+    return NS_ERROR_NULL_POINTER;
+  }
+
+  nsresult rv = Fabian();
+  if( rv == NS_OK ) {
+    *aNeat = PR_TRUE;
+  } else {
+    *aNeat = PR_FALSE;
+  }
+  return NS_OK;
+}
+</pre>
+
+<p>This code is of course written in nsHTMLDocument.cpp. The functions are very simple, but it is only a proof-of-concept. A second possibility is to use the "Interface forwarding macro". This macro is also auto-generated by the XPIDL compiler. Below is the theory behind interface forwarding, followed by an example of nsIDOMFabian.</p>
+
+<h5 id="Theory" name="Theory">Theory</h5>
+
+<p>Let's assume we have the real class nsFoo which inherits from the real class nsBar. Let's also assume that nsFoo implements the interface nsIFoo. One possible way for nsFoo to implement nsIFoo is to forward the methods on the interface to the implementation of those methods on the class nsBar.</p>
+
+<pre class="eval">// Interface nsIFoo in XPIDL (stripped down)
+interface nsIFoo {
+    attribute type prop;
+    void meth();
+};
+
+class nsBar {
+    NS_IMETHOD GetProp();
+    NS_IMETHOD SetProp();
+    NS_IMETHOD Meth();
+};
+
+class nsFoo : public nsIFoo,
+              public nsBar {
+// definition of the nsFoo class
+};
+
+nsFoo::GetProp() { return nsBar::GetProp(); }
+nsFoo::SetProp() { return nsBar::SetProp(); }
+nsFoo::Meth() { return nsBar::Meth(); }
+</pre>
+
+<p>For such code to work, nsBar of course has to implement GetProp, SetProp, and Meth. Note that nsBar implements the methods of the interface nsIFoo, but <strong>does not</strong> inherit from that interface. This is the <strong>only</strong> case where you would use interface forwarding.</p>
+
+<p>Instead of having to type the three methods and forward them to nsBar, we can use the "Interface forwarding macro", NS_FORWARD_NSIFOO.</p>
+
+<pre class="eval"><span class="nowiki">  #define NS_FORWARD_NSIFOO(_to)                       \    NS_IMETHOD GetProp() { return _to GetProp(); }  \    NS_IMETHOD SetProp() { return _to SetProp(); }  \    NS_IMETHOD Meth() { return _to Meth(); }  </span>
+</pre>
+
+<p>The meaning of this macro is easy to grasp. It will forward all the methods on the nsIFoo interface to the implementation on the _to class.</p>
+
+<p>Application to nsIDOMFabian: we could code our two functions in nsDocument, then forward nsIDOMFabian to nsDocument from nsHTMLDocument. This would allow us to be able to re-use the nsDocument code in nsXMLDocument, for example. This technique is already used for most of the document methods.</p>
+
+<pre class="eval">// File nsDocument.h:
+class nsDocument : public ...
+{
+  // ...
+  NS_IMETHOD Fabian(void);
+  NS_IMETHOD GetNeat(PRBool *aNeat);
+  // ...
+}
+
+// File nsDocument.cpp:
+nsDocument::Fabian()
+{
+  // ...
+}
+nsDocument::GetNeat(PRBool *aNeat)
+{
+  // ...
+}
+
+// File nsHTMLDocument.h:
+class nsHTMLDocument : public ... ,
+                       public nsIDOMFabian
+{
+  // ...
+  NS_FORWARD_NSIDOMFABIAN(nsDocument::)
+  // ...
+}
+
+// Nothing needed in nsHTMLDocument.cpp
+</pre>
+
+<p>This was an easy example of "Interface forwarding". These two ways are the most common to implement an interface in the DOM. There are other ways that are a little more complicated, not worth detailing here.</p>
+
+<p><strong>Important note: the nsISupports interface, implemented by all the DOM classes, CANNOT be implemented with forwarding or declaration macros. Special macros are provided to implement nsISupports</strong></p>
+
+<p>This closes this tutorial about how to add a new interface. Simply make a full rebuild. I recommend building distclean. <strong>Your methods will not be available from JavaScript</strong>, however, because nsIDOMFabian is not in the Class Info. Please see the <a class="external" href="http://www.mozilla.org/docs/dom/mozilla/hacking.html#oneh">User's guide of Class Info</a> to learn how to add it.</p>
+
+<h3 id="Interface_inheritance_.28Advanced_topic.29" name="Interface_inheritance_.28Advanced_topic.29">Interface inheritance (Advanced topic)</h3>
+
+<p>The inheritance model in Mozilla is of course the same as the class inheritance model of C++. If you are familiar with object-oriented programming you will have no problem understanding this discussion.</p>
+
+<h5 id="Raw_interface_inheritance" name="Raw_interface_inheritance">Raw interface inheritance</h5>
+
+<p>The first concept is easy to grasp, it's the "interface inheritance". If we look at any interface definition, in XPIDL or as a header, we can see that it always inherits from another interface. For instance, we have the following "chain" for the nsIDOMHTMLAnchorElement interface:<br>
+ nsISupports -&gt; nsIDOMNode -&gt; nsIDOMElement -&gt; nsIDOMHTMLElement -&gt; nsIDOMHTMLAnchorElement.</p>
+
+<p>This means that, if a class implements one of the interfaces in the chain, it has to also implement <em>all the ancestors of that interface</em>. For example if a real class implements nsIDOMElement, it also has to implement nsIDOMNode and nsISupports.</p>
+
+<h5 id="Theory_2" name="Theory_2">Theory</h5>
+
+<p>Now that we know what interface inheritance means, we can look at more generic cases. We will first see this in a very theoretical way, and then we will use the nsHTMLAnchorElement example to illustrate the discussion.</p>
+
+<p>Let's assume we have a DOM object Foo, implemented by the real class nsFoo. We also have another real class, nsBar, as well as three interfaces, nsIFoo1, nsIFoo2, and nsIFoo3. The situation is the following:</p>
+
+<pre class="eval">nsBar &lt;- nsIFoo1
+  |
+  V
+nsFoo &lt;- nsIFoo2 &lt;- nsIFoo3
+</pre>
+
+<p>In this situation, the nsIFoo2 interface inherits from the nsIFoo3 interface, as described above. nsFoo implements nsIFoo2, and thus also nsIFoo3, and nsBar implements nsIFoo1. The real class nsFoo inherits from the other real class nsBar. The rules describing inheritance are the following:</p>
+
+<ul>
+ <li>nsFoo implements nsIFoo1 automatically, because it inherits from a class that already implements nsIFoo1.</li>
+ <li>nsBar <em>has</em> to implement nsIFoo1.</li>
+ <li>nsFoo <em>has</em> to implement nsIFoo2 and nsIFoo3, unless they are <em>forwarded</em> to nsBar. Interface forwarding is described in Section 1.E.d.</li>
+</ul>
+
+<p>These rules are pretty simple, and are widely used in the DOM code. It gets trickier with a lot of classes and interfaces, but you can always reduce the problem to the above situation.</p>
+
+<h5 id="Example" name="Example">Example</h5>
+
+<p>Let's take a look at a simple example, the HTML Anchor Element. First, let's illustrate the interface inheritance rules. If we look at nsIDOMHTMLAnchorElement (which contains the methods and properties defined by the W3C for this element), we can see that it inherits from another interface, nsIDOMHTMLElement:</p>
+
+<pre class="eval">interface nsIDOMHTMLAnchorElement : nsIDOMHTMLElement
+</pre>
+
+<p>This means that whatever class implements the nsIDOMHTMLAnchorElement interface will also have to implement the nsIDOMHTMLElement interface. If we look at nsIDOMHTMLElement, we can see that it inherits from nsIDOMElement, which inherits from nsIDOMNode, which inherits from nsISupports. Any class implementing nsIDOMHTMLAnchorElement will have to implement all the mentioned interfaces, because of inheritance. How the interfaces are implemented is described in paragraph 1.E.d.</p>
+
+<p>The interface inheritance shows that the top-level interface is nsISupports. All interfaces have to inherit from nsISupports, directly or indirectly. It defines three methods, AddRef(), Release(), and QueryInterface(), which is explained in Section 1.B. nsISupports rests peacefully in <a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/base/nsISupports.idl" rel="custom">xpcom/base/</a>, unmodified since 1999. For more information about XPCOM interfaces and nsISupports, please read the <a href="/en/Modularization_Techniques" title="en/Modularization_Techniques">Modularization Techniques</a> guide.</p>
+
+<p>To illustrate the inherited implementation of an interface, let's take a look at the real class that implements the HTML Anchor Element. It is nsHTMLAnchorElement. We can see that the inheritance chain for the real classes looks like this:</p>
+
+<pre class="eval">nsGenericElement -&gt; nsGenericHTMLElement -&gt; nsGenericHTMLContainerElement -&gt; nsHTMLAnchorElement
+</pre>
+
+<p>We can see this in the class definitions:</p>
+
+<pre class="eval">class nsHTMLAnchorElement : public nsGenericHTMLContainerElement
+class nsGenericHTMLContainerElement : public nsGnericHTMLElement
+class nsGenericHTMLElement : public nsGenericElement
+</pre>
+
+<p>Looking at the class definitions, we can see that nsGenericHTMLElement and nsGenericHTMLContainerElement don't implement any interface directly. However nsGenericElement does:</p>
+
+<pre class="eval">class nsGenericElement : public nsIHTMLContent
+</pre>
+
+<p>This of course means that nsGenericElement implements the nsIHTMLContent interface. The interface inheritance chain for nsIHTMLContent looks like this:</p>
+
+<pre class="eval">nsISupports -&gt; nsIContent -&gt; nsIStyledContent -&gt; nsIXMLContent -&gt; nsIHTMLContent
+</pre>
+
+<p>nsGenericElement has to implement all of the above interfaces, and <em>all the real classes inheriting from nsGenericElement will automatically implement all those interfaces</em>. This is consistent with the rules we have defined earlier in this paragraph.</p>
+
+<h3 id="See_also" name="See_also">See also</h3>
+
+<ul>
+ <li><a href="/en/XPIDL/xpidl" title="en/XPIDL/xpidl">The XPIDL reference</a></li>
+ <li><a class="external" href="http://www.mozilla.org/docs/dom/mozilla/classes/">Mapping DOM Objects to their C class</a></li>
+ <li><a href="/en/Modularization_Techniques" title="en/Modularization_Techniques">Modularization Techniques</a></li>
+</ul>

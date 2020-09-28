@@ -1,0 +1,138 @@
+<p>By default, XULRunner is built without LDAP XPCOM support. If you want to use LDAP components in your XUL application, you have two options : compile XULRunner with LDAP support enabled, or add LDAP XPCOM directly to your XUL app (in the components directory).</p>
+<p>In any case, you will have to build LDAP XPCOM, by adding <code>--enable-ldap</code> build option. See the <a href="/en-US/docs/Build_Documentation">Build_Documentation</a> for more information about how to build XULRunner. When <a href="/en-US/docs/Configuring_Build_Options">Configuring Build Options</a>, just add:</p>
+<pre>ac_add_options --enable-ldap
+</pre>
+<p>to your .mozconfig file.</p>
+<p>This will create two files in the components directory of the build package:</p>
+<ul>
+  <li><code>mozldap.dll</code> (or libmozldap.so or...)</li>
+  <li><code>mozldap.xpt</code></li>
+</ul>
+<p>and two files in the root directory of the build package: On windows:</p>
+<ul>
+  <li><code>nsldap32v50.dll</code></li>
+  <li><code>nsldappr32v50.dll</code></li>
+</ul>
+<p>On linux:</p>
+<ul>
+  <li><code>libldap50.so</code></li>
+  <li><code>libprldap50.so</code></li>
+</ul>
+<p>Those are the native LDAP library.</p>
+<p>If you copy as usual those files in the <code>components</code> directory of your XUL app, this can't work. Actually, the LDAP interfaces are available (for exemple, <code>Components.interfaces.nsILDAPConnection</code> is not null), but the components can't be loaded (for example, <code>Components.classes["@mozilla.org/network/ldap-connection;1"]</code> is null). This is due to the fact that the native LDAP library files are not found by the XULRunner process.</p>
+<p>The solution is to use the bsmedberg stub, described in <a href="/en-US/docs/Using_Dependent_Libraries_In_Extension_Components">Using Dependent Libraries In Extension Components</a>: the component library is just a loader of the real library and all its dependencies, so as all the needed libraries are loaded.</p>
+<p>Create a subdirectory <code>extensions/ldapstub</code> in the mozilla source code directory, containing two files, <code>Makefile.in</code> and <code>LDAPStubLoader.cpp</code>:</p>
+<p>Makefile.in:</p>
+<pre># Copyright (c) 2005 Benjamin Smedberg &lt;benjamin@smedbergs.us&gt;
+
+DEPTH = ../..
+srcdir = @srcdir@
+topsrcdir = @top_srcdir@
+VPATH = @srcdir@
+
+include $(DEPTH)/config/autoconf.mk
+
+MODULE = mozldapstub
+LIBRARY_NAME = mozldap_stub
+IS_COMPONENT = 1
+FORCE_SHARED_LIB = 1
+
+REQUIRES = \
+	xpcom \
+	string \
+	$(NULL)
+
+CPPSRCS = LDAPStubLoader.cpp
+
+EXTRA_DSO_LDOPTS += \
+	$(DIST)/lib/$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+	$(XPCOM_FROZEN_LDOPTS) \
+        $(NSPR_LIBS) \
+	$(NULL)
+
+include $(topsrcdir)/config/rules.mk
+
+DEFINES += -DMOZ_DLL_PREFIX=\"$(DLL_PREFIX)\"
+</pre>
+<p>LDAPStubLoader.cpp:</p>
+<pre>// Copyright (c) 2005 Benjamin Smedberg &lt;benjamin@smedbergs.us&gt;
+
+#include "nscore.h"
+#include "nsModule.h"
+#include "prlink.h"
+#include "nsILocalFile.h"
+#include "nsStringAPI.h"
+#include "nsCOMPtr.h"
+
+static char const *const kDependentLibraries[] =
+{
+#ifdef NS_WIN32
+  MOZ_DLL_PREFIX "nsldap32v50" MOZ_DLL_SUFFIX,
+  MOZ_DLL_PREFIX "nsldappr32v50" MOZ_DLL_SUFFIX,
+#endif //NS_WIN32
+#ifdef NS_UNIX
+  MOZ_DLL_PREFIX "ldap50" MOZ_DLL_SUFFIX,
+  MOZ_DLL_PREFIX "prldap50" MOZ_DLL_SUFFIX,
+#endif //NS_UNIX
+  nsnull
+};
+
+// component.dll on windows, libcomponent.dll on linux
+static char kRealComponent[] = MOZ_DLL_PREFIX "mozldap" MOZ_DLL_SUFFIX;
+
+nsresult
+NSGetModule(nsIComponentManager* aCompMgr,
+            nsIFile* aLocation,
+            nsIModule* *aResult)
+{
+  nsresult rv;
+
+  nsCOMPtr&lt;nsIFile&gt; libraries;
+  rv = aLocation-&gt;GetParent(getter_AddRefs(libraries));
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsCOMPtr&lt;nsILocalFile&gt; library(do_QueryInterface(libraries));
+  if (!library)
+    return NS_ERROR_UNEXPECTED;
+
+  library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING("libraries"));
+  library-&gt;AppendNative(NS_LITERAL_CSTRING("dummy"));
+
+  // loop through and load dependent libraries
+  for (char const *const *dependent = kDependentLibraries;
+       *dependent;
+       ++dependent) {
+    library-&gt;SetNativeLeafName(nsDependentCString(*dependent));
+    PRLibrary *lib;
+    library-&gt;Load(&amp;lib);
+    // 1) We don't care if this failed!
+    // 2) We are going to leak this library. We don't care about that either.
+  }
+
+  library-&gt;SetNativeLeafName(NS_LITERAL_CSTRING(kRealComponent));
+
+  PRLibrary *lib;
+  rv = library-&gt;Load(&amp;lib);
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsGetModuleProc getmoduleproc = (nsGetModuleProc)
+    PR_FindFunctionSymbol(lib, NS_GET_MODULE_SYMBOL);
+
+  if (!getmoduleproc)
+    return NS_ERROR_FAILURE;
+
+  return getmoduleproc(aCompMgr, aLocation, aResult);
+}
+</pre>
+<p>Then change your <code>.mozconfig</code> to add this line:</p>
+
+<pre>ac_add_options --enable-extensions=ldapstub
+</pre>
+<p>Rebuild XULRunner. This will create a new file in the <code>components</code> subdirectory of the built package, <code>mozldap_stub.dll</code> (on Windows) or <code>libmozldap_stub.so</code> (on Linux).</p>
+<p>Copy <code>mozldap.xpt</code> and <code>mozldap_stub.dll</code> into your <code>components</code> XUL app subdirectory. Create a <code>libraries</code> subdirectory in your XUL app directory, and copy <code>mozldap.dll</code> (or <code>libmozldap.so</code>), and the native LDAP binaries into it.</p>
+<p>Don't forget to clean your profile.</p>
+<p>You can now use the LDAP components.</p>
+
+

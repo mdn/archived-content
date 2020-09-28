@@ -1,0 +1,20 @@
+<p>Not all URI loads are safe. For example, loading some <code>file:</code> URIs can hang the browser or even crash the operating system in some cases. Some other schemes are used internally by Mozilla modules to communicate with each other. Finally, some URIs (e.g. <code>chrome:</code> give the loaded page expanded privileges. If a web page gets access to a window with such expanded privileges, it may be able to abuse it to gain access to those privileges itself.</p>
+
+<p>To solve this problem, Gecko provides methods that allow the caller to check whether it's safe to load a particular URI. These methods are exposed on the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptSecurityManager" title="">nsIScriptSecurityManager</a></code> interface and are called <code>checkLoadURI</code>, <code>checkLoadURIWithPrincipal</code>, and <code>checkLoadURIStr</code>. All three methods take three arguments: the first argument identifies the source of the URI, the second argument is the URI that one plans to load, and the third argument is a set of flags that can be used to impose additional restrictions on the URIs that may be loaded. It's important to make sure that the first argument to these methods identifies the source of the URI. So if you're implementing a context menu and you add a "View Image" option, the source of the image URI would be the page the image is in, not the chrome document the context menu code is in.</p>
+
+<h2 id="Differences_between_the_methods" name="Differences_between_the_methods">Differences between the methods</h2>
+
+<p>The three methods differ from each other in how the source of the URI is identified and in what is known about the URI to be loaded.</p>
+
+<p>In general, the following guidelines apply for Gecko 1.8:</p>
+
+<ol>
+ <li>If you plan pass a URI string to <code>nsIWebNavigation.loadURI</code> (which can happen indirectly, e.g. by passing the string to something that loads it in a <code>&lt;browser&gt;</code> or <code>&lt;iframe&gt;</code>), you must call <code>checkLoadURIStr</code> to be secure. There's no way to do this completely securely in Gecko versions prior to 1.8.0.4.</li>
+ <li>If you're doing anything else (passing a URI string to some other API like <code>window.open</code> or <code>&lt;img src=""&gt;</code>, passing a URI object to an API that loads URI objects, etc.) use whichever method best fits the data you can get your hands on. If you have a choice as to what data you have, prefer <code>checkLoadURIWithPrincipal</code> to <code>checkLoadURI</code> and prefer <code>checkLoadURI</code> to <code>checkLoadURIStr</code>. Note that <code>checkLoadURIWithPrincipal</code> is not scriptable in Gecko 1.8, so extensions are not able to use it.</li>
+</ol>
+
+<h2 id="Changes_in_Gecko_1.9">Changes in Gecko 1.9</h2>
+
+<p>A key security change in Gecko 1.9 is the addition of the new <code>security.fileuri.strict_origin_policy</code> preference.  This Boolean preference, which defaults to <code>true</code>, can be set to <code>false</code> if the user doesn't want to strictly enforce the same origin policy on <code>file:</code> URIs.</p>
+
+<p>See <a class="internal" href="/en-US/docs/Same-origin_policy_for_file%3A_URIs">Same-origin policy for file: URIs</a> for details.</p>

@@ -1,0 +1,101 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<div class="summary">
+<p>The type of <code>ObjectOps::enumerate</code>. This callback overrides a portion of SpiderMonkey's default [[Enumerate]] internal method.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef bool
+(* JSNewEnumerateOp)(JSContext *cx, JS::HandleObject obj,
+                     JS::AutoIdVector &amp;properties); // Added in SpiderMonkeySidebar 38
+
+typedef bool
+(* JSNewEnumerateOp)(JSContext *cx, JS::HandleObject obj, JSIterateOp enum_op,
+                     JS::MutableHandleValue statep, JS::MutableHandleId idp); // Obsolete since JSAPI 37
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which the enumeration is taking place.</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JS::HandleObject")}}</td>
+   <td>The object to be enumerated.</td>
+  </tr>
+  <tr>
+   <td><code>properties</code></td>
+   <td>{{jsapixref("JS::AutoIdVector", "JS::AutoIdVector &amp;")}}</td>
+   <td>Out parameter. Id array to populate with all property keys.</td>
+  </tr>
+  <tr>
+   <td><code>enum_op</code></td>
+   <td><code>JSIterateOp</code></td>
+   <td>{{ obsolete_inline("jsapi37") }} Specifies which step in iteration is happening. See the Description below.</td>
+  </tr>
+  <tr>
+   <td><code>statep</code></td>
+   <td>{{jsapixref("JS::Value", "JS::MutableHandleId")}}</td>
+   <td>{{ obsolete_inline("jsapi37") }} In/out parameter. The meaning depends on <code>enum_op</code>. See the Description below.</td>
+  </tr>
+  <tr>
+   <td><code>idp</code></td>
+   <td>{{jsapixref("jsid", "JS::MutableHandleId")}}</td>
+   <td>{{ obsolete_inline("jsapi37") }} In/out parameter. The meaning depends on <code>enum_op</code>. See the Description below.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>From SpiderMonkey 38, <strong><code>JSNewEnumerateOp</code></strong> is the type of <code>ObjectOps::enumerate</code>. This callback overrides a portion of SpiderMonkey's default <code>[[Enumerate]]</code> internal method. When an ordinary object is enumerated, that object and each object on its prototype chain is tested for an enumerate op, and those ops are called in order. The properties each op adds to the <code>properties</code> vector are added to the set of values the <code>for-in</code> loop will iterate over. All of this is nonstandard.</p>
+
+<p>An object is "enumerated" when it's the target of a <code>for-in</code> loop or {{jsapixref("JS_Enumerate")}}. All other property inspection, including {{jsapixref("Object.keys", "Object.keys(obj)")}}, goes through <code>[[OwnKeys]]</code>.</p>
+
+<p>The callback's job is to populate <code>properties</code> with all property keys that the <code>for-in</code> loop should visit.</p>
+
+<div class="note">
+<p>Before JSAPI 37, <strong><code>JSNewEnumerateOp</code></strong> was the type of <code>JSClass.enumerate</code>.</p>
+
+<p>To use a <code>JSNewEnumerateOp</code> in a <code>JSClass</code>, set the {{jsapixref("JSClass.flags", "JSCLASS_NEW_ENUMERATE")}} bit in the {{jsapixref("JSClass.flags")}} field and set the <code>JSClass.enumerate</code> field to your <code>JSNewEnumerateOp</code>, casting it to <code>JSEnumerateOp</code>. (SpiderMonkey, noting the <code>JSCLASS_NEW_ENUMERATE</code> flag, will cast that function pointer back to type <code>JSNewEnumerateOp</code> before calling it.)</p>
+
+<p>The behavior depends on the value of <code>enum_op</code>:</p>
+
+<dl>
+ <dt><code>JSENUMERATE_INIT</code></dt>
+ <dd>
+ <p>A new, opaque iterator state should be allocated and stored in <code>*statep</code>. (You can use {{jsapixref("PRIVATE_TO_JSVAL")}} to tag the pointer to be stored).</p>
+
+ <p>The number of properties that will be enumerated should be returned as an integer jsval in <code>*idp</code>, if <code>idp</code> is non-null, and provided the number of enumerable properties is known. If <code>idp</code> is non-null and the number of enumerable properties can't be computed in advance, <code>*idp</code> should be set to {{jsapixref("JSVAL_ZERO")}}.</p>
+ </dd>
+ <dt><code>JSENUMERATE_INIT_ALL</code></dt>
+ <dd>Used identically to <code>JSENUMERATE_INIT</code>, but exposes all properties of the object regardless of enumerability.</dd>
+ <dt><code>JSENUMERATE_NEXT</code></dt>
+ <dd>
+ <p>A previously allocated opaque iterator state is passed in via <code>statep</code>. Return the next {{jsapixref("jsid")}} in the iteration using <code>*idp</code>. The opaque iterator state pointed at by <code>statep</code> is destroyed and <code>*statep</code> is set to {{jsapixref("JSVAL_NULL")}} if there are no properties left to enumerate.</p>
+ </dd>
+ <dt><code>JSENUMERATE_DESTROY</code></dt>
+ <dd>
+ <p>Destroy the opaque iterator state previously allocated in <code>*statep</code> by a call to this function when <code>enum_op</code> was <code>JSENUMERATE_INIT</code> or <code>JSENUMERATE_INIT_ALL</code>.</p>
+ </dd>
+</dl>
+
+<p>The return value is used to indicate success, with a value of false indicating failure.</p>
+</div>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JSNewEnumerateOp") }}</li>
+ <li>{{jsapixref("JSEnumerateOp")}}</li>
+ <li>{{bug(1097267)}}</li>
+</ul>

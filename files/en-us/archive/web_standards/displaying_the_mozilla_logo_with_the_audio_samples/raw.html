@@ -1,0 +1,70 @@
+
+<p>The following example shows how to take samples from an audio stream and display them behind an image (in this case, the Mozilla logo), giving the impression that the image is built from the samples.</p>
+<p><img alt="preview.png" class="internal default" src="/@api/deki/files/4724/=preview.png"></p>
+<pre>  &lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;JavaScript Spectrum Example&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;audio id="audio-element"
+           src="revolve.ogg"
+           controls="true"
+           style="width: 512px;"&gt;
+    &lt;/audio&gt;
+    &lt;div&gt;&lt;canvas id="fft" width="512" height="200"&gt;&lt;/canvas&gt;&lt;/div&gt;
+    &lt;img id="mozlogo" style="display:none" src="mozilla2.png"&gt;&lt;/img&gt;
+    &lt;script&gt;
+      var canvas = document.getElementById('fft'),
+          ctx = canvas.getContext('2d'),
+          channels,
+          rate,
+          frameBufferLength,
+          fft;
+
+      function loadedMetadata() {
+        channels          = audio.mozChannels;
+        rate              = audio.mozSampleRate;
+        frameBufferLength = audio.mozFrameBufferLength;
+
+        fft = new FFT(frameBufferLength / channels, rate);
+      }
+
+      function audioAvailable(event) {
+        var fb = event.frameBuffer,
+            t  = event.time, /* unused, but it's there */
+            signal = new Float32Array(fb.length / channels),
+            magnitude;
+
+        for (var i = 0, fbl = frameBufferLength / 2; i &lt; fbl; i++ ) {
+          // Assuming interlaced stereo channels,
+          // need to split and merge into a stero-mix mono signal
+          signal[i] = (fb[2*i] + fb[2*i+1]) / 2;
+        }
+
+        // Clear the canvas before drawing spectrum
+        ctx.fillStyle = "rgb(0,0,0)";
+        ctx.fillRect (0,0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgb(255,255,255)";
+
+        for (var i = 0; i &lt; signal.length; i++ ) {
+          // multiply spectrum by a zoom value
+          magnitude = signal[i] * 1000;
+
+          // Draw rectangle bars for each frequency bin
+          ctx.fillRect(i * 4, canvas.height, 3, -magnitude);
+        }
+
+        ctx.drawImage(document.getElementById('mozlogo'),0,0, canvas.width, canvas.height);
+
+      }
+
+      var audio = document.getElementById('audio-element');
+      audio.addEventListener('MozAudioAvailable', audioAvailable, false);
+      audio.addEventListener('loadedmetadata', loadedMetadata, false);
+
+    &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+
+</pre>

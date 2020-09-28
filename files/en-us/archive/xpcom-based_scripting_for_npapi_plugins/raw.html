@@ -1,0 +1,178 @@
+<p></p><div class="warning warningHeader">
+    <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> This article was written on August 31, 2001; it is not compatible with current versions of Firefox.</p>
+</div><p></p>
+<div class="note">
+<p>This article applies to Mozilla versions 0.9.2 and higher and Netscape versions 6.1 and higher. It does not cover Netscape 6 and 6.01</p>
+</div>
+<h3 id="Introduction">Introduction</h3>
+<p>Plugins that used to take advantage of being scriptable via LiveConnect in 4.x Netscape browsers lost this possibility in the new world. The main reason for this is that there is no guarantee of Java compatibility on a binary level due to the jri/jni switch. The new Mozilla <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> architecture allows XPCOM components be scriptable via a different mechanism called <a href="/en/XPConnect" title="en/XPConnect">XPConnect</a>. We leverage some of these ideas to help you make your Netscape Communicator 4.x plugins exposed to JavaScript in Mozilla based browsers.</p>
+<p>In order to make it still possible to script plugins, some changes have been made to the Mozilla code. The changes allow to make existing 4.x plugins scriptable with only minor modifications in their code. The present document describes the steps of what should be done to the plugin code to turn it scriptable again.</p>
+<h3 id="What's_in_the_Mozilla_code">What's in the Mozilla code?</h3>
+<p>A couple of lines have been added to the DOM code asking a plugin to return a scriptable iid and a pointer to a scriptable instance object. The old Plugin API call <code>NPP_GetValue</code> is used to retrieve this information from the plugin. So the plugin project should be aware of two new additions to <code>NPPVariable</code> enumeration type which are now defined in <code class="filename">npapi.h</code> as:</p>
+<pre>NPPVpluginScriptableInstance = 10,
+NPPVpluginScriptableIID      = 11
+</pre>
+<p>and two analogous additions to <code>nsPluginInstanceVariable</code> type in <code class="filename">nsplugindefs.h</code> as:</p>
+<pre>nsPluginInstanceVariable_ScriptableInstance = 10,
+nsPluginInstanceVariable_ScriptableIID      = 11
+</pre>
+<h3 id="What's_in_the_plugin_code">What's in the plugin code?</h3>
+<ol> <li>A unique interface id should be obtained. Windows command <code>uuidgen</code> should be sufficient.</li> <li>An Interface Definition (<code>.idl</code>) file describing the plugin scriptable interface should be added to the project (<a href="#Example_1._Sample_.idl_file">see example 1</a>).</li> <li>A Scriptable instance object should be implemented in the plugin. This class will contain native methods callable from JavaScript. This class should also inherit from <code>nsIClassInfo</code> and implement its methods to be able to request all necessary privileges from the Mozilla security manager (<a href="#Example_2._Scriptable_instance_class">see example 2</a>).</li> <li>Two new cases for the above mentioned new variables should be added to the plugin implementation of <code>NPP_GetValue</code> (<a href="#Example_3._NPP_GetValue_implementation_and_possible_scenario_of_scriptable_object_life_cycle">see example 3</a>).</li>
+</ol>
+<h3 id="How_to_call_plugin_native_methods">How to call plugin native methods</h3>
+<p>The following HTML code will do the job:&lt;/p&gt;</p>
+<p><span>This should be changed, we shouldn't advocate EMBED</span></p>
+<pre>&lt;embed type="application/plugin-mimetype"&gt;
+&lt;script language="javascript"&gt;
+var embed = document.embeds[0];
+embed.nativeMethod();
+&lt;/script&gt;
+</pre>
+<h3 id="How_to_build_and_install">How to build and install</h3>
+<p>Having the built Mozilla tree is probably not necessary, but building the plugin with a scriptable instance interface will require Mozilla headers and the XPCOM compatible idl compiler -- <code>xpidl.exe</code>. <em>MS DevStudio MIDL must not be used</em>. (Let's assume 'TestPlugin' as a plugin name-place holder.)</p>
+<ol> <li>Compile <code class="filename">nsITestPlugin.idl</code> with the idl compiler. This will generate <code class="filename">nsITestPlugin.h</code> and <code class="filename">nsITestPlugin.xpt</code> files.</li> <li>Put <code class="filename">nsITestPlugin.xpt</code> to the Components folder.</li> <li>Build <code class="filename">nptestplugin.dll</code> with <code class="filename">nsITestPlugin.h</code> included for compiling scriptable instance class implementaion.</li> <li>Put <code class="filename">nptestplugin.dll</code> to the Plugins folder.</li>
+</ol>
+<h3 id="Related_sources">Related sources</h3>
+<ul> <li>The full sample plugin code can be found in the Mozilla source tree under <code><a href="https://dxr.mozilla.org/mozilla-central/source/modules/plugin/samples/4x-scriptable/" rel="custom">modules/plugin/samples/4x-scriptable/</a></code></li> <li>IBM Developer Works has published <a class="external" href="http://www.ibm.com/developerworks/webservices/library/co-xpcom.html">a good article on XPCOM</a>.</li>
+</ul>
+<h3 id="Examples">Examples</h3>
+<h4 id="Example_1._Sample_.idl_file">Example 1. Sample <code>.idl</code> file</h4>
+<pre>#include "nsISupports.idl"
+
+[scriptable, uuid(bedb0778-2ee0-11d5-9cf8-0060b0fbd8ac)]
+interface nsITestPlugin : nsISupports {
+      void nativeMethod();
+};
+</pre>
+<h4 id="Example_2._Scriptable_instance_class">Example 2. Scriptable instance class</h4>
+<pre>#include "nsITestPlugin.h"
+#include "nsIClassInfo.h"
+
+// We must implement nsIClassInfo because it signals the
+// Mozilla Security Manager to allow calls from JavaScript.
+
+// helper class to implement all necessary nsIClassInfo method stubs
+// and to set flags used by the security system
+class nsClassInfoMixin : public nsIClassInfo
+{
+  // These flags are used by the DOM and security systems to signal that
+  // JavaScript callers are allowed to call this object's scritable methods.
+  NS_IMETHOD GetFlags(PRUint32 *aFlags)
+    {*aFlags = nsIClassInfo::PLUGIN_OBJECT | nsIClassInfo::DOM_OBJECT;
+     return NS_OK;}
+  NS_IMETHOD GetImplementationLanguage(PRUint32 *aImplementationLanguage)
+    {*aImplementationLanguage = nsIProgrammingLanguage::CPLUSPLUS;
+     return NS_OK;}
+
+  // The rest of the methods can safely return error codes...
+  NS_IMETHOD GetInterfaces(PRUint32 *count, nsIID * **array)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+  NS_IMETHOD GetHelperForLanguage(PRUint32 language, nsISupports **_retval)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+  NS_IMETHOD GetContractID(char * *aContractID)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+  NS_IMETHOD GetClassDescription(char * *aClassDescription)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+  NS_IMETHOD GetClassID(nsCID * *aClassID)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+  NS_IMETHOD GetClassIDNoAlloc(nsCID *aClassIDNoAlloc)
+    {return NS_ERROR_NOT_IMPLEMENTED;}
+};
+
+class nsScriptablePeer : public nsITestPlugin,
+                         public nsClassInfoMixin
+{
+public:
+    nsScriptablePeer();
+    ~nsScriptablePeer();
+
+    NS_DECL_ISUPPORTS
+    NS_DECL_NSITESTPLUGIN
+};
+
+nsScriptablePeer::nsScriptablePeer()
+{
+    NS_INIT_ISUPPORTS();
+}
+
+nsScriptablePeer::~nsScriptablePeer()
+{
+}
+
+// Notice that we expose our claim to implement nsIClassInfo.
+NS_IMPL_ISUPPORTS2(nsScriptablePeer, nsITestPlugin, nsIClassInfo)
+
+// the following method will be callable from JavaScript
+NS_IMETHODIMP
+nsScriptablePeer::NativeMethod()
+{
+    return NS_OK;
+}
+</pre>
+<h4 id="Example_3._NPP_GetValue_implementation_and_possible_scenario_of_scriptable_object_life_cycle">Example 3. NPP_GetValue implementation and possible scenario of scriptable object life cycle</h4>
+<pre>#include "nsITestPlugin.h"
+
+NPError NPP_New(NPMIMEType pluginType, NPP instance, uint16 mode,
+                int16 argc, char* argn[], char* argv[], NPSavedData* saved)
+{
+    if(instance == NULL)
+      return NPERR_INVALID_INSTANCE_ERROR;
+
+    // just prime instance-&gt;pdata with null for the purpose of this example
+    // it will be assigned to the scriptable interface later to keep its
+    // association with the specific plugin instance
+    instance-&gt;pdata = NULL;
+    return rv;
+}
+
+NPError
+NPP_GetValue(NPP instance, NPPVariable variable, void *value)
+{
+    if(instance == NULL)
+        return NPERR_INVALID_INSTANCE_ERROR;
+
+    NPError rv = NPERR_NO_ERROR;
+    static nsIID scriptableIID = NS_ITESTPLUGIN_IID;
+
+    if (variable == NPPVpluginScriptableInstance) {
+
+        // nsITestPlugin interface object should be associated with the plugin
+        // instance itself. For the purpose of this example to keep things simple
+        // we just assign it to instance-&gt;pdata after we create it.
+
+        nsITestPlugin *scriptablePeer = (nsITestPlugin *)instance-&gt;pdata;
+
+        // see if this is the first time and we haven't created it yet
+        if (!scriptablePeer) {
+            nsITestPlugin *scriptablePeer = new nsScriptablePeer();
+            if (scriptablePeer)
+                NS_ADDREF(scriptablePeer); // addref for ourself,
+                                           // don't forget to release on
+                                           // shutdown to trigger its destruction
+        }
+        // add reference for the caller requesting the object
+        NS_ADDREF(scriptablePeer);
+        *(nsISupports **)value = scriptablePeer;
+    }
+    else if (variable == NPPVpluginScriptableIID) {
+        nsIID* ptr = (nsIID *)NPN_MemAlloc(sizeof(nsIID));
+        *ptr = scriptableIID;
+        *(nsIID **)value = ptr;
+    }
+    return rv;
+}
+
+NPError NPP_Destroy (NPP instance, NPSavedData** save)
+{
+    if(instance == NULL)
+      return NPERR_INVALID_INSTANCE_ERROR;
+
+    // release the scriptable object
+    NS_IF_RELEASE(instance-&gt;pdata);
+}
+</pre>
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information">Original Document Information</h2>
+<ul> <li>Author(s): Arun K. Ranganathan</li> <li>Last Updated Date: October 26, 2001</li> <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

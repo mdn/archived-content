@@ -1,0 +1,89 @@
+<p>{{AddonSidebar}}</p>
+
+<div class="blockIndicator warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<div class="blockIndicator draft">
+<p><strong>Draft</strong><br>
+ This page is not complete.</p>
+</div>
+
+<p>This document is intended as a guide for developers to promote best practices in securing your extension. Your goal is to keep your users safe. Some items mentioned are strict guidelines, meaning that if you don't follow them then your add-on will not be approved on Mozilla add-ons. Other items are recommendations. The difference will be clearly flagged.</p>
+
+<p>This is written from the perspective of a Firefox extension, but most items apply to extensions for other Mozilla-based applications such as Thunderbird or SeaMonkey.</p>
+
+<h2 id="Web_content_handling">Web content handling</h2>
+
+<p>In general the best way to ensure that the browser is not compromised when you load content is to make sure it does not have those privileges. A more detailed explanation of this process is in <a class="internal" href="/En/Displaying_web_content_in_an_extension_without_security_issues" title="En/Displaying web content in an extension without security issues">Displaying web content in an extension without security issues</a>.</p>
+
+<p>The privileges that a document gets also depend on where it comes from. For example, if you load a chrome URL, this means the content has been registered with Firefox and has full access. Content from a domain (such as <span class="nowiki">http://www.example.com</span>) can only access that same domain. Files<br>
+ loaded using the file protocol can access files on the user's disk and other local devices. There are ways to get around the content/chrome security barrier, if for example, you want a web page to send a notification to the add-on (or vice versa). One way to do this is to use custom DOM events; see <a class="internal" href="/en/Code_snippets/Interaction_between_privileged_and_non-privileged_pages" title="en/Code snippets/Interaction between privileged and non-privileged pages">Interaction between privileged and non-privileged pages</a>.</p>
+
+<p>Regardless of where the document comes from, you can further restrict what it can do by applying properties to the document holder, known as the docshell.</p>
+
+<p><code>frame.docShell.allowImages = false;<br>
+ frame.docShell.allowJavascript = false;<br>
+ frame.docShell.allowPlugins = false;</code></p>
+
+<p>There are more examples listed in the document listed above in this section. In certain circumstances you may want to run code in your extension, but you would like to give it restricted privileges. One of the best ways to do this is to use <a class="internal" href="/en/Components.utils.evalInSandbox" title="en/Components.utils.evalInSandbox"><code>Components.utils.evalInSandbox()</code></a>. Note that objects passed into the sandbox are restricted, but objects that come back out from it are not. Refer to the document to find out how to avoid such pitfalls. For more information, refer to the evalInSandbox section.</p>
+
+<h2 id="The_sidebar_a_use_case">The sidebar: a use case</h2>
+
+<p>The sidebar in Firefox is designed to hold both chrome (privileged) content and Web (nonprivileged) content, the latter being in the form of Web pages. These Web pages can come from a server, or come from local HTML files bundled with the extension. For pages coming from the server, you need to take steps to ensure that the content can not call back into the Web browser and run malicious code. The main way to do this is by creating an iframe or browser element in the sidebar, and loading your content there. Give the element a <code>type="content"</code> attribute, which essentially sandboxes the code there and blocks callback rights into chrome.</p>
+
+<h2 id="Using_eval()_in_an_extension">Using eval() in an extension</h2>
+
+<p>Using the built-in JavaScript <a href="/en-US/docs/Web/JavaScript/Reference/eval" title="The eval() method evaluates JavaScript code represented as a string."><code>eval</code></a> function is frowned upon in the context of extensions. While there are some legitimate use-cases, most of the time there are safer alternatives. <a class="external" href="http://adblockplus.org/blog/five-wrong-reasons-to-use-eval-in-an-extension" title="http://adblockplus.org/blog/five-wrong-reasons-to-use-eval-in-an-extension">This blog post</a> offers some excellent reasons <strong>not</strong> to use <code>eval()</code>.</p>
+
+<h2 id="Sandboxed_HTTP_connections">Sandboxed HTTP connections</h2>
+
+<p>The main purpose of sandboxed HTTP connections is to interact with a web service, without interfering with the cookies set in the browser by that service/site. For example, if you are loading pictures or other data from a photo sharing site, you can sandbox your connections to that site so that the normal browsing of that site by the user in the main Firefox browser is not affected. For a real world use case, take a look at <a class="external" href="http://weblogs.mozillazine.org/doron/archives/2006/06/creating_sandboxed_http_connec.html" title="http://weblogs.mozillazine.org/doron/archives/2006/06/creating_sandboxed_http_connec.html">this blog post</a>.</p>
+
+<h2 id="Handling_of_logins_and_passwords">Handling of logins and passwords</h2>
+
+<p>There are various ways of storing data in Firefox, but for user logins and passwords, you should use the <a class="internal" href="/en/XPCOM_Interface_Reference/Using_nsILoginManager" title="en/Using nsILoginManager">Login Manager</a>. This is the same store that holds the logins from web pages, and passwords can only be retrieved using a site/username pairing known to the author. The convention for extensions is to use a chrome url for the site identifier, to avoid clashes with logins for sites. It could be the case that your extension provides a different tool or tools for services on your site.</p>
+
+<p>This approach is preferable because it provides users with a familiar interface for interacting with logins, via the <a class="external" href="http://support.mozilla.com/en-US/kb/Remembering+passwords" title="http://support.mozilla.com/en-US/kb/Remembering+passwords">Firefox Password Manager</a>. When users clear logins using the "Clear Recent History" option, it will include your extension's data.</p>
+
+<h2 id="APIs_and_other_data_handling">APIs and other data handling</h2>
+
+<p>Web content is more than just pages, and more and more add-ons are interacting with web services via an Application Programming Interface (API). Many of the items talked about so far in this document apply in this sphere, but here are some additional tips:</p>
+
+<ul>
+ <li>API providers should use the https protocol, which provides better protection for data passed over the network.</li>
+ <li>JSON has become a popular data format for return formats for Web services. Be sure to read <a class="internal" href="/En/Using_native_JSON" title="En/Using native JSON">Using native JSON</a> to find out the correct way to handle it.</li>
+ <li>APIs can't be used with self-signed certificates.</li>
+</ul>
+
+<h2 id="Remote_JavaScript_and_Content">Remote JavaScript and Content</h2>
+
+<p>There are a number of ways of remote scripts being used in extensions. They can be included in content, or downloaded at intervals.</p>
+
+<p>Non-chrome urls in chrome XUL or HTML such as the following example are <strong>not</strong> allowed:</p>
+
+<p><code>&lt;script type="text/javascript" src="<span class="nowiki">http://mysite.greatsite.com/js/wow-content.js</span>" /&gt;</code></p>
+
+<p>In general, scripts that are from remote sources that run in the chrome context are not acceptable, as many times the source of the script can never be 100% guaranteed, and they are vulnerable to man-in-the-middle attacks. The only legitimate environment for remote scripts is to run in a sandbox. For more information, refer to the <a class="internal" href="/en/Security_best_practices_in_extensions#evalInSandbox" title="en/Security best practices in extensions#evalInSandbox"><code>evalInSandbox()</code></a> section.</p>
+
+<h2 id="evalInSandbox">evalInSandbox</h2>
+
+<p>The <a class="internal" href="/en/Components.utils.evalInSandbox" title="en/Components.utils.evalInSandbox">evalInSandbox document</a> explains very well how it works, so there will be no repetition here. The usefulness of it and power of how it works is best illustrated by the popular <a class="link-https" href="https://addons.mozilla.org/en-US/firefox/addon/748" title="https://addons.mozilla.org/en-US/firefox/addon/748">Greasemonkey</a> extension, which works on the premise of scripts being downloaded and stored locally, to be injected into the web content context via the sandbox. Many extensions use the <a class="external" href="http://arantius.com/misc/greasemonkey/script-compiler" title="http://arantius.com/misc/greasemonkey/script-compiler">Greasemonkey compiler</a> to bundle it in their extension for convenience. If you choose to do so, beware when making edits to the bundled files so as not to break the well thought out security architecture.</p>
+
+<h2 id="Third-party_JavaScript">Third-party JavaScript</h2>
+
+<p>In the context of Web sites, using JavaScript written by others is very common. It is not unheard of in add-ons as well, and can provide a useful way to avoid code duplication and accelerate development. <a class="external" href="http://adblockplus.org/blog/third-party-javascript-yes-it-is-a-security-risk">This article</a> is about websites, but gives some insights into the general risks. When you do include other scripts, there are a number of things you can do to ensure their integrity and safety for users. The first is to always get it from a trusted source. Another thing you should do is namespace it just in case other add-ons include it. For example, if you're using jQuery, there's <a class="external" href="http://docs.jquery.com/Using_jQuery_with_Other_Libraries" title="http://docs.jquery.com/Using_jQuery_with_Other_Libraries"><code>jQuery.noConflict()</code></a>.</p>
+
+<h2 id="Conclusion">Conclusion</h2>
+
+<p>Security can't be taken for granted, and for every release of your add-on, a new security audit should take place. A good place to keep up with Mozilla security announcements and security discussion is at the <a class="external" href="http://blog.mozilla.com/security/" title="http://blog.mozilla.com/security/">Mozilla Security Blog</a>.</p>

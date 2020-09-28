@@ -1,0 +1,117 @@
+---
+title: calICalendarViewController
+slug: Archive/Mozilla/callCalendarViewController
+tags:
+  - Interfaces
+  - 'Interfaces:Scriptable'
+  - XPCOM
+  - XPCOM API Reference
+---
+<p>
+</p>
+<h3 id="Summary"> Summary </h3>
+<p>A <code>calICalendarViewController</code> provides a way for a <a href="en/CalICalendarView">calICalendarView</a> to create, modify, and delete items. Implementing a <code>calICalendarViewController</code> allows for these actions to be performed in a manner consistent with the rest of the application in which the <a href="en/CalICalendarView">calICalendarView</a> is included.
+</p><p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/calendar/base/public/calICalendarViewController.idl" rel="custom">calendar/base/public/calICalendarViewController.idl</a></code><span style="text-align: right; float: right;"><a style="color: #00cc00; font-weight: 700;" href="/en-US/docs/Interfaces/About_Scriptable_Interfaces">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+<i>Please add a summary to this article.</i>
+</span>
+
+<div style="background: #eee; padding: 2px;">
+<span> </span>
+<span style="text-align: right; float: right;">Last changed in Gecko ? </span></div>
+</div>
+<p></p>
+<h3 id="Interface_Code"> Interface Code </h3>
+<pre>[scriptable, uuid(1f783898-f4c2-4b2d-972e-360e0de38237)]
+interface calICalendarViewController : nsISupports
+{
+  void createNewEvent (in calICalendar aCalendar,
+           in calIDateTime aStartTime,
+           in calIDateTime aEndTime);
+
+  void modifyOccurrence (in calIItemOccurrence aOccurrence,
+       in calIDateTime aNewStartTime,
+       in calIDateTime aNewEndTime);
+
+  void deleteOccurrence (in calIItemOccurrence aOccurrence);
+};
+</pre>
+<h3 id="Methods"> Methods </h3>
+<h4 id="createNewEvent"> createNewEvent </h4>
+<pre>  void createNewEvent (in calICalendar aCalendar,
+           in calIDateTime aStartTime,
+           in calIDateTime aEndTime);
+</pre>
+<p>The <code>createNewEvent</code> method is used for creating a new <a href="en/CalIEvent">calIEvent</a> in the <a href="en/CalICalendar">calICalendar</a> specified by the aCalendar parameter. In many cases, aCalendar will be the defaultCalendar of the <a href="en/CalICalendarView#displayCalendar">displayCalendar</a> of the <a href="en/CalICalendarView">calICalendarView</a>. The <a href="en/CalIDateTime">calIDateTime</a> parameters are optional, but <code>aEndTime</code> cannot be included without <code>aStartTime</code>. If <code>aStartTime</code> is specified, then the <a href="en/CalIEvent">calIEvent</a> is meant to be created 'silently', that is, without a more detailed dialog appearing. The <a href="en/CalIEvent">calIEvent</a> should have its endDate set to <code>aEndTime</code>, if this parameter is specified. Otherwise, it should be set to a default value, as determined by the application. The other values of the <a href="en/CalIEvent">calIEvent</a> (title, summary, alarm, etc) should likewise be set to defaults. If no <code>aStartTime</code> is specified, then an event-creation dialog should be displayed.
+</p>
+<h4 id="modifyOccurrence"> modifyOccurrence </h4>
+<pre>  void modifyOccurrence (in calIItemOccurrence aOccurrence,
+       in calIDateTime aNewStartTime,
+       in calIDateTime aNewEndTime);
+</pre>
+<p>The <code>modifyOccurrence</code> method is used to change the attributes of an already existing <a href="en/CalIItemBase">calIItem</a>. The <a href="en/CalIDateTime">calIDateTime</a> parameters must either both be specified, or neither. If they are both specified, <code>aOccurrence</code> should be modified 'silently', that is, without a more detailed dialog appearing. Otherwise, a dialog should be display allowing the user to modify the fields. Implementations of <code>calICalendarViewController</code> should be careful to provide clearly defined behavior to the user regarding the modification of recurring <a href="en/CalIItemBase">calIItems</a>.
+</p>
+<h4 id="deleteOccurrence"> deleteOccurrence </h4>
+<pre>  void deleteOccurrence (in calIItemOccurrence aOccurrence);
+</pre>
+<p>The <code>deleteOccurrence</code> method is called when by the <a href="en/CalICalendarView">calICalendarView</a> when <a href="en/CalIItemBase">calIItem</a> should be deleted. Implementations of <code>calICalendarViewController</code> should be careful to provide clearly defined behavior to the user regarding the deleting of recurring <a href="en/CalIItemBase">calIItems</a>, in the case where <code>aOccurrence</code> is a single occurrence of a recurring <a href="en/CalIItemBase">calIItem</a>.
+</p>
+<h3 id="Related_Interfaces"> Related Interfaces </h3>
+<p><a href="en/CalICalendarView">calICalendarView</a> <a href="en/CalIDecoratedView">calIDecoratedView</a>
+</p>
+<h3 id="Example_Code"> Example Code </h3>
+<pre>var myViewController = {
+    QueryInterface: function(aIID) {
+        if (!aIID.equals(Components.interfaces.calICalendarViewController) &amp;&amp;
+            !aIID.equals(Components.interfaces.nsISupports)) {
+            throw Components.results.NS_ERROR_NO_INTERFACE;
+        }
+        return this;
+    },
+
+    createNewEvent: function (aCalendar, aStartTime, aEndTime) {
+        // if we're given both times, skip the dialog
+        if (aStartTime &amp;&amp; aEndTime &amp;&amp; !aStartTime.isDate &amp;&amp; !aEndTime.isDate) {
+            var event = createEvent();
+            event.startDate = aStartTime;
+            event.endDate = aEndTime;
+            event.title = "New Event";
+            aCalendar.addItem(event, null);
+        } else if (aStartTime &amp;&amp; aStartTime.isDate) {
+            var event = createEvent();
+            event.startDate = aStartTime;
+            aCalendar.addItem(event, null);
+        } else {
+            createEventWithDialog(aCalendar, aStartTime, aEndTime);
+        }
+    },
+
+    modifyOccurrence: function (aOccurrence, aNewStartTime, aNewEndTime) {
+        // if we can modify this thing directly (e.g. just the time changed),
+        // then do so; otherwise pop up the dialog
+        if (aNewStartTime &amp;&amp; aNewEndTime &amp;&amp; !aNewStartTime.isDate &amp;&amp; !aNewEndTime.isDate) {
+            var instance = aOccurrence.clone();
+            instance.startDate = aNewStartTime;
+            instance.endDate = aNewEndTime;
+            instance.calendar.modifyItem(instance, aOccurrence, null);
+        } else {
+            modifyEventWithDialog(aOccurrence);
+        }
+    },
+
+    deleteOccurrence: function (aOccurrence) {
+        if (aOccurrence.parentItem != aOccurrence) {
+            var event = aOccurrence.parentItem.clone();
+            event.recurrenceInfo.removeOccurrenceAt(aOccurrence.recurrenceId);
+            event.calendar.modifyItem(event, aOccurrence, null);
+         } else {
+            aOccurrence.calendar.deleteItem(aOccurrence, null);
+         }
+    }
+};
+</pre>
+<h3 id="History"> History </h3>
+<p><code>calICalendarViewController</code> was introduced as part of the 'backend rewrite' that occurred prior to Lightning 0.1 and between Sunbird 0.2 and Sunbird 0.3. It remains unfrozen today.
+</p>

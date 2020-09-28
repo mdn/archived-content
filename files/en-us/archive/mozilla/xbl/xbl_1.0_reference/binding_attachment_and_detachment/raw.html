@@ -1,0 +1,135 @@
+<h2 id="Attachment_using_CSS" name="Attachment_using_CSS">Attachment using CSS</h2>
+
+<p>Bindings can be attached to elements through CSS using the <a href="/en-US/docs/Web/CSS/-moz-binding" title="The -moz-binding CSS property is used by Mozilla-based applications to attach an XBL binding to a DOM element."><code>-moz-binding</code></a> property.</p>
+
+<p><code><strong>-moz-binding</strong></code><br>
+ <em>Value:</em> <code>none | [,]* &lt;uri&gt; | inherit</code><br>
+ <em>Initial Value:</em> <code>none</code><br>
+ <em>Applies to:</em> all elements (not generated content or pseudo-elements)<br>
+ <em>Inherited:</em> no<br>
+ <em>Percentages:</em> N/A</p>
+
+<p>The value of the <code>-moz-binding</code> property is a set of URLs that identify specific bindings. An individual URL in the set consists of the binding document's URL and the binding's document-unique identifier.</p>
+
+<p>In the following example, a binding is referenced that will be attached to all HTML checkbox elements.</p>
+
+<pre class="brush: css">input[type="checkbox"] {
+  -moz-binding: url("http://www.mozilla.org/xbl/htmlBindings.xml#checkbox");
+}
+</pre>
+
+<p>Bindings attached through CSS will only remain on the bound element as long as the element continues to match the style rule. If at any time a resolution of style on the element determines that a different binding should be attached, the old binding (and all bindings that it explicitly extends in its inheritance chain) will be detached.</p>
+
+<p>No bindings will be attached to elements that match the style rule, but are inside an element that has style display:none set. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=307098" title="xbl not created when inside display:none (or hidden=true) element">bug 307098</a>.</p>
+
+<p>Whenever an element is removed from a document, any bindings attached via CSS loaded by the document will be detached.</p>
+
+<h2 id="Attachment_using_element.style_property" name="Attachment_using_element.style_property">Attachment using element.style property</h2>
+
+<div class="warning">
+<p>None of the XBL inheritance properties of <code>element.style.MozBinding</code> described here are implemented (if ever).</p>
+</div>
+
+<p>Bindings can be attached to elements through the scripting by assigning the <code>element.style.MozBinding</code> property. Respectively bindings can be detached by setting <code>element.style.MozBinding</code> to empty string.</p>
+
+<div class="note"><strong>Note:</strong> Some older papers mentioned DOM methods <code>document.addBinding</code> and <code>document.removeBinding</code>; these were subsequently discarded as redundant and not implemented.</div>
+
+<pre class="brush: js">var checkbox = document.getElementById("mycheckbox");
+checkbox.style.MozBinding =
+ "url(http://www.mozilla.org/xbl/htmlBindings.xml#checkbox)";
+</pre>
+
+<p>This attachment is not necessarily synchronous. Scripts that invoke this method should not assume that the binding is installed immediately after this method returns. See <a href="#Binding_Documents">Binding Documents</a> for more information.</p>
+
+<p>When a binding is attached using the DOM, it inherits from the current most derived binding that may already be attached to the element. Any bindings attached to an element will remain on the element until the element is destroyed or the corresponding style rule is removed.</p>
+
+<p>If a binding is attached and it already specifies an inherited binding using the extends attribute, then the base binding at the end of the inheritance chain is the one that will inherit from the most derived binding that is already attached.</p>
+
+<p>For example, given a binding <em>d1</em>, with an explicit inheritance chain of</p>
+
+<p><em>d1</em> -&gt; <em>d2</em> -&gt; <em>d3</em></p>
+
+<p>If this element is attached to an element using <code>element.style.MozBinding</code> that already has a binding chain of</p>
+
+<p><em>s1</em> -&gt; <em>s2</em> -&gt; <em>s3</em></p>
+
+<p>the resulting binding chain following the addition of the binding is</p>
+
+<p><em>d1</em> -&gt; <em>d2</em> -&gt; <em>d3</em> -&gt; <em>s1</em> -&gt; <em>s2</em> -&gt; <em>s3</em></p>
+
+<p>The inheritance between <em>d3</em> and <em>s1</em> is <em>implicit</em>, meaning that there is no connection in the XBL documents between the two bindings. The inheritance link has been forged dynamically through the invocation of the <code>element.style.MozBinding</code>.</p>
+
+<h2 id=".3Cconstructor.3E_call" name=".3Cconstructor.3E_call">&lt;constructor&gt; call</h2>
+
+<p>As a document is loaded and style rules are matched for elements, any binding documents that are encountered will load as needed. Binding document loads suppress the firing of the DOM <code>load</code> event for the bound document. When the <code>load</code> event fires, and if all binding documents loaded successfully, it can be assumed that all bindings are attached to all elements in the page. For elements that are created during or after the <code>load</code> event is fired, no assumptions can be made regarding order of binding attachment.</p>
+
+<p>When a binding is attached, the following events occur:</p>
+
+<ul>
+ <li>If required, anonymous content is cloned from the binding's content template and inserted around the bound element.</li>
+ <li>The methods and properties of the binding are installed on the element and become available to scripts that reference the bound element.</li>
+ <li>Any specified event handlers are installed on their requested targets.</li>
+</ul>
+
+<p>If the binding needs to execute any initialization code following its attachment to an element, it can do so using a <code>&lt;constructor&gt;</code> block inside <code>&lt;implementation&gt;</code> section. This block contains script that executes upon completion of the binding attachment. Within this block <code>this</code> refers to the bound element.</p>
+
+<h2 id=".3Cdestructor.3E_call" name=".3Cdestructor.3E_call">&lt;destructor&gt; call</h2>
+
+<p>Bindings attached through CSS are detached when any of the following conditions are met:</p>
+
+<ul>
+ <li>A bound element matches a style rule that specifies a different binding</li>
+ <li>The element is removed from the bound document</li>
+ <li>The element is destroyed (e.g., by closing the document)</li>
+</ul>
+
+<p>Bindings attached through the DOM are detached when the following conditions are met:</p>
+
+<ul>
+ <li><code>MozBinding</code> style rule is removed</li>
+ <li>The element is destroyed (e.g., by closing the document)</li>
+</ul>
+
+<p>When a binding is detached, the following events occur:</p>
+
+<ul>
+ <li>Anonymous content generated by the binding is destroyed.</li>
+ <li>Methods and properties with getters/setters are no longer accessible from the binding, although properties with raw values remain.</li>
+ <li>Any specified event handlers are unhooked from their respective targets.</li>
+</ul>
+
+<p>A binding can specify a <code>&lt;destructor&gt;</code> block within <code>&lt;implementation&gt;</code> section that executes prior to the binding detachment. Using a <code>&lt;destructor&gt;</code> block, a binding can perform any necessary cleanup before it is torn down.</p>
+
+<p>Bindings in an inheritance chain are always detached from the most derived binding to the base. Therefore the <code>&lt;destructor&gt;</code> block of the derived binding will execute, and then the base binding's block will execute.</p>
+
+<p>When bindings attached through style are detached because of a style change, they have no effect on any other bindings attached using the DOM. Those bindings will stay installed. If new bindings are attached through CSS, they are installed after the DOM bindings in the inheritance chain.</p>
+
+<p>For example, given a bound element with a binding chain of</p>
+
+<p><em>d1</em>-&gt;<em>d2</em> -&gt;<em>d3</em> -&gt;<em>s1</em> -&gt;<em>s2</em> -&gt;<em>s3</em></p>
+
+<p>with<em>s1</em> representing the binding attached via CSS. If a resolution of style on the bound element determines that a new binding<em>t</em> should be attached, then the following binding chain is detached:</p>
+
+<p><em>s1</em>-&gt;<em>s2</em> -&gt;<em>s3</em></p>
+
+<p>and the new binding is attached. The final inheritance chain is:</p>
+
+<p><em>d1</em>-&gt;<em>d2</em> -&gt;<em>d3</em> -&gt;<em>t</em></p>
+
+<p>When bindings are detached using <code>element.style.MozBinding</code>, any base bindings that were attached through the <code>extends</code> attribute on the binding will also be removed. In other words, a removal of <code>element.style.MozBinding</code> will remove the same group of bindings that were installed via the original call to <code>element.style.MozBinding = "url(...)"</code>.</p>
+
+<p>The rule for detachment can be summarized as follows. Whenever a binding is detached, all bindings that it explicitly inherits from are also detached.</p>
+
+<h2 id="Binding_Documents" name="Binding_Documents">Binding Documents</h2>
+
+<p>Whenever a binding is attached to an element in another document, the binding document is only fetched if no binding from the binding document has been used before in the bound document. A given bound document has a unique copy of each separate binding document that it uses.</p>
+
+<p>All bindings from the same binding document URL that are used in a bound document will share the same binding document. Therefore if all the bindings in a chain come from binding documents that have already been loaded by the bound document, then the attachment of a binding (either through CSS or through the DOM) is guaranteed to be synchronous.</p>
+
+<p>An author can ensure that all bindings are synchronously attached by calling <code>loadBindingDocument</code> to pre-fetch any XBL documents that are required. If the binding document is loaded prior to the firing of the <code>load</code> event, then any binding attachments that are placed following the load will be synchronous if they come from one of these previously loaded binding documents.</p>
+
+<p>The document obtained from <code>loadBindingDocument</code> is a copy of the binding document that is unique to the bound document. The bindings in the binding document can be modified using standard DOM APIs. Any subsequent binding attachments that occur on elements in the bound document for bindings in the binding document use the modified copy. Therefore new binding definitions can be generated dynamically or the anonymous content templates for bindings can be altered and used by the bound document.</p>
+
+<div class="noinclude"> </div>
+
+<p> </p>

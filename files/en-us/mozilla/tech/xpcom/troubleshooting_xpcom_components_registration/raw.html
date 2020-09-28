@@ -1,0 +1,110 @@
+<p><span class="seoSummary">Often the first time you create an XPCOM component, it may fail to register correctly.</span></p>
+
+<p>There are several common reasons that registration can fail:</p>
+
+<ul>
+ <li>A component that is a binary (shared library) fails to load</li>
+ <li>A JavaScript component has parsing errors</li>
+ <li>The shared library loaded correctly, but registration was not successful</li>
+</ul>
+
+<h3 id="Did_Registration_Succeed.3F" name="Did_Registration_Succeed.3F">Did Registration Succeed?</h3>
+
+<p>It is important to not misdiagnose the problem. You can be certain that a component has failed to register by going to the Error Console and evaluating <code>Components.classes["<em>contract-id</em>"].name</code> where <em>contract-id</em> is your contract ID. If the response is your contract ID instead of an error, the component was successfully registered and this is the wrong page.</p>
+
+<h3 id="Load_Failure_of_Binary_Components" name="Load_Failure_of_Binary_Components">Load Failure of Binary Components</h3>
+
+<p>On the Mozilla trunk (Firefox 3, XULRunner 1.9), components that fail to load will print an error to the <a href="/en/Error_Console" title="en/Error_Console">Error Console</a>. <a href="/en/Extension_Frequently_Asked_Questions#How_can_I_see_errors_in_my_code.3F" title="en/Extension_Frequently_Asked_Questions#How_can_I_see_errors_in_my_code.3F">Chrome errors must be enabled.</a> If the error appears, you can use <a class="external" href="http://www.mozilla.org/projects/nspr/reference/html/prlog.html">NSPR logging</a> to see additional information about the failure by running Firefox from a command prompt:</p>
+
+<pre class="brush: bash">rem Close all Firefox windows!
+set NSPR_LOG_MODULES=nsNativeModuleLoader:5
+set NSPR_LOG_FILE=C:\Path\to\logfile
+"C:\Program Files\Mozilla Firefox\firefox.exe"
+</pre>
+
+<p>Examining this log for warning and errors may provide valuable clues why the component failed to load.</p>
+
+<p>If using Firefox 4 / XULRunner 2.0, make sure that your extension is unpacked and you declared the binary component in your <code>chrome.manifest</code>. See <a href="/en/XPCOM/XPCOM_changes_in_Gecko_2.0" title="en/XPCOM/XPCOM_changes_in_Gecko_2.0">XPCOM changes in Gecko 2.0</a></p>
+
+<h3 id="Parsing_Errors_in_JavaScript_Components" name="Parsing_Errors_in_JavaScript_Components">Parsing Errors in JavaScript Components</h3>
+
+<p>The most common reason for components written in JavaScript to fail is that there are parsing errors. These parsing errors should show up in the <a href="/en/Error_Console" title="en/Error_Console">Error Console</a> if chrome errors are enabled. To learn more about enabling chrome errors, see "<a class="external" href="/en/docs/Extension_Frequently_Asked_Questions#How_can_I_see_errors_in_my_code.3F" title="en/docs/Extension_Frequently_Asked_Questions#How_can_I_see_errors_in_my_code.3F">How can I see errors in my code</a>" in the Extension FAQs.</p>
+
+<h3 id="Registration_Failure" name="Registration_Failure">Registration Failure</h3>
+
+<p>If the module is loading correctly but doesn't register its components, try adding calls to <code>Components.utils.reportError("Debug me!");</code> in <code>NSGetModule()</code> and other functions to try and find any errors.</p>
+
+<h3 id="General_hints" name="General_hints">General hints</h3>
+
+<ul>
+ <li>You may need to delete compreg.dat in your <a class="external" href="http://kb.mozillazine.org/Profile_folder">profile folder</a> to force re-registration. This should not occur if you uninstalled/installed your extension via the Extension Manager.</li>
+ <li>When adding a component to a XULRunner application, change the BuildID in <a href="/en/XUL_Application_Packaging" title="en/XUL_Application_Packaging">application.ini</a>.</li>
+ <li>If your component requires any external libraries, you may need to read <a href="/en/Using_Dependent_Libraries_In_Extension_Components" title="en/Using_Dependent_Libraries_In_Extension_Components">Using Dependent Libraries In Extension Components</a></li>
+ <li>Make sure you are compiling against the right version.
+  <ul>
+   <li>If you are testing with a release from mozilla.org, use the <a href="/en/Gecko_SDK" title="en/Gecko_SDK">Gecko SDK</a> (and <strong>not</strong> your own compile of trunk Firefox, etc.).</li>
+   <li>If you are compiling your own Firefox (or XULRunner, etc.), use the artifacts from that compilation to build your component.</li>
+   <li>If you are testing a build from your Linux distribution (or other vendor-supplied build), look for -dev packages from them.</li>
+   <li>Remember to check that the directory the component is in is named correctly i.e. <code>$profile/extensions/$plugindirectory/components</code>!</li>
+   <li>Double check your GUIDs in your install.rdf with your sourcecode, and then check them again.</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Windows-specific_hints" name="Windows-specific_hints">Windows-specific hints</h3>
+
+<ul>
+ <li>Use <a class="external" href="http://www.dependencywalker.com/">Dependency Walker</a> to check that your dependent libraries are loaded correctly.
+
+  <ol>
+   <li>In Dependency Walker, open the <em>Options</em> menu and select <em>Configure Module Search Order...</em>.</li>
+   <li>In the bottom right corner of the new dialog, click <em>Browse...</em> and select the directory firefox.exe (or equivalent) is in.</li>
+   <li>In the bottom left corner, click <em>Add Directory</em>.</li>
+   <li>Do not add any other directories; in particular, do not add your extension's (or XULRunner application's) components directory.</li>
+   <li>After clicking <em>OK</em> in the top right, check for any missing dependencies using File -&gt; Open -&gt; firefox.exe (or equivalent).</li>
+  </ol>
+
+  <ul>
+   <li>Also check that the function <code>NSGetModule</code> is exported.</li>
+   <li>You can also use the <em>Profiling</em> feature of Dependency Walker to view failed module loads while running your application. Open the <em>Profile</em> menu and select <em>Start Profiling...</em>. In the dialog that appears, you can provide command line parameters and click <em>OK</em> to start the application. You will see any modules that failed to load in the module list.
+    <div class="blockIndicator note">
+    <p><strong>Note:</strong> You should delete <code>compreg.dat</code> from your profile before doing this.</p>
+    </div>
+   </li>
+  </ul>
+ </li>
+ <li>Note that even your version of MSVC may matter; your test machine may not have the C runtime libraries (msvcr70.dll / msvcp70.dll for MSVC 7.0, and similarly named files for 7.1 and 8.0) available.
+  <ul>
+   <li>This even means that if you are using a component stub, the stub needs to be compiled using a version which the machine does support; most likely this means MSVC 6.0. It may then be necessary for the stub to locate the newer runtime libraries for the other files it loads.</li>
+   <li>If you compiled the component with MSVC 8.0 (2005) and are attempting to use it on a Windows XP machine or later, it will need a manifest embedded to find the runtime. Please refer to <a class="external" href="http://msdn2.microsoft.com/en-us/library/ms235542(VS.80).aspx">MSDN</a> for details.</li>
+   <li>If you have the option, you can manually copy these dependencies to firefox.exe's directory, to Windows\system32, or to any directory is the system's PATH.</li>
+   <li>A Google Groups thread on the matter is located <a class="external" href="http://groups.google.com/group/mozilla.dev.tech.xpcom/browse_thread/thread/b93b4258252d14ef#">here</a>.</li>
+   <li>The dllmain code that MSVC 8 (and probably earlier versions too) generates for you doesn't need to be there, you can remove it.</li>
+   <li>You may be able build your component using <a href="/en/USE_STATIC_LIBS" title="en/USE STATIC LIBS">USE_STATIC_LIBS=1</a> in order to remove C runtime library dependencies.</li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="Linux-specific_hints" name="Linux-specific_hints">Linux-specific hints</h3>
+
+<ul>
+ <li>Check if you have missing dependent libraries:
+  <ul>
+   <li>From your Firefox (/XULRunner) install directory, run "<code>./run-mozilla.sh `which ldd` -r <em>path/to/your/component.so</em></code>". There should be no "not found" entries and no undefined symbols. (The <code>-r</code> switch from GNU ldd lists function relocations; adjust as suitable for your version)</li>
+  </ul>
+ </li>
+ <li>Trace shared library loading by setting the environment variable <code>LD_DEBUG=all</code> while launching Firefox (see `man ld.so` for details).</li>
+ <li>Use strace to see if Firefox is trying to load your components.</li>
+ <li>Pass the <code>-Wl,-z,defs</code> flag to gcc when linking your component. This will ensure that undefined symbols show an error at link time instead of failing at run time.</li>
+</ul>
+
+<h3 id="Mac-specific_hints" name="Mac-specific_hints">Mac-specific hints</h3>
+
+<ul>
+ <li>Use ktrace to see if Firefox is trying to load your components.</li>
+ <li>Use dyld environment variables to trace binary component loading: DYLD_PRINT_APIS=1 DYLD_PRINT_LIBRARIES=1 (see `man dyld` for details).</li>
+</ul>
+
+<h3 id="Further_help" name="Further_help">Further help</h3>
+
+<p>If the component still does not load, you may wish to ask for help. The extension-related places are often useful; please refer to the <em>Community</em> section on the <a class="internal" href="/en/Extensions" title="en/Extensions">Extensions</a> page.</p>

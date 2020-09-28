@@ -1,0 +1,199 @@
+<p>This page explains coding patterns that cause extension to cause memory leaks.</p>
+
+<h2 id="Causes_of_zombie_compartments">Causes of zombie compartments</h2>
+
+<p><a href="/en/Zombie_compartments" title="Zombie compartments">Zombie compartments</a> are a particular kind of memory leak.  All zombie compartments in extensions are caused by a failure to release resources appropriately in certain circumstances, such as when a window is closed, a page unloads, or an extension is disabled or removed. While {{ bug("695480") }} should prevent most of these compartment leaks, add-ons still need to be aware of the practices that caused these leaks, as the fix causes many add-ons which would have otherwise caused a leak to instead throw errors when attempting to access nodes from documents which no longer exist.</p>
+
+<h3 id="Storing_references_to_window_objects_and_DOM_nodes">Storing references to <code>window</code> objects and DOM nodes</h3>
+
+<p>The most common problem is extensions holding onto references to content windows for too long.</p>
+
+<p>For example, in XUL overlay code:</p>
+
+<pre class="brush: js">var contentWindows = [];
+function inBrowserXulOverlay(contentWindow) {
+  // forgetting or failing to pop the content window thing again
+  contentWindows.push(contentWindow);
+}
+</pre>
+
+<p id="comment_text_7">This will keep the content window compartments alive until the browser window is closed. Users often only open a single browser window per session and use tabs, in which case the leaked compartments will live for the whole life of the session.</p>
+
+<p>A similar problem is holding onto {{ domxref("window") }} objects or DOM nodes (such as {{ domxref("window.document") }}) for too long by storing them in a JavaScript module.  For example:</p>
+
+<pre class="brush: js">var windows = [];
+function inJavascriptCodeModule(window) {
+  // forgetting or failing to pop the window again
+  windows.push(window);
+}
+</pre>
+
+<p>Both of these cases can happen if you forget to declare local variables with <code>var</code> or <code>let</code>, which means they end up belonging to the global scope. For example:</p>
+
+<pre class="brush: js">function implicitDeclarationLeak(window) {
+  // Implicit variable declaration in the js global, holding a strong ref to the document
+  doc = window.document;
+}
+</pre>
+
+<p>Implicitly declared variables can be avoided by using <a href="/en/JavaScript/Reference/Functions_and_function_scope/Strict_mode" title="en/JavaScript/Strict_mode">ECMAScript 5's strict mode</a>.  Strict mode also excludes several other error-prone code patterns.</p>
+
+<p>For some examples found in real-world add-ons, see {{ bug("712733") }}, {{ bug("725875") }}, and {{ bug("727552") }}.</p>
+
+<p><br>
+ To avoid these issues, references to DOM nodes in foreign document should instead be stored in an object which is specific to that document, and cleaned up when the document is unloaded, or stored as <a href="/en/Components.utils.getWeakReference" title="/en/Components.utils.getWeakReference">weak references</a>.</p>
+
+<h3 id="Be_careful_with_setIntervalsetTimeout">Be careful with setInterval/setTimeout</h3>
+
+<p>Using {{ domxref("window.setInterval()") }} or {{ domxref("window.setTimeout()") }} can be problematic, too, when it comes to zombie compartments. Consider the following example code that could be part of your <code>browser.xul</code> overlay:</p>
+
+<pre class="brush: js">gBrowser.addEventListener("DOMContentLoaded", function(evt) {
+  var contentDoc = evt.originalTarget;
+  var i = 0;
+
+  // Refresh the title once each second
+  setInterval(function() {
+    contentDoc.title = ++i;
+  }, 1000);
+}, false);
+</pre>
+
+<p>One would normally expect that the interval (or timer) would be destroyed as soon as the document unloads, in the same way that event listeners are automatically destroyed. However, while this is still true, the {{ domxref("window.setInterval()") }} in the example originates from the outer chrome window (<code>browser.xul</code>) and not from the content window. Hence the interval will only be destroyed when the outer window is unloaded (i.e. when the user closes the whole browser window) but not when the content window unloads (i.e. when the user closes the tab). The interval function in the example would still hold a reference to <code>contentDoc</code>, therefore leaking the content document and the associated window and compartment.</p>
+
+<p>If your add-on makes use of long-lived timeouts or uses {{ domxref("window.setInterval()") }}, you need to take special care to ensure your code won't accidentally leak content windows. Therefore, your add-on should clean up such intervals and timeouts when the corresponding content document is unloaded, by adding an <code>unload</code> event listener or by similar means. Another solution would be to use the <code>setInterval()</code>/<code>setTimeout()</code> instances content windows provide, but there is a big drawback with this idea: If the user disables JavaScript globally or locally (such as by using an add-on like NoScript), then using the content window functions won't work.</p>
+
+<h3 id="Problems_in_bootstrapped_(restartless)_add-ons">Problems in bootstrapped (restartless) add-ons</h3>
+
+<p id="comment_text_7">Bootstrapped extensions use a <code>bootstrap.js</code> compartment. If you put a reference to anything within this compartment into a long-lived window object (such as <code>browser.xul</code>), JavaScript module or XPCOM component, the <code>bootstrap.js</code> compartment will become a zombie. For example, the following code snippets — part of a <code>bootstrap.js</code> — will leak:</p>
+
+<pre class="brush: js">function leakref() {}
+
+function modifyDocument(document) {
+  var a = document.createElement("a");
+  document.body.appendChild(a);
+
+  // The new DOM node holding a reference to leakref will prevent
+  // that function object from being garbage collected and hence
+  // will leak the whole bootstrap compartment.
+  a.someProperty = leakref;
+}
+
+function modifyDocument2(document) {
+  // The "body" DOM node holding a reference to leakref will prevent
+  // that function object from being garbage collected and hence
+  // will leak the whole bootstrap compartment.
+  document.body.someProperty = leakref;
+}
+</pre>
+
+<p>See also Kris Maglione's <a class="external" href="http://maglione-k.users.sourceforge.net/bootstrapped.xhtml" title="http://maglione-k.users.sourceforge.net/bootstrapped.xhtml">guide to cleaning up bootstrapped extensions</a>.</p>
+
+<h3 id="Failing_to_clean_up_event_listeners">Failing to clean up event listeners</h3>
+
+<p>Extensions can be disabled and removed by user actions, but it also happens when an add-on is updated. If a bootstrapped (restartless) extension fails to clean up event listeners when disabled or removed, the listeners will still reference the enclosing scope — usually the <code>bootstrap.js</code> sandbox — and therefore keep that scope (and its enclosing compartment) alive until the window is unloaded. If the window in question is <code>browser.xul</code> or some long-lived web app such as Gmail, the leaked compartment might survive for quite some time.</p>
+
+<pre class="brush: js">function leakref() {}
+
+function main(window) {
+  // This is a potential leak, as the window (e.g. browser.xul) will hold on to
+  // the leakref function and the enclosing compartment via the listener.
+  window.addEventListener("leaky", leakref, true);
+
+  // The following line still fails to avoid the leak, as useCapture differs
+  // and removeEventListener will not remove anything.
+  // This kind of subtle bug is very common.
+  // unload(function() window.removeEventListener("leaky", leakref, false), window);
+
+  // This is the right way to do it remove the listener.
+  unload(function() window.removeEventListener("leaky", leakref, true), window);
+}
+</pre>
+
+<div class="note"><strong>Note:</strong> The <code>unload()</code> function is an <a class="link-https" href="https://github.com/Mardak/restartless/blob/unload/bootstrap.js" title="unload() boilerplate">external function</a> which can be added in your add-on to easily provide a way to undo changes upon unloading of your add-on or a specific part/object. It is part of <a class="link-https" href="https://github.com/Mardak/restartless/">Edward Lee's restartless boilerplate</a>.</div>
+
+<h2 id="Causes_of_other_kinds_of_leaks">Causes of other kinds of leaks</h2>
+
+<p>Other than JavaScript compartments, add-ons may also leak entities that do not get a dedicated compartment, most commonly chrome DOM windows and JavaScript code modules.</p>
+
+<h3 id="Forgetting_to_unregister_observers">Forgetting to unregister observers</h3>
+
+<p>Holding onto event observers for too long is another problem.  Observers that use strong references are a common cause of leaking whole chrome windows or JavaScript code modules; it is possible to leak content windows, too, but that is less common.</p>
+
+<p>Consider the following example:</p>
+
+<pre class="brush: js">var myObserver = {
+  observe: function(subject, topic, data) {
+    window.document.documentElement.setAttribute(
+      "pbm", (data == "enter") ? "private" : "normal");
+  }
+};
+Services.obs.addObserver(myObserver, "private-browsing", /* ownsWeak */ false);
+</pre>
+
+<p>The <code>ownsWeak = false</code> parameter causes the observer service to use a strong reference to the observer object, which will cause it to hold onto the whole window.</p>
+
+<p>To avoid this problem explicitly call {{ ifmethod("nsIObserverService", "removeObserver") }} in an unload event listener. You may also specify <code>ownsWeak = true</code> in the call to {{ ifmethod("nsIObserverService", "addObserver") }}, but that might require you to properly implement weak references as well.</p>
+
+<p>In overlay code you may use an <code>unload</code> event listener:</p>
+
+<pre class="brush: js">addEventListener("unload", function() {
+  Services.obs.removeObserver(myObserver, "private-browsing");
+}, false);
+</pre>
+
+<p>In <code>bootstrap.js</code> (restartless add-ons) unregister your observer in your <code>shutdown</code> function:</p>
+
+<pre class="brush: js">function shutdown() {
+  // ...
+  Services.obs.removeObserver(myObserver, "private-browsing");
+}
+</pre>
+
+<p>In JavaScript code modules it recommended to also observe the <code>xpcom-shutdown</code> or <code>quit-application</code> notifications and unregister your observers from that topic:</p>
+
+<pre class="brush: js">var myObserver = {
+  observe: function(subject, topic, data) {
+    if (topic == "xpcom-shutdown") {
+      Services.obs.removeObserver(myObserver, "private-browsing");
+      Services.obs.removeObserver(myObserver, "xpcom-shutdown");
+    }
+    else {
+      // do something with "private-browsing"
+    }
+  }
+};
+Services.obs.addObserver(myObserver, "private-browsing", false);
+Services.obs.addObserver(myObserver, "xpcom-shutdown", false);
+</pre>
+
+<p>Finally, a lot of services other than {{ interface("nsIObserverService") }} accept {{ interface("nsIObserver") }} parameters or other interfaces and will keep strong references around. Please see the corresponding documentation of these services on how to properly unregister/remove your observers and components during unload.</p>
+
+<h3 id="Forgetting_to_unload_JavaScript_modules_in_restartless_add-ons">Forgetting to unload JavaScript modules in restartless add-ons</h3>
+
+<p>Another common cause of leaks is forgetting to <a href="/en/Components.utils.unload" title="Components.utils.unload">unload</a> JavaScript code modules in bootstrapped add-ons. When your add-on gets updated and re-enabled, the previous module version that is still loaded will be used, which might break your add-on entirely.</p>
+
+<p>The following example shows how to unload your modules again (<code>bootstrap.js</code>):</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Services.jsm");
+
+function startup(data, reason) {
+  // This assumes your add-on did register some chrome
+  Components.utils.import("chrome://myaddon/content/mymodule.jsm");
+}
+
+function shutdown(data, reason) {
+  // No need to do regular clean up when the application is closed
+  // unless you need to break circular references that might negatively
+  // impact the shutdown process.
+  if (reason == APP_SHUTDOWN) return;
+
+  // Your add-on needs to unload all modules it ships and imported!
+  Components.utils.unload("chrome://myaddon/content/mymodule.jsm");
+}
+</pre>
+
+<div class="note"><strong>Note:</strong> Modules not belonging to your add-on — such as <a href="/en/JavaScript_code_modules/Services.jsm" title="Services.jsm"><code>Services.jsm</code></a> — should <strong>not</strong> be unloaded by your add-on, as this might cause errors and/or performance regressions and will actually increase the memory usage.</div>
+
+<h2 id="Other_information">Other information</h2>
+
+<p>Also see <a href="/en/Using_XPCOM_in_JavaScript_without_leaking" title="Using XPCOM in JavaScript without leaking">Using XPCOM in JavaScript without leaking</a> (though that page could use some updating).</p>

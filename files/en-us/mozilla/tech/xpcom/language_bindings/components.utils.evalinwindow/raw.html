@@ -1,0 +1,60 @@
+<div class="warning">
+ <p>This function is no longer available as of Firefox 34. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1042840">bug 1042840</a> for details.</p>
+</div>
+<p>This function enables code running in a more-privileged JavaScript context to evaluate a string in a less-privileged JavaScript context. The result is <a href="/en-US/docs/Web/Guide/API/DOM/The_structured_clone_algorithm">structured cloned</a> back to the original context, unless it is native (for example, if it returns a DOM node, this is not structured cloned, because the original context will see that through an <a href="/en-US/docs/XPCNativeWrapper">XrayWrapper</a> already), so it's guaranteed to behave predictably.<br>
+ <br>
+ This is useful for privileged code, such as add-on code, to access variables and APIs defined in web content.</p>
+<p>Even so, while the code is being evaluated it is in the content's context, so the caller has to be prepared for the possibility that the content could have redefined behavior (for example, a setter in the script may have been redefined to do something unexpected).</p>
+<p>This function is made available as a global in sandboxes which have the <code>wantExportHelpers</code> option set in the <a href="/en-US/docs/Components.utils.Sandbox"><code>Sandbox()</code></a> constructor.</p>
+<h2 id="Syntax">Syntax</h2>
+<pre class="brush: js">var result = Components.utils.evalInWindow(script, window);
+</pre>
+<h3 id="Parameters">Parameters</h3>
+<dl>
+ <dt>
+  <code>script : string</code></dt>
+ <dd>
+  The script to evaluate in the other window.</dd>
+ <dt>
+  <code>window : object</code></dt>
+ <dd>
+  The window in which to evaluate the script.</dd>
+</dl>
+<h3 id="Returns">Returns</h3>
+<p>The result of evaluating the script. If this is just native (for example, a DOM node), then the function relies on XrayWrappers to wrap the returned content, otherwise the result is structured-cloned.</p>
+<p>This does impose some restrictions on the sorts of things that can be returned: in particular, the result can't contain any functions, because functions can't be structured-cloned.</p>
+<h2 id="Example">Example</h2>
+<p>Suppose a page script defines a variable:</p>
+<pre class="brush: js">// page-script.js
+
+var someLocalVariable = {
+  name: "selection1",
+  node: document.documentElement
+};</pre>
+<p>An add-on script or other privileged script can access the variable using <code>evalInWindow()</code>:</p>
+<pre class="brush: js">// add-on-script.js
+
+var result = Components.utils.evalInWindow("someLocalVariable", contentWindow);
+console.log(result);
+// {"name":"selection1","node":{}}</pre>
+<p>The add-on code can modify the variable as well, of course:</p>
+<pre class="brush: js">// add-on-script.js
+
+Components.utils.evalInWindow("someLocalVariable.newProp = 42", contentWindow);
+</pre>
+<pre class="brush: js">// page-script.js
+
+console.log(window.someLocalVariable.newProp);
+// 42</pre>
+<p>But note that the add-on script must trust that the page script has not redefined the setter on <code>someLocalVariable</code>: unlike XrayWrappers, <code>evalInWindow()</code> does not provide x-ray vision.</p>
+<p>If the returned object contains a function, calls to <code>evalInWindow()</code> will throw an error:</p>
+<pre class="brush: js">// page-script.js
+
+function bar() {
+}
+
+var someLocalVariableContainingAFunction = {name: "selection1", foo : bar};</pre>
+<pre class="brush: js">// add-on-script.js
+
+Components.utils.evalInWindow("someLocalVariableContainingAFunction", contentWindow);
+// ERROR, function can't be cloned</pre>

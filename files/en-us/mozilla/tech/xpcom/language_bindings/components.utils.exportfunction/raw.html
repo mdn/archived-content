@@ -1,0 +1,180 @@
+<div> </div>
+
+<p class="summary"><span class="seoSummary">This function provides a safe way to expose a function from a privileged scope to a less-privileged scope.</span> In this way privileged code, such as an extension, can share code with less-privileged code like a normal web page script. A function exported from privileged to less-privileged code can be called from the less privileged code's context.</p>
+
+<p>The function has access to its surrounding closure just as if it were being called in the privileged context.<br>
+ <br>
+ The exported function does not have to be added to the less privileged code's global window object: it can be exported to any object in the target scope.</p>
+
+<p><code>exportFunction()</code> is made available as a global in sandboxes which have the <code>wantExportHelpers</code> option set in the <a href="https://developer.mozilla.org/en-US/docs/Components.utils.Sandbox"><code>Sandbox()</code></a> constructor. This includes Add-on SDK <a href="/en-US/Add-ons/SDK/Guides/Content_Scripts">content scripts</a>.</p>
+
+<p>To understand what happens if the functions you export accept arguments, see <a href="/en-US/docs/Components.utils.exportFunction#Exporting_functions_that_take_arguments">Exporting functions that take arguments</a> below.</p>
+
+<h2 id="Syntax">Syntax</h2>
+
+<pre class="brush: js">Components.utils.exportFunction(func, targetScope[, options]);</pre>
+
+<h3 id="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>func : function</code></dt>
+ <dd>The function to export.</dd>
+ <dt><code>targetScope : object</code></dt>
+ <dd>The object to attach the function to. This does not have to be the global window object: it could be any other object in the target window, or an object created by the caller.</dd>
+ <dt><code>options : object</code></dt>
+ <dd>Optional parameter that supplies additional options. The following options are currently defined:</dd>
+</dl>
+
+<ul>
+ <li><code>defineAs</code>: determines the name of the function in <code>targetScope</code>. If this is omitted, you need to assign the return value of <code>exportFunction()</code> to an object in the target scope.</li>
+ <li><code>allowCallbacks</code>: <strong>deprecated/redundant from Firefox 34</strong>. This option allows the exported function to accept callbacks as arguments. Boolean, defaulting to <code>false</code>. This option is new in Firefox 33. From Firefox 34 onwards this option has no effect: the exported function is always able to accept callbacks as arguments.</li>
+ <li><code>allowCrossOriginArguments</code>: do not check that arguments to the exported function are <a href="/en-US/docs/Mozilla/Gecko/Script_security#Subsumes">subsumed</a> by the caller: this allows the caller to pass objects with a different origin into the exported function, which can then use its privileged status to make cross-origin requests with them. Boolean, defaulting to <code>false</code>. This option is new in Firefox 34.</li>
+</ul>
+
+<h3 id="Returns">Returns</h3>
+
+<p>The placeholder function which has been created in the target context.</p>
+
+<h2 id="Exporting_functions_that_take_arguments">Exporting functions that take arguments</h2>
+
+<p>Until Firefox 34, any arguments that the function takes are <a href="/en-US/docs/Web/Guide/API/DOM/The_structured_clone_algorithm">structured-cloned</a> across the security boundary unless they are native objects such as DOM nodes. Because structured cloning does not clone functions, this meant that the function may not return a function, and by default, may not take any functions as arguments. However, in Firefox 33, you could use the <code>allowCallbacks</code> option to enable the function to accept callbacks.</p>
+
+<p>From Firefox 34 onwards, any arguments passed into the function are not cloned. Instead, they are passed through to the privileged scope as <a href="/en-US/docs/Xray_vision">Xrays</a>.</p>
+
+<h3 id="Modifying_the_argument">Modifying the argument</h3>
+
+<p>While cloning creates a copy of an object, an Xray for an object refers to the original, so any changes to the argument that are made in the exported function will affect the original object that was passed in:</p>
+
+<pre class="brush: js">// privileged scope: for example, a content script
+
+function changeMyName(user) {
+  user.name = "Bill";
+}
+
+exportFunction(changeMyName, contentWindow, {
+  defineAs: "changeMyName"
+});
+</pre>
+
+<pre class="brush: js">// less-privileged scope: for example, a page script
+
+var user = {name: "Jim"};
+
+var test = document.getElementById("test");
+test.addEventListener("click", function() {
+  console.log(user.name);            // "Jim"
+  window.changeMyName(user);
+  console.log(user.name);            // "Bill"
+}, false);</pre>
+
+<p>Note that this is subject to the normal rules of Xrays: for example, an expando property added to a DOM node will not be visible in the original object.</p>
+
+<h3 id="Xray_filtering_and_waiving">Xray filtering and waiving</h3>
+
+<p>Xrays provide a filtered view of the original object. For the full details refer to the documentation for <a href="/en-US/docs/Xray_vision">Xray vision</a>, but for example: functions are not visible in the Xrays of JavaScript <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object" title="The Object constructor creates an object wrapper."><code>Object</code></a> types. If you need unfiltered access to the original, you can <a href="/en-US/docs/Xray_vision#Waiving_Xray_vision">waive Xrays</a>:</p>
+
+<pre class="brush: js">// privileged scope: for example, a content script
+
+function logUser(user) {
+ // console.log(user.getUser());                 // error
+  console.log(user.wrappedJSObject.getUser());   // "Bill"
+}
+
+exportFunction(logUser, contentWindow, {
+  defineAs: "logUser"
+});</pre>
+
+<pre class="brush: js">// less-privileged scope: for example, a page script
+
+var user = {getUser: function() {return "Bill";}}
+
+var test = document.getElementById("test");
+test.addEventListener("click", function() {
+  window.logUser(user);
+}, false);</pre>
+
+<h3 id="Passing_functions_as_arguments">Passing functions as arguments</h3>
+
+<p>If functions are given as arguments, these are also passed as Xrays. Because you can call <code>Function</code> Xrays just like normal functions, this means that passing callbacks into the exported function just works, making the <code>allowCallbacks</code> option redundant:</p>
+
+<pre class="brush: js">// privileged scope: for example, a content script
+
+function logUser(getUser) {
+  console.log(getUser());   // "Bill"
+}
+
+exportFunction(logUser, unsafeWindow, {
+  defineAs: "logUser"
+});</pre>
+
+<pre class="brush: js">// less-privileged scope: for example, a page script
+
+function getUser() {
+  return "Bill";
+}
+
+var test = document.getElementById("test");
+test.addEventListener("click", function() {
+  window.logUser(getUser);
+}, false);</pre>
+
+<h3 id="Cross-origin_checking">Cross-origin checking</h3>
+
+<p>When the exported function is called each argument, including <code>this</code>, is checked to make sure that the caller <a href="/en-US/docs/Mozilla/Gecko/Script_security#Subsumes">subsumes</a> that argument. This prevents passing cross-origin objects (like <code>Window</code> or <code>Location</code>) to privileged functions, since the privileged code will have full access to those objects and might unintentionally do something dangerous. This provision can be overridden by passing <code>{ allowCrossOriginArguments: true }</code> to <code>exportFunction</code>.</p>
+
+<h2 id="Example">Example</h2>
+
+<h3 id="Export_to_global_scope">Export to global scope</h3>
+
+<p>This add-on script defines a function, then exports it to a content window:</p>
+
+<pre class="brush: js">// addon-script.js
+
+var salutation = "hello ";
+
+function greetme(user) {
+  return salutation + user;
+}
+
+Components.utils.exportFunction(greetme, contentWindow, {defineAs: "foo"});
+</pre>
+
+<p>Instead of using <code>defineAs</code>, the script can assign the result of <code>exportFunction</code> to an object in the target scope:</p>
+
+<pre class="brush: js">// addon-script.js
+
+var salutation = "hello ";
+
+function greetme(user) {
+  return salutation + user;
+}
+
+contentWindow.foo = Components.utils.exportFunction(greetme, contentWindow);</pre>
+
+<p>Either way, code running in the content window's scope can now call the function:</p>
+
+<pre class="brush: js">// page-script.js
+
+var greeting = foo("alice");
+console.log(greeting);
+// "hello alice"</pre>
+
+<h3 id="Export_to_an_existing_local_object">Export to an existing local object</h3>
+
+<p>Instead of attaching the function to the target's global <code>window</code> object, the caller can attach it to any other object in the target context. Suppose the content window defines a local variable <code>bar</code>:</p>
+
+<pre class="brush: js">// page-script.js
+
+var bar = {};</pre>
+
+<p>Now the add-on script can attach the function to <code>bar</code>:</p>
+
+<pre class="brush: js">// addon-script.js
+
+Components.utils.exportFunction(greetme, contentWindow.bar, {defineAs: "greetme"});</pre>
+
+<pre class="brush: js">// page-script.js
+
+var value = bar.greetme("bob");
+console.log(value);
+// "hello bob"</pre>

@@ -1,0 +1,60 @@
+---
+title: Supporting per-window private browsing
+slug: Archive/Mozilla/Supporting_per-window_private_browsing
+---
+<p>Firefox 20 introduced per-window private browsing mode, in which private user data is stored and accessed concurrently with public user data from another window.</p>
+<h2 id="Detecting_private_browsing_mode">Detecting private browsing mode</h2>
+<p>Determining whether or not a given DOM window is private is simple: import <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/PrivateBrowsingUtils.jsm" title="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/PrivateBrowsingUtils.jsm"><code>resource://gre/modules/PrivateBrowsingUtils.jsm</code></a> and use <code>PrivateBrowsingUtils.isWindowPrivate(window)</code>. You can then take action based on this value, as any data or actions originating from this window should be considered private.</p>
+<pre class="brush: js">        try {
+          // Firefox 20+
+          Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+          if (!PrivateBrowsingUtils.isWindowPrivate(window)) {
+            ...
+          }
+        } catch(e) {
+          // pre Firefox 20 (if you do not have access to a doc.
+          // might use doc.hasAttribute("privatebrowsingmode") then instead)
+          try {
+            var inPrivateBrowsing = Components.classes["@mozilla.org/privatebrowsing;1"].
+                                    getService(Components.interfaces.nsIPrivateBrowsingService).
+                                    privateBrowsingEnabled;
+            if (!inPrivateBrowsing) {
+              ...
+            }
+          } catch(e) {
+            Components.utils.reportError(e);
+            return;
+          }
+        }
+</pre>
+<h2 id="Obtaining_an_nsILoadContext_for_privacy-sensitive_APIs">Obtaining an nsILoadContext for privacy-sensitive APIs</h2>
+<p>Some APIs (such as <code>nsITransferable</code> and <code>nsIWebBrowserPersist</code>) take <code>nsILoadContext </code>arguments that are used to determine whether they should be classed as private or not (for example, whether the URI being persisted by <code>saveURI</code> should be added to the permanent download history). To do this, import <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/PrivateBrowsingUtils.jsm" title="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/PrivateBrowsingUtils.jsm"><code>resource://gre/modules/PrivateBrowsingUtils.jsm</code></a> and use <code>PrivateBrowsingUtils.getPrivacyContextFromWindow(win)</code>, passing a Window object that is related to the content in question.</p>
+<p>As an example, if an add-on adds a context menu item that accesses an API that requires an <code>nsILoadContext</code>, the most relevant window is the one that owns the element being targeted by the context menu (<code>element.ownerDocument.defaultView</code>). If some action triggered by a chrome element (such as a button) requires an API that takes a privacy context, the most relevant window is the one that contains the chrome element.</p>
+<p>In some cases, there is no logical window object to use (such as when data or an action originate from some other source than web content). In these cases, it is permissable to pass <code>null</code> as the argument instead of a real privacy context. However, this can lead to privacy leaks (such as cache and download entries) if not used carefully.</p>
+<h2 id="Clearing_any_temporarily-stored_private_data">Clearing any temporarily-stored private data</h2>
+<p>It is permissable to store private data in non-persistent ways for the duration of a private browsing session. To be notified when such a session ends (i.e., when the last private window is closed), observe the <code>last-pb-context-exited</code> notification.</p>
+<pre class="brush: js">function pbObserver() { /* clear private data */ }
+var os = Components.classes["@mozilla.org/observer-service;1"]
+                   .getService(Components.interfaces.nsIObserverService);
+os.addObserver(pbObserver, "last-pb-context-exited", false);</pre>
+<h2 id="Preventing_a_private_session_from_ending">Preventing a private session from ending</h2>
+<p>If there are unfinished transactions involving private data, where the transactions will be terminated by the ending of a private session, an add-on can vote to prevent the session from ending (prompting the user is recommended). To do this, observe the <code>last-pb-context-exiting</code> notification and set the <code>data</code> field of the <code>nsISupportsPRBool</code> subject to true.</p>
+<pre class="brush: js">var os = Components.classes["@mozilla.org/observer-service;1"]
+                   .getService(Components.interfaces.nsIObserverService);
+os.addObserver(function (aSubject, aTopic, aData) {
+    aSubject.QueryInterface(Components.interfaces.nsISupportsPRBool);
+    // if another extension has not already canceled entering the private mode
+    if (!aSubject.data) {
+      /* you should display some user interface here */
+      aSubject.data = true; // cancel the operation
+   }
+}, "last-pb-context-exiting", false);</pre>
+<h2 id="Forcing_a_channel_into_private_mode">Forcing a channel into private mode</h2>
+<p>Usually, network channels inherit the privacy status of the document that created them, which means that they work correctly most of the time. However, sometimes you need to adjust the privacy status on a channel manually, for example, if you have created the channel directly yourself.  You can use the <code>nsIPrivateBrowsingChannel</code> interface for this purpose.  The example below creates a channel to load a URL, and forces it to be in private mode.</p>
+<pre class="brush: js"><code>var channel = Services.io.newChannel("http://example.org", null, null);</code>
+<code>channel.QueryInterface(Components.interfaces.nsIPrivateBrowsingChannel);
+</code><code>channel.setPrivate(true); // force the channel to be loaded in private mode</code></pre>
+<p>Similarly, <code>XMLHttpRequest</code> objects created via <code>createInstance(Ci.nsIXMLHttpRequest)</code> will often require explicit adjustment, since they have no context from which to derive a privacy status.</p>
+<pre class="brush: js">var xhr = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Components.interfaces.nsIXMLHttpReqeust);
+var channel = xhr.channel.QueryInterface(Components.interfaces.nsIPrivateBrowsingChannel);
+channel.setPrivate(true);</pre>

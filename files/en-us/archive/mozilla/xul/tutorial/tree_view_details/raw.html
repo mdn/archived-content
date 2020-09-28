@@ -1,0 +1,352 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:Custom_Tree_Views" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Tree_Box_Objects">Next  »</a></p>
+</div>
+
+<p>This section will describe some more features of tree views.</p>
+
+<h3 id="Creating_a_Hierarchical_Custom_View" name="Creating_a_Hierarchical_Custom_View">Creating a Hierarchical Custom View</h3>
+
+<p>In the last section, we created a simple tree view that implemented only a minimum amount of functionality. Next, let's look at some additional functions that views may implement. Here, we will examine how to create a hierarchical set of items using the view. This is a fairly tricky process as it involves keeping track of which items have children and also which rows are open and closed.</p>
+
+<h4 id="Nesting_Level" name="Nesting_Level">Nesting Level</h4>
+
+<p>Every row in the tree has a nesting level. The topmost rows are at level 0, the children of those rows are at level 1, their children at level 2 and so on. The tree will query the view for each row by calling its <code>getLevel</code> method to find out the level of that row. The view will need to return 0 for the outermost rows and higher values for inner rows. The tree will use this information to determine the hierarchical structure of the rows.</p>
+
+<p>In addition to the <code>getLevel</code> method, there is a <code>hasNextSibling</code> function which, given a row, should return true if there is another row afterwards at the same level. This function is used, specifically, to draw the nesting lines along the side of the tree.</p>
+
+<p>The <code>getParentIndex</code> method is expected to return the parent row of a given row, that is, the row before it with a lower nesting value. All of these methods must be implemented by the view for children to be handled properly.</p>
+
+<h4 id="Containers" name="Containers">Containers</h4>
+
+<p>There are also three functions, <code>isContainer</code>, <code>isContainerEmpty</code> and <code>isContainerOpen</code> that are used to handle a parent item in the tree.</p>
+
+<ul>
+ <li>The <code>isContainer</code> method should return true if a row is a container and might contain children.</li>
+ <li>The <code>isContainerEmpty</code> method should return true if a row is an empty container, for instance, a directory with no files in it.</li>
+ <li>The <code>isContainerOpen</code> method is used to determine which items are opened and closed. The view is required to keep track of this. The tree will call this method to determine which containers are open and which are closed.</li>
+</ul>
+
+<p>Note that the tree will call neither <code>isContainerEmpty</code> nor <code>isContainerOpen</code> for rows that are not containers as indicated by the return value of the <code>isContainer</code> method.</p>
+
+<p>A container may be rendered differently than a non-container. For instance, a container may have a folder icon beside it. A style sheet may be used to style items based on various properties such as whether a row is open. This is described in a <a href="/en/XUL_Tutorial/Styling_a_Tree" title="en/XUL_Tutorial/Styling_a_Tree">later section</a>. A non-empty container will be displayed with a twisty next to it so that the user may open and close the row to see child items. Empty containers will not have a twisty, but will still be treated like a container.</p>
+
+<p>When the user clicks the twisty to open a row, the tree will call the view's <code>toggleOpenState</code> method. The view should then perform any necessary operations to retrieve the child rows and then update the tree with the new rows.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note:</strong> As of this writing (Gecko 2.0), custom <a href="/en-US/XPCOM_Interface_Reference/nsITreeView" title="en/XPCOM Interface Reference/nsITreeView"><code>nsITreeView</code></a> implementations must be prepared to handle a call to <code>toggleOpenState</code> for any row index which returns true for a call to <code>isContainer</code>, regardless of whether the container is empty.</p>
+</div>
+
+<h4 id="Review_of_the_Methods" name="Review_of_the_Methods">Review of the Methods</h4>
+
+<p>Here is a review of the methods needed to implement hierarchical views:</p>
+
+<pre class="brush: js;">getLevel(row)
+hasNextSibling(row, afterIndex)
+getParentIndex(row)
+isContainer(row)
+isContainerEmpty(row)
+isContainerOpen(row)
+toggleOpenState(row)
+</pre>
+
+<p>The <em>afterIndex</em> argument to <code>hasNextSibling</code> function is used as optimization to only start looking for the next sibling after that point. For instance, the caller might already know where the next sibling might possibly be. Imagine a situation where a row had subrows and those subrows had child rows of their own and several are open. It could take a while in some implementations to determine what the next sibling's row index would be in such a case.</p>
+
+<h3 id="Example_of_Hierarchical_Custom_View" name="Example_of_Hierarchical_Custom_View">Example of Hierarchical Custom View</h3>
+
+<p>Let's put this together into a simple example that takes an array and constructs a tree from it. This tree will only support a single parent level with an inner child level, but it could be extended to support additional levels without too much effort. We'll examine it piece by piece.</p>
+
+<pre class="brush: xml;">&lt;window onload="init();"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+
+&lt;tree id="elementList" flex="1"&gt;
+  &lt;treecols&gt;
+    &lt;treecol id="element" label="Element" primary="true" flex="1"/&gt;
+  &lt;/treecols&gt;
+  &lt;treechildren/&gt;
+&lt;/tree&gt;
+
+&lt;/window&gt;
+</pre>
+
+<p>We use a simple tree here with no data in the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/treechildren" title="treechildren">treechildren</a></code></code>. The 'init' function is called when the window is loaded to initialize the tree. It simply sets the custom view by retrieving the tree and setting its 'view' property. We will define 'treeView' next.</p>
+
+<pre class="brush: js;">function init() {
+  document.getElementById("elementList").view = treeView;
+}
+</pre>
+
+<p>The custom tree view will need to implement a number of methods, of which the important ones will be examined individually. First we'll define two structures to hold the data for the tree, the first will hold a map between parents and the children they contain, and the second will hold an array of the visible items. Remember that a custom view must keep track of which items are visible itself.</p>
+
+<pre class="brush: js;">var treeView = {
+  childData : {
+    Solids: ["Silver", "Gold", "Lead"],
+    Liquids: ["Mercury"],
+    Gases: ["Helium", "Nitrogen"]
+  },
+
+  visibleData : [
+    ["Solids", true, false],
+    ["Liquids", true, false],
+    ["Gases", true, false]
+  ],
+};</pre>
+
+<p>The <code>childData</code> structure holds an array of the children for each of the three parent nodes. The <code>visibleData</code> array begins with only three items visible, the three top level items. Items will be added and removed from this array when items are opened or closed. Essentially, when a parent row is opened, the children will be taken from the <code>childData</code> map and inserted into the <code>visibleData</code> array. For example, if the Liquids row was opened, the corresponding array from <code>childData</code>, which in this case contains only the single Mercury child, will be inserted into the <code>visibleData</code> array after Liquids but before Gases. This will increase the array size by one. The two booleans in each row in the <code>visibleData</code> structure indicate whether a row is a container and whether it is open respectively. Obviously, the new inserted child items will have both values set to false.</p>
+
+<h4 id="Implement_the_Tree_View_Interface" name="Implement_the_Tree_View_Interface">Implement the Tree View Interface</h4>
+
+<p>Next, we need to implement the tree view interface. First, the simple functions:</p>
+
+<pre class="brush: js;">{
+  treeBox: null,
+  selection: null,
+  get rowCount()                     { return this.visibleData.length; },
+  setTree: function(treeBox)         { this.treeBox = treeBox; },
+  getCellText: function(idx, column) { return this.visibleData[idx][0]; },
+  isContainer: function(idx)         { return this.visibleData[idx][1]; },
+  isContainerOpen: function(idx)     { return this.visibleData[idx][2]; },
+  isContainerEmpty: function(idx)    { return false; },
+  isSeparator: function(idx)         { return false; },
+  isSorted: function()               { return false; },
+  isEditable: function(idx, column)  { return false; },
+}
+</pre>
+
+<p>The <code>rowCount</code> function will return the length of the <code>visibleData</code> array. Note that it should return the current number of visible rows, not the total. So, at first, only three items are visible and the <code>rowCount</code> should be three, even though six rows are hidden. Also note the use of the <a href="/en/JavaScript/Reference/Operators/Special/get" title="en/Core JavaScript 1.5 Reference/Operators/Special Operators/get Operator">JavaScript get operator</a> to bind a property to a function, so to have the value of the rowCount property that can change dynamically over time, as rowCount has to be a read-only attribute as defined in <a href="/en/XPCOM_Interface_Reference/nsITreeView" title="en/XPCOM Interface Reference/nsITreeView">nsITreeView</a>.</p>
+
+<p>The <code>setTree</code> function will be called to set the tree's box object. The tree box object is a specialized type of box object specific to trees and will be examined in detail in the next section. It is used to aid in drawing the tree. In this example, we will only need one function of the box object, to be able to redraw the tree when items are added or removed.</p>
+
+<p>The <code>getCellText</code>, <code>isContainer</code> and <code>isContainerOpen</code> functions just return the corresponding element from the <code>visibleData</code> array. Finally, the remaining functions can just return false since we don't need those features. If we had a row that had no children we would want to implement the <code>isContainerEmpty</code> function so that it returned true for those elements.</p>
+
+<pre class="brush: js;">getParentIndex: function(idx) {
+  if (this.isContainer(idx)) return -1;
+  for (var t = idx - 1; t &gt;= 0 ; t--) {
+    if (this.isContainer(t)) return t;
+  }
+}
+</pre>
+
+<p>The <code>getParentIndex</code> will need to find the parent of a given index. In our simple example, there are only two levels, so we know that containers don't have parents, so -1 is returned for these items. Otherwise, we just iterate backwards through the rows looking for one that is a container. Next, the <code>getLevel</code> function:</p>
+
+<pre class="brush: js;">getLevel: function(idx) {
+  if (this.isContainer(idx)) return 0;
+  return 1;
+}
+</pre>
+
+<p>The <code>getLevel</code> function is simple. It just returns 0 for container rows and 1 for non-containers. If we wanted to add an additional level of children, those rows would have a level of 2.</p>
+
+<pre class="brush: js;">hasNextSibling: function(idx, after) {
+  var thisLevel = this.getLevel(idx);
+  for (var t = after + 1; t &lt; this.visibleData.length; t++) {
+    var nextLevel = this.getLevel(t);
+    if (nextLevel == thisLevel) return true;
+    if (nextLevel &lt; thisLevel) break;
+  }
+  return false;
+}
+</pre>
+
+<p>The <code>hasNextSibling</code> function needs to return true if there is a row at the same level after a given row. The code above uses a brute force method which simply iterates over the rows looking for one, returning true if a row exists with the same level and false once it finds a row that has a lower level. In this simple example, this method is fine, but a tree with a larger set of data will want to use a more optimal method of determining whether a later sibling exists.</p>
+
+<h4 id="Opening_or_Closing_a_Row" name="Opening_or_Closing_a_Row">Opening or Closing a Row</h4>
+
+<p>The final function of note is <code>toggleOpenState</code>, which is the most complex. It needs to modify the <code>visibleData</code> array when a row is opened or closed.</p>
+
+<pre class="brush: js;">toggleOpenState: function(idx) {
+  var item = this.visibleData[idx];
+  if (!item[1]) return;
+
+  if (item[2]) {
+    item[2] = false;
+
+    var thisLevel = this.getLevel(idx);
+    var deletecount = 0;
+    for (var t = idx + 1; t &lt; this.visibleData.length; t++) {
+      if (this.getLevel(t) &gt; thisLevel) deletecount++;
+      else break;
+    }
+    if (deletecount) {
+      this.visibleData.splice(idx + 1, deletecount);
+      this.treeBox.rowCountChanged(idx + 1, -deletecount);
+    }
+  }
+  else {
+    item[2] = true;
+
+    var label = this.visibleData[idx][0];
+    var toinsert = this.childData[label];
+    for (var i = 0; i &lt; toinsert.length; i++) {
+      this.visibleData.splice(idx + i + 1, 0, [toinsert[i], false]);
+    }
+    this.treeBox.rowCountChanged(idx + 1, toinsert.length);
+  }
+  this.treeBox.invalidateRow(idx);
+}
+</pre>
+
+<p>First we will need to check if the row is a container. If not, the function just returns since non-containers cannot be opened or closed. Since the third element in the item array (with an index of 2) holds whether the row is open or not, we use two code paths, the first to close a row and the second to open a row. Let's examine each block of code, but let's look at the second block for opening a row first.</p>
+
+<pre class="brush: js;">item[2] = true;
+
+var label = this.visibleData[idx][0];
+var toinsert = this.childData[label];
+for (var i = 0; i &lt; toinsert.length; i++) {
+  this.visibleData.splice(idx + i + 1, 0, [toinsert[i], false]);
+}
+this.treeBox.rowCountChanged(idx + 1, toinsert.length);
+</pre>
+
+<p>The first line makes the row open in the array so that we will know the next time the <code>toggleOpenState</code> function is called that the row will need to be closed instead. Next, we look up the data in the <code>childData</code> map for the row. The result is that 'toinsert' will be set to one of the child arrays, for example <code>["Silver", "Gold", "Lead"]</code> if the Solids row is the one being opened. Next, we use the array's splice function to insert a new row for each item. For Solids, three items will be inserted.</p>
+
+<p>Finally, the tree box's <code>rowCountChanged</code> function needs to be called. Recall that <code>treeBox</code> is a tree box object and was set earlier by a call to the <code>setTree</code> function. The tree box object will be created by the tree for you and you can call its functions. In this case, we</p>
+
+<p>use the <code>rowCountChanged</code> function to inform the tree that some rows were added to the underlying data. The tree will then redraw the tree as needed and the result is that the child rows will appear inside the container. The various other functions implemented above such as <code>getLevel</code> and <code>isContainer</code> are used by the tree to determine how to draw the tree.</p>
+
+<p>The <code>rowCountChanged</code> function takes two arguments, the index where the first row was inserted and the number of rows to insert. In the code above we indicate that the starting row is the value of 'idx' plus one, which will be the first child under the parent. The tree will use this information and add space for the appropriate number of rows and push the rows afterwards down. Make sure to pass the right number or the tree might redraw incorrectly or try to draw more rows than necessary.</p>
+
+<p>The following code is used to delete rows when a row is closed.</p>
+
+<pre class="brush: js;">item[2] = false;
+
+var thisLevel = this.getLevel(idx);
+var deletecount = 0;
+for (var t = idx + 1; t &lt; this.visibleData.length; t++) {
+  if (this.getLevel(t) &gt; thisLevel) deletecount++;
+  else break;
+}
+if (deletecount) {
+  this.visibleData.splice(idx + 1, deletecount);
+  this.treeBox.rowCountChanged(idx + 1, -deletecount);
+}
+</pre>
+
+<p>First, the item is set closed in the array. Then, we scan along the rows until we come to one that is at the same level. All those that have a higher level will need to be removed, but a row at the same level will be the next container which should not be removed.</p>
+
+<p>Finally, we use the splice function to remove the rows from the <code>visibleData</code> array and call the <code>rowCountChanged</code> function to redraw the tree. When deleting rows, you will need to supply a negative count of the number of rows to delete.</p>
+
+<p>Whether opening or closing a row, we need to tell the tree to repaint the twisty in the new state. The easiest way to do this is to invalidate the row.</p>
+
+<h4 id="Complete_Example" name="Complete_Example">Complete Example</h4>
+
+<p>There are several other view functions we can implement but they don't need to do anything in this example, so we can create functions that do nothing for those. They are added near the end of the complete example, shown here:</p>
+
+<pre class="brush: xml;">&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet href="chrome://global/skin/" type="text/css"?&gt;
+
+&lt;window onload="init();"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+
+&lt;tree id="elementList" flex="1"&gt;
+  &lt;treecols&gt;
+    &lt;treecol id="element" label="Element" primary="true" flex="1"/&gt;
+  &lt;/treecols&gt;
+  &lt;treechildren/&gt;
+&lt;/tree&gt;
+
+&lt;script&gt;
+&lt;![CDATA[
+
+var treeView = {
+  childData : {
+    Solids: ["Silver", "Gold", "Lead"],
+    Liquids: ["Mercury"],
+    Gases: ["Helium", "Nitrogen"]
+  },
+
+  visibleData : [
+    ["Solids", true, false],
+    ["Liquids", true, false],
+    ["Gases", true, false]
+  ],
+
+  treeBox: null,
+  selection: null,
+
+  get rowCount()                     { return this.visibleData.length; },
+  setTree: function(treeBox)         { this.treeBox = treeBox; },
+  getCellText: function(idx, column) { return this.visibleData[idx][0]; },
+  isContainer: function(idx)         { return this.visibleData[idx][1]; },
+  isContainerOpen: function(idx)     { return this.visibleData[idx][2]; },
+  isContainerEmpty: function(idx)    { return false; },
+  isSeparator: function(idx)         { return false; },
+  isSorted: function()               { return false; },
+  isEditable: function(idx, column)  { return false; },
+
+  getParentIndex: function(idx) {
+    if (this.isContainer(idx)) return -1;
+    for (var t = idx - 1; t &gt;= 0 ; t--) {
+      if (this.isContainer(t)) return t;
+    }
+  },
+  getLevel: function(idx) {
+    if (this.isContainer(idx)) return 0;
+    return 1;
+  },
+  hasNextSibling: function(idx, after) {
+    var thisLevel = this.getLevel(idx);
+    for (var t = after + 1; t &lt; this.visibleData.length; t++) {
+      var nextLevel = this.getLevel(t);
+      if (nextLevel == thisLevel) return true;
+      if (nextLevel &lt; thisLevel) break;
+    }
+    return false;
+  },
+  toggleOpenState: function(idx) {
+    var item = this.visibleData[idx];
+    if (!item[1]) return;
+
+    if (item[2]) {
+      item[2] = false;
+
+      var thisLevel = this.getLevel(idx);
+      var deletecount = 0;
+      for (var t = idx + 1; t &lt; this.visibleData.length; t++) {
+        if (this.getLevel(t) &gt; thisLevel) deletecount++;
+        else break;
+      }
+      if (deletecount) {
+        this.visibleData.splice(idx + 1, deletecount);
+        this.treeBox.rowCountChanged(idx + 1, -deletecount);
+      }
+    }
+    else {
+      item[2] = true;
+
+      var label = this.visibleData[idx][0];
+      var toinsert = this.childData[label];
+      for (var i = 0; i &lt; toinsert.length; i++) {
+        this.visibleData.splice(idx + i + 1, 0, [toinsert[i], false]);
+      }
+      this.treeBox.rowCountChanged(idx + 1, toinsert.length);
+    }
+    this.treeBox.invalidateRow(idx);
+  },
+
+  getImageSrc: function(idx, column) {},
+  getProgressMode : function(idx,column) {},
+  getCellValue: function(idx, column) {},
+  cycleHeader: function(col, elem) {},
+  selectionChanged: function() {},
+  cycleCell: function(idx, column) {},
+  performAction: function(action) {},
+  performActionOnCell: function(action, index, column) {},
+  getRowProperties: function(idx, prop) {},
+  getCellProperties: function(idx, column, prop) {},
+  getColumnProperties: function(column, element, prop) {},
+};
+
+function init() {
+  document.getElementById("elementList").view = treeView;
+}
+
+]]&gt;&lt;/script&gt;
+
+&lt;/window&gt;
+</pre>
+
+<p>Next, we'll look in more detail at the tree box object.</p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:Custom_Tree_Views" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:Tree_Box_Objects">Next  »</a></p>
+</div>

@@ -1,0 +1,273 @@
+<div class="summary">
+ <p><span class="seoSummary">In general, a window manager is the part of an application that controls the placement and appearance of windows in a graphical user interface. This article looks at how Firefox OS handles Window Management.</span></p>
+</div>
+<p>In Firefox OS, Window Management is part of the <a href="/en-US/Firefox_OS/Platform/Gaia/Gaia_apps/System">System app</a>, and is responsible for:</p>
+<ul>
+ <li>App life cycle and interaction between apps</li>
+ <li>Layout, resizing, orientation, visibility and animation/transitions of UI elements.</li>
+ <li>System-wide UI logic such as web activities, app notifications, and the task manager.</li>
+ <li>App-specific UI features such as popups, context menus, and error pages.</li>
+</ul>
+<p>Before we dive into details of such items, let’s see how apps are launched in Gaia.</p>
+<h2 id="How_apps_are_launched_in_Gaia">How apps are launched in Gaia</h2>
+<p>An app can be launched in Firefox OS in a number of ways, for example via a system message created by another app, or by tapping the icon on the Homescreen.</p>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7709/app-launch-flow.png" style="width: 728px; height: 414px; display: block; margin: 0px auto;"></p>
+<p>The events that control the apps opening are handled by the Gecko engine and the System App, and explained in more detail below.</p>
+<h3 id="App_structure">App structure</h3>
+<p>All Gaia webapps are <a href="/en-US/Marketplace/Publishing/Packaged_apps">packaged apps</a>, which are essentially zip files containing all application assets: HTML, CSS, JavaScript, images, manifest, etc. Each webapp in Gaia is organized with following basic structure:</p>
+<div class="code-block">
+ <div class="highlight">
+  <pre><code class="brush: bash">apps</code><code class="o">/</code><code class="p">[</code><code class="n">app</code> <code class="n">name</code><code class="p">]</code><code class="o">/</code>
+ <code class="o">-</code> <code class="n">js</code>
+ <code class="o">-</code> <code class="n">styles</code>
+ <code class="o">-</code> <code class="n">locales</code>
+ <code class="o">-</code> <code class="n">test</code>
+ <code class="o">-</code> <code class="n">index</code><code class="p">.</code><code class="n">html</code>
+ <code class="o">-</code> <code class="n">manifest</code><code class="p">.</code><code class="n">webapp</code>
+</pre>
+ </div>
+</div>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7497/app_load_process.png" style="width: 2262px; height: 1979px; margin: 0px auto; display: block;"></p>
+<p>When one of the built-in Gaia apps is launched from the homescreen, Gecko will try to open a URL of <code>manifest://[app name].gaiamobile.org:8080</code>, parse the <code>manifest.webapp</code> at that location, then run the index file defined in the manifest <code>launch_path</code> — which is <code>index.html</code> for all built-in webapps. The <code>index.html</code> file will pull in all required styles and JavaScript.</p>
+<div class="note">
+ <p><strong>Note</strong>: As an informal convention, the major JavaScript entry point for Gaia apps is usually <code>[app name].js</code> or <code>main.js</code>.</p>
+</div>
+<h3 id="App_launch_sequence">App launch sequence</h3>
+<p>The events are sent to Gecko. Once Gecko is ready, <code>AppwindowFactory</code> from <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/system/js/app_window_factory.js">system/js/app_window_factory.js</a> will receive a <code>webapps-launch</code> event for an app, or an <code>open-app </code>event for handling a pending system message.</p>
+<pre class="brush: js">window.addEventListener('applicationready', function appReady(e) {
+  window.removeEventListener('applicationready', appReady);
+  window.addEventListener('webapps-launch', self);
+  window.addEventListener('webapps-close', self);
+  window.addEventListener('open-app', self);
+});</pre>
+<p><span style="background-color: #ffff00;">For detail in handleEvent section, </span><code><span style="background-color: #ffff00;">this.launch(config)</span></code><span style="background-color: #ffff00;"> will launch an app window or an activity. Once the app is closed, </span><code><span style="background-color: #ffff00;">Appwindow</span></code><span style="background-color: #ffff00;"> will receive a </span><code><span style="background-color: #ffff00;">webapps-close</span></code><span style="background-color: #ffff00;"> event.</span></p>
+<p>The main process in the <code>launch()</code> method is:</p>
+<pre class="brush: js">var app = AppWindowManager.getApp(config.origin);
+if (app) {
+  app.reviveBrowser();
+} else if (config.origin !== homescreenLauncher.origin) {
+  new AppWindow(config);
+} else if (config.origin == homescreenLauncher.origin) {
+  homescreenLauncher.getHomescreen().ensure();
+}</pre>
+<p>First the code checks if the app variable exists and tries to revive it in Gecko. On the other hand, if it’s a normal app, we create an <code>AppWindow</code> instance for the app. The other special case is the <code>homescreenLauncher</code> — in this case we do the required operations.</p>
+<h3 id="AppWindow">AppWindow</h3>
+<p>Firefox OS uses a special <a href="https://developer.mozilla.org/en-US/docs/WebAPI/Browser">mozBrowser API</a> to make a web page act like an app. The root of Window Management is just a <code>mozBrowser</code> API wrapper to handle inner iFrames (the Window). A special iFrame of type <code>moz-browser</code> is created to make the iFrame act like a real browser window.</p>
+<p><code>AppWindow</code> creates, contains, and manages a <code>mozBrowser</code> iFrame. <code>AppWindow</code> will manipulate all <code>mozBrowser</code> events fired from the <code>mozBrowser</code> iFrame itself and show the relevant UI features.</p>
+<h2 id="App_life_cycle_Management">App life cycle Management</h2>
+<p>The full life cycle of an app is as follows:</p>
+<ul>
+ <li>App launch</li>
+ <li>Append iframe to System DOM tree</li>
+ <li>Start App opening animation</li>
+ <li>App opened</li>
+ <li>App close animation</li>
+ <li>App closed</li>
+ <li>Remove iframe from DOM tree</li>
+ <li>App terminated</li>
+</ul>
+<h3 id="Launching_apps">Launching apps</h3>
+<p>When a user tap icons on the homescreen, the homescreen uses the <a href="/en-US/docs/Web/API/Navigator.mozApps">mozApps API</a> to notify the Gecko engine to open the corresponding app. When Gecko is ready, it will send the appropriate event to system app.</p>
+<h3 id="Killing_apps">Killing apps</h3>
+<p>Apps will be killed under the following circumstances:</p>
+<ul>
+ <li>An app crashes</li>
+ <li>The <a href="https://developer.mozilla.org/en-US/Firefox_OS/Debugging/Debugging_OOMs#Process_priorities">OOM killer</a> kills it</li>
+ <li>The app is closed via the Task Manager</li>
+ <li><code>window.close()</code> is invoked</li>
+</ul>
+<p>For active apps, after performing the closing animation, the iFrame of the killed app is removed from the DOM tree. For inactive apps, the iframe removed immediately after they are killed.</p>
+<p>Apps will be interrupted in the following circumstances:</p>
+<ul>
+ <li>For web activities: when the activity caller is opened</li>
+ <li>Popups: when the window.open caller is opened</li>
+ <li>App: nothing to do</li>
+</ul>
+<h3 id="Relaunching_apps">Relaunching apps</h3>
+<p>Apps will be relaunched in the following circumstances:</p>
+<ul>
+ <li>homescreen app: When the home button is pressed</li>
+ <li>Zombie apps are revived with the same URL if opened from the Task Manager or swiped in from an edge gesture. (Experimental feature)</li>
+</ul>
+<h2 id="How_an_app_is_rendered">How an app is rendered</h2>
+<p>When we launch an app, the screen will be rendered with following blocks:</p>
+<ul>
+ <li>System header</li>
+ <li>App iframe</li>
+ <li>Bottom wrapper bar (if in browser chrome mode)</li>
+</ul>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7711/app-window-layout.png" style="width: 393px; height: 348px; display: block; margin: 0px auto;"></p>
+<h3 id="App_Layout">App Layout</h3>
+<p>The main container of the app's iframe is as follows:</p>
+<pre class="brush: html">&lt;iframe id="browser2" mozallowfullscreen="true" mozbrowser="true" remote="true"...
+... src="", data-url="" data-frame-type="window" data-frame-origin="..."&gt;
+&lt;/iframe&gt;</pre>
+<p>The iframe contains:</p>
+<ul>
+ <li>Launch path (<code>data-url</code>, <code>data-frame-origin</code>)</li>
+ <li>mozbrowser iframe attributes (<code>mozallowfullscreen="true"</code>, <code>mozbrowser="true"</code>)</li>
+ <li>Container, overlay, app specific UI</li>
+</ul>
+<h3 id="Resizing_the_AppWindow">Resizing the AppWindow</h3>
+<p>The AppWindow will be resized in a number of situations:</p>
+<ul>
+ <li>The system app will not be resized until the orientation changes.</li>
+ <li>For general apps, resizing occurs when:
+  <ul>
+   <li>The system app resizes</li>
+   <li>The keyboard opening/closing animation ends</li>
+   <li>The statusbar changes</li>
+   <li><code>window.resizedBy()</code> or <code>window.resizeTo()</code> is called</li>
+   <li>The software home button is toggled</li>
+  </ul>
+ </li>
+</ul>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7713/app-area.png" style="width: 715px; height: 305px; margin: 0px auto; display: block;"></p>
+<p>In summary, the window size is affected by:</p>
+<ul>
+ <li>Orientation state</li>
+ <li>Keyboard state</li>
+ <li>AttentionScreen state (has call, has message, etc.)</li>
+ <li>Chrome navigation state</li>
+ <li>Fullscreen state <code>manifest.fullscreen</code> / <code>parentWindow</code></li>
+ <li>Software homebutton state</li>
+</ul>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7715/app-area2.png" style="width: 687px; height: 330px; margin: 0px auto; display: block;"></p>
+<h3 id="AppWindow_Orientation">AppWindow Orientation</h3>
+<p>Orientation of apps can be controlled from each individual app, or globally by the system. You can set orientation in the app’s <code>manifest.webapp</code> file with the <code>orientation</code> property, for example:</p>
+<pre class="brush: json">"orientation": "default",</pre>
+<p>You are also able to use the orientation API to lock or unlock orientation:</p>
+<pre class="brush: js">screen.mozLockOrientation([‘portrait-primary’]);
+
+screen.mozUnlockOrientation();</pre>
+<p>There are several parameter values that can be used to force the orientation:</p>
+<ul>
+ <li><code>default</code>: system default orientation</li>
+ <li><code>portrait</code>: force the screen to be rendered in portrait</li>
+ <li><code>landscape</code>: force screen to be rendered in landscape</li>
+</ul>
+<p>More details are available in the <a href="/en-US/docs/Web/API/Screen.lockOrientation">Screen.lockOrientation</a> reference, and you can see an example at <a href="https://github.com/mozilla-b2g/gaia/blob/master/dev_apps/uitest/js/API/orientation.js">gaia/dev_apps/uitest/js/API/orientation.js</a>.</p>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7717/app-orientation.png" style="width: 745px; height: 530px; margin: 0px auto; display: block;"></p>
+<h3 id="App_visibility">App visibility</h3>
+<p>The System app goes into the background only when the screen is off, whereas normal apps go into the background dependant on a few factors:</p>
+<ul>
+ <li>Audio competing</li>
+ <li>Process policy</li>
+ <li>Rendering</li>
+</ul>
+<div class="note">
+ <p><strong>Note</strong>: Page visibility is inherited while the parent iframe is inactive.</p>
+</div>
+<p>Apps are always in the foreground when the:</p>
+<ul>
+ <li>Open animation starts</li>
+ <li>Swipe-in animation ends</li>
+ <li>Lockscreen is unlocked</li>
+</ul>
+<p>App are always in the background:</p>
+<ul>
+ <li>When the closing animation ends</li>
+ <li>3 secs after the callscreen is visible</li>
+ <li>When the screen is off</li>
+</ul>
+<p>There are a few exceptions to the above rules:</p>
+<ul>
+ <li>Active app with audio playing in the normal channel</li>
+ <li>Apps calling inline web activities</li>
+ <li>Apps opening <code>window.open('', '', 'dialog')</code></li>
+</ul>
+<h3 id="AppWindow_animation_and_transition">AppWindow animation and transition</h3>
+<p>The Gaia Window Manager also provides app window animation and transitions to make for a slicker user experience.</p>
+<p>The AppWindow animation and transitions are managed by the following stats:</p>
+<ul>
+ <li><code>displayedApp</code> — the current App</li>
+ <li><code>runningApps</code> / <code>numRunningApps</code> — the set of running apps</li>
+ <li><code>openFrame</code> / <code>closeFrame</code> — the transition frame for opening/closing animations</li>
+</ul>
+<p>While calling the <code>setDisplayedApp()</code> method, the app will be launched via the stats illustrated by the following diagram.</p>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7719/app-animations-state-manchine.png" style="width: 704px; height: 358px; display: block; margin: 0px auto;"></p>
+<p>There are several tricks involved in controlling the Firefox OS app animation flow:</p>
+<ul>
+ <li>Before an app is opened, we need to ensure it’s recovered from its background state. We usually take a 1 x 1 screenshot to enforce redraw.</li>
+ <li>After the app is ready to be opened, we perform the opening animation of the next app and the closing animation of the current app at the same time.</li>
+ <li>We run code to lock/unlock screen orientations both during app opening and closing.</li>
+ <li>We perform an app resize at opening only if the app is resized once. Otherwise, we skip resizing step.</li>
+ <li>We change the page visibility by again taking a 1 x 1 screenshot (see above).</li>
+</ul>
+<p><img alt="" src="https://mdn.mozillademos.org/files/7721/app-switching-flow.png" style="width: 530px; height: 258px; display: block; margin: 0px auto;"></p>
+<h2 id="AppWindow_specific_UI">AppWindow specific UI</h2>
+<p>There are several UI elements that are only relevant to certain apps, such as Browser chrome, modal dialogs, context menus, popups, and error pages.</p>
+<p>Let's discuss some of these.</p>
+<h3 id="Modal_dialogs">Modal dialogs</h3>
+<p>On desktop Firefox, if you open the browser developer console and enter commands such as <code>alert()</code>, <code>confirm()</code>, and <code>prompt()</code>, you’ll get a centered dialog on screen that blocks the underlying content. The equivalent in Firefox OS is modal dialogs.<br>
+ <br>
+ <img alt="" src="https://mdn.mozillademos.org/files/7723/modal-dialogs.png" style="width: 715px; height: 357px; margin: 0px auto; display: block;"></p>
+<h3 id="Context_menu_dialog">Context menu dialog</h3>
+<p>Context menus (or long press menus) are familiar concepts to mobile developers. In general app design, the most frequently used actions should be visible to users so they can control the app easily. Context menus provide a place to contain actions that can't fit on the immediate UI but still ought to be easily available.<br>
+ <br>
+ <img alt="" src="https://mdn.mozillademos.org/files/7725/context-menu-dialogs.png" style="width: 722px; height: 360px; display: block; margin: 0px auto;"></p>
+<h3 id="Authentication_(https)_dialog">Authentication (https) dialog</h3>
+<p>Defined in <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/system/js/app_authentication_dialog.js">system/js/app_authentication_dialog.js</a>.</p>
+<h3 id="value_select_time_date_dialogs">value select, time, date dialogs</h3>
+<p>Defined in <a href="https://github.com/mozilla-b2g/gaia/tree/master/apps/system/js/value_selector">system/js/value_selector/</a>.</p>
+<h3 id="Permissions_dialog">Permissions dialog</h3>
+<p>Defined in <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/system/js/permission_manager.js">system/js/permission_manager.js</a> and <a href="https://github.com/mozilla-b2g/gaia/blob/master/apps/system/js/media_recording.js">system/js/media_recording.js</a> (for utility tray panel).</p>
+<h2 id="Special_apps">Special apps</h2>
+<p>Some apps need a special <code>appWindow</code> object to deal with special functionality they contain. Examples include:</p>
+<ul>
+ <li>Homescreen</li>
+ <li>FTU</li>
+ <li>Keyboard</li>
+ <li>Cost control</li>
+ <li>Secure camera</li>
+ <li>Lockscreen</li>
+</ul>
+<h2 id="Child_window_management">Child window management</h2>
+<p>Child app windows are opened directly or indirectly by other apps/pages. Examples are:</p>
+<ul>
+ <li>Attention window</li>
+ <li>Popup window</li>
+ <li>Activity window</li>
+ <li>Trusted UI / Trusted window</li>
+</ul>
+<p>When a child window terminates normally, its parent window should be re-opened. Some sort of child window may also have another child window. Process priority management between parent and child is an issue.</p>
+<h2 id="Attention_Window">Attention Window</h2>
+<p>Attention Windows are used to get your attention:</p>
+<ul>
+ <li>Call screen — dialer</li>
+ <li>Alarm screen — clock</li>
+ <li>Permission confirmations</li>
+</ul>
+<p>Currently those attention window are forced for default (portrait primary) orientation.</p>
+<h2 id="Trusted_UI">Trusted UI</h2>
+<p>Persona and the mozPay API use trusted UI. They use Specific sizing: 80%. The Homescreen is partially visible during the time trusted UI is running.<br>
+ <br>
+ <img alt="" src="https://mdn.mozillademos.org/files/7727/trusted-ui.png" style="width: 737px; height: 516px; display: block; margin: 0px auto;"></p>
+<h2 id="History_Management">History Management</h2>
+<p>In this section we will look at some fo the components that handle history management in Firefox OS.</p>
+<h3 id="Task_Manager">Task Manager</h3>
+<p>The Task manager (card view) can be triggered by a long press of the home button. It shows app history on the device, and is able to kill an app actively.</p>
+<p>From Firefox OS version 2.0, there’s an experimental feature available to keep zombie apps present and pretend they are still alive.</p>
+<h3 id="Web_activity_dispositions">Web activity dispositions</h3>
+<p>Inline Activities create a new reference page to provide the data to the activity.<br>
+ <br>
+ Window Activities will reuse the existing app window to consume the activity data.</p>
+<h3 id="Edge_gestures_(experimental)">Edge gestures (experimental)</h3>
+<p>The experimental Edge gesture feature is available in developer mode on Firefox OS 2.0+, and allows you to use finger swipe right/left from the edge of the device to navigate between apps and web pages.</p>
+<h4 id="How_is_the_next_app_to_display_chosen">How is the next app to display chosen?</h4>
+<ul>
+ <li>Child window of the active app</li>
+ <li>Launch time is newer</li>
+ <li>Find the head window of the next app stack</li>
+</ul>
+<h4 id="How_is_the_previous_app_chosen">How is the previous app chosen?</h4>
+<ul>
+ <li>Parent window of the active app</li>
+ <li>Launch time is older</li>
+ <li>Find the rear window of the previous app stack</li>
+</ul>
+<h3 id="Screenshot_management">Screenshot management</h3>
+<p>The screenshot tool is used by the task manager (card view) to show what the apps in the history look. An app screenshot is taken when the app closing<br>
+ animation has ended.</p>
+<h2 id="See_also">See also</h2>
+<p><a href="http://alivedise.github.io/blog/2013/02/23/from-browser-to-browser/">From Browser to Browser</a></p>

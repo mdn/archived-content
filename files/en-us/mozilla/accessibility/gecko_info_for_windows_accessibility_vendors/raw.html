@@ -1,0 +1,869 @@
+<div class="indent">
+  <p>This FAQ explains how makers of Windows screen readers, voice dictation packages and magnification software can support Gecko-based software. The base of our support for these products is <dfn>MSAA (Microsoft Active Accessibility)</dfn>, external readonly DOM support, and the keyboard API/user interface.</p>
+</div>
+<h2 id="Definitions"><a id="definitions" name="definitions">Definitions</a></h2>
+<div class="indent">
+  <p>Here are some basic definitions that you'll need for this document to make sense:</p>
+  <dl>
+    <dt>
+      <a href="../../newlayout/faq.html">Gecko</a>:</dt>
+    <dd>
+      The rendering engine for Firefox, Thunderbird, Nvu, Mozilla Seamonkey and other applications. Gecko is the internal engine that Mozilla uses to render any kind of web content. It supports HTML, XHTML, <dfn>Cascading Style Sheets (CSS)</dfn> and the <dfn>Document Object Model (DOM)</dfn>.</dd>
+    <dt>
+      <a class="ex-ref" href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/msaa/msaastart_9w2t.asp"><dfn>Microsoft Active Accessibility (MSAA)</dfn></a></dt>
+    <dd>
+      an API devised by Microsoft so that accessibility aids can track what's going on inside the user interface of any software package that supports it. If you seriously need to understand MSAA, you'll need to read the docs on MSDN and play with the sample apps and code that come with <a class="ex-ref" href="http://www.microsoft.com/downloads/details.aspx?FamilyID=4179742f-1f3d-4115-a8ba-2f7a6022b533&amp;displaylang=en">MSAA SDK 1.3</a>. (I recommend SDK 1.3 because the MSAA SDK 2.0 doesn't come with the source code to the testing tools. The other differences are not important).</dd>
+    <dt>
+      <a class="ex-ref" href="http://www.w3.org/DOM/"><dfn>DOM: Document Object Model</dfn></a></dt>
+    <dd>
+      This is the W3C's specification for how web content is exposed to Javascript and other languages. It covers content, style and events. Inside the Gecko process, code has full access to DOM APIs. However, exposing the entire DOM to external software packages is quite involved, partially because changes to the DOM in Firefox must occur on the main thread. We have chosen a subset of readonly methods in the DOM needed for assistive technology vendors. Events such as focus changes must be tracked through MSAA events, rather than DOM events.</dd>
+    <dt>
+      <a class="ex-ref" href="http://www.xulplanet.com/"><dfn>XUL: eXtensible User-interface Language</dfn></a></dt>
+    <dd>
+      The XML-based language used by Firefox and Mozilla to develop the UI. Similar to HTML in that it can be combined with CSS and Javascript to make powerful applications. Contains more desktop-style widgets than HTML and follows a box layout model, rather than being text-flow based.</dd>
+    <dt>
+      <a class="ex-ref" href="http://www.ajax.org/"><dfn>AJAX: Asynchronous JavaScript And XML</dfn></a></dt>
+    <dd>
+      AJAX is a method of building interactive web applications that process user requests, user actions <strong>immediately</strong> in real time, unlike an HTTP request, during which users must wait for a whole page to reload or for a new page to load. Data is therefore stored and retrieved dynamically much faster.</dd>
+    <dt>
+      Roles, states and events:</dt>
+    <dd>
+      please read the MSAA documentation on MSDN if you are unfamiliar with these. in general we abbreviate by removing redundant words. For example, we may say EVENT_ALERT instead of the full EVENT_SYSTEM_ALERT.</dd>
+  </dl>
+  <h3 id="MSAA_tree_vs._DOM_tree_-_what's_the_relation">MSAA tree vs. DOM tree - what's the relation?</h3>
+  <div class="indent">
+    <p><img alt="" src="https://mdn.mozillademos.org/files/6223/tree-relativity.gif" style="width: 696px; height: 506px; border-width: 1px; border-style: solid;"></p>
+    <p>The MSAA tree and the DOM tree are parallel structures, although the MSAA tree is a subset of the DOM tree. <code>QueryService()</code> can be used to switch between the interfaces (IAccessible, ISimpleDOMDocument, ISimpleDOMNode and ISimpleDOMText). If there is no MSAA node for a DOM node, or vice-versa, <code>QueryService()</code> will return null.</p>
+    <p>Anything that is focusable or conveys important information about the structure of the document is exposed in the MSAA tree of IAccessibles.</p>
+  </div>
+</div>
+<h2 id="Windows_Applications_Based_on_the_Gecko_Layout_Engine"><a id="geckopackages" name="geckopackages">Windows Applications Based on the Gecko Layout Engine</a></h2>
+<div class="indent">
+  <p>Gecko is a rendering engine that Mozilla, Netscape and other new browsers use. Gecko can render a variety of content, not just HTML and supports key web standards such as Cascading Style Sheets, Javascript and the W3C DOM. Gecko also handles the users keystrokes and mouse clicks. Gecko is the core architecture that we are adding accessibility to, in order to support basic accessibility in all applications that are based on it.</p>
+  <h3 id="Embedded_Clients_(support_MSAA)">Embedded Clients (support MSAA)</h3>
+  <div class="indent">
+    <p>Embedded clients use Gecko only in the content window, at the moment for HTML and generic XML only. They typically use standard Windows controls for their user interface -- the area outside of the client content window, plus the context menu.</p>
+    <ul>
+      <li><code>MFCEMBED</code> testing client: This is a very simple package, great for testing basic HTML accessibility with your products and the Gecko rendering engine.</li>
+      <li><a href="http://kmeleon.sourceforge.net/">K-Meleon</a>: a light, ultra-fast and more advanced (fully configurable) Gecko-based web browser available on the Windows platform</li>
+    </ul>
+  </div>
+  <h3 id="XUL-Based_Clients_(support_MSAA)">XUL-Based Clients (support MSAA)</h3>
+  <div class="indent">
+    <p>XUL-based clients make full use of the Gecko architecture, not only for HTML content, as well as for menus, dialogs and the entire user interface via an XML language called <dfn>XUL (eXtensible User-interface Language)</dfn>. None of the user interface contains standard Windows controls -- not even the menus! This is done to ensure a common look and feel across all supported platforms, and to allow for different skins (appearances).</p>
+    <ul>
+      <li>Firefox (<em>please use version 1.1 alpha builds or later</em>)</li>
+      <li>Thunderbird (<em>please use version 1.1 alpha builds or later</em>)</li>
+      <li>Mozilla Seamonkey (<em>please use 1.8 alpha builds or later</em>)</li>
+    </ul>
+  </div>
+</div>
+<h2 id="How_to_Find_the_Content_Window_and_Load_the_Document"><a id="content-window" name="content-window">How to Find the Content Window and Load the Document</a></h2>
+<div class="indent">
+  <p>Screen readers need to find the content window so that they know where to start grabbing the MSAA tree, in order to load the current document into a buffer in their own process. The content window always has the class MozillaContentWindowClass.</p>
+  <p>In total, Gecko supports the following window classes:</p>
+  <ul>
+    <li>MozillaUIWindowClass - root UI window, at the root of the window hierarchy</li>
+    <li>MozillaContentWindowClass -- root document window</li>
+    <li>MozillaContentFrameWindowClass - root of a subdocument created by a &lt;frame&gt; or &lt;iframe&gt; element</li>
+    <li>MozillaHiddenWindowClass - ignore these windows, they are used to help manage other windows</li>
+    <li>MozillaWindowClass - general filler window, a catch all</li>
+  </ul>
+  <p>Starting in Firefox 2, however, you should begin switching your code to use <a href="#relation_embeds">NAVRELATION_EMBEDS</a>. Going forward, this may be the only way to efficiently find the content area, as Mozilla will begin to become a windowless application, with an exception for plugins which create their own window.</p>
+  <p>When you see the content window receive focus, first check the role. If it is ROLE_PANE or ROLE_DOCUMENT then this should be treated as a document for the default modality of the screen reader. If it is a ROLE_APPLICATION, ROLE_DIALOG or ROLE_ALERT then stay in focus tracking mode -- there is no need to parse the document. In addition, if it is a ROLE_ALERT, a screen reader should treat it as a message box -- that is, to read the entire contents. These roles can occur on content because of the new <a href="http://developer.mozilla.org/en/Accessible_DHTML">Accessible DHTML technology</a> which allows the author to specify the type of document or container.</p>
+  <p>Once you know that you have a document, go up the ancestor chain of windows until you see a MozillaContentWindowClass or a MozillaUIWindowClass. If it is a content window, you may use AccessibleObjectFromWindow() to get the root IAccessible for the content, and begin traversing the tree from there.</p>
+  <p>Gecko also helps determine when to load a new window by firing two EVENT_STATE_CHANGE's on the root ROLE_DOCUMENT accessible -- the first state change indicates the document pane is now busy loading. The second state change indicates the document pane has finished. When handling the event, use get_accState() to check the STATE_BUSY flag. When the document has finished loading the busy flag will be cleared.</p>
+</div>
+<h2 id="MSAA_Support_IAccessible_Methods"><a id="msaa-methods" name="msaa-methods"><abbr title="Microsoft Active Accessibility">MSAA</abbr> Support: IAccessible Methods</a></h2>
+<div class="indent">
+  <p>To use MSAA with Gecko, you'll need the tools and docs that come with the <a class="ex-ref" href="http://www.microsoft.com/downloads/details.aspx?FamilyId=3755582A-A707-460A-BF21-1373316E13F0&amp;displaylang=en">Active Accessibility 2.0 SDK Tools</a>. The method <code>AccessibleObjectFromWindow()</code> will get you the root IAccessible corresponding to the top level window. Hold on to this root IAccessible, and use it to walk through the entire tree of IAccessible's.</p>
+  <p>IAccessible methods that we support:</p>
+  <ul>
+    <li>get_accParent</li>
+    <li>get_accChildCount</li>
+    <li>get_accChild</li>
+    <li>get_accName</li>
+    <li>get_accValue</li>
+    <li>get_accDescription</li>
+    <li>get_accRole</li>
+    <li>get_accState</li>
+    <li>get_accFocus</li>
+    <li>get_accDefaultAction</li>
+    <li>accLocation</li>
+    <li>accSelect</li>
+    <li>accHitTest</li>
+    <li>accDoDefaultAction</li>
+    <li>accNavigate</li>
+    <li>get_accKeyboardShortcut</li>
+  </ul>
+</div>
+<h2 id="MSAA_Support_IAccessible_Events_and_Unique_ID's"><a id="msaa-events" name="msaa-events">MSAA Support: IAccessible Events and Unique ID's</a></h2>
+<div class="indent">
+  <h3 id="What_MSAA_events_do_we_support">What MSAA events do we support?</h3>
+  <ul>
+    <li>EVENT_FOCUS is fired for focus changes on any kind of focusable object</li>
+    <li>EVENT_STATECHANGE is used in check boxes, radio buttons, text fields, combo boxes and list boxes. It's also used in the root pane object to show when the STATE_BUSY flag changes from loading new content.</li>
+    <li>EVENT_SCROLLINGEND is used to indicate when a document has scrolled, even if only 1 line. Gecko fires this event when the scrolling is finished, rather than fire excessive events.</li>
+    <li>EVENT_SCROLLINGSTART is fired when the user has jumped to a named anchor within the page. The event is fired on the first accessible object in the part of the document that has been jumped to.</li>
+    <li>EVENT_MENUPOPUPSTART and EVENT_MENUPOPUPEND are fired when XUL menus are opened or closed.</li>
+    <li>EVENT_MENUSTART and EVENT_MENUEND are fired when the XUL menubar is activated or deactivated.</li>
+    <li>EVENT_VALUECHANGE is fired for sliders, progress meters and other objects who's get_accValue() may change.</li>
+    <li>EVENT_SHOW, EVENT_HIDE and EVENT_LOCATIONCHANGE are fired for the caret object.</li>
+    <li>EVENT_REORDER is fired on an object whenever its children change. EVENT_SHOW and EVENT_HIDE may also be fired with the reorder event, for the child who's visibility changed. The show and hide events are not fired on every IAccessible when a new subtree of IAccessibles changes visibility -- only the top IAccessible. The exception is progress meters, which are guaranteed to fire EVENT_SHOW and EVENT_HIDE events when they are displayed or hidden.</li>
+    <li>EVENT_ALERT is fired when an object of ROLE_ALERT appears or changes. This should indicate to a screen reader to read the contents of the alert (it may be a container who's descendents should be read).</li>
+    <li>EVENT_SELECTION is fired on children of single selection containers along with the EVENT_FOCUS as selection/focus move together in that case.</li>
+    <li>EVENT_SELECTIONWITHIN is fired on multi selection containers when the current selection changes within. In addition, EVENT_SELECTIONADD and EVENT_SELECTIONREMOVE are fired on the the child who's selection changed.</li>
+  </ul>
+  <h3 id="How_to_track_where_the_event_happened_within_your_own_offscreen_model">How to track where the event happened, within your own offscreen model</h3>
+  <div class="indent">
+    <p>Ordinary zero-indexed child IDs are not practical for representing events. The problem is that the child ID system that is used by MSAA doesn't work well when you have a deep tree of objects in a window. It would be impractical to number all of the nodes in a document starting at 0, because whenever a node is inserted or removed it would be computationally very expensive to renumber things. So, the Firefox childID handed back from events is based on an algorithm that uses the pointer value of the related internal DOM node. This computed child ID for events is always a negative value, unique to the IAccessible firing the event</p>
+    <p>These negative childID's from events can be used with AccessibleObjectFromEvent(), or on the root accessible of a window with any IAccessible method that takes a VARIANT, such as get_accChild().</p>
+    <p>Because screen readers usually cache an entire document's worth of data, it can be extremely useful for them to receive a child ID that helps them correlate back to a known object. We provide support for this technique via ISimpleDOMNode::get_nodeInfo(), which returns a uniqueID for any IAccessible that can be cached in the internal model. When an event is received, the negative childID should match one of these cached uniqueID's, if the entire document has been stored and kept current. Keeping an internal cache current means getting new subtrees of IAccessibles whenever an EVENT_REORDER is received, indicating important changes have invalidated part of the model.</p>
+  </div>
+</div>
+<h2 id="MSAA_Features_We_Do_Not_Support"><a id="msaa-notyet" name="msaa-notyet">MSAA Features We Do Not Support</a></h2>
+<div class="indent">
+  <p>No one has yet asked for the following features (if you need something, please contact the <a href="../#community">Mozilla Accessibility Community</a> ):</p>
+  <p>IAccessible methods that we don't currently support:</p>
+  <ul>
+    <li>get_accHelp</li>
+    <li>get_accHelpTopic</li>
+    <li>put_accName</li>
+    <li>put_accValue</li>
+    <li>We do not currently support the Visual Basic (IDispatch) bindings for IAccessible.</li>
+    <li>We do not currently support directional navigation via accNavigate()</li>
+    <li>We do not currently support scroll bars as IAccessible objects, although we do support EVENT_SCROLLINGEND and ISimpleDOMNode::ScrollTo(), explained below.</li>
+    <li>We do not currently support STATE_MOVEABLE, STATE_SIZEABLE or STATE_MARQUEED.</li>
+    <li>We do not currently support ROLE_SYSTEM_ROW, although Internet Explorer doesn't either, and the reason seems apparent. It is not obvious where the ROLE_SYSTEM_ROW should exist in the tree when the HTML rowspan attribute is used to combine to cells in different rows. There are currently two techniques for parsing tables: 1) use accLocation() to get the coordinates for each cell and feed that into an algorithm that builds up your own table data structure, or 2) use ISimpleDOMNode and parse the table</li>
+    <li>See below for the <a href="#roletable">complete list of roles and notes about what we support</a></li>
+  </ul>
+</div>
+<h2 id="Intentional_Differences_with_Internet_Explorer"><a id="knowndif" name="knowndif">Intentional Differences with Internet Explorer</a></h2>
+<div class="indent">
+  <p>For the most part, where we support an MSAA feature, we have tried to duplicate Internet Explorer's use of it. Please let us know if you find any differences not listed here:</p>
+  <h3 id="Accessible_Relations_are_Supported">Accessible Relations are Supported</h3>
+  <div class="indent">
+    <p>The accNavigate() method can be used with new constants defined for Gecko. The results are always returned via VT_DISPATCH.</p>
+    <pre class="code">enum { NAVRELATION_LABEL_FOR = 0x1002 };
+enum { NAVRELATION_DESCRIPTION_FOR = 0x100f };
+</pre>
+    <p>These two relations can be used on object to determine what form control is being labelled or desribed.</p>
+    <pre class="code">enum { NAVRELATION_LABELLED_BY = 0x1003 };
+enum { NAVRELATION_DESCRIBED_BY = 0x100e };
+</pre>
+    <p>These two relations are they inverse; they can be used on form controls. If the form control has an accName, you can get the IAccessible that it was labelled by in order to get more formatting information. It is also useful to check for a description.</p>
+    <p>Note that the label and description relations may be used to prevent redundant information from being presented by the screen reader, since the label and description can occur both on their own, and in the name or description fields of an IAccessible.</p>
+    <pre class="code">enum { NAVRELATION_DEFAULT_BUTTON = 0x100d };
+</pre>
+    <p>When used within an HTML form or a XUL dialog, the NAVRELATION_DEFAULT_BUTTON relation will return the IAccessible for the default button.</p>
+    <pre class="code" id="relation_embeds">enum { NAVRELATION_EMBEDS = 0x1009 };
+</pre>
+    <p>This relation is used on the root accessible object for a top level Mozilla window, corresponding to what's returned for OBJID_CLIENT for that window. It points to the accessible object corresponding to the root of content in that window. This relation is very useful for finding the content quickly, and is the proper method for finding content in Firefox 3 and beyond.</p>
+    <pre class="code">enum { NAVRELATION_CONTROLLED_BY = 0x1000 };
+enum { NAVRELATION_CONTROLLER_FOR = 0x1001 };
+</pre>
+    <p>These two relations show what form controls may dynamically change areas of the document, in response to user changes in the form controls themselves. Both controlled_by and controller_for are set in markup from the single dynamic content accessibility dynamic content aaa:controls attribute. The inverse controlled_by relation is automatically calculated.</p>
+    <pre class="code">the DOMenum { NAVRELATION_FLOWS_TO = 0x1006 };
+
+enum { NAVRELATION_FLOWS_FROM = 0x1007 };
+</pre>
+    <p>These two relations allow the reading flow to break out of the normal DOM flow. Both flows_to and flows_from are set in markup from the single dynamic content accessibility aaa:flowsto relation -- the inverse flow_from relation is automatically calculated.</p>
+    <p>These relations can affect the calculation for the next next or previous item of a certain type. Here is an algorithm for iterating through the nodes, looking for an item of a particular type:</p>
+    <ol>
+      <li>Store a pointer to the start_item</li>
+      <li>If the current item has a flows_to relation, follow that relation</li>
+      <li>Otherwise, go to the next item in <a href="http://en.wikipedia.org/wiki/Depth-first_search">depth first search order</a></li>
+      <li>If the current item matches your criteria, then return current_item</li>
+      <li>If the current_item == start_item, return null (no item found)</li>
+      <li>If the end has been reached, go back to the start if wrapping is desired, otherwise return null (no item found)</li>
+      <li>Go to step 2</li>
+    </ol>
+  </div>
+  <h3 id="Checkable_Required_and_Invalid_States_are_Supported">Checkable, Required and Invalid States are Supported</h3>
+  <div class="indent">
+    <p>Gecko defines three state constants using previously unused states:</p>
+    <pre class="indent">const unsigned long STATE_CHECKABLE = STATE_MARQUEED; // Useful on menuitem, listitem
+// and treeitem. Indicates that the absence of STATE_CHECKED should be spoken as
+// "unchecked", and that EVENT_STATE_CHANGE will be fired in the event that the
+// checkbox is toggled.
+
+const unsigned long STATE_REQUIRED = STATE_ALERT_LOW;  // Used on form controls
+// to indicate that this field must be filled out to submit the form
+
+const unsigned long STATE_INVALID = STATE_ALERT_HIGH;  // Used on form controls to
+// indicate the the field does not currently have a legal value
+
+const unsigned long STATE_??? = STATE_ALERT_MEDIUM; // Reserved for future use.
+</pre>
+  </div>
+  <h3 id="Document_Structure_Exposed_in_MSAA_Tree">Document Structure Exposed in MSAA Tree</h3>
+  <div class="indent">
+    <p>BSTR roles are used for important roles that have not been defined by Microsoft. When the role is retrieved in a VARIANT returned from get_accRole, check to see if variant.vt == VT_BSTR. If it is, than variant.bstrVal contains the role string.</p>
+    <p>The role string may be an HTML tag name followed by comma, space and the namespace of the current element. In most current cases the namespace can be ignored, but it may become important in the future. The following HTML tags are exposed as BSTR's:</p>
+    <pre class="code">abbr, acronym, blockquote, dd, dl, dt, form, frame, h1, h2, h3, h4, h5,
+h6, iframe, q, tbody, tfoot, thead
+</pre>
+    <p>In addition, an HTML list uses the <code>bullet</code> BSTR role to expose bullets and numbers that are automatically inserted into the formatting by Gecko. In addition, ROLE_LIST with STATE_READONLY and ROLE_LISTITEM are used to expose the list structure. This makes it important to check the STATE_READONLY flag when encountering a ROLE_LIST, because the HTML list form element also uses ROLE_LIST, but without STATE_READONLY set.</p>
+  </div>
+  <h3 class="indent" id="Positional_Descriptions_are_Supported">Positional Descriptions are Supported</h3>
+  <div class="indent">
+    <p>The accDescription field is overriden for the following roles:</p>
+    <p>ROLE_LISTITEM, ROLE_MENUITEM, ROLE_RADIOBUTTON, ROLE_PAGETAB and ROLE_OUTLINEITEM</p>
+    <p>For everything other than outline item, the positional description is in the form "n of m" where n is an integer indicating the position within other similar objects in a group, and m represents the number of objects in that group. For example, "3 of 5" indicates the 3rd object out of 5.</p>
+    <p>For outline item, more information is provided, in a format that reads "L#, n of m with c" where # represents the level that the outline item is at, and c represents the number of children. The n of m position relates to the position within the current outline level.</p>
+    <p>Finally, true descriptions are now exposed with the text "Description: " prepending the description. This makes it clear that the description is truly intended to be read. Neither "Description:" or "of" in the above strings is ever localized, so they should be parsed out.</p>
+  </div>
+  <h3 id="DHTML_Accessibility_is_Supported">DHTML Accessibility is Supported</h3>
+  <div class="indent">
+    <p>This means that you may encounter roles that are not typically in HTML content. Be prepared for new combinations of roles and states in content, such as ROLE_SLIDER, ROLE_PROGRESSBAR and STATE_REQUIRED. In addition, check the STATE_FOCUSABLE bit on tables, which indicates a traversable DHTML spreadsheet. Please see the <a href="http://developer.mozilla.org/en/Accessible_DHTML">DHTML accessibility documentation page</a> for more information on this topic.</p>
+  </div>
+  <h3 id="IAccessibles_Persist">IAccessibles Persist</h3>
+  <div class="indent">
+    <p>Unless the document changes, retrieving the IAccessible more than once for the same object will return the same IAccessible*. The uniqueID will remain the same as well. If the document does change, EVENT_REORDER, EVENT_HIDE and EVENT_SHOW are used to indicate where the changes will occur. Because of the persistence, relations and events can be mapped within an assistive technology's internal model.</p>
+  </div>
+  <h3 id="Page_Loading_is_Tracked_via_STATE_CHANGE_events">Page Loading is Tracked via STATE_CHANGE events</h3>
+  <div class="indent">
+    <p>When a new document is about to be loaded, an EVENT_STATE_CHANGE occurs on the root ROLE_DOCUMENT object for a window. The STATE_BUSY flag is now set for the root pane object.</p>
+    <p>Once the new page is ready to be displayed and traversed via its IAccessible tree, the old content window is destroyed, and a new window is created. Next, another EVENT_STATE_CHANGE is fired for the new root ROLE_DOCUMENT object for the window, with its STATE_BUSY flag cleared.</p>
+  </div>
+</div>
+<h2 id="MSAA_Role_Support"><a id="roletable" name="roletable">MSAA Role Support</a></h2>
+<table class="indent">
+  <tbody>
+    <tr>
+      <th scope="col">Role</th>
+      <th scope="col">Supported?</th>
+      <th scope="col">Unique features</th>
+    </tr>
+    <tr>
+      <td>ROLE_TITLEBAR</td>
+      <td>Supported automatically by MS Windows</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_MENUBAR</td>
+      <td>
+        <p>XUL: &lt;menubar&gt;<br>
+          DHTML: role="wairole:menubar"</p>
+      </td>
+      <td>Fires EVENT_MENUSTART and EVENT_MENUEND</td>
+    </tr>
+    <tr>
+      <td>ROLE_SCROLLBAR</td>
+      <td>not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_GRIP</td>
+      <td>not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_SOUND</td>
+      <td>not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_CURSOR</td>
+      <td>not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_CARET</td>
+      <td>supported for caret</td>
+      <td>Fires EVENT_SHOW, EVENT_HIDE, EVENT_LOCATIONCHANGE</td>
+    </tr>
+    <tr>
+      <td>ROLE_ALERT</td>
+      <td>XUL: &lt;browsermessage&gt;<br>
+        DHTML: role="wairole:alert"</td>
+      <td>Fires EVENT_ALERT</td>
+    </tr>
+    <tr>
+      <td>ROLE_WINDOW</td>
+      <td>Supported automatically by MS Windows</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_CLIENT</td>
+      <td>
+        <p>XUL: &lt;browser&gt;<br>
+          HTML: &lt;frame&gt; or &lt;iframe&gt;</p>
+      </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_MENUPOPUP</td>
+      <td>
+        <p>DHTML: role="wairole:menu"</p>
+      </td>
+      <td>Fires EVENT_MENUPOPUPSTART, EVENT_MENUPOPUPEND</td>
+    </tr>
+    <tr>
+      <td>ROLE_MENUITEM</td>
+      <td>
+        <p>XUL: menuitem<br>
+          DHTML: role="wairole:menuitem"</p>
+      </td>
+      <td>
+        <p>Sets STATE_CHECKED for radio or checkbox menuitem types</p>
+        <p>Accelerator key comes in accName after a \t (TAB) character. For example, "Open\tCtrl+O"</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_TOOLTIP</td>
+      <td>XUL: &lt;tooltip&gt; or tooltiptext attribute</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_APPLICATION</td>
+      <td>
+        <p>Default role of root object of application<br>
+          DHTML: role="wairole:application"</p>
+      </td>
+      <td>accName() exposes the &lt;title&gt; of the current pane.</td>
+    </tr>
+    <tr>
+      <th>Role</th>
+      <th>Supported?</th>
+      <th>Unique features</th>
+    </tr>
+    <tr>
+      <td>ROLE_DOCUMENT</td>
+      <td>Default role for root object of document<br>
+        DHTML: role="wairole:document"</td>
+      <td>
+        <p>Sets STATE_READONLY indicates it is a normal document, otherwise we're in an editor.</p>
+        <p>Sets STATE_BUSY when a new document is loading in this space.</p>
+        <p>Fires EVENT_STATE_CHANGE when busy flag is set or cleared due to document load starting or finishing.</p>
+        <p>accValue() exposes the URL of the current pane.</p>
+        <p>accName() exposes the &lt;title&gt; of the current pane.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_PANE</td>
+      <td>The first child of a &lt;frame&gt; or &lt;iframe&gt;</td>
+      <td>
+        <p>accValue() exposes the URL of the current document.</p>
+        <p>accName() exposes the &lt;title&gt; of the current pane.</p>
+        <p>Sets STATE_READONLY unless it's an <a href="../../editor/midasdemo/">editable frame via designMode</a>.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_CHART</td>
+      <td>Not supported.</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_DIALOG</td>
+      <td>
+        <p>XUL: &lt;dialog&gt;<br>
+          DHTML: role="wairole:dialog"</p>
+        <p>accName() exposes the &lt;title&gt; of the current dialog.</p>
+      </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_BORDER</td>
+      <td>Not supported.</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_GROUPING</td>
+      <td>HTML: &lt;fieldset&gt;<br>
+        XUL: &lt;groupbox&gt;<br>
+        DHTML: role="wairole:group" or DHTML: role="wairole:radiogroup"</td>
+      <td>For a &lt;fieldset&gt; the name is exposed using the &lt;legend&gt;</td>
+    </tr>
+    <tr>
+      <td>ROLE_SEPARATOR</td>
+      <td>XUL: &lt;separator&gt;<br>
+        HTML: &lt;hr&gt;<br>
+        DHTML: role="wairole:separator"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_TOOLBAR</td>
+      <td>XUL: &lt;toolbar&gt;<br>
+        DHTML: role="wairole:toolbar"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_STATUSBAR</td>
+      <td>XUL: &lt;statusbar&gt;</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <th>Role</th>
+      <th>Supported?</th>
+      <th>Unique features</th>
+    </tr>
+    <tr>
+      <td>ROLE_TABLE</td>
+      <td>HTML: &lt;table&gt;<br>
+        DHTML: role="wairole:grid" (In this case STATE_FOCUSABLE is set)</td>
+      <td>accName is supported via &lt;caption&gt; first child of table or summary attribute</td>
+    </tr>
+    <tr>
+      <td>ROLE_COLUMNHEADER</td>
+      <td>
+        <p>XUL: tree column headers<br>
+          HTML: &lt;th&gt;<br>
+          DHTML: role="wairole:colheader"</p>
+      </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_ROWHEADER</td>
+      <td>DHTML: role="wairole:rowheader"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_COLUMN</td>
+      <td>Not supported.</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_ROW</td>
+      <td>Not supported. See the section Intentional Differences with IE</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_CELL</td>
+      <td>
+        <p>HTML: &lt;td&gt;<br>
+          DHTML: role="wairole:gridcell"</p>
+      </td>
+      <td>
+        <p>Sets STATE_READONLY in normal table.</p>
+        <p>Sets STATE_FOCUSABLE in data grids and spreadsheets</p>
+        <p>Clears STATE_READONLY in spreadsheets.</p>
+        <p>Sets STATE_SELECTED in spreadsheets when a cell has selection.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_LINK</td>
+      <td>XUL: &lt;label class="text-link"&gt; -- this should be changed, we need a real &lt;link&gt; widget for XUL<br>
+        HTML: &lt;a&gt; and &lt;area&gt;</td>
+      <td>
+        <p>Sets STATE_LINKED if it is pointing somewhere.</p>
+        <p>Sets STATE_TRAVERSED if link has been visited.</p>
+        <p>Sets STATE_SELECTABLE if it is an HTML named anchor</p>
+        <p>accValue() exposes the URL that is pointed to</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_HELPBALLOON</td>
+      <td>Not supported.</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_CHARACTER</td>
+      <td>Not supported.</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_LIST</td>
+      <td>XUL: &lt;listbox&gt;<br>
+        HTML: &lt;select size=""&gt; where size &gt; 1 -- STATE_READONLY is off<br>
+        HTML: &lt;ol&gt; or &lt;ul&gt; -- STATE_READONLY is on<br>
+        DHTML: role="wairole:list"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_LISTITEM</td>
+      <td>HTML: &lt;li&gt;, &lt;option&gt; or &lt;optgroup&gt;<br>
+        DHTML: role="wairole:listitem"<br>
+        XUL: &lt;listitem&gt;</td>
+      <td>Sets STATE_SELECTED if the current listitem is selected.</td>
+    </tr>
+    <tr>
+      <td>ROLE_OUTLINE</td>
+      <td>DHTML: role="wairole:tree"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_OUTLINEITEM</td>
+      <td>DHTML: role="wairole:treeitem"</td>
+      <td>
+        <p>Sets STATE_COLLAPSED if has children that are not currently visible.</p>
+        <p>Sets STATE_EXPANDED if has children that are currently visisted.</p>
+        <p>Sets STATE_SELECTED if the current tree item is selected.</p>
+        <p>Fires EVENT_STATE_CHANGE when tree item expands/collapses</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_PAGETAB</td>
+      <td>XUL: &lt;tab&gt;<br>
+        DHTML: role="wairole:tab"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_PROPERTYPAGE</td>
+      <td>XUL: &lt;tabpanel&gt;<br>
+        DHTML: role="wairole:tabpanel"</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_INDICATOR</td>
+      <td>Not supported.</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_GRAPHIC</td>
+      <td>XUL: &lt;image&gt;<br>
+        HTML: &lt;img&gt;</td>
+      <td>
+        <p>Sets STATE_LINKED if within link.</p>
+        <p>Sets STATE_TRAVERSED if within visited link.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_STATICTEXT</td>
+      <td>
+        <p>XUL: &lt;label&gt; or &lt;description&gt;<br>
+          HTML: &lt;label&gt;<br>
+          DHTML: role="wairole:label" or<br>
+          role="wairole:description"</p>
+      </td>
+      <td>
+        <p>Supports NAVRELATION_LABEL_FOR and NAVRELATION_DESCRIPTION_FOR via accNavigate().</p>
+        <p>The accName is an accumulation of the descendents' accNames, so may be considered redundant with them.</p>
+        <p>The accName is also reflected in the accName of a form control that this labels, which is a good reason to check NAVRELATION_LABEL_FOR.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_TEXT</td>
+      <td>
+        <p>Normal web text uses no tag or element, uses STATE_READONLY<br>
+          For editable text, that state is cleared.<br>
+          XUL: &lt;textbox&gt;<br>
+          HTML: &lt;input type="text"&gt; or &lt;textarea&gt;<br>
+          DHTML: role="wairole:textfield" or<br>
+          role="wairole:textarea"</p>
+      </td>
+      <td>
+        <p>Sets STATE_LINKED if within link.</p>
+        <p>Sets STATE_TRAVERSED if within visited link.</p>
+        <p>Sets STATE_HASPOPUP for autocomplete textfields</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_PUSHBUTTON</td>
+      <td>
+        <p>XUL: &lt;button&gt;<br>
+          HTML: &lt;input type= "button"&gt; or&lt;button&gt;<br>
+          DHTML: role="wairole:button"</p>
+      </td>
+      <td>Sets STATE_HASPOPUP for buttons containing menus</td>
+    </tr>
+    <tr>
+      <td>ROLE_CHECKBUTTON</td>
+      <td>
+        <p>XUL: &lt;checkbox&gt;<br>
+          HTML: &lt;input type="checkbox"&gt;<br>
+          DHTML: role="wairole:checkbox"</p>
+      </td>
+      <td>
+        <p>Fires EVENT_STATE_CHANGE when checkbox is toggled</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_RADIOBUTTON</td>
+      <td>
+        <p>XUL: &lt;radio&gt;<br>
+          HTML: &lt;input type="radio"&gt;<br>
+          DHTML: role="wairole:radio"</p>
+      </td>
+      <td>
+        <p>Fires EVENT_STATE_CHANGE when radiobutton is set</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_COMBOBOX</td>
+      <td>
+        <p>XUL: &lt;menulist&gt;<br>
+          HTML: &lt;select size="1"&gt;<br>
+          DHTML: role="wairole:combobox"</p>
+      </td>
+      <td>Fires EVENT_VALUECHANGE when current combobox option changes.</td>
+    </tr>
+    <tr>
+      <td>ROLE_DROPLIST</td>
+      <td>Not supported.</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <th>Role</th>
+      <th>Supported?</th>
+      <th>Unique features</th>
+    </tr>
+    <tr>
+      <td>ROLE_PROGRESSBAR</td>
+      <td>
+        <p>XUL: &lt;progressmeter&gt;<br>
+          DHTML: role="wairole:progressbar"</p>
+      </td>
+      <td>
+        <p>Fires EVENT_VALUECHANGE when progressbar moves by at least 3%</p>
+        <p>Fires EVENT_SHOW and EVENT_HIDE directly on ROLE_PROGRESSBAR when it appears/disappears as well as on ancestor container that visibility may have changed on.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_DIAL</td>
+      <td>Not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_HOTKEYFIELD</td>
+      <td>Not supported</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>ROLE_SLIDER</td>
+      <td>
+        <p>XUL: &lt;slider&gt;<br>
+          DHTML: role="wairole:slider"</p>
+      </td>
+      <td>
+        <p>Fires EVENT_VALUECHANGE when slider moves.</p>
+      </td>
+    </tr>
+    <tr>
+      <td>ROLE_SPINBUTTON</td>
+      <td>DHTML: role="wairole:spinbutton"</td>
+      <td>Fires EVENT_VALUECHANGE when spinbutton moves</td>
+    </tr>
+    <tr>
+      <td>ROLE_DIAGRAM</td>
+      <td>&lt;svg&gt;</td>
+      <td>Indicates the root of an SVG tree</td>
+    </tr>
+    <tr>
+      <td>ROLE_ANIMATION</td>
+      <td>Not supported. Animated images use ROLE_GRAPHIC with STATE_ANIMATED.</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_EQUATION</td>
+      <td>&lt;math&gt; (in MathML namespace)</td>
+      <td>Indicates the root of a MathML tree.</td>
+    </tr>
+    <tr>
+      <td>ROLE_BUTTONDROPDOWN</td>
+      <td>Not supported, STATE_HASPOPUP used with ROLE_BUTTON instead</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_BUTTONMENU</td>
+      <td>Not supported, STATE_HASPOPUP used with ROLE_BUTTON instead</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_BUTTONDROPDOWNGRID</td>
+      <td>Supported for XUL &lt;colorpicker&gt;</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>ROLE_PAGETABLIST</td>
+      <td>
+        <p>XUL: &lt;tab&gt;<br>
+          DHTML: role="wairole:tabs"</p>
+      </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>"abbr", "acronym", "blockquote", "dd", "dl", "dt", "form", "frame", "h1", "h2", "h3", "h4", "h5", "h6", "iframe", "q", "tbody", "tfoot", "thead"</td>
+      <td>HTML tag mirrors the role string</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>"bullet"</td>
+      <td>Indirectly created for bullets when &lt;ol&gt; or &lt;ul&gt; used to create an HTML list</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>"abbr", "acronym", "blockquote", "form", "frame", "h1", "h2", "h3", "h4", "h5", "h6", "iframe", "q", "tbody", "tfoot", "thead"</td>
+      <td>Created from the identical HTML markup</td>
+      <td>No name</td>
+    </tr>
+    <tr>
+      <th>Role</th>
+      <th>Supported?</th>
+      <th>Unique features</th>
+    </tr>
+  </tbody>
+</table>
+<h2 id="Enhancing_Performance_on_the_Client_End_via_IEnumVARIANT"><a id="perf" name="perf">Enhancing Performance on the Client End via IEnumVARIANT</a></h2>
+<div class="indent">
+  <p>Whenever you get an IAccessible, you can QI it to IEnumVARIANT. If that succeeds, then it has children. You can then get the number of children via <kbd>IAccessible::get_accNumChildren()</kbd>, then allocate an array of VARIANT's to hold the children, and call <kbd>IEnumVARIANT::Next()</kbd> to get all the children in one call. The VARIANT's we provide will always be VT_DISPATCH.</p>
+  <p>Using IEnumVARIANT in this way is much faster than getting the children via <kbd>get_accChild()</kbd> or <kbd>accNavigate()</kbd>. See MSDN for more information.</p>
+</div>
+<h2 id="Avoiding_Memory_Leaks"><a id="memleaks" name="memleaks">Avoiding Memory Leaks</a></h2>
+<div class="indent">
+  <p>It is the assistive technology's responsibility to watch for system events that indicate when windows are being destroyed, and to release all IAccessibles related to that window.</p>
+  <p>To help web developers in that regard, there is the wonderful <a href="https://addons.mozilla.org/en-US/firefox/addon/2490">Memory Leak monitor, a Firefox 1.5+ extension</a> from David Baron, which warns chrome and extension developers about one particular type of memory leak. It warns when chrome windows close but leave native code pointing at their JavaScript objects. This typically happens for things like observers, timer callbacks, and (in Firefox 1.5 and earlier) event listeners, and is one of the most common causes of leaks in chrome and extension code.</p>
+</div>
+<h2 id="Additional_DOM_Support">Additional DOM Support</h2>
+<div class="indent">
+  <p>There are a number of things available in the parsed HTML or XML of a document that MSAA will not tell you.</p>
+  <p>To solve this problem, we provide access to the content DOM for Gecko documents, through two interfaces:</p>
+  <ul>
+    <li>ISimpleDOMNode gives you the actual parsed structure of a document, by node.</li>
+    <li>ISimpleDOMText supports scrolling and rectangular bounds information on a character by character basis</li>
+    <li>ISimpleDOMDocument contains basic document information, such title, URL, doctype and mime type.</li>
+  </ul>
+  <h3 id="Compiling_the_.idl_Files">Compiling the .idl Files</h3>
+  <div class="indent">
+    <p>To use these interfaces, you'll need to get the <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMNode.idl?raw=1"> ISimpleDOMNode.idl</a>, <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMText.idl?raw=1"> ISimpleDOMText.idl</a> and <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMDocument.idl?raw=1"> ISimpleDOMDocument.idl</a> file. You must make a header files for them, by running these commands:</p>
+    <div class="indent">
+      <code>MIDL ISimpleDOMNode.idl<br>
+      MIDL ISimpleDOMText.idl</code></div>
+    <div class="indent">
+      <code>MIDL ISimpleDOMDocument.idl</code></div>
+    <p>That will generate ISimpleDOMNode.h and ISimpleDOMDocument.h, which define the interfaces. It will also create ISimpleDOMNode_i.c and ISimpleDOMDocument_i.c, which contain the necessary IID constants.</p>
+  </div>
+  <h3 id="ISimpleDOMNode">ISimpleDOMNode</h3>
+  <div class="indent">
+    <p>To get to the ISimpleDOMNode interface for an object, you start with an IAccessible*, and then you QueryService to the ISimpleDOMNode*:</p>
+    <pre class="code"> IServiceProvider *pServProv = NULL;
+ pAccessible-&gt;QueryInterface(IID_IServiceProvider, (void**)&amp;pServProv);
+ ISimpleDOMNode *pSimpleDOMNode;
+ if (pServProv) {
+ const GUID refguid = {0x0c539790, 0x12e4, 0x11cf,
+ 0xb6, 0x61, 0x00, 0xaa, 0x00, 0x4c, 0xd6, 0xd8};
+ HRESULT result =
+ pServProv-&gt;QueryService(refguid, IID_ISimpleDOMNode, (void**)&amp;pSimpleDOMNode);
+ if (SUCCEEDED(hresult) &amp;&amp; pSimpleDOMNode != NULL) {
+   /* This is a Mozilla node! Use special
+     ISimpleDOMNode methods described in ISimpleDOMNode.idl.
+   */
+
+   }
+  }</pre>
+    <p>The <code>get_nodeInfo</code> method is used to get basic information about a node such as the tag name and namespace ID, node type (see ISimpleDOMNode.idl for definitions), node value (text held in the node), a unique ID for use in tracking where events occur, and the number of children. The namespace ID is meaningless until you get the namespace URI for it, through the ISimpleDOMDocument interface (see below).</p>
+    <pre class="code">        HRESULT get_nodeInfo(
+        /* [out] */ BSTR *nodeName,
+        // For elements, this is the tag name
+         /* [out] */ short *nameSpaceID,
+         /* [out] */ BSTR *nodeValue,
+         /* [out] */ unsigned int *numChildren,
+         /* [out] */ unsigned int *uniqueID, // see
+        description of unique ID's in above section on events
+         /* [out] */ unsigned short *nodeType);</pre>
+    <p>The <code>get_attributes</code> method returns the set of attribute, value pairs for a given node, as well as the namespace ID for each attribute. The return value numAttribs specifies the number of attributes for this node, and the last 3 parameters return 3 arrays corresponding to attribute name, namespace ID, and attribute value.</p>
+    <pre class="code"> HRESULT get_attributes(
+ /* [in] */ unsigned short maxAttribs,
+ /* [out] */ BSTR *attribNames,
+ /* [out] */ short *nameSpaceID,
+ /* [out] */ BSTR *attribValues,
+ /* [out] */ unsigned short *numAttribs);</pre>
+    <p>A variation on this method is <code>get_attributesForNames</code>, which lets turns the attribNames array into an [in] parameter, letting you specify only those attributes you're interested in. This helps minimize the cost of marshalling for those times in which you're interested in only a few attributes per node.</p>
+    <pre class="code"> HRESULT get_attributesForNames(
+ /* [in] */ unsigned short numAttribs,
+ /* [in] */ BSTR __RPC_FAR *attribNames,
+ /* [in] */ short __RPC_FAR *nameSpaceID,
+ /* [out] */ BSTR __RPC_FAR *attribValues);</pre>
+    <p>The <code>get_computedStyle</code> method is used to find out the cumulative, computed results for all style rules applied to a node. The return value numStyleProperties specifies the number of style properties for this node, and the last 2 parameters return 2 arrays corresponding to style property name and style property value. Another [in] parameter, useAlternativeMediaProperties, indicates whether you want style information for the default media type (usually screen), or a set of alternative media types specified in <code>nsISimpleDOMDocument::set_alternateViewMediaType(mediaTypeString)</code> . See the W3C's website for a list of official <a href="http://www.w3.org/TR/REC-CSS2/media.html#media-types">media type name</a>. Unfortunately, at this time the argument <code>useAlternateView</code> is ignored.</p>
+    <pre class="code"> HRESULT get_computedStyle(
+ /* [in] */ unsigned short maxStyleProperties,
+ /* [in] */ boolean useAlternateView,
+ // If TRUE, returns properties for media
+ // as set in nsIDOMDocument::set_alternateViewMediaTypes
+ /* [out] */ BSTR *styleProperties,
+ /* [out] */ BSTR *styleValues,
+ /* [out] */ unsigned short *numStyleProperties);</pre>
+    <p>A variation on this method is <code>get_computedStyleForProperties</code>, which lets turns the styleProperties array into an [in] parameter, letting you specify only those style properties you're interested in. This helps minimize the cost of marshalling for those times in which you're interested in only a few style properties per node.</p>
+    <pre class="code"> HRESULT get_computedStyleForProperties(
+ /* [in] */ unsigned short numStyleProperties,
+ /* [in] */ boolean useAlternateView, //
+ If TRUE, returns properties for media
+ // as set in nsIDOMDocument::set_alternateViewMediaTypes
+ /* [in] */ BSTR *styleProperties,
+ /* [out] */ BSTR *styleValues);</pre>
+    <p>To scroll the document in order make a specific element visible in the window, use <code>scrollTo(boolean placeTopLeft)</code>. If the parameter <code>placeTopLeft</code> is TRUE the document will be scrolled so that the element is placed in the top left corner of the window. If <code>placeTopLeft</code> is FALSE, the document will only be scrolled if the element is not already visible, or the document will be scrolled the minimum amount to make the element visible anywhere within the current window.</p>
+    <div class="indent">
+      <code>HRESULT scrollTo([in] boolean placeTopLeft);</code></div>
+    <p>You can also get to any other node by traversing the ISimpleDOMNode structure. The DOM content tree is a superset of the MSAA tree. In other words, you can always QueryInterface from an IAccessible to an ISimpleDOMNode, but often not the other way around.</p>
+    <pre class="code"> HRESULT get_parentNode     (/* [in] */ ISimpleDOMNode *newNodePtr);
+ HRESULT get_firstChild     (/* [in] */ ISimpleDOMNode *newNodePtr);
+ HRESULT get_lastChild      (/* [in] */ ISimpleDOMNode *newNodePtr);
+ HRESULT get_previousSibling(/* [in] */ ISimpleDOMNode  *newNodePtr);
+ HRESULT get_nextSibling    (/* [in] */ ISimpleDOMNode *newNodePtr);
+ HRESULT get_childAt        (/* [in] */ unsigned childIndex,
+ /* [out] */ ISimpleDOMNode **newNodePtr);</pre>
+    <p>Next we provide a convenience method for getting the actual HTML within a DOM subtree. This only applies if the node is HTML.</p>
+    <div class="indent">
+      <code>HRESULT get_innerHTML([out, retval] BSTR *innerHTML);</code></div>
+    <p>Finally we provide a method for getting the current <a href="http://en.wikipedia.org/wiki/ISO_639">ISO 639 language code</a>, such as "en" for English or even possible "en-cockney" for the British Cockney dialect.</p>
+    <div class="indent">
+      <code>HRESULT get_language([out, retval] BSTR *language);</code></div>
+    <p>Please look at the <a href="http://lxr.mozilla.org/seamonkey/source/accessible/public/msaa/ISimpleDOMNode.idl?raw=1"> ISimpleDOMNode.idl</a> file for parameter types and the definitions of the node type constants.</p>
+  </div>
+</div>
+<h3 id="ISimpleDOMText">ISimpleDOMText</h3>
+<div class="indent">
+  <p>DOM nodes that are text nodes support ISimpleDOMText. This extension is useful if you need to work on a character by character basis, whereas IAccessible provides only node by node support. Text nodes must be leaf nodes, so there is no need to check for this interface if the current node has any MSAA or DOM children. Text nodes always support ISimpleDOMNode as well as ISimpleDOMText.</p>
+  <p>Here are the methods for ISimpleDOMText:</p>
+</div>
+<pre class="code"> // Includes all DOM whitespace; IAccessible::get_accName does not
+ HRESULT get_domText(BSTR *domText);
+
+ // Bounding rect clipped to window
+ HRESULT get_clippedSubstringBounds(
+      [in] unsigned int startIndex,
+      [in] unsigned int endIndex,
+      [out] int *x,
+      [out] int *y,
+      [out] int *width,
+      [out] int *height);
+
+ // Bounding rect unclipped
+ HRESULT get_unclippedSubstringBounds(
+     [in] unsigned int startIndex,
+      [in] unsigned int endIndex,
+      [out] int *x,
+      [out] int *y,
+      [out] int *width,
+      [out] int *height);
+
+ // Scroll to this part of the subsstring
+ HRESULT scrollToSubstring(
+      [in] unsigned int startIndex,
+      [in] unsigned int endIndex);
+ // Get the current font being used -- this is better than using
+ // the ISimpleDOMNode CSS property methods, because it provides
+ // a single font name, rather than a comma delineated list of possibilities
+ HRESULT fontFamily([out] BSTR *fontFamily);</pre>
+<h3 id="ISimpleDOMDocument">ISimpleDOMDocument</h3>
+<div class="indent">
+  <p>There is one ISimpleDOMDocument interface for each XML or HTML document in Gecko, which you can use to get important information global to the document. If a given node's get_nodeType method returns NODETYPE_DOCUMENT, then you know you can QueryInterface to an ISimpleDOMDocument. The root accessible can also always be QueryInterface'd to an ISimpleDOMDocument.</p>
+  <p>Here are the methods for ISimpleDOMDocument:</p>
+</div>
+<pre class="code"> HRESULT get_URL  (/* [out] */ BSTR *url);  // Location of document
+ HRESULT get_title (/* [out] */ BSTR *title); // From the &lt;TITLE&gt;
+ HRESULT get_mimeType(/* [out] */ BSTR *mimeType); // For example text/html or text/plain
+ HRESULT get_docType (/* [out] */ BSTR *docType); // From the &lt;!DOCTYPE ..&gt;
+ HRESULT get_nameSpaceURIForID( // Translate namespace ID's from ISimpleDOMNode
+   /* [in] */ unsigned short nameSpaceID, // calls into the actual namespace URI's
+   /* [out] */ BSTR *nameSpaceURI);
+ HRESULT put_alternateViewMediaTypes(/* [in] */ BSTR * commaSeparatedMediaTypes);
+ // For example "aural, braille"</pre>
+<h2 id="Keyboard_User_Interface_and_API"><a id="keyboard" name="keyboard">Keyboard User Interface and API</a></h2>
+<div class="indent">
+  <p>Fortunately, Gecko uses the standard keyboard API's for each supported platform.</p>
+  <p>For a large number of keyboard commands, we emulate Internet Explorer's keyboard shortcuts. Our <a href="../keyboard/">keyboard plan</a> describes our current design and future possibilities.</p>
+</div>
+<h2 id="Beyond_HTML_Other_Types_of_Web_Content"><a id="beyondhtml" name="beyondhtml">Beyond HTML: Other Types of Web Content</a></h2>
+<ul>
+  <li style="">
+    <p>You may have heard of some content types beyond HTML, and want to know if Gecko based products will support them:</p>
+  </li>
+  <li><a href="http://developer.mozilla.org/en/Accessible_DHTML">DHTML and AJAX</a>: Gecko and other browsers have long supported dynamic content, where the page appearance changes because of JavaScript. This can be used to create the appearance of desktop-style widgets like menus, spreadsheets and tree views which HTML lacks. Or, it can be used to completely change content on the fly, without loading a new page. Previously it was not posible to make this accessible, but Firefox 1.5 supports <a href="http://developer.mozilla.org/en/Accessible_DHTML">Accessible DHTML</a>, which allows authors to make advanced widgets and web applications accessible.</li>
+  <li><a class="ex-ref" href="http://www.w3.org/Math/">MathML</a>: an XML dialect used to display full math notation on web pages. <a href="../../projects/mathml/">Here's the ongoing Mozilla project to support MathML</a> . We do not currently have plans to support MSAA for MathML - we will likely suggest use of the external DOM for this, because MSAA simply does not have the right semantics in it to support mathematics. MathML support is currently built into Firefox.</li>
+  <li><a class="ex-ref" href="http://www.w3.org/Graphics/SVG/Overview.html">SVG</a> : Scalable Vector Graphics. Essentially W3C's XML-based version of Flash - mixes well with other markup based content, supports the DOM and has accessibility features. <a href="../../projects/svg/">Mozilla's SVG Project</a> has been through several stalls and rebirths -- SVG will probably become more of a priority if other well known browsers support it. We will not know how, or whether, we will support SVG accessibility until a better implementation comes along. Firefox 1.5 supports SVG. Potentially it can make use of the same namespaced role and state attributes as DHTML accessibility, but it may require more powerful author-definable relationships.</li>
+  <li><a href="../../projects/xforms/">XForms</a>: XForms is the future of online forms as envisioned by the W3C. Drawing on other W3C standards like XML Schema, XPath, and XML Events, XForms tries to address some of the limitations with the current HTML forms model. One of the key features of XForms is accessibility.</li>
+  <li><a class="ex-ref" href="http://www.xulplanet.com/">XUL</a>: The XML-based language used by Firefox and Mozilla to develop the UI. Similar to HTML in that it can be combined with CSS and Javascript to make powerful applications. Contains more desktop-style widgets than HTML and follows a box layout model, rather than being text-flow based. In the future more standalone applications will use XUL via <a href="http://wiki.mozilla.org/XUL:Xul_Runner">Xulrunner</a>.</li>
+</ul>
+<h2 id="Questions_or_Comments"><a id="mailinglist" name="mailinglist">Questions or Comments?</a></h2>
+<p>Please contact the <a href="/en-US/docs/Accessibility">Mozilla Accessibility Community</a>.</p>

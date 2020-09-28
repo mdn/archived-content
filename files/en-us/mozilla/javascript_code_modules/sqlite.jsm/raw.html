@@ -1,0 +1,346 @@
+<p>{{ gecko_minversion_header("20.0") }}</p>
+
+<p>The <code>Sqlite.jsm </code>JavaScript code module is a promise-based wrapper around the Storage/SQLite interface. <code>Sqlite.jsm</code> offers some compelling advantages over the low-level Storage XPCOM interfaces:</p>
+
+<ul>
+ <li>Automatic statement management. Sqlite.jsm will create, manage, and destroy statement instances for you. You don't need to worry about caching created statement instances, destroying them when you are done, etc. This translates to fewer lines of code to talk to SQLite.</li>
+ <li>All operations are asynchronous. Use of synchronous Storage APIs is discouraged because they block the main thread. All the functionality in <code>Sqlite.jsm</code> is asynchronous.</li>
+ <li>Easier memory management. Since <code>Sqlite.jsm</code> manages statements for you, it can perform intelligent actions like purging all cached statements not in use, freeing memory in the process. There is even a <code>shrinkMemory </code>API that will minimize memory usage of the connection automatically.</li>
+ <li>Simpler transactions. Sqlite.jsm exposes a transaction API built on top of <a href="/en-US/docs/Mozilla/JavaScript_code_modules/Task.jsm" title="/en-US/docs/Mozilla/JavaScript_code_modules/Task.jsm">Task.jsm</a> that allows transactions to be written as procedural JavaScript functions (as opposed to a series of callback driven operations). If the function throws, the transaction is automatically rolled back. This makes code easy to write and read.</li>
+ <li>JavaScript-y API. <code>Sqlite.jsm</code> feels like a pure JavaScript module. The complexities of XPCOM are mostly hidden from view. JavaScript programmers should feel right at home using <code>Sqlite.jsm</code>.</li>
+</ul>
+
+<p>{{ note("The <code>Sqlite.jsm</code> JavaScript code module can only be used from chrome -- that is, from within the application itself or an add-on.") }}</p>
+
+<p>Before you can use this module, you need to import it into your scope:</p>
+
+<pre><span class="brush: js">Components.utils.import("resource://gre/modules/Sqlite.jsm")</span></pre>
+
+<h2 id="Obtaining_a_Connection">Obtaining a Connection</h2>
+
+<p><code>Sqlite.jsm</code> exports the <code>Sqlite</code> symbol. This symbol is an object with a single function: <code>openConnection</code>. This function takes an object defining connection options:</p>
+
+<dl>
+ <dt>path</dt>
+ <dd>(required) The database file to open. This can be an absolute or relative path. If a relative path is given, it is interpreted as relative to the current profile's directory. If the path does not exist, a new SQLite database will be created. The value typically ends with <code>.sqlite</code>.</dd>
+ <dt>sharedMemoryCache</dt>
+ <dd>(optional) Boolean indicating<span class="cm"> whether multiple connections to the database</span><span class="cm"> share the same memory cache. Sharing the memory cache likely results</span><span class="cm"> in less memory utilization. However, sharing also requires connections</span><span class="cm"> to obtain a lock, possibly making database access slower. Defaults to</span><span class="cm"> true.</span></dd>
+ <dt>shrinkMemoryOnConnectionIdleMS</dt>
+ <dd>(optional)<span class="cm"> If defined, the connection</span><span class="cm"> will attempt to minimize its memory usage after this many</span><span class="cm"> milliseconds of connection idle. The connection is idle when no</span><span class="cm"> statements are executing. There is no default value which means no</span><span class="cm"> automatic memory minimization will occur. Please note that this is</span><span class="cm"> <strong>not</strong> a timer on the idle service and this could fire while the</span><span class="cm"> application is active.</span></dd>
+</dl>
+
+<p><code>openConnection(options)</code> returns a promise that resolves to an opened connection instance or is rejected if an error occurred while opening the database.</p>
+
+<p>Here is an example:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/Sqlite.jsm");
+
+try {
+  const conn = await Sqlite.openConnection({ path: "myDatabase.sqlite", sharedMemoryCache: false });
+  // connection is the opened SQLite connection (see below for API).
+} catch (error) {
+  // The connection could not be opened. error is an Error describing what went wrong.
+}
+</pre>
+
+<h2 id="Working_with_Opened_Connections">Working with Opened Connections</h2>
+
+<p>Opened connections are what you will interface most with in <code>Sqlite.jsm</code>. The following sections detail the API of an opened connection instance.</p>
+
+<h3 id="Connection_Management">Connection Management</h3>
+
+<p>These APIs are used to manage and inspect the state of the connection.</p>
+
+<h4 id="close()">close()</h4>
+
+<p>Close this database connection. This <strong>must </strong>be called on every opened connection or else application shutdown will fail due to waiting on the opened connection to close (Gecko doesn't force close connections because it doesn't know that you are really done with them).</p>
+
+<p>This function returns a promise that will be resolved when the database has closed.</p>
+
+<p>If a transaction is in progress at the time this function is called, the transaction will be forcibly rolled back.</p>
+
+<p>If statements are in progress at the time this function is called, they will be cancelled.</p>
+
+<p>Callers should not attempt to use the connection after calling this method as the connection will be unusable.</p>
+
+<p>It is possible to automatically close the connection when the browser is closed with the <code>shutdown</code> hook:</p>
+
+<pre class="brush: js">const conn = await Sqlite.openConnection({ path: "myDatabase.sqlite", sharedMemoryCache: false });
+
+try {
+  Sqlite.shutdown.addBlocker("My connection closing",
+                             async () =&gt; await conn.close());
+} catch (e) {
+  // It's too late to block shutdown, just close the connection.
+  await conn.close();
+  throw e;
+}
+</pre>
+
+<h4 id="clone(readOnly)">clone(readOnly)</h4>
+
+<p>This function returns a clone of the current connection-promise.</p>
+
+<p>These functions receive the following arguments:</p>
+
+<dl>
+ <dt>readOnly</dt>
+ <dd>(optional) If true the clone will be read-only, default is false.  If the original connection is already read-only, the clone will be, regardless of this option.  If the original connection is using the shared cache, this parameter will be ignored and the clone will be as privileged as the original connection.</dd>
+</dl>
+
+<h4 id="transactionInProgress">transactionInProgress</h4>
+
+<p>This boolean property indicates whether a transaction is in progress. This is rarely needed by external callers.</p>
+
+<h4 id="shrinkMemory()">shrinkMemory()</h4>
+
+<p>This function can be called to shrink the memory usage of the connection. This is a glorified wrapper around the <code>PRAGMA shrink_memory</code> statement, which tells SQLite to shrink its memory usage (by clearing caches, etc).</p>
+
+<p>While calling this has the benefit of shrinking memory, it can make your database slower, especially if you will be interacting with it shortly after calling this function. This is because SQLite will need to page the database back into memory from disk. Therefore, caution should be exercised before calling this function.</p>
+
+<p>This returns a promise that is resolved when the operation completes.</p>
+
+<h4 id="discardCachedStatements()">discardCachedStatements()</h4>
+
+<p>This function is used to discard cached statement instances, freeing memory in the process. Active cached statements will not be discarded. Therefore, it is safe to call this any time.</p>
+
+<p>This returns an integer count of the number of cached statements that were discarded.</p>
+
+<h3 id="Table_and_Schema_Management">Table and Schema Management</h3>
+
+<p>These APIs deal with management of tables and database schema.</p>
+
+<h4 id="getSchemaVersion()">getSchemaVersion()</h4>
+
+<p>The user-set version associated with the schema for the current database. If no schema version has been set, this will return the string "0".</p>
+
+<h4 id="setSchemaVersion(value)">setSchemaVersion(value)</h4>
+
+<p>Sets <code>value</code> as the new version associated with the schema for the current database. This is a wrapper around the <code>PRAGMA user_version</code> statement.</p>
+
+<h4 id="tableExists(name)">tableExists(name)</h4>
+
+<p>This function determines whether a table exists in the current database. It returns a promise that is resolved with a boolean indicating whether the table exists.</p>
+
+<h4 id="indexExists(name)">indexExists(name)</h4>
+
+<p>This functions determines whether a named index exists in the current database. It returns a promise that is resolved with a boolean indicating whether the index exists.</p>
+
+<h3 id="Statement_Execution">Statement Execution</h3>
+
+<p>These APIs facilitate execution of statements on the connection. These are arguably the most important APIs in this type.</p>
+
+<h4 id="executeCached(sql_params_onRow)">executeCached(sql, params, onRow)</h4>
+
+<h4 id="execute(sql_params_onRow)">execute(sql, params, onRow)</h4>
+
+<p>These similar functions are used to execute a single SQL statement on the connection. As you might have guessed by the name, there are 2 flavors: cached and non-cached. Other than that, they behave identically.</p>
+
+<p>These functions receive the following arguments:</p>
+
+<dl>
+ <dt>sql</dt>
+ <dd>(required) String SQL statement to execute. The trailing semicolon is not required.</dd>
+ <dt>params</dt>
+ <dd>(optional) Parameters to bind to this statement. This can be an array or an object. See notes below.</dd>
+ <dt>onRow</dt>
+ <dd>(optional) Function that is called when a row has been received.</dd>
+</dl>
+
+<p>The return value is a promise that is resolved when the statement has finished execution.</p>
+
+<p>When a statement is executed via <code>executeCached()</code>, the prepared statement object is cached inside the opened connection. The next time this same SQL statement is executed (the <code>sql </code>argument is identical to one passed in before), the old statement object is reused. This saves time associated with parsing the SQL statement and creating a new statement object. The downside is the cached statement object lingers in the opened connection, taking up memory.</p>
+
+<p>When a statement is executed via <code>execute()</code>, the underlying statement object is thrown away as soon as the statement finishes execution.</p>
+
+<p><code>executeCached()</code> is recommended for statements that will be executed many times. <code>execute()</code> is recommended for statements that will be executed seldomly or once.</p>
+
+<p>Please note that callers don't need to prepare statements manually before execution. Just call <code>executeCached()</code> and the statement will be prepared for you automatically.</p>
+
+<p>Parameters can be bound to the statement by defining the <code>params </code>argument. This argument can be an array of positional parameters or an object of named parameters. If the statement does not contain any bound parameters, this argument can be omitted or specified as null.</p>
+
+<p>{{ note("Callers are strongly encouraged to use bound parameters instead of dynamically creating SQL statements for security reasons. Bound parameters aren't prone to SQL injection like manual SQL statement construction (e.g., concatenating a raw value into the executed SQL statement).") }}</p>
+
+<div class="line" id="LC381"><span class="cm">{{ note("Callers are encouraged to pass objects rather than Arrays for bound parameters because they prevent foot guns. With positional arguments, it is simple to modify the parameter count or positions without fixing all users of the statement. Objects/named parameters are a little safer because changes in the order of parameters in the statement won't change how values are bound to those parameters.") }}</span></div>
+
+<div class="line"> </div>
+
+<div class="line"><span class="cm">When <code>onRow </code>is not defined, </span>the full results of the operation are buffered before the caller is notified of statement completion. For <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code> statements, this is not relevant. However, it can have drastic implications for <code>SELECT </code>statements. If your <code>SELECT </code>statement could return lots of data, this buffering of returned rows could result in excessive memory usage. Therefore, it's recommended to use <code>onRow </code>with <code>SELECT </code>statements.</div>
+
+<div class="line">
+<div class="line"> </div>
+
+<div class="line">Along with a result row, <code>onRow</code> is passed a <code>cancel</code> function as its second argument. Consumers of this API can call the <code>cancel</code> function should they want to immediately abort the execution of the statement. When cancelled, <span class="cm">subsequent rows will not be processed and no more <code>onRow </code>invocations will be made.</span></div>
+
+
+<div class="line" id="LC400"><span class="cm">If an exception is thrown by the <code>onRow </code>handler, the exception is logged and processing of subsequent rows occurs as if nothing happened. The promise is still resolved (not rejected).</span></div>
+
+<p><span class="cm">The return promise will be rejected with an <code>Error </code>instance if the statement</span><span class="cm"> did not finish execution fully. The <code>Error </code>may have an <code>errors</code> property.</span><span class="cm"> If defined, it will be an Array of objects describing individual errors.</span><span class="cm"> Each object has the properties <code>result</code> and <code>message</code>. <code>result</code> is a</span><span class="cm"> numeric error code and <code>message </code>is a string description of the problem.</span></p>
+
+<p>If <code>onRow </code>is specified, the returned promise will be resolved with a boolean indicating whether the onRow handler was called. Else, the resolved value will be an array of <a href="/en-US/docs/MozIStorageRow" title="/en-US/docs/MozIStorageRow"><code>mozIStorageRow</code></a>.</p>
+
+<h4 id="executeTransaction(func_type)">executeTransaction(func, type)</h4>
+
+<p>This function is used to execute a database transaction. A transaction is a series of related statements treated as one functional unit. If the transaction succeeds, all the statements contained within it are committed as one unit. If the transaction fails, the database is rolled back to its state before the transaction started.</p>
+
+<p>This function receives the following arguments:</p>
+
+<dl>
+ <dt>func</dt>
+ <dd>The function defining the transaction body.</dd>
+ <dt>type</dt>
+ <dd>The type of transaction to perform. This must be one of the TRANSACTION_* constants on the opened connection instance. Valid values are <code><span class="nx">TRANSACTION_DEFERRED</span></code><span class="p">,</span> <code><span class="nx">TRANSACTION_IMMEDIATE</span></code><span class="o">,</span> <code><span class="nx">TRANSACTION_EXCLUSIVE</span></code><span class="o">. See the SQLite documentation for their meaning.</span> The default is <code>TRANSACTION_DEFERRED</code>.</dd>
+</dl>
+
+<p>The passed function is a Task.jsm compatible generator function. When called, the function receives as its argument the current connection instance. This generator function is expected to yield promises, likely those returned by calling <code>executeCached()</code> and <code>execute()</code>.</p>
+
+<p>If we reach the end of the generator function without error, the transaction is committed. If an error occurs, the transaction is rolled up.</p>
+
+<p>The returned value from this function is a promise that is resolved when the transaction has been committed or is rejected if the transaction was rolled back.</p>
+
+<h2 id="Examples">Examples</h2>
+
+<h3 id="Open_Execute_Close">Open, Execute, Close</h3>
+
+<p>In this example, we open a connection, execute a simple statement, then close the connection.</p>
+
+<pre class="brush: js">const conn = await Sqlite.openConnection({path: "MyDB.sqlite"});
+const result = await conn.execute("SELECT 1");
+await conn.close();
+alert("We are done!");</pre>
+
+<p>This isn't a terrific example because it doesn't include error handling.</p>
+
+<h3 id="Bound_Parameters">Bound Parameters</h3>
+
+<p>Here are some examples demonstrating bound parameters. Assume we open an opened connection in the <code>conn </code>variable.</p>
+
+<pre class="brush: js">let dataToInsert = [
+  ["foo", "bar"],
+  ["biz", "baz"],
+  {"yo", "ho"],
+];
+
+async function doInsert() {
+  for (let data of dataToInsert) {
+    await conn.executeCached("INSERT INTO myTable VALUES (?, ?)", data);
+  }
+});</pre>
+</div>
+
+<p>And the same thing with named parameters.</p>
+
+<pre class="brush: js">let dataToInsert = [
+  {paramA: "foo", paramB: "bar"},
+  {paramA: "biz", paramB: "baz"},
+  {paramA: "yo", paramB: "ho"},
+];
+
+async function doInsert() {
+  for (let data of dataToInsert) {
+    await conn.executeCached("INSERT INTO myTable VALUES (:paramA, :paramB)", data);
+  }
+});</pre>
+
+<h3 id="Transactions">Transactions</h3>
+
+<p>These examples demonstrate how transactions work.</p>
+
+<pre class="brush: js">conn.executeTransaction(async function simpleTransaction() {
+  await conn.execute("INSERT INTO myTable VALUES (?, ?)", ["foo", "bar"]);
+  await conn.execute("INSERT INTO myTable VALUES (?, ?)", ["biz", "baz"]);
+});</pre>
+
+<p>The above will result in 2 INSERT statements being committed in a deferred transaction (assuming the inserts proceed without error, of course).</p>
+
+<p>Let's do an example where we want to force a transaction rollback.</p>
+
+<pre class="brush: js">conn.executeTransaction(async function complexTransaction() {
+  await conn.execute("INSERT INTO myTable VALUES (?, ?)", ["foo", "bar"]);
+  let data = await conn.execute("SELECT * FROM myTable");
+  if (data.length &lt; 5) {
+    throw new Error("We don't have the expected 5 rows to perform the next operation!");
+  }
+
+  // ...
+});</pre>
+
+<h3 id="Selecting_and_Returning_Data">Selecting and Returning Data</h3>
+
+<p>These examples demonstrate how to access the data that is returned.</p>
+
+<p>This example shows multiple rows of a table being returned using the <code>onRow</code> function parameter.</p>
+
+<pre class="brush: js">let accounts = [];
+let accountId, userName;
+
+let statement = "SELECT account_id, username FROM accounts ORDER BY username ASC";
+
+try {
+  const result = await conn.executeCached(statement, null, function(row, cancel) {
+    accountId = row.getResultByName("account_id");
+    userName = row.getResultByName("username");
+    accounts.push({ accountId: accountId, userName: userName });
+    // If the cancel function is called here, the statement being executed will
+    // be cancelled, and no more rows will be processed.
+  });
+} catch (err) {
+  // An error occurred.
+  <span class="pln">console</span><span class="pun">.</span><span class="pln">log</span><span class="pun">(</span><span class="pln">err</span><span class="pun">);</span>
+  <span class="com">// Error, Oh noes!</span>
+  if (callback) {
+    callback(err);
+  }
+}
+
+// All accounts returned successfully, so do something with them.
+<span class="pln">console</span><span class="pun">.</span><span class="pln">log</span><span class="pun">(</span><span class="pln">result</span><span class="pun">);</span><span class="pln"> </span><span class="com">// It worked!</span>
+if (callback) {
+  callback(null, accounts);
+}
+</pre>
+
+<div class="note">
+<p><strong>Note: </strong>the <strong><code>then</code> </strong>parameters can be anonymous functions (i.e. <strong><code>function()</code> </strong> ), and only are labeled as <strong><code>onStatementComplete</code> </strong>and <strong><code>onError</code></strong> for readability.</p>
+</div>
+
+<p>This example demonstrates retrieving a row without using the <code>onRow</code> function parameter, and instead, using the <code>conn.execute</code> result. This example also demonstrates retrieving the primary key row id of the last inserted row.</p>
+
+<pre class="brush: js">async function () {
+  try {
+    conn = await Sqlite.openConnection({ path: dbFile.path });
+
+    let statement = "INSERT INTO accounts (username, details) VALUES (:username, :details)"
+    let params = { username:"LordBusiness", details: "All I'm asking for is total perfection." };
+
+    await conn.execute(statement,params);
+
+    // Get accountId of the INSERT.
+    statement = "SELECT last_insert_rowid() AS lastInsertRowID";
+    result = await conn.execute(statement);
+
+    // Only one row is returned.
+    let row = result[0];
+    let accountId = row.getResultByName("lastInsertRowID");
+
+    if (callback) {
+      callback(null, accountId);
+    }
+  } catch (err) {
+    if (callback) {
+      callback(err);
+    }
+  } finally {
+    conn.close();
+  }
+});</pre>
+
+<div class="note">
+<p><strong>Note:</strong> The value returned by the <strong>last_insert_rowid()</strong> is per connection, so you may need to open separate connections when doing multiple INSERTs from different locations, to be sure the row id that is being returned is from the correct corresponding INSERT.</p>
+</div>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/modules/Sqlite.jsm">Sqlite.jsm source on DXR</a></li>
+</ul>

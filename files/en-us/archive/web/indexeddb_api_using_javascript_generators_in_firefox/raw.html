@@ -1,0 +1,53 @@
+<div class="warning"><strong>Warning:</strong> This technique works only in Firefox, not IE, Chrome, Safari, etc.</div>
+<p>Generators can be used to simplify asynchronous code in Firefox by opting in to using JavaScript version 1.7 or later. You can opt in in HTML as follows:</p>
+<pre class="brush: js">&lt;script type="text/javascript;version=1.7" src="myScript.js"&gt;&lt;/script&gt;</pre>
+<p>Then your <code>myScript.js</code> file might look like this:</p>
+<pre class="brush: js">// Need to stash the generator in a global variable.
+var generator;
+
+// Simple event listener function to pass the received event to the generator.
+function grabEvent(event) {
+  generator.send(event);
+}
+
+// When we're all done we can close the generator, but that must happen outside
+// of the generator so we use a timeout.
+function closeGenerator() {
+  setTimeout(function() {
+    generator.close();
+  }, 0);
+}
+
+// Our main steps
+function databaseOperation() {
+  mozIndexedDB.open("MyTestDatabase").onsuccess = grabEvent;
+  var event = yield;
+
+  var db = event.target.result;
+
+  if (db.version != "1.0") {
+    db.setVersion("1.0").onsuccess = grabEvent;
+    event = yield;
+
+    var transaction = event.transaction;
+    db.createObjectStore("stuff");
+
+    transaction.oncomplete = grabEvent;
+    yield;
+  }
+
+  db.transaction(["stuff"]).objectStore("stuff").get("foo").onsuccess = grabEvent;
+  event = yield;
+
+  alert("Got result: " + event.target.result);
+
+  // We're all done.
+  closeGenerator();
+
+  // Always have an extra yield at the end or you will see StopIteration
+  // exceptions.
+  yield;
+}
+
+generator = databaseOperation();
+generator.next();</pre>

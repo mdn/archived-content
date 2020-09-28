@@ -1,0 +1,174 @@
+---
+title: Validating a receipt
+slug: Archive/Marketplace/Monetization/Validating_a_receipt
+tags:
+  - Apps
+  - Firefox OS
+  - Marketplace
+  - Receipts
+  - Web Payment
+---
+<div><h2 id="Subnav">Subnav</h2>
+
+<section id="Quick_Links">
+<ol>
+ <li><strong><a href="/en-US/docs/Archive/Marketplace">Marketplace</a></strong></li>
+ <li class="toggle">
+  <details><summary><a href="/en-US/docs/Archive/Marketplace/API">Marketplace APIs</a></summary><ol><li><a href="/en-US/docs/Archive/Marketplace/API/App_installation_and_management_APIs">App Installation and Management APIs</a></li><li><a href="/en-US/docs/Archive/Marketplace/API/DOMApplicationsManager">DOMApplicationsManager</a></li><li><a href="/en-US/docs/Archive/Marketplace/API/DOMApplicationsRegistry">DOMApplicationsRegistry</a></li><li><a href="/en-US/docs/Archive/Marketplace/API/Navigator">Navigator (Marketplace)</a></li></ol></details>
+ </li>
+ <li class="toggle">
+  <details><summary><a href="/en-US/docs/Archive/Marketplace/Monetization">Monetization</a></summary><ol><li><a href="/en-US/docs/Archive/Marketplace/Monetization/App_pricing">App pricing tiers</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/App_payments_guide">Building a Paid app</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/In-app_payments_section">In-app Payments</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/Introduction_Monetization">Introduction — Monetization</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/Payment_processing_and_your_revenue">Payment processing and your revenue</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/Profiting_from_your_app">Publishing your app for profit</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/Refunds">Refunds</a></li><li><a href="/en-US/docs/Archive/Marketplace/Monetization/Validating_a_receipt">Validating a receipt</a></li></ol></details>
+ </li>
+ <li class="toggle">
+  <details><summary><a href="/en-US/docs/Archive/Marketplace/Options">Options</a></summary><ol><li><a href="/en-US/docs/Archive/Marketplace/Options/Creating_a_store">Creating your own store</a></li><li><a href="/en-US/docs/Archive/Marketplace/Options/Open_web_apps_for_android">Open Web Apps for Android</a></li><li><a href="/en-US/docs/Archive/Marketplace/Options/Open_web_apps_for_desktop">Open Web Apps for Desktop</a></li></ol></details>
+ </li>
+ <li class="toggle">
+  <details><summary><a href="/en-US/docs/Archive/Marketplace/Publishing">Publishing</a></summary><ol><li><a href="/en-US/docs/Archive/Marketplace/Publishing/Pricing">Pricing</a></li><li><a href="/en-US/docs/Archive/Marketplace/Publishing/Publishing_mobile_app_to_Desktop">Publishing an existing mobile app to Desktop</a></li></ol></details>
+ </li>
+</ol>
+</section></div>
+
+<div class="blockIndicator deprecated">
+<p><strong>Marketplace feature removal</strong><br>
+ The functionality described on this page no longer works — Firefox Marketplace has discontinued support for Android, Desktop, Tablets, and payments (and other related functionality). For more information, read the <a href="https://wiki.mozilla.org/Marketplace/FutureofMarketplaceFAQ">Future of Marketplace FAQ</a>.</p>
+</div>
+
+<p class="summary"><span class="seoSummary">If you have a paid app, you should check that a user has a valid receipt. If you do not check, someone can buy the app, get an immediate refund, and then have the app for free. Or someone can simply install the app by referencing the manifest file directly from your site. This article goes through the code and workflow needed to build in your own receipt validation.</span></p>
+
+<p>A receipt is proof that an app buyer has purchased your app. A receipt encodes an affirmation by a payment processor that a particular user has completed a transaction to acquire a particular digital product. The receipt is sent to the user's machine after the user has paid for an app on the <a href="https://marketplace.firefox.com/">Firefox Marketplace</a>. The receipt is placed on the user's machine using the second argument to the <a href="/en-US/docs/Web/API/Apps.install"><code>mozApps.install()</code></a> method. The Firefox Marketplace calls <code>install()</code> for your app using the receipt.</p>
+
+<h2 id="When_to_validate_a_receipt">When to validate a receipt</h2>
+
+<p>You have to decide when the app will validate the receipt. A usual time to validate is when the user starts the app. If it's a long-running app, you might want to validate on a regular schedule. An app that streams video, for example, might check the receipt every 20 minutes.</p>
+
+<p>Note that if the user is offline, the app will not be able to validate the receipt. What the app does in this situation is up to you. To avoid some user annoyance you might want to be lax on enforcing the receipt checking (let's say the user is temporarily in a tunnel), and just keep trying until the user is online again.</p>
+
+<h2 id="How_to_validate_a_receipt">How to validate a receipt</h2>
+
+<p>The simplest way to validate a receipt is to use the Firefox Marketplace validation service. If your app is HTML-only, where the server doesn't do anything but serve static files, you can use the <a href="https://developer.mozilla.org/en-US/Marketplace/Monetization/In-app_payments_section/fxPay_iap#Validating_an_app_receipt">fxpay.validateAppReceipt()</a> method of Mozilla's <a href="https://developer.mozilla.org/en-US/Marketplace/Monetization/In-app_payments_section/fxPay_iap">fxpay JavaScript library</a>.</p>
+
+<h2 id="Receipt_contents">Receipt contents</h2>
+
+<p>The receipt used by an Open Web app is a portable, verifiable proof of purchase token. It is a digitally-signed JSON data structure called a <a class="external" href="http://self-issued.info/docs/draft-jones-json-web-token.html">JSON Web Token</a> (JWT). This format is universally readable by clients and servers. There are JWT libraries available for many programming languages.</p>
+
+<h2 id="What_receipts_you_should_accept">What receipts you should accept</h2>
+
+<p>The receipt is proof of payment, but it is up to the app developer to decide what kind of receipts you would like to accept. Here's a list of the things you should check:</p>
+
+<ul>
+ <li>The receipt is from a store you are selling the app from. Check that the <code>iss</code> field is in your whitelist.</li>
+ <li>The receipt is for your app. For hosted apps, check that the <code>product</code> <code>URL</code> field is correct. For packaged apps, check that the <code>product storeData</code> is correct until <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=867265" title="FIXED: Identifying your packaged app from a receipt">bug 867265</a> is resolved. The value of <code>storeData</code> is not known until a receipt is issued, but will remain constant from then on.</li>
+ <li>The verification URL is at a domain or subdomain of the store. Check that the <code>verify</code> URL is a subdomain of the <code>iss</code> field.</li>
+ <li>The receipt is for a purchase and not a test receipt. Check the <code>typ</code> field.</li>
+</ul>
+
+<p>The <a href="https://developer.mozilla.org/en-US/Marketplace/Monetization/In-app_payments_section/fxPay_iap#Validating_an_app_receipt">fxpay app receipt validator</a> will do these checks for you automatically.</p>
+
+<h2 id="Test_receipts">Test receipts</h2>
+
+<p>During development the Firefox Marketplace can issue test receipts so that the payment lifecycle can be completely tested. Use this <a href="https://marketplace.firefox.com/developers/test/receipts/">utility page</a> on the Firefox Developer Hub to generate receipts for testing. These look like normal receipts except they have a <code>typ</code> of <code>test-receipt</code>. The app should accept these receipts during development and then <strong>not accept</strong> them once on sale. Doing so would allow anyone to bypass the sales process and use a test receipt in your app.</p>
+
+<p>By default the <a href="https://developer.mozilla.org/en-US/Marketplace/Monetization/In-app_payments_section/fxPay_iap#Validating_an_app_receipt">fxpay app receipt validator</a> does not allow <code>test-receipts</code>.</p>
+
+<h2 id="Receipt_verification">Receipt verification</h2>
+
+<p>Without using a JWT library, you can find the URL for the validation service in the <code>verify</code> field in the receipt, and then send the receipt to the validation service. Each app has a different URL to the Firefox Marketplace validation service.</p>
+
+<p>The code sample below will show the <code>verify</code> URL in the receipt. The code is set up to be used in the Firefox web console developer tool.</p>
+
+<pre class="brush: js;">var request = navigator.mozApps.getSelf();
+request.onsuccess = function() {
+  // Get the app's receipt and decode it
+  console.log(atob(request.result.receipts[0].split('~')[1].split('.')[1]));
+};</pre>
+
+<p>To get the <code>verify</code> URL, this sample does the following things:</p>
+
+<ul>
+ <li>It saves the return from <code><a href="/en-US/docs/Web/API/Apps.getSelf">mozApps.getSelf()</a></code> — a reference to the current app — in a <code>request</code> variable.</li>
+ <li>If the request is successful, the app's first receipt is retrieved, and the value fed in from JWT is split to get the actual part that contains the receipt.</li>
+ <li>It decodes the Base64-encoded receipt using the JavaScript <code><a href="/en-US/docs/Web/API/Window/atob" title="The WindowBase64.atob() function decodes a string of data which has been encoded using base-64 encoding. You can use the window.btoa() method to encode and transmit data which may otherwise cause communication problems, then transmit it and use the window.atob() method to decode the data again. For example, you can encode, transmit, and decode control characters such as ASCII values 0 through 31."><code>Window.atob</code></a></code> function.</li>
+</ul>
+
+<p>The following is a pretty-printed example of the result of the code above. It is a full receipt, minus the JWT parts.</p>
+
+<pre class="brush: js;">{
+  "product": {
+    "url": "http://example.com",
+    "storedata": "id=111111"
+  },
+  "iss": "https://marketplace.mozilla.org",
+  "verify": "https://receiptcheck.marketplace.mozilla.org/verify/111111", // The verify URL
+  "detail": "https://marketplace.mozilla.org/en-US/purchases/111111",
+  "reissue": "https://marketplace.mozilla.org/en-US/app/example/purchase/reissue",
+  "user": {
+    "type": "directed-identifier",
+    "value": "1234-abcd99ef-a123-456b-bbbb-cccc11112222"
+  },
+  "exp": 1353028900,
+  "iat": 1337304100,
+  "typ": "purchase-receipt",
+  "nbf": 1337304100
+}</pre>
+
+<p>Once you get the <code>verify</code> URL, use the <code>POST</code> method to send the full JWT in the body of a message. The validation service response is described above. The following snippet would get the full JWT of the app's first receipt in the sample above.</p>
+
+<pre class="brush: js; no-line-numbers">request.result.receipts[0]</pre>
+
+<p>Note that the cryptographic aspects of a JWT are not dealt with in the code above. If you verify the receipt with the Marketplace it will check the cryptographic signature itself.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note</strong>: You can find another, more expansive example of receipt verification in Kumar McMillan's <a href="https://github.com/kumar303/yacht/blob/master/www/js/server-app.js">Private Yacht</a> example.</p>
+</div>
+
+<h2 id="Combating_app_piracy">Combating app piracy</h2>
+
+<p>Even if you validate receipts for your paid app, it can be pirated if someone passes around the valid receipt for others to use. The receipt validation methods given above do not prevent this.</p>
+
+<p>If you want a better defense against piracy, you might want to set up a proxy server that will be an intermediary between the app and the Firefox Marketplace. The proxy server can check the receipts, IP addresses and other things to restrict widespread usage of valid receipts. The server might do something like notice if the same receipt was coming from different IP addresses and take appropriate action.</p>
+
+<p><a class="link-https" href="https://github.com/andymckay/receipts">This Python code</a> is an in-progress project that could give you some ideas for a proxy server. <a class="external" href="http://django-receipts.herokuapp.com/">Django Receipts</a> is a test proxy that will validate receipts. You shouldn't use this as a production proxy but you can learn from it as a test. <a class="link-https" href="https://wiki.mozilla.org/Apps/WebApplicationReceipt">Here is more information</a> on verifying receipts yourself.</p>
+
+<h2 id="Receipt_fields">Receipt fields</h2>
+
+<p>A receipt contains the following fields:</p>
+
+<dl>
+ <dt><code>typ</code></dt>
+ <dd>A string identifying the type of receipt. It <strong>must</strong> be one of:
+ <ul>
+  <li><code>purchase-receipt</code> - A receipt issued when a transaction is completed. This type of receipt should be accepted by the app at all times.</li>
+  <li><code>developer-receipt</code> - A receipt issued to the developer of the app. Usually they will be issued by the store for the use of the developer. This receipt may have a short expiry.</li>
+  <li><code>reveiwer-receipt</code> - A receipt issued to the reviewer of the app. Usually they will be issued by the store for reviewers of the app. This receipt only needs to be accepted during the review period. This receipt may have a short expiry</li>
+  <li><code>test-receipt</code> - A receipt issued to test the app during development. This receipt <strong>SHOULD NOT</strong> be accepted, except during development. This receipt may have a short expiry.</li>
+ </ul>
+ </dd>
+ <dt><code>product</code></dt>
+ <dd>JSON object identifying the product that the receipt covers and any store-specific data. It has the following fields:
+ <ul>
+  <li><code>url</code> - URL representing the root of a domain, without a trailing slash (for example, "<a class="link-https" href="https://someapp.com" rel="freelink">https://someapp.com</a>"). This is conventionally defined to represent "a web application". URLs rooted further inside the site are conventionally defined to represent "in-application purchases", and can use whatever path scheme is convenient to the developer and issuer of the receipt.</li>
+  <li><code>storedata</code> - A string that uniquely identifies this app for the verifier of the receipt.</li>
+ </ul>
+ </dd>
+ <dt><code>user</code></dt>
+ <dd>JSON object containing a user ID for the user who made the purchase. It has the following fields:
+ <ul>
+  <li><code>type</code> - A string with the value <code>"directed-identifier"</code>.</li>
+  <li><code>value</code> - A string that is a unique ID for the user. A given user will show up as a different user ID for each app purchased.</li>
+ </ul>
+ </dd>
+ <dt><code>iss</code></dt>
+ <dd>Domain for the store that issued the receipt.</dd>
+ <dt><code>nbf</code></dt>
+ <dd>"Not-before" timestamp indicating when the purchase was completed. The timestamp is the number of seconds from 1970-01-01T00:00:00Z in UTC, RFC 3339.</dd>
+ <dt><code>iat</code></dt>
+ <dd>"Issued-at" timestamp indicating when the receipt was issued. Same timestamp format as <code>nbf</code>. You can use this value to determine the age of the receipt.</dd>
+ <dt><code>exp</code></dt>
+ <dd>(optional) Expiry timestamp indicating when the receipt will expire. Same timestamp format as <code>nbf</code>.</dd>
+ <dt><code>detail</code></dt>
+ <dd>(optional) URL that contains additional human- or machine-readable detail about the purchase. If a transaction log or refund capability is provided for the purchase, it is expected that this page will contain those functions.</dd>
+ <dt><code>verify</code></dt>
+ <dd>(optional) URL that can be used by an authenticated application to verify a receipt. Note that the Firefox Marketplace always provides this field for an app. If you are going to create your own app marketplace, you might not use this field.</dd>
+ <dt><code>reissue</code></dt>
+ <dd>(optional) URL that can be used to re-issue a new receipt.</dd>
+</dl>

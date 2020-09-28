@@ -1,0 +1,182 @@
+---
+title: Working with Multiple Versions of Interfaces
+slug: Mozilla/Tech/XPCOM/Working_with_multiple_versions_of_interfaces
+tags:
+  - Add-ons
+  - Extensions
+  - XPCOM
+---
+<h2 id="The_Problem"> The Problem </h2>
+<p>In this short note we illustrate how one can update an XPCOM module in
+order for it to work in both Firefox 2 and Firefox 3, even if the interfaces have
+changed in the interim. </p><p>In the extension that prompted this note, I needed to obtain the <code>HWND</code> of the document (yes its on Windows) in order to identify
+each particular extension instance. To do this I used the accessibility framework:
+</p>
+<pre>HWND getHwnd(nsIDOMNode *node){
+  HWND self = NULL;
+  nsresult rv;
+  nsCOMPtr&lt;nsIAccessibleRetrieval&gt; refp;
+  refp = do_CreateInstance( "@mozilla.org/accessibleRetrieval;1", &amp;rv);
+  if (NS_FAILED(rv)){ return self; } //line 6.
+  nsCOMPtr&lt;nsIAccessible&gt; accnode;
+  rv = refp-&gt;GetAccessibleFor(node, getter_AddRefs(accnode));
+  if(NS_FAILED(rv)){ return self; }
+  void *wh = NULL;
+  nsCOMPtr&lt;nsIAccessibleDocument&gt; accdocnode;
+  accdocnode = do_QueryInterface(accnode, &amp;rv);
+  if(NS_FAILED(rv)){ return self; }
+  rv = accdocnode-&gt;GetWindowHandle(&amp;wh);
+  if(NS_SUCCEEDED(rv)){ self = static_cast&lt;HWND&gt;(wh); }
+  return self;
+}
+</pre>
+<p>This approach worked, as is, for versions as early as Firefox 1.5.
+The problem arises when one tries to run an extension built with the latest
+SDK in an older version of Firefox, say Firefox 2. What happens is that the call to <code>do_CreateInstance</code> fails with <code>nsresult NS_ERROR_NO_INTERFACE</code>.
+This is because the call to </p>
+<pre>do_CreateInstance(aCID, aOuter, error);
+</pre>
+<p>will eventually evolve into a request for an object supporting the interface
+with IID <code>NS_GET_IID(nsIAccessibleRetrieval)</code>. Unfortunately we compiled
+this in the latest SDK, and so this magic number happens to be:
+</p>
+<pre>"244e4c67-a1d3-44f2-9cab-cdaa31b68046"
+</pre>
+<p>whereas, inside Firefox 2, the IID it happens to know about is:
+</p>
+<pre>"663ca4a8-d219-4000-925d-d8f66406b626".
+</pre>
+<p><br>
+and this explains our <code>NS_ERROR_NO_INTERFACE</code>. </p><p>Fortunately there is a plan of action that we can follow to rectify
+this. We build construct our XPCOM component so that first tries to
+get the interface by it's new IID, then if that fails, attempts plan B.
+Plan B is simply trying to get the interface by it's older IID. </p><p>For expository purposes we will do this in two stages; buoyed by the
+fact that it is the actual route we took.
+</p>
+<h2 id="The_Optimist's_Solution"> The Optimist's Solution </h2>
+<p>The first thing we do is replace line 6 above by our plan B:
+</p>
+<pre>  if (NS_FAILED(rv)){ return getHwndB(node); } //new line 6.
+</pre>
+<p>and then implement plan B. We first dredge out the old interface identifiers
+from our yea olde Firefox 1.5 SDK:
+</p>
+<pre>static const nsIID IAR_IID_OLD =
+  { 0x663ca4a8, 0xd219, 0x4000, { 0x92, 0x5d, 0xd8, 0xf6, 0x64, 0x06, 0xb6, 0x26 }};
+
+static const nsIID IAD_IID_OLD =
+  {0x8781fc88, 0x355f, 0x4439, { 0x88, 0x1f, 0x65, 0x04, 0xa0, 0xa1, 0xce, 0xb6 }};
+</pre>
+<p>then follow the recipe.
+</p>
+<pre>HWND getHwndB(nsIDOMNode *node){
+  HWND self = NULL;
+  nsresult rv;
+  nsCOMPtr&lt;nsIComponentManager&gt; compMgr;
+  rv = NS_GetComponentManager(getter_AddRefs(compMgr));
+  if (NS_FAILED(rv)){ return self; }
+  nsCOMPtr&lt;nsIAccessibleRetrieval&gt; refp;
+  rv = compMgr-&gt;CreateInstanceByContractID(accRetCID, 0, IAR_IID_OLD, getter_AddRefs(refp));
+  if (NS_FAILED(rv)){ return  self; }
+  nsCOMPtr&lt;nsIAccessible&gt; accnode;
+  rv = refp-&gt;GetAccessibleFor(node, getter_AddRefs(accnode));
+  if(NS_FAILED(rv)){ return self; }
+  void *wh = NULL;
+  nsCOMPtr&lt;nsIAccessibleDocument&gt; accdocnode;
+  rv = accnode-&gt;QueryInterface(IAD_IID_OLD, getter_AddRefs(accdocnode));
+  if(NS_FAILED(rv)){ return self; }
+  rv = accdocnode-&gt;GetWindowHandle(&amp;wh);
+  if(NS_SUCCEEDED(rv)){ self = static_cast&lt;HWND&gt;(wh); }
+  return self;
+}
+</pre>
+<p><br>
+There is good news and bad news. First the good news. Plan B inside Firefox 2
+happily runs to completion. All the XPCOM calls succeed, or at least think
+they succeed. The bad news is that the thing we get back is not a valid <code>HWND</code>.
+</p><p>The problem now is not just interface identifier mismatch, but class declaration
+mismatch. <code>GetWindowHandle</code> is the tenth method declared in the <code>
+nsIAccessibleDocument.h </code>
+that Firefox 2 was built with, but actually the eighth method in the SDK
+that I used to build my extension (and hence XPCOM component). Since
+these classes don't use vtables this means I'm probably, no I can be more positive, definitely calling the wrong method. If I were
+a betting man, I'd hedge a bet on <code>GetAccessibleInParentChain</code>,
+that being the tenth method in the interface declaration in the new SDK. </p><p>In actual fact we were lucky we actually got as far as we did, since
+the very first interface we made use of has changed substantially. If
+there is any truth to the story I weave here, then this is because
+<code>GetAccessibleFor</code> is still the very first method declared in
+<code>nsIAccessibleRetrieval.h</code>. So if you are lucky enough with your
+API's this technique may work without further ado.
+We are not so lucky.
+</p><p><br>
+</p>
+<h2 id="The_Realist's_Solution"> The Realist's Solution </h2>
+<p>To make sure we call the right methods of the right interfaces we
+need to have two versions of both the <code>nsIAccessibleDocument</code> and
+<code>nsIAccessibleRetrieval</code> interfaces at our fingertips. I called my
+old ones: <code>nsIAccessibleRetrieval_old.h</code> and <code>nsIAccessibleDocument_old.h</code>.
+</p><p>Mine date back to August of 2006, which is when I first built
+the lizard. To get these four files to co-exist together
+peacefully I had to resort to some preprocessor magic and
+an ugly hack. Maybe the ugly hack can be replaced by even
+more preprocessor magic, but not today. Lets do the magic first, then describe the ugly hack. </p><p>To include both retrieval interfaces (and remember the old IID without having to cut and paste) I followed the kind advice of Mike
+Shaver and did:
+</p>
+<pre>#define nsIAccessibleRetrieval nsIAccessibleRetrieval_old
+#include "accessibility/nsIAccessibleRetrieval_old.h"
+static const nsIID NS_IACCESSIBLERETRIEVAL_IID_OLD = NS_IACCESSIBLERETRIEVAL_IID;
+#undef nsIAccessibleRetrieval
+#undef __gen_nsIAccessibleRetrieval_h__
+#include "accessibility/nsIAccessibleRetrieval.h"
+</pre>
+<p>and following the identical principle for the document interface:
+</p>
+<pre>#define nsIAccessibleDocument nsIAccessibleDocument_old
+#include "accessibility/nsIAccessibleDocument_old.h"
+static const nsIID NS_IACCESSIBLEDOCUMENT_IID_OLD = NS_IACCESSIBLEDOCUMENT_IID;
+#undef nsIAccessibleDocument
+#undef __gen_nsIAccessibleDocument_h__
+#include "accessibility/nsIAccessibleDocument.h"
+</pre>
+<p>I even silenced my friend the compiler by enclosing both incantations
+within a compiler pragma:
+</p>
+<pre>#pragma warning(push)
+#pragma warning(disable : 4005)
+...
+#pragma warning(pop)
+</pre>
+<p>So now I have to own up to the ugly hack. I did have to delve into my old versions and change:
+</p>
+<pre>   NS_DEFINE_STATIC_IID_ACCESSOR(...)
+</pre>
+<p>to
+</p>
+<pre>   NS_DECLARE_STATIC_IID_ACCESSOR(...)
+</pre>
+<p>This ugliness aside, my plan B routine now looks like:
+</p>
+<pre>HWND getHwndB(nsIDOMNode *node){
+  HWND self = NULL;
+  nsresult rv;
+  nsCOMPtr&lt;nsIComponentManager&gt; compMgr;
+  rv = NS_GetComponentManager(getter_AddRefs(compMgr));
+  if (NS_FAILED(rv)){ return self; }
+  nsCOMPtr&lt;nsIAccessibleRetrieval_old&gt; refp; //N.B. _old
+  rv = compMgr-&gt;CreateInstanceByContractID(accRetCID, 0,
+                                           NS_IACCESSIBLERETRIEVAL_IID_OLD,
+                                           getter_AddRefs(refp));
+  if (NS_FAILED(rv)){ return  self; }
+  nsCOMPtr&lt;nsIAccessible&gt; accnode;
+  rv = refp-&gt;GetAccessibleFor(node, getter_AddRefs(accnode));
+  if(NS_FAILED(rv)){ return self; }
+  void *wh = NULL;
+  nsCOMPtr&lt;nsIAccessibleDocument_old&gt; accdocnode; //N.B. _old
+  rv = accnode-&gt;QueryInterface(NS_IACCESSIBLEDOCUMENT_IID_OLD,
+                               getter_AddRefs(accdocnode));
+  if(NS_FAILED(rv)){ return self; }
+  rv = accdocnode-&gt;GetWindowHandle(&amp;wh);
+  if(NS_SUCCEEDED(rv)){ self = static_cast&lt;HWND&gt;(wh); }
+  return self;
+}
+</pre>

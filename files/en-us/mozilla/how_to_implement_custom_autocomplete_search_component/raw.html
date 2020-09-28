@@ -1,0 +1,520 @@
+<p>The XUL <a href="/En/XUL/Textbox_(Toolkit_autocomplete)" title="en/XUL/textbox_(Firefox_autocomplete)">textbox</a> element supports an autocomplete mechanism that is used to create a textbox with a popup containing a list of possible completions for what the user has started to type. There are actually two autocomplete mechanisms:</p>
+<ul>
+ <li>An older mechanism that is part of the "xpfe" codebase and is used in older applications such as Thunderbird and SeaMonkey.</li>
+ <li>A newer and slightly simplified mechanism that is used in "toolkit" applications such as Firefox and XULRunner.</li>
+ <li>Thunderbird 2.x and SeaMonkey 1.1.x support the toolkit interfaces, although they do not use the same autocomplete widget.</li>
+</ul>
+<p>To use autocomplete with a XUL textbox, all you need to do is set some attributes:</p>
+<pre class="brush: xml">&lt;textbox type="autocomplete" autocompletesearch="history"/&gt;
+</pre>
+<p>The <code>type="autocomplete"</code> turns on the autocomplete mechanism and the <code>autocompletesearch="history"</code> sets the source for the autocomplete. There are more options and features, see <a href="/En/XUL/Textbox_(Toolkit_autocomplete)" title="en/XUL/textbox_(Firefox_autocomplete)">XUL:textbox_(Firefox_autocomplete)</a> for more details. The toolkit mechanism has built-in support for several autocomplete sources, including:</p>
+<ul>
+ <li><code>history</code>: Search the browser's URL history (Firefox: 1.0+; SeaMonkey: 1.1+)</li>
+ <li><code>form-history</code>: Search the values that the user has entered into form fields. (Firefox: 1.0+; SeaMonkey: 2.0+)</li>
+ <li><code>file</code>: Search file names (Firefox: 2.0+; Thunderbird: 2.0+; SeaMonkey: 1.1+; GTK builds only). The component uses the <code>autocompletesearchparam</code> attribute or <code>searchParam</code> property to allow the developer to define the default directory otherwise only paths beginning with <code>/</code> or <code>~/</code> will be autocompleted.</li>
+</ul>
+<h2 id="Building_your_custom_autocomplete_search_components">Building your custom autocomplete search components</h2>
+<p>Sometimes, you may want to build your own autocomplete source. To do so you need the following:</p>
+<ul>
+ <li>Create an XPCOM component that implements the <code>nsIAutoCompleteSearch</code> interface.</li>
+ <li>Make sure the contract ID of your XPCOM component follows the following form: <code>"@mozilla.org/autocomplete/search;1?name=xxx"</code>, where <code>"xxx"</code> is the name of your autocomplete source.</li>
+ <li>Implement the list of matched strings using the <code>nsIAutoCompleteResult</code> interface.</li>
+</ul>
+<p>The simplest way to make an XPCOM component is to build an XPCOM JavaScript Component (this cannot be done with a <a href="/en/JavaScript_code_modules" title="https://developer.mozilla.org/en/JavaScript_code_modules/">JavaScript module</a>). <a href="/en/How_to_Build_an_XPCOM_Component_in_Javascript" title="en/How_to_Build_an_XPCOM_Component_in_Javascript">How to Build an XPCOM Component in Javascript</a> will step you through the process. Because creating an XPCOM component in order to build a custom autocomplete source can be enough to discourage some developers, below is an example JavaScript XPCOM component called "simple-autocomplete" that implements the necessary interfaces.</p>
+<div class="note">
+ <strong>Note:</strong> When copying the examples below, change the UUID that uniquely identifies the component, otherwise you might have problems if your component gets installed along another component derived from those same examples. That can happen! So, get a UUID from <a class="external" href="http://www.famkruithof.net/uuid/uuidgen">http://www.famkruithof.net/uuid/uuidgen</a>, for example, and paste it in.</div>
+<h3 id="Basic_example_for_Gecko_2.0_and_up_(Firefox_4_Thunderbird_3.3_SeaMonkey_2.1)">Basic example for Gecko 2.0 and up (Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)</h3>
+<p>This example is your first best try because:</p>
+<ul>
+ <li>it has no specific logic (it just returns a dummy array of choices)</li>
+ <li>it doesn't care about compatibility with older Gecko versions</li>
+</ul>
+<p>First copy the following JavaScript code into a file named <code>basic_autocomplete.js</code> into the <code>components</code> directory (or whatever <code>components</code> folder is appropriate in your case):</p>
+<p>{{ warning("The UUID used below in chrome.manifest and assigned to CLASS_ID must be changed before use.") }}</p>
+<pre class="brush: js">const Ci = Components.interfaces;
+const Cu = Components.utils;
+
+Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+
+const CLASS_ID = Components.ID('x753d830-ba1e-11e0-962b-0800200c9a66'); // ← Change this
+const CLASS_NAME = "Basic AutoComplete";
+const CONTRACT_ID = '@mozilla.org/autocomplete/search;1?name=basic-autocomplete';
+
+/**
+ * @constructor
+ *
+ * @implements {nsIAutoCompleteResult}
+ *
+ * @param {string} searchString
+ * @param {number} searchResult
+ * @param {number} defaultIndex
+ * @param {string} errorDescription
+ * @param {Array.&lt;string&gt;} results
+ * @param {Array.&lt;string&gt;|null=} comments
+ */
+function ProviderAutoCompleteResult(searchString, searchResult,
+  defaultIndex, errorDescription, results, comments) {
+  this._searchString = searchString;
+  this._searchResult = searchResult;
+  this._defaultIndex = defaultIndex;
+  this._errorDescription = errorDescription;
+  this._results = results;
+  this._comments = comments;
+}
+
+ProviderAutoCompleteResult.prototype = {
+  _searchString: "",
+  _searchResult: 0,
+  _defaultIndex: 0,
+  _errorDescription: "",
+  _results: [],
+  _comments: [],
+
+  /**
+   * @return {string} the original search string
+   */
+  get searchString() {
+    return this._searchString;
+  },
+
+  /**
+   * @return {number} the result code of this result object, either:
+   *   RESULT_IGNORED   (invalid searchString)
+   *   RESULT_FAILURE   (failure)
+   *   RESULT_NOMATCH   (no matches found)
+   *   RESULT_SUCCESS   (matches found)
+   */
+  get searchResult() {
+    return this._searchResult;
+  },
+
+  /**
+   * @return {number} the index of the default item that should be entered if
+   *   none is selected
+   */
+  get defaultIndex() {
+    return this._defaultIndex;
+  },
+
+  /**
+   * @return {string} description of the cause of a search failure
+   */
+  get errorDescription() {
+    return this._errorDescription;
+  },
+
+  /**
+   * @return {number} the number of matches
+   */
+  get matchCount() {
+    return this._results.length;
+  },
+
+  /**
+   * @return {string} the value of the result at the given index
+   */
+  getValueAt: function(index) {
+    return this._results[index];
+  },
+
+  /**
+   * @return {string} the comment of the result at the given index
+   */
+  getCommentAt: function(index) {
+    if (this._comments)
+      return this._comments[index];
+    else
+      return '';
+  },
+
+  /**
+   * @return {string} the style hint for the result at the given index
+   */
+  getStyleAt: function(index) {
+    if (!this._comments || !this._comments[index])
+      return null;  // not a category label, so no special styling
+
+    if (index == 0)
+      return 'suggestfirst';  // category label on first line of results
+
+    return 'suggesthint';   // category label on any other line of results
+  },
+
+  /**
+   * Gets the image for the result at the given index
+   *
+   * @return {string} the URI to the image to display
+   */
+  getImageAt : function (index) {
+    return '';
+  },
+
+  /**
+   * Get the final value that should be completed when the user confirms
+   * the match at the given index.
+   * @return {string} the final value of the result at the given index
+   */
+  getFinalCompleteValueAt: function(index) {
+    return this.getValueAt(index);
+  },
+
+  /**
+   * Removes the value at the given index from the autocomplete results.
+   * If removeFromDb is set to true, the value should be removed from
+   * persistent storage as well.
+   */
+  removeValueAt: function(index, removeFromDb) {
+    this._results.splice(index, 1);
+
+    if (this._comments)
+      this._comments.splice(index, 1);
+  },
+
+  getLabelAt: function(index) { return this._results[index]; },
+
+  QueryInterface: XPCOMUtils.generateQI([ Ci.nsIAutoCompleteResult ])
+};
+
+
+/**
+ * @constructor
+ *
+ * @implements {nsIAutoCompleteSearch}
+ */
+function ProviderAutoCompleteSearch() {
+}
+
+ProviderAutoCompleteSearch.prototype = {
+
+  classID: CLASS_ID,
+  classDescription : CLASS_NAME,
+  contractID : CONTRACT_ID,
+
+  /**
+   * Searches for a given string and notifies a listener (either synchronously
+   * or asynchronously) of the result
+   *
+   * @param searchString the string to search for
+   * @param searchParam an extra parameter
+   * @param previousResult a previous result to use for faster searchinig
+   * @param listener the listener to notify when the search is complete
+   */
+  startSearch: function(searchString, searchParam, previousResult, listener) {
+    var results = ['Mary', 'John'];
+    var autocomplete_result = new ProviderAutoCompleteResult(searchString,
+        Ci.nsIAutoCompleteResult.RESULT_SUCCESS, 0, "", results, null);
+
+    listener.onSearchResult(this, autocomplete_result);
+  },
+
+  /**
+   * Stops an asynchronous search that is in progress
+   */
+  stopSearch: function() {
+  },
+
+  QueryInterface: XPCOMUtils.generateQI([ Ci.nsIAutoCompleteSearch ])
+};
+
+// The following line is what XPCOM uses to create components
+const NSGetFactory =
+  XPCOMUtils.generateNSGetFactory([ ProviderAutoCompleteSearch ]);
+
+
+
+</pre>
+<p>Then register your XPCOM component. To do so put the following declaration in your <code>chrome.manifest</code> file:</p>
+<pre>component {x753d830-ba1e-11e0-962b-0800200c9a66} components/basic_autocomplete.js
+contract @mozilla.org/autocomplete/search;1?name=basic-autocomplete {x753d830-ba1e-11e0-962b-0800200c9a66}
+</pre>
+<p>And finally use this newly available component in a XUL file like this:</p>
+<pre class="brush: xml">&lt;textbox id="text1" type="autocomplete" autocompletesearch="basic-autocomplete"/&gt;
+</pre>
+<p>That's it!</p>
+<h3 id="A_bit_more_complex_example_compatible_with_old_Gecko_versions">A bit more complex example compatible with old Gecko versions</h3>
+<p>First copy the following JavaScript code into a file named <code>"simple_autocomplete.js"</code> into the <code>"</code>components" directory (or whatever <code>"components"</code> folder is appropriate in your case)</p>
+<p>{{ warning("The UUID used below in chrome.manifest and assigned to CLASS_ID must be changed before use.") }}</p>
+<pre class="brush: js">const Ci = Components.interfaces;
+
+const CLASS_ID = Components.ID("6224daa1-71x2-4d1a-ad90-01ca1c08e323"); // ← Change this
+const CLASS_NAME = "Simple AutoComplete";
+const CONTRACT_ID = "@mozilla.org/autocomplete/search;1?name=simple-autocomplete";
+
+// Implements nsIAutoCompleteResult
+function SimpleAutoCompleteResult(searchString, searchResult,
+                                  defaultIndex, errorDescription,
+                                  results, comments) {
+  this._searchString = searchString;
+  this._searchResult = searchResult;
+  this._defaultIndex = defaultIndex;
+  this._errorDescription = errorDescription;
+  this._results = results;
+  this._comments = comments;
+}
+
+SimpleAutoCompleteResult.prototype = {
+  _searchString: "",
+  _searchResult: 0,
+  _defaultIndex: 0,
+  _errorDescription: "",
+  _results: [],
+  _comments: [],
+
+  /**
+   * The original search string
+   */
+  get searchString() {
+    return this._searchString;
+  },
+
+  /**
+   * The result code of this result object, either:
+   *         RESULT_IGNORED   (invalid searchString)
+   *         RESULT_FAILURE   (failure)
+   *         RESULT_NOMATCH   (no matches found)
+   *         RESULT_SUCCESS   (matches found)
+   */
+  get searchResult() {
+    return this._searchResult;
+  },
+
+  /**
+   * Index of the default item that should be entered if none is selected
+   */
+  get defaultIndex() {
+    return this._defaultIndex;
+  },
+
+  /**
+   * A string describing the cause of a search failure
+   */
+  get errorDescription() {
+    return this._errorDescription;
+  },
+
+  /**
+   * The number of matches
+   */
+  get matchCount() {
+    return this._results.length;
+  },
+
+  /**
+   * Get the value of the result at the given index
+   */
+  getValueAt: function(index) {
+    return this._results[index];
+  },
+
+  /**
+   * Get the comment of the result at the given index
+   */
+  getCommentAt: function(index) {
+    return this._comments[index];
+  },
+
+  /**
+   * Get the style hint for the result at the given index
+   */
+  getStyleAt: function(index) {
+    if (!this._comments[index])
+      return null;  // not a category label, so no special styling
+
+    if (index == 0)
+      return "suggestfirst";  // category label on first line of results
+
+    return "suggesthint";   // category label on any other line of results
+  },
+
+  /**
+   * Get the image for the result at the given index
+   * The return value is expected to be an URI to the image to display
+   */
+  getImageAt : function (index) {
+    return "";
+  },
+<code class="language-js">
+  <span class="token comment">/**
+   * Get the final value that should be completed when the user confirms
+   * the match at the given index.
+   * @return {string} the final value of the result at the given index
+   */</span>
+  getFinalCompleteValueAt<span class="token punctuation">:</span> <span class="token keyword">function</span><span class="token punctuation">(</span>index<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">return</span> this<span class="token punctuation">.</span><span class="token function">getValueAt<span class="token punctuation">(</span></span>index<span class="token punctuation">)</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span><span class="token punctuation">,</span></code>
+
+  /**
+   * Remove the value at the given index from the autocomplete results.
+   * If removeFromDb is set to true, the value should be removed from
+   * persistent storage as well.
+   */
+  removeValueAt: function(index, removeFromDb) {
+    this._results.splice(index, 1);
+    this._comments.splice(index, 1);
+  },
+
+  QueryInterface: function(aIID) {
+    if (!aIID.equals(Ci.nsIAutoCompleteResult) &amp;&amp; !aIID.equals(Ci.nsISupports))
+        throw Components.results.NS_ERROR_NO_INTERFACE;
+    return this;
+  }
+};
+
+
+// Implements nsIAutoCompleteSearch
+function SimpleAutoCompleteSearch() {
+}
+
+SimpleAutoCompleteSearch.prototype = {
+  /*
+   * Search for a given string and notify a listener (either synchronously
+   * or asynchronously) of the result
+   *
+   * @param searchString - The string to search for
+   * @param searchParam - An extra parameter
+   * @param previousResult - A previous result to use for faster searchinig
+   * @param listener - A listener to notify when the search is complete
+   */
+  startSearch: function(searchString, searchParam, result, listener) {
+    // This autocomplete source assumes the developer attached a JSON string
+    // to the the "autocompletesearchparam" attribute or "searchParam" property
+    // of the &lt;textbox&gt; element. The JSON is converted into an array and used
+    // as the source of match data. Any values that match the search string
+    // are moved into temporary arrays and passed to the AutoCompleteResult
+    if (searchParam.length &gt; 0) {
+      var nativeJSON = Components.classes["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
+      var searchResults = nativeJSON.decode(searchParam);
+      // These 2 lines above are for Thunderbird &lt; v7
+      // Since Thunderbird 3, they can be replaced more efficiently by the following line:
+      // var searchResults = JSON.parse(searchParam);
+
+      var results = [];
+      var comments = [];
+      for (i=0; i&lt;searchResults.length; i++) {
+        if (searchResults[i].value.indexOf(searchString) == 0) {
+          results.push(searchResults[i].value);
+          if (searchResults[i].comment)
+            comments.push(searchResults[i].comment);
+          else
+            comments.push(null);
+        }
+      }
+      var newResult = new SimpleAutoCompleteResult(searchString, Ci.nsIAutoCompleteResult.RESULT_SUCCESS, 0, "", results, comments);
+      listener.onSearchResult(this, newResult);
+    }
+  },
+
+  /*
+   * Stop an asynchronous search that is in progress
+   */
+  stopSearch: function() {
+  },
+
+  QueryInterface: function(aIID) {
+    if (!aIID.equals(Ci.nsIAutoCompleteSearch) &amp;&amp; !aIID.equals(Ci.nsISupports))
+        throw Components.results.NS_ERROR_NO_INTERFACE;
+    return this;
+  }
+};
+
+// Factory
+var SimpleAutoCompleteSearchFactory = {
+  singleton: null,
+  createInstance: function (aOuter, aIID) {
+    if (aOuter != null)
+      throw Components.results.NS_ERROR_NO_AGGREGATION;
+    if (this.singleton == null)
+      this.singleton = new SimpleAutoCompleteSearch();
+    return this.singleton.QueryInterface(aIID);
+  }
+};
+
+// Module
+var SimpleAutoCompleteSearchModule = {
+  registerSelf: function(aCompMgr, aFileSpec, aLocation, aType) {
+    aCompMgr = aCompMgr.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+    aCompMgr.registerFactoryLocation(CLASS_ID, CLASS_NAME, CONTRACT_ID, aFileSpec, aLocation, aType);
+  },
+
+  unregisterSelf: function(aCompMgr, aLocation, aType) {
+    aCompMgr = aCompMgr.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+    aCompMgr.unregisterFactoryLocation(CLASS_ID, aLocation);
+  },
+
+  getClassObject: function(aCompMgr, aCID, aIID) {
+    if (!aIID.equals(Components.interfaces.nsIFactory))
+      throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+
+    if (aCID.equals(CLASS_ID))
+      return SimpleAutoCompleteSearchFactory;
+
+    throw Components.results.NS_ERROR_NO_INTERFACE;
+  },
+
+  canUnload: function(aCompMgr) { return true; }
+};
+
+// Module initialization
+function NSGetModule(aCompMgr, aFileSpec) { return SimpleAutoCompleteSearchModule; }
+
+
+</pre>
+<div class="note">
+ <p>Starting in {{Gecko("2.0")}}, component registration <a href="/en/XPCOM/XPCOM_changes_in_Gecko_2.0" title="en/XPCOM/XPCOM changes in Gecko 2.0">has been changed</a>, so you need to make the following changes:</p>
+ <ol>
+  <li>Add an NSGetFactory() function:<br>
+   <br>
+   <code>function NSGetFactory(cid) {<br>
+     if (cid.toString().toUpperCase() != CLASS_ID.toString().toUpperCase()) {<br>
+       throw Components.results.NS_ERROR_FACTORY_NOT_REGISTERED;<br>
+     }<br>
+   <br>
+     return SimpleAutoCompleteSearchFactory;<br>
+   }</code></li>
+  <li>You need to explicitly register the component by adding these lines into your <code>chrome.manifest</code> file:<br>
+   <br>
+   <code>component {6224daa1-71x2-4d1a-ad90-01ca1c08e323} components/.js<br>
+   contract @mozilla.org/autocomplete/search;1?name=simple-autocomplete {6224daa1-71x2-4d1a-ad90-01ca1c08e323}</code></li>
+  <li>
+   <div>
+    You need to add the following method:</div>
+   <div>
+    <code>getLabelAt: function(index) { return this._results[index]; }</code></div>
+   <div>
+    to<br>
+    <code>SimpleAutoCompleteResult</code></div>
+  </li>
+ </ol>
+</div>
+<p>Use this newly available component in a XUL file like this:</p>
+<pre class="brush: xml">&lt;textbox id="text1" type="autocomplete" autocompletesearch="simple-autocomplete" showcommentcolumn="true"
+         autocompletesearchparam='[{"value":"mark","comment":"cool dude"},{"value":"mary","comment":"nice lady"},{"value":"jimmy","comment":"very uncool guy"},{"value":"jimbo","comment":null}]' /&gt;
+</pre>
+<p>The component uses the <code>autocompletesearchparam</code> attribute or <code>searchParam</code> property to allow the developer to define a set of data to use for autocompletion.</p>
+<p>Note the format of the JSON. The <code>comment</code> property is optional and may be omitted from the JSON. Be sure to include it if you use the <code>showcommentcolumn="true"</code> textbox attribute.</p>
+<p>In case you do not like the standard tree layout of the autocomplete popup, you can also trigger the use of a <code>richlistbox</code> by linking a <code>panel</code> with the <code>type</code> attribute set to "<code>autocomplete-richlistbox</code>" like this:</p>
+<pre class="brush: xml">&lt;panel id="richPopup" type="autocomplete-richlistbox" /&gt;
+
+&lt;textbox id="text1" type="autocomplete" autocompletesearch="simple-autocomplete"
+         showcommentcolumn="true" autocompletepopup="richPopup"
+         autocompletesearchparam='[{"value":"mark","comment":"cool dude"},{"value":"mary","comment":"nice lady"},{"value":"jimmy","comment":"very uncool guy"},{"value":"jimbo","comment":null}]' /&gt;
+</pre>
+<h2 id="How_to_solve_autocomplete_panel_focus_problems"> How to solve autocomplete panel focus problems</h2>
+<p>In some situations there may be problems with the display of the autocomplete panel (this is the panel where the autocomplete results/suggestions are displayed): the autocomplete panel seems to appear seldom and very erratically. This can happen when using an autcomplete panel in a panel (for example if an autcomplete textbox is set in a panel that shows and hides). The solution is to define a custom autocomplete panel as follows with the <strong><code>noautofocus="true"</code></strong> attribute (very important, don't miss this part):</p>
+<pre class="brush: xml">&lt;panel id="popup_autocomplete" type="autocomplete" noautofocus="true" /&gt;
+
+&lt;textbox type="autocomplete"
+         autocompletesearch="custom-autocomplete"
+         autocompletepopup="popup_autocomplete" /&gt;
+</pre>
+<p>There is another example of the use of an autocomplete panel in <a href="/en/Code_snippets/Autocomplete" title="https://developer.mozilla.org/en/Code_snippets/Autocomplete">Autocomplete code snippets</a>.</p>
+<h2 id="Tips">Tips</h2>
+<div class="note">
+ <strong>Clear caches!</strong><br>
+ If you are using xulrunner please don't forget that changes will only take place when you either disable caching or run xulrunner with -purgecaches</div>
+<h2 id="See_also">See also</h2>
+<ul>
+ <li><a href="/En/XUL/Textbox_(Toolkit_autocomplete)" title="https://developer.mozilla.org/En/XUL/Textbox_(Toolkit_autocomplete)">Textbox (Toolkit autocomplete)</a></li>
+ <li>{{ interface("nsIAutoCompleteSearch") }}</li>
+ <li>{{ interface("nsIAutoCompleteResult") }}</li>
+</ul>

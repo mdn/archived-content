@@ -1,0 +1,240 @@
+<p><span class="seoSummary"><strong>web-platform-tests</strong> is a regression test suite covering standard Web platform features. It is shared both among browser vendors and across browser platforms (such as Mozilla's Gecko and Servo), and is one of the primary means of verifying that browser implementations correctly implement the standards and are interoperable.</span> Because of this, adding new tests to web-platform-tests (as opposed to Mozilla-specific Reftests, Mochitests, etc. suites) is encouraged whenever writing tests that might sensibly be run in multiple browsers.</p>
+
+<p>The web-platform-tests suite consists of three test types: (1) JavaScript tests (to test DOM features, for example) written using the <a href="http://testthewebforward.org/docs/testharness-library.html">testharness.js</a> library, (2) reference tests (to test rendered output with what's expected to ensure that the rendering is done properly) written using the <a href="http://testthewebforward.org/docs/reftests.html">W3C reftest format</a>, and (3) <a href="/en-US/docs/Web/WebDriver">WebDriver</a> specification tests written using pytest.</p>
+
+<p>Mozilla has integrated web-platform-tests into mozilla-central, and has a <a href="https://github.com/mozilla/wpt-sync">two-way sync mechanism</a> that allows developers to add/modify tests directly in the <a href="https://dxr.mozilla.org/mozilla-central/source/testing/web-platform">testing/web-platform</a> directory in the Gecko source. (Changes are automatically synchronized between the Gecko source and the upstream <a href="https://github.com/w3c/web-platform-tests">GitHub repository</a>.)</p>
+
+<h2 id="Running_tests">Running tests</h2>
+
+<p>Like other test suites, web-platform-tests are invoked using the <code><a href="/en-US/docs/Mozilla/Developer_guide/mach">mach</a></code> command:</p>
+
+<pre>./mach wpt</pre>
+
+<p>Individual tests can either be run by path in the source tree or by name (i.e. path under the server root). For example, the following two commands perform the same test:</p>
+
+<pre>./mach wpt testing/web-platform/tests/dom/historical.html
+
+./mach wpt /dom/historical.html</pre>
+
+<p>One can also pass the path to one or more directories to run all tests under that directory.</p>
+
+<p>Many of the same considerations that apply to <a href="/en-US/docs/Mochitest">mochitests</a>/<a href="/en-US/docs/Creating_reftest-based_unit_tests">reftests</a> apply to web-platform-tests; for instance, there may be tests that require focus.</p>
+
+<h3 id="Running_under_a_debugger">Running under a debugger</h3>
+
+<p>The tests can be run under a debugger using the same flags as for other test suites. For example: <code>--debugger=gdb</code> or <code>--debugger=lldb</code>.</p>
+
+<p>The <code>--pause-on-unexpected</code> flag can also be useful to pause on the first failing test allowing you to attach a debugger and reload the test to debug it.</p>
+
+<h3 id="Logging">Logging</h3>
+
+<p>web-platform-tests use structured logging, and all the usual <a href="http://mozbase.readthedocs.org/en/latest/mozlog.html#example-output">structured logging options</a> are available.</p>
+
+<h3 id="From_a_running_browser">From a running browser</h3>
+
+<p>You can also run tests directly from an already-running browser instance. This can be convenient when rapidly iterating on a test, or to use the browser's built-in JS debugger. To do this, first launch the web-platform-test harness as a service, like this:</p>
+
+<pre>./mach wpt-serve</pre>
+
+<p>Then in your browser, run your test by navigating to either:</p>
+
+<pre>http://web-platform.test:8000/dom/historical.html</pre>
+
+<p>Or for https:</p>
+
+<pre>https://web-platform.test:8443/dom/nodes/Document-createEvent.https.html</pre>
+
+<p>Note that you may get invalid certificate errors when doing this, and browsers may stop you from proceeding. In Firefox there is still an option to proceed buried under "Advanced". In Chrome, you may need to specify <a>chrome://flags/#allow-insecure-localhost</a> and run it under:</p>
+
+<pre>https://localhost:8443/dom/nodes/Document-createEvent.https.html</pre>
+
+<h2 id="Writing_tests">Writing tests</h2>
+
+<p>General guides can be found on <a href="http://testthewebforward.org/docs/writing-tests.html">Test the Web Forward</a>. Mozilla-specific concerns follow.</p>
+
+<h3 id="Where_to_put_new_tests">Where to put new tests</h3>
+
+<p>New tests with pass conditions that match the relevant specifications and that should be upstreamed and shared with other browsers should be added under <code>testing/web-platform/tests</code>.</p>
+
+<p>Tests that are (currently) Mozilla-only should be added to <code>testing/web-platform/mozilla/tests</code>. (Note that tests in this directory will have <code>/_mozilla/</code> prepended to their URL.)</p>
+
+<p>Test directories can contain a mix of both reftest and testharness.js tests.</p>
+
+<p>Note that wdspec tests must live under <code>webdriver/</code>.</p>
+
+<h3 id="Creating_new_tests">Creating new tests</h3>
+
+<p>The fastest way to add a new test is to use the <code>mach addtest</code> command. It will create a new test file with test boilerplate, and opens it in your local <code>$VISUAL</code> or <code>$EDITOR</code> (if defined),</p>
+
+<p>testharness.js example:</p>
+
+<pre>./mach addtest testing/web-platform/tests/spec/new_test.html</pre>
+
+<p>Creating a new reftest is similar, but pass the <code>-r</code> or <code>--reftest</code> arguments, and optionally specify the reference file using the <code>--reference</code> argument (also opened in your editor if it doesn't exist). For example:</p>
+
+<pre>./mach addtest testing/web-platform/tests/spec/new_test.html --reference testing/web-platform/tests/spec/new_test_ref.html</pre>
+
+<h2 id="Metadata">Metadata</h2>
+
+<p>Unlike for Mozilla's reftest and mochitest test suites, there are no human edited reftest.list or mochitest.in files alongside web-platform-tests tests. Test metadata common to all browser implementations (such as the reference files for a reftest tests) is stored in the test files themselves. Implementation specific metadata (such as pass/fail expectations) is stored outside the web-platform-tests <code>tests</code> directory.</p>
+
+<p>In the past, the manifest file containing the list of tests was stored in-tree and required manual steps to update when tests were added or changed. This file is no longer stored in tree, and instead a recent version is downloaded on demand and updated to match the local checkout.</p>
+
+<p>Because web-platform-test files are synced with upstream and do not use a human-written manifest, it's necessary to keep implementation-specific metadata outside the tests themselves. In Mozilla's case, we store metadata that we don't share with other implementations under <code>testing/web-platform/meta/</code> and <code>testing/web-platform/mozilla/meta</code>. This is done in a metadata with the same relative path as the test relative to the test root, but an <code>.ini</code> extension e.g. <code>testing/web-platform/tests/dom/historical.html</code> has a metadata file under <code>testing/web-platform/meta/dom/historical.html.ini</code>. In addition, metadata can be set for a whole subtree of tests using a metadata file called <code>__dir__.ini</code> under the metadata root of that subtree (e.g. <code>testing/web-platform/meta/dom/__dir__.ini</code>).</p>
+
+<p>Despite the <code>.ini</code> extension, these files are not true ini files, since they allow nesting and conditional logic on values.</p>
+
+<h4 id="Expectation_data">Expectation data</h4>
+
+<p>Because web-platform-tests are intended to check the standard behavior rather than the behavior of specific implementations, it is common for tests to fail in specific implementations. Therefore, the expected result of each test that doesn't pass is kept in the corresponding metadata file. A simple example of such a file might be:</p>
+
+<pre><code id="line-102">[filename.html]
+</code><code id="line-103">    type: testharness
+</code><code id="line-104">
+</code><code id="line-105">    [Subtest name for failing test]
+</code><code id="line-106">        expected: FAIL
+</code><code id="line-107">
+</code><code id="line-108">    [Subtest name for erroring test]
+</code><code id="line-109">        expected: ERROR</code>
+</pre>
+
+<p>It is possible for tests to be updated with multiple statuses, if preferred. When <code>expected</code> is a list, the first status is the primary expected status and the trailing statuses listed are known intermittent statuses.</p>
+
+<pre><code id="line-109">[filename.html]
+   </code><code id="line-103">type: testharness</code><code>
+    expected: [PASS, TIMEOUT]</code></pre>
+
+<p>Expectations can be made platform-specific using a simple set of python-like conditions. For example, for a test that times out on Linux and fails on other platforms:</p>
+
+<pre><code id="line-115">[filename.html]
+</code><code id="line-116">   type: reftest
+</code><code id="line-117">    expected:
+</code><code id="line-118">        if os == "linux": TIMEOUT
+</code><code id="line-119">        FAIL
+</code></pre>
+
+<p>The available set of condition variables is that provided by <a href="https://firefox-source-docs.mozilla.org/mozbase/mozinfo.html">mozinfo</a> plus a boolean variable <code>e10s</code> that is true when e10s is enabled.</p>
+
+<p>Expectation data can be updated automatically on the basis of a test run (e.g. from try), using the raw structured log files. On treeherder, these are files listed as artifact uploaded: <code>wpt_raw.log</code>. Locally they can be generated using a <code>mach</code> command like:</p>
+
+<pre>./mach wpt testing/web-platform/tests/dom/historical.html --log-raw=historical.log</pre>
+
+<p>Then to update the expectation data:</p>
+
+<pre>./mach wpt-update historical.log</pre>
+
+<p>By default, this will make a commit (in a git tree) or an mq patch (in an hg tree). To override this behavior, use <code>--no-patch</code>. If the expected result of a test is platform-specific, you must provide multiple logs—one for each platform—to the update command, or the correct metadata will not be generated. If you want to wipe away the existing metadata for the test rather than try to update the conditions in place (such as when a test goes from having platform-specific behavior to generic behavior) use <code>--ignore-existing</code>.</p>
+
+<h4 id="Disabling_tests">Disabling tests</h4>
+
+<p>You can disable a test by adding a <code>disabled</code> key to the metadata file. The value can be anything except the special values <code>@False</code> and <code>@Reset</code>, but by convention is the bug number detailing the reason the test was disabled. For example:</p>
+
+<pre><code id="line-155">[filename.html]
+</code><code id="line-156">   type: testharness
+</code><code id="line-157">    disabled:
+</code><code id="line-158">        if os == "win": <a>https://bugzilla.mozilla.org/show_bug.cgi?id=1234567</a></code>
+
+</pre>
+
+<p>Note: <span class="quote">If you disable a test as a whole, it will be skipped entirely. If you disable a subtest, the subtest will still run, but the results will be not cause the test to identify as a failure.</span></p>
+
+<p>When updating test metadata with <code>./mach wpt-update</code>, it is possible to disable tests that have inconsistent results across many runs using <code>--disable-intermittent</code>.  This can precede a message providing a reason why that test is disable. If no message is provided, <code>unstable</code> is the default text.</p>
+
+<h4 id="Recording_intermittent_statuses">Recording intermittent statuses</h4>
+
+<p>To update test metadata with known intermittent statuses, the <code>--update-intermittent</code> option can be used. The <code>expected</code> key stores known intermittent statuses in addition to the primary expected status. The default behaviour of this option is to retain any existing intermittent statuses in the <code>expected</code> list unless <code>--remove-intermittent</code> is also specified. When using remove in addition to the update option, any obsolete intermittent statuses that did not occur in the specified logfiles are removed from the list.</p>
+
+<h4 id="Setting_prefs">Setting prefs</h4>
+
+<p>Per-test prefs can be set using a metadata item called <code>prefs</code> which takes a list of preferences to set and the values to assign to them. This lets tests run against features which are preferenced off by default, for instance.</p>
+
+<pre><code id="line-167">[filename.html]
+</code><code id="line-168">    prefs: [dom.serviceWorkers.enabled:true,
+</code><code id="line-169">            dom.serviceWorkers.interception.enabled:true,
+</code><code id="line-170">            dom.serviceWorkers.exemptFromPerDomainMax:true,
+</code><code id="line-171">            dom.caches.enabled:true]</code></pre>
+
+<h4 id="Per-directory_settings">Per-directory settings</h4>
+
+<p>A <code>__dir__.ini </code>file creates metadata that applies to the entire subtree beneath it. For example, we can disable all <a href="/en-US/docs/Web/API/Document_Object_Model">DOM</a> tests using a file in <code>testing/web-platform/meta/dom/__dir__.ini</code> file:</p>
+
+<pre>disabled: http://some-bug</pre>
+
+<p>Having done this, we might need to re-enable a specific test under <code>dom/</code>. This can be done using the special value <code>@False</code> in the metadata file for that test:</p>
+
+<pre><code id="line-167">[filename.html]
+    disabled: @False</code>
+</pre>
+
+<p>With lists of preferences, the preferences applied are typically those for the test and those from any <code>__dir__.ini</code> files up to the test root. If we need to apply a different set of prefs to a specific test, the special value <code>@Reset</code> prevents all inheritance of prefs from further up the tree.</p>
+
+<h2 id="Running_tests_in_other_browsers">Running tests in other browsers</h2>
+
+<p>Tests can be run in other browsers by using the <code>--product</code> argument to <code>mach wpt</code> e.g.</p>
+
+<pre>./mach wpt --product chrome testing/web-platform/dom/historical.html</pre>
+
+<p>Currently supported values for <code>--product</code> are <code>servo</code>, <code>chrome</code>, and <code>edge</code>. For Chrome and Edge the product-specific WebDriver binary is required; for Chrome the mach command will prompt to download this, but for Edge you will have to download the correct WebDriver for your specific Edge version. Since expectation metadata is not shared across products, the default metadata directory for non-Firefox browsers is <code>testing/web-platform/product/&lt;product&gt;/</code>. This directory is part of the VCS ignore list, so you are free to add any expectation data you find helpful.</p>
+
+<h3 id="Firefox_for_Android_GeckoView">Firefox for Android (GeckoView)</h3>
+
+<p>You can run the tests against a Gecko-based browser (GeckoView) on an Android emulator. As shown below, to do so you must start an emulator, build <a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Simple_Firefox_for_Android_build">Firefox for Android</a> and then run <code>mach wpt</code> with the <code>org.mozilla.geckoview.test</code> package. The package will be installed interactively by mach and tests will run against <code>TestRunnerActivity</code>.</p>
+
+<pre>./mach android-emulator --version x86-7.0
+./mach build &amp;&amp; ./mach package
+./mach wpt --package=org.mozilla.geckoview.test</pre>
+
+<h3 id="Servo">Servo</h3>
+
+<p>In addition to support for running via <code>mach wpt</code> in a gecko checkout, Servo has its own import of web-platform-tests, with tests living under <code>tests/wpt/web-platform-tests/</code>. It also has <code>mach</code> commands similar to those provided in the Gecko build system, with slightly different names. In particular, to run the in-tree copy one can do this:</p>
+
+<pre>./mach test-wpt</pre>
+
+<p>in a Servo checkout.</p>
+
+<h2 id="Lint">Lint</h2>
+
+<p>web-platform-tests has associated lints, that check for two things:</p>
+
+<ol>
+ <li>Test file correctness/style issues</li>
+ <li>Manifest correctness</li>
+</ol>
+
+<p>The lints can be run using mozlint e.g.</p>
+
+<pre>mach lint -l wpt -l wpt_manifest</pre>
+
+<h3 id="Test_Correctness">Test Correctness</h3>
+
+<p>This lint tests for common mistakes made when writing web-platform-tests and style issues.</p>
+
+<p>Examples of problems detected using this lint include:</p>
+
+<ol>
+ <li>Incorrect links to <code>testharness.js</code> and <code>testharnessreport.js</code></li>
+ <li><code>&lt;meta name=timeout content=long&gt;</code> appearing in an incorrect place in the file</li>
+ <li>Trailing whitespace in test files</li>
+ <li>Use of windows-style line endings</li>
+</ol>
+
+<p>In rare cases it may be necessary to allow some code that this lint would ordinarily reject (e.g. a test that relies on a literal CR LF pair in the source). In this case the file <code>testing/web-platform/tests/lint.whitelist</code> must be updated with the error code and the path that should be excluded from linting.</p>
+
+<h3 id="Manifest_Correctness">Manifest Correctness</h3>
+
+<p>This lint checks that the wpt manifest is up to date. If this lint fails the fix is always to run:</p>
+
+<pre>mach wpt-manifest-update</pre>
+
+<p>and commit the resulting changes to <code>MANIFEST.json</code> files.</p>
+
+<h2 id="Repeating">Repeating</h2>
+
+<p>If you are experiencing intermittent failures, some of the following might help:</p>
+
+<dl>
+ <dt><code>--repeat N</code></dt>
+ <dd>Repeat N number of times.</dd>
+ <dt><code>--repeat-until-unexpected</code></dt>
+ <dd>Continue running a test until it fails unexpectedly (could be forever).</dd>
+</dl>

@@ -1,0 +1,62 @@
+<h3 id="Introduction">Introduction</h3>
+<p>Treehydra is meant to be used for analyses that need more detail than Dehydra's flattened ASTs. Instead of representing code in "easy" form like Dehydra, Treehydra relies on <a class="external" href="http://gcc.gnu.org/onlinedocs/gccint/GIMPLE.html" title="http://gcc.gnu.org/onlinedocs/gccint/GIMPLE.html">GIMPLE</a>, the <a class="external" href="http://gcc.gnu.org/onlinedocs/gccint/" title="http://gcc.gnu.org/onlinedocs/gccint/">GCC Internals</a> "middle-end" intermediate representation. Treehydra simply reflects the GCC Internals structures into JavaScript.</p>
+<p>For now, the best way to learn GIMPLE is to look at existing code as there is little newbie documentation to be had.</p>
+<h3 id="Callbacks_and_GCC_Intermediate_Representations">Callbacks and GCC Intermediate Representations</h3>
+<p>Like Dehydra, Treehydra sends program representations to the user JavaScript via callbacks. There are 3 Treehydra callbacks. Note that the callbacks interact with other Treehydra options. To make things easier, we will first present recipes for accessing specific GCC intermediate representations.</p>
+<p>Treehydra provides the following callbacks to analysis scripts: process_tree_decl, process_tree, process_tree_type, and process_cp_pre_genericize.  FIXME document all these callbacks.</p>
+<h4 id="C_ASTs">C++ ASTs</h4>
+<p>C++ ASTs are provided via the <strong>process_cp_pre_genericize</strong> callback. This is called just before GCC converts the C++-specific AST to the <a class="external" href="http://gcc.gnu.org/onlinedocs/gccint/index.html#toc_GENERIC" title="http://gcc.gnu.org/onlinedocs/gccint/index.html#toc_GENERIC">GENERIC</a> (language-independent) representation. Example Treehydra script:</p>
+<p style="margin-left: 40px;"><code>function process_cp_pre_genericize(fn) {<br>
+    // fn is a FUNCTION_DECL, DECL_SAVED_TREE(fn) is AST<br>
+    print(fn);<br>
+}</code></p>
+<h4 id="GIMPLE_ASTs">GIMPLE ASTs</h4>
+<p>GIMPLE ASTs are provided via the <strong>process_tree</strong> callback. By default, this is called just after GCC converts the AST to GIMPLE, before any further lowering or optimization. Example:</p>
+<p style="margin-left: 40px;"><code>function process_tree(fn) {<br>
+    // fn is a FUNCTION_DECL, DECL_SAVED_TREE(fn) is AST<br>
+    print(fn);<br>
+}</code></p>
+<p><code> </code></p>
+<h4 id="GIMPLE_CFGs">GIMPLE CFGs</h4>
+<p><strong>process_tree</strong> can also provide GIMPLE CFGs. To get CFGs, you must instruct Treehydra to call <strong>process_tree</strong> after CFG construction. In this case, GIMPLE ASTs will not be available, as GCC does not save earlier intermediate representations--they are modified in place. Thus, it is not currently possible to get both GIMPLE ASTs and CFGs in the same run of Treehydra.</p>
+<p style="margin-left: 40px;"><code>require({ after_gcc_pass: "cfg" });<br>
+include('gcc_util.js');              // for function_decl_cfg<br>
+include('gcc_print.js');<br>
+function process_tree(fn) {<br>
+    print("function " + decl_name(fn));   </code><code>// fn is a FUNCTION_DECL</code><br>
+<code>    let cfg = function_decl_cfg(fn);<br>
+    for (let bb in cfg_bb_iterator(cfg)) {<br>
+        print("    basic block " + bb_label(cfg, bb));<br>
+        for (let isn in bb_isn_iterator(bb)) {<br>
+            print("        " + isn_display(isn));<br>
+        <span style="">}<br>
+       </span></code><code>}<br>
+}</code></p>
+<h4 id="Post-Inlining_GIMPLE_CFGs">Post-Inlining GIMPLE CFGs</h4>
+<p>Treehydra can be positioned after any pass, allowing you access various levels of GIMPLE. In this example, we show how to access the GIMPLE just after function inlining is performed. (This allows a simple version of interprocedural analysis.) At this point, GCC is using a different internal structure, so Treehydra uses a different callback, <strong>process_cgraph</strong>.</p>
+<p style="margin-left: 40px;"><code>require({ after_gcc_pass: "einline" + (isGCC42 ? "" : "_ipa")});<br>
+</code><code>include('gcc_util.js');              // for function_decl_cfg<br>
+</code><code>function process_cgraph(cgraph) {<br>
+    // cgraph is a GCC structure representing a group of functions<br>
+    // within the call graph. Iterate over the functions like this.<br>
+    for (let node = cgraph; node; node = node.next) {<br>
+        let fn = node.decl;<br>
+        if (DECL_STRUCT_FUNCTION(fn)) {   // fn has a body<br>
+        print(fn);</code><br>
+<code>        let cfg = function_decl_cfg(fn);<br>
+    }<br>
+}</code></p>
+<p> </p><h3 id="GIMPLE_Reference">GIMPLE Reference</h3>
+<p>For a detailed description of GIMPLE see <a class="external" href="http://gcc.gnu.org/viewcvs/tags/gcc_4_3_2_release/gcc/tree.def?view=markup" title="http://gcc.gnu.org/viewcvs/tags/gcc_4_3_2_release/gcc/tree.def?view=markup">gcc/tree.def</a> and <a class="external" href="http://gcc.gnu.org/viewcvs/tags/gcc_4_3_2_release/gcc/cp/operators.def?view=markup" title="http://gcc.gnu.org/viewcvs/tags/gcc_4_3_2_release/gcc/cp/operators.def?view=markup">gcc/cp/operators.def</a> </p>
+<p>See also treehydra.js, gcc_compat.js, gcc_util.js, and gcc_print.js in the Treehydra libs directory, which have many ports of GCC macros and other functions for conveniently accessing GIMPLE data in JavaScript.</p><h3 id="ESP_Abstract_Interpretation_Library"> ESP Abstract Interpretation Library</h3>
+<p>Treehydra includes a library for creating abstract interpretation analyses based on <a class="external" href="http://portal.acm.org/citation.cfm?id=512538" title="http://portal.acm.org/citation.cfm?id=512538">ESP</a>. Users only need to define their ESP property variables, abstract values, and the flow semantics of GIMPLE statements, and the library will do all of the substate tracking and fixed-point solving. </p>
+<p>The library is at <strong>unstable/esp.js</strong>. There is a sample application that checks for double-locking in a simple mutex API in <strong>test/esp_lock.js</strong>.</p>
+<p>Abstract interpretation is a big topic, which is not yet fully documented here. For now, here is an explanation of some of the terminology that is often confusing:</p>
+<p><strong>concrete value.</strong> A value in the programming language being analyzed. E.g., <strong>(int) 3</strong>.</p>
+<p><strong>abstract value. </strong>A value used in the analysis script that represents a set of concrete values. E.g., <strong>nonzero</strong>. In ESP, these are user-defined.</p>
+<p><strong>concrete state.</strong> A memory state in the programming language being analyzed. In other words, a mapping from program variables to concrete values. </p>
+<p><strong>abstract state.</strong> Conceptually, this is an object used in the analysis that represents a set of concrete states. In the ESP library, these are <strong>ESP.State</strong> objects. </p>
+<p><strong>bottom.</strong> This is a special abstract state the represents the empty set of concrete states. If the state is bottom at a certain program point, that means that program point is unreachable. In ESP, this is <strong>ESP.NOT_REACHED</strong>.</p>
+<p><strong>top. </strong>This is a special abstract state that represents all possible states. top is also used to name a special abstract value that represents all possible concrete values. Thus, top means the analysis has no information about that value or state.</p>
+<p><strong>meet. </strong>Meet is a relation on abstract values used to filter states at conditional statements. For example, if the current abstract value of a variable x is <strong>nonzero</strong>, and the analysis goes inside an if statement with the condition <strong>x == 1</strong>, then in the new abstract value of x will be <strong>nonzero meet 1</strong>. ESP uses a user-defined meet function supplied to the Analysis constructor that should return the intersection of two abstract values. It is also acceptable for meet to return a value that contains the intersection--this may cause the analysis to have more false positives but will not introduce false negatives.</p>
+<p><strong>join.</strong> Join is a relation on abstract values used to merge states at control flow merge points. For example, if ESP reaches a point where two control flow paths merge, and on one side the abstract value of x is <strong>1</strong>, and on the other side, the abstract value of x is <strong>2</strong>, then the new abstract value of x will be <strong>1 join 2</strong>. ESP uses a built-in join function where join(a,a) -&gt; a and join(a,b) -&gt; top for a != b.</p>

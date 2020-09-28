@@ -1,0 +1,89 @@
+<div>{{SpiderMonkeySidebar("Internals")}}</div>
+
+<p>or, "The Zen of SpiderMonkey".</p>
+
+<p>A native object must never become non-native. (One reason for this is that the object may have watchpoints set; the watchpoint machinery assumes that all objects with watched properties are native. There may be other reasons that cover more cases, but nobody can remember one.)</p>
+
+<p>All JSObjects and heap-allocated JSStrings must be 8-byte-aligned.  (The jsval encoding depends on this.)</p>
+
+<p>The <code>JSStackFrame::down</code> chain never forms a cycle.  (It's a stack.  But note that a stack frame is <strong><em>not</em></strong> necessarily newer than the next stack frame <em>down</em>, thanks to generators!)</p>
+
+<p>An object's scope chain (found by chasing <code>JSObject::fslots[JSSLOT_PARENT]</code>) never forms a cycle.  (We can probably loop forever if that happens. <code>JS_SetParent</code> can violate this, if the application is really that dumb, but generally every object is newer than its <em>__parent__</em>.)</p>
+
+<p>The tracejit must not trace into a function whose scope chain ends in a different global object.  (If it is a script function, global names accessed in that function would refer to a different global object. Even if the function is native, there is serious trouble: <code>js_NewObject</code> with null <em>parent</em> argument calculates the parent from <code>cx-&gt;fp-&gt;scopeChain</code>, which can be stale if we're on trace.)</p>
+
+<p>The chain of properties starting at any <code>JSShape</code> and chasing <code>JSShape::parent</code> never forms a cycle and does not contain any duplicate <code>JSScopeProperty::slot</code> values other than -1. (A cycle would be very silly and could cause infloops. The same slot being allocated to more than one property would be a problem for obvious reasons.)</p>
+
+<p>All <code>JSShapes</code> in dictionary-mode objects have the <code>IN_DICTIONARY</code> flag set. All <code>JSShape</code>s in property trees have it cleared.</p>
+
+<p>If an object is inextensible, its <code>dslots</code> will never again change. (We don't bother locking when accessing slots of a sealed object. The locking is going away regardless.)</p>
+
+<h2 id="Compartments">Compartments</h2>
+
+<p>Suppose <code>obj = JS_GetScopeChain(cx)</code> is not null. Then <code>cx-&gt;compartment == obj-&gt;compartment()</code>.</p>
+
+<p>When a new object is created, it is automatically created in <code>cx-&gt;compartment,</code> but its parent and prototype are often determined by examining the scope chain. The object and its proto and parent must be in the same compartment. So it is utterly crucially important that this invariant always be true if objects are being created. The public API for compartment-hopping, <code>JSAutoEnterCompartment</code>, and the internal API, <code>js::AutoCompartment</code>, both make sure the invariant is maintained.</p>
+
+<p>However, there is another internal API, <code>js::SwitchToCompartment</code>, that lets you break this invariant, and of course in XPConnect we use that from time to time when we know we aren't going to be creating any new objects (other than global objects, which have no parent or prototype) or doing anything that might call back into native code that could create objects. We do this in order to save some CPU cycles (in other words, for no good reason whatsoever).</p>
+
+<p>If <code>!JS_IsRunning(cx) &amp;&amp; cx-&gt;globalObject == NULL</code>, then <code>cx-&gt;compartment == cx-&gt;runtime-&gt;defaultCompartment</code>.</p>
+
+<p>While executing a script, <code>cx-&gt;compartment == script-&gt;compartment</code>. But this is true only so long as we are actually in the interpreter or JIT code. A JSNative or other callback may move cx to another compartment, as long as it returns cx to the script's compartment before returning.</p>
+
+<p>A given trace-jit trace stays within a single compartment (indeed, a single global object) end-to-end.</p>
+
+<h2 id="Lifetime_invariants">Lifetime invariants</h2>
+
+<p>In some places, pointers to <code>JSObject</code>s and <code>JSString</code>s must refer to live heap objects, but this is <em>not</em> a hard fast rule, especially for strings. Some <code>JSString</code>s are allocated on the stack for quick operations. Some commonly used strings are allocated statically; see <code>JSString::isStatic()</code>.</p>
+
+<p>Most <code>JSContext</code> pointers must point to live contexts, but <code>JSTitle::ownercx</code> may point to one that has been destroyed! So code must check <code>js_ValidContextPointer(ownercx)</code> before dereferencing it.</p>
+
+<h2 id="Shape_invariants">Shape invariants</h2>
+
+<p>The <a href="/En/SpiderMonkey/Internals/Property_cache" title="en/SpiderMonkey/Internals/Property cache">shape guarantees</a> hold whenever the property cache is enabled.</p>
+
+<p>Also, we never change the shape of the global object on trace.  (Here "the global object" refers to the object at the end of the scope chain of the Function object we're executing.)</p>
+
+<h2 id="Requests">Requests</h2>
+
+<p>Many functions require a request. That is, they take a parameter <code>cx</code> of type <code>JSContext *</code>, and require that <em>cx</em> is in a request on the current thread.  See <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="En/SpiderMonkey/JSAPI Reference/JS THREADSAFE">JS_THREADSAFE</a>.</p>
+
+<p>"Are we in a request on <code>cx</code>?", where <code>cx</code> is any variable of type <code>JSContext *</code>, is a static yes for most lines of code where such a variable exists.  Occasionally it's a static no; other times we don't care.</p>
+
+<p>Almost all JSAPI callbacks provide a request; that is, when we call a callback with a <code>cx</code> argument, we know statically that we must be in a request on <code>cx</code> there.</p>
+
+<h2 id="Locks">Locks</h2>
+
+<p>"Are we holding the runtime-wide GC lock?" is a static yes or no for almost every line of code.</p>
+
+<p>A general rule about the state of all threads at a given time: either exactly one thread is "in GC" and no threads are in requests; or no thread is doing GC, in which case any number of threads may be in requests; or the GC lock is held.</p>
+
+<p>A thread that holds the GC lock never does anything that blocks.</p>
+
+<p>A thread that is in a request never does anything that blocks.</p>
+
+<p>There are the usual invariants regarding locks: we do not reenter them (it would be nice to check this as there might be an exception or two); we do not wait on a condition variable unless the corresponding lock is held.</p>
+
+<p>There are the usual invariants regarding various fields: they are protected by certain locks or more complex locking schemes. In particular, native objects' fields are protected by property locking (below); and several things are protected by the request model, such that there may be either one writer (in GC) or many readers (in requests).</p>
+
+<p>No <em>JSNative</em> or other object-related callback ever runs at the same time as a finalizer for that object.</p>
+
+<h3 id="Property_locks">Property locks</h3>
+
+<p>Each thread may have a lock on at most one property at a time.  (Nesting them would risk deadlock. <code>JS_SetWatchPoint</code> violates this rule.)  Whether a property is locked, and which one, is static information for almost every line of code. The locking scheme is described under <code><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSObjectOps.dropProperty" title="En/SpiderMonkey/JSAPI Reference/JSObjectOps.dropProperty">JSObjectOps.dropProperty</a></code>. (Note that the locking scheme applies to all objects and talks about properties being locked. As implemented for native objects, the locking is not really that fine-grained, but that is a transparent optimization as long as we follow the rules.)</p>
+
+<p>A thread holding a property lock never leaves or suspends the current request.</p>
+
+<p>With a few exceptions (known to brendan and probably jst and mrbkap), we never call a JSAPI callback with a property locked.  (That would risk deadlock too.)</p>
+
+<h2 id="Name_instructions">Name instructions</h2>
+
+<p>The first operand to a <code>JSOP_SETNAME</code> instruction is always produced by a preceding <code>JSOP_BINDNAME</code> instruction. (Taken together, <span class="pl-s1"><span class="pl-s">ECMA 262-3 §</span></span>11.13.1 and <span class="pl-s1"><span class="pl-s">ECMA 262-3 §</span></span>10.1.4 specify that in an assignment such as <code>x = f()</code>, the name lookup for <code>x</code> occurs before <code>f</code> is called. <code>JSOP_BINDNAME</code> performs this lookup.)</p>
+
+<p>The rules below (not exactly invariants) govern the bytecode emitted for NameExpressions.</p>
+
+<p>Background: The fastest instructions for NameExpressions are fat opcodes that combine a load with additional operations, as in <code>JSOP_INCLOCAL</code> or <code>JSOP_GETLOCALPROP</code>. Failing that, <code>JSOP_{GET,CALL,SET}LOCAL</code> and <code>JSOP_{GET,CALL,SET}ARG</code> are the fastest, followed by <code>JSOP_{GET,CALL}UPVAR</code>, <code>JSOP_{GET,CALL}DSLOT</code>, <code>JSOP_{GET,CALL,SET}GVAR</code>, and lastly <code>JSOP_{,CALL,SET}NAME</code>.</p>
+
+<p>If it cannot be statically proven that a name always refers to a specific variable (meaning either a parameter or a variable introduced by var/let/function/const) in the program, then a <code>NAME</code> op must be emitted. (It would result in a bug where the wrong variable is used. JavaScript is only mostly lexically scoped. Some NameExpressions might refer to a variable or global; or might at runtime turn out to reference another object property, due to <code>with</code>, or a variable that isn't in the source code at all but was injected into a local scope by <code>eval</code>. These cases can be detected statically by looking for <code>with</code> and <code>eval</code> "nearby" in the parse tree.)</p>
+
+<p>If a nested function contains a NameExpression that refers to a variable in an enclosing scope which the function can outlive (i.e. the function can be called after control exits that enclosing scope) then <code>UPVAR</code> instructions cannot be used for that NameExpression. (Wrong results or a potentially exploitable crash. The upvar ops depend on a per-context display of <em>currently active</em> stack frames. Once the enclosing stack frame is removed from the stack, and thus from the display, the upvar lookup will no longer work correctly and can crash or read off the end of a different stack frame.)</p>

@@ -1,0 +1,79 @@
+<pre>#!/bin/bash -e
+# a simple bash script to create a minimal xulrunner dir structure and
+# needed meta files in /tmp, copy the xul-file over and start it
+# usage:
+# xulauncher xulfile.xul [options]
+##############################################################################
+
+# check if theres atleast one parameter
+##############################################################################
+if [ $# -lt 1 ]
+then
+  echo "you need to give the xul file as first parameter"
+  exit
+fi
+
+# check if 1st parameter is a file
+##############################################################################
+if [ ! -f "$1" ]
+then
+  echo "\"$1\" is not a file"
+  exit
+fi
+
+# define some variables
+##############################################################################
+WD=/tmp
+EXT=".xul"
+XULFILE=`basename $1`
+XULNAME=${XULFILE%$EXT}
+
+XULDIR="$WD/$XULNAME/chrome/$XULNAME/"
+XULPREFDIR="$WD/$XULNAME/defaults/preferences"
+
+XULAPPINI="$WD/$XULNAME/application.ini"
+XULMANIFEST="$WD/$XULNAME/chrome/chrome.manifest"
+XULPREFS="$WD/$XULNAME/defaults/preferences/prefs.js"
+
+# make minimal directory structure
+##############################################################################
+mkdir -p $XULDIR
+mkdir -p $XULPREFDIR
+
+# create application.ini file
+##############################################################################
+echo "
+[App]
+Vendor=xulauncher.sh
+Name=$XULNAME
+Version=0.0.1
+BuildID=`date +%Y%m%d`
+
+[Gecko]
+MinVersion=1.8
+MaxVersion=1.9
+"&gt;$XULAPPINI
+
+# create chrome.manifest file
+##############################################################################
+echo "
+content $XULNAME file:$XULNAME/
+"&gt;$XULMANIFEST
+
+# create prefs.js file
+##############################################################################
+echo "
+pref(\"toolkit.defaultChromeURI\", \"chrome://$XULNAME/content/$XULFILE\");
+/* debugging prefs */
+pref(\"browser.dom.window.dump.enabled\", true);
+pref(\"javascript.options.showInConsole\", true);
+pref(\"javascript.options.strict\", true);
+pref(\"nglayout.debug.disable_xul_cache\", true);
+pref(\"nglayout.debug.disable_xul_fastload\", true);
+"&gt;$XULPREFS
+
+# copy xul file to right location and run it
+##############################################################################
+cp $XULFILE $XULDIR
+xulrunner $XULAPPINI $@
+</pre>

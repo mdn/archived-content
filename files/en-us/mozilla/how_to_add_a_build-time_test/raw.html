@@ -1,0 +1,47 @@
+
+
+<p>Writing a test is good, but it is even more helpful if that test gets executed. We have <a class="external" href="http://wiki.mozilla.org/MozillaQualityAssurance:Test_Suite_and_Tool_Inventory">various automation tools</a> that help make this possible. The first link, though, is the "<code>check</code>" target in a Makefile. If a test is added, that test or its directory needs to be mentioned in a Makefile.in file somewhere so that the build system knows about it.</p>
+
+<h3 id="Standalone_executables" name="Standalone_executables">Standalone executables</h3>
+
+<p>To add a test that is written in C or C++ and which is called as a standalone executable, a few things must be done. For standalone executables, if one sets up the right variables, then the rules.mk file will do lots of magic and most of the heavy lifting. A simple example of adding a test is in <a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">. </a></p>
+
+<p><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">Note that the following variables are supplied by the rules.mk file: <code>CPPSRCS</code>, <code>SIMPLE_PROGRAMS</code>, <code>RUN_TEST_PROGRAM</code>. </a></p>
+
+<h3 id="XPCShell_tests" name="XPCShell_tests"><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">XPCShell tests</a></h3>
+
+<p><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">Here are the simple guidelines for adding an xpcshell test to the build system. </a></p>
+
+<ol>
+ <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">For now, enclose your test-related code (in the makefile) with <code>ifdef ENABLE_TESTS</code> </a></li>
+ <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">Run the test program from the "check" target in the makefile. ({{ Source("netwerk/test/Makefile.in", "example") }} to run the TestCookie program) </a></li>
+ <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">In the test program: </a>
+  <ul>
+   <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">If the test fails, exit with a non-zero status and/or print the string "FAIL" to stdout </a></li>
+   <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">If the test passes, exit with a zero status and don't print the string "FAIL" (bonus points for printing "PASS" :) ) </a></li>
+  </ul>
+  <a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in"> </a></li>
+</ol>
+
+<p><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">Write the test so that you expect it to pass on all platforms, since if the test fails, the tree will go orange (once we've set this up - see {{ Bug(352240) }} for status). </a></p>
+
+<p><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">For example, to add an xpcshell test to a module, do the following: </a></p>
+
+<ol>
+ <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">Copy {{ Source("tools/test-harness/xpcshell-simple/example") }} to <code><em>yourmoduledir</em>/<em>tests_type</em></code>, where<em>tests_type</em> is something that describes your tests. You can of course use <code>unit</code> or <code>test</code> if you're not feeling creative.</a></li>
+ <li><a class="external" href="https://dxr.mozilla.org/mozilla/source/netwerk/test/Makefile.in">In &lt;tt&gt;<em>yourmoduledir</em>/<em>tests_type</em>/Makefile.in&lt;/tt&gt; change </a><code><a href="en/DEPTH">DEPTH</a></code>, <code><a href="en/MODULE">MODULE</a></code>, and <code><a href="en/XPCSHELL_TESTS">XPCSHELL_TESTS</a></code> appropriately:
+  <ul>
+   <li><code>DEPTH</code> should be a relative path pointing to &lt;tt&gt;mozilla/&lt;/tt&gt;, e.g. if you're in &lt;tt&gt;netwerk/test&lt;/tt&gt;, set <code>DEPTH = ../..</code></li>
+   <li><code>MODULE</code> should be defined to <code>test_<em>yourmodule</em></code> or just <code><em>yourmodule</em></code> -- either will work fine.</li>
+   <li><code>XPCSHELL_TESTS</code> be a list of subdirectories of the current directory which contain xpcshell tests. You can of course just use the one<em>tests_type</em> directory here, but if you want to subdivide your tests by functionality, separate directories is the way to go.</li>
+  </ul>
+ </li>
+ <li>Reference the test dir in a parent makefile (&lt;tt&gt;<em>yourmoduledir</em>/Makefile.in&lt;/tt&gt;):
+  <pre>ifdef ENABLE_TESTS
+DIRS  += tests_type
+endif</pre>
+ </li>
+ <li>(Optional, but recommended) Add the new makefile to <a href="en/Allmakefiles.sh">allmakefiles.sh</a> (TODO: need more details about this)</li>
+ <li>Reconfigure (e.g. with &lt;tt&gt;make -f client.mk configure&lt;/tt&gt;)</li>
+ <li><em>make</em>/<em>make check</em> in &lt;tt&gt;<em>yourmodule</em>&lt;/tt&gt;</li>
+</ol>

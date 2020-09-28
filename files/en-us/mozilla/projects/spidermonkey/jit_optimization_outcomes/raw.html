@@ -1,0 +1,343 @@
+<p>SpiderMonkey's optimizing JIT, IonMonkey, uses different optimization strategies to speed up various operations. The most typical operations that are relevant for fast program execution are property accesses and function calls.</p>
+
+<p>This page documents the meaning of different optimization outcomes.</p>
+
+<h2 id="General_Outcomes">General Outcomes</h2>
+
+<p>General outcomes shared between various optimization strategies.</p>
+
+<h3 id="GenericFailure">GenericFailure</h3>
+
+<p>The optimization attempt failed, and the reason was not recorded.</p>
+
+<h3 id="GenericSuccess">GenericSuccess</h3>
+
+<p>Optimization succeeded.</p>
+
+<h3 id="Disabled">Disabled</h3>
+
+<p>The optimization has been explicitly disallowed.</p>
+
+<h3 id="NoTypeInfo">NoTypeInfo</h3>
+
+<p>Optimization failed because there was no type information associated with an object containing the property. This failure mode is unlikely and occurs if the target object is obtained in some roundabout way.</p>
+
+<h3 id="NoAnalysisInfo">NoAnalysisInfo</h3>
+
+<p>TODO</p>
+
+<h3 id="NoShapeInfo">NoShapeInfo</h3>
+
+<p>The baseline compiler recorded no usable shape information for this operation.</p>
+
+<h3 id="UnknownObject">UnknownObject</h3>
+
+<p>The type of the object is not known. This can happen if the operation sees many different types of objects, and so the type of the input to the operation cannot be resolved to a single type.</p>
+
+<h3 id="UnknownProperties">UnknownProperties</h3>
+
+<p>Optimization failed because the object containing the property was marked as having unknown properties. This can happen if too many properties are defined on the object, or if <code>delete</code> is used to remove one of the object's properties.</p>
+
+<h3 id="Singleton">Singleton</h3>
+
+<p>One of the types present in the typeset was a singleton type, preventing the optimization from being enabled.</p>
+
+<h3 id="NotSingleton">NotSingleton</h3>
+
+<p>Optimization failed because the object containing the property did not have a 'singleton' type. Singleton types are assigned to objects that are "one of a kind", such as global objects, literal objects declared in the global scope, and top-level function objects.</p>
+
+<h3 id="NotFixedSlot">NotFixedSlot</h3>
+
+<p>The property being accessed is not stored at a known location in the object. This can occur if one of the expected types of objects to be used in this operation has unknown properties, or if different instances of the object store the property at different locations (for example, some instances have the property assigned in a different order than others).</p>
+
+<h3 id="InconsistentFixedSlot">InconsistentFixedSlot</h3>
+
+<p>The property being accessed is not stored at a known location in the object. This can occur if the operation is polymorphic on different object types and one or more of the object types contain the property at a different slot than the others.</p>
+
+<h3 id="NotObject">NotObject</h3>
+
+<p>Optimization failed because the stored in the property could potentially be a non-object value. Since only objects can be uniquely typed, the optimization strategy fails in this case.</p>
+
+<h3 id="NotStruct">NotStruct</h3>
+
+<p>The object holding the property is not a typed struct object.</p>
+
+<h3 id="NotUnboxed">NotUnboxed</h3>
+
+<p>The object whose property is being accessed is not formatted as an unboxed object.</p>
+
+<h3 id="UnboxedConvertedToNative">UnboxedConvertedToNative</h3>
+
+<p>The object whose property is being accessed was previously unboxed but was deoptimized and converted to a native object.</p>
+
+<h3 id="StructNoField">StructNoField</h3>
+
+<p>The unboxed property being accessed does not correspond to a field on the typed object.</p>
+
+<h3 id="InconsistentFieldType">InconsistentFieldType</h3>
+
+<p>The type of an unboxed field is not consistent across all the different types of objects it could be accessed from.</p>
+
+<h3 id="InconsistentFieldOffset">InconsistentFieldOffset</h3>
+
+<p>The offset of an unboxed field is not consistent across all the different types of objects it could be accessed from.</p>
+
+<h3 id="NeedsTypeBarrier">NeedsTypeBarrier</h3>
+
+<p>Optimization failed because somehow the property was accessed in a way that returned a different type than the expected constant. This is an unlikely failure mode, and should not occur.</p>
+
+<h3 id="InDictionaryMode">InDictionaryMode</h3>
+
+<p>The object whose property is being accessed is in dictionary mode. Objects which are used in ways that suggest they are hashtables are turned into dictionary objects and their types marked as such.</p>
+
+<h3 id="NoProtoFound">NoProtoFound</h3>
+
+<p>A prototype object was not found for all the object used by this operation.</p>
+
+<h3 id="MultiProtoPaths">MultiProtoPaths</h3>
+
+<p>Objects used in this operation had differing prototypes.</p>
+
+<h3 id="NonWritableProperty">NonWritableProperty</h3>
+
+<p>The property being assigned to is not writable for some types of objects which are used in this operation.</p>
+
+<h3 id="ProtoIndexedProps">ProtoIndexedProps</h3>
+
+<p>The object being accessed has indexed properties that are exotic (for example, defined as a property on a prototype object and left as a hole in the underlying object).</p>
+
+<h3 id="ArrayBadFlags">ArrayBadFlags</h3>
+
+<p>The array being accessed may have flags that the optimization strategy cannot handle. For example, if the array has sparse indexes, or has indexes that overflow the array's length, the optimization strategy may fail.</p>
+
+<h3 id="ArrayDoubleConversion">ArrayDoubleConversion</h3>
+
+<p>The type-system indicates that some arrays at this site should be converted to packed arrays of doubles while others should not. The optimization strategy fails for this condition.</p>
+
+<h3 id="ArrayRange">ArrayRange</h3>
+
+<p>Could not accurately calculate the range attributes of an inline array creation.</p>
+
+<h3 id="ArraySeenNegativeIndex">ArraySeenNegativeIndex</h3>
+
+<p>Arrays at this element access location have seen negative indexes.</p>
+
+<h3 id="TypedObjectNeutered">TypedObjectNeutered</h3>
+
+<p>The typed object being accessed at this location may have been neutered (a neutered typed object is one where the underlying byte buffer has been removed or transferred to a worker).</p>
+
+<h3 id="TypedObjectArrayRange">TypedObjectArrayRange</h3>
+
+<p>Failed to do range check of element access on a typed object.</p>
+
+<h3 id="AccessNotDense">AccessNotDense</h3>
+
+<h3 id="AccessNotSimdObject">AccessNotSimdObject</h3>
+
+<p>The observed type of the target of the property access doesn't guarantee that it is an SIMD object.</p>
+
+<h3 id="AccessNotTypedObject">AccessNotTypedObject</h3>
+
+<p>The observed type of the target of the property access doesn't guarantee that it is a TypedObject.</p>
+
+<h3 id="AccessNotTypedArray">AccessNotTypedArray</h3>
+
+<h3 id="AccessNotString">AccessNotString</h3>
+
+<h3 id="StaticTypedArrayUint32">StaticTypedArrayUint32</h3>
+
+<h3 id="StaticTypedArrayCantComputeMask">StaticTypedArrayCantComputeMask</h3>
+
+<h3 id="OutOfBounds">OutOfBounds</h3>
+
+<h3 id="GetElemStringNotCached">GetElemStringNotCached</h3>
+
+<h3 id="NonNativeReceiver">NonNativeReceiver</h3>
+
+<h3 id="IndexType">IndexType</h3>
+
+<h3 id="SetElemNonDenseNonTANotCached">SetElemNonDenseNonTANotCached</h3>
+
+<h3 id="NoSimdJitSupport">NoSimdJitSupport</h3>
+
+<p>Optimization failed because SIMD JIT support was not enabled.</p>
+
+<h3 id="SimdTypeNotOptimized">SimdTypeNotOptimized</h3>
+
+<p>The type observed as being retrieved from this property access did not match an optimizable type.</p>
+
+<h3 id="UnknownSimdProperty">UnknownSimdProperty</h3>
+
+<p>The property being accessed on the object is not one of the optimizable property names.</p>
+
+<h3 id="HasCommonInliningPath">HasCommonInliningPath</h3>
+
+<h3 id="Inlined">Inlined</h3>
+
+<h3 id="DOM">DOM</h3>
+
+<h3 id="Monomorphic">Monomorphic</h3>
+
+<h3 id="Polymorphic">Polymorphic</h3>
+
+<h2 id="Inline_Cache_Outcomes">Inline Cache Outcomes</h2>
+
+<p>Outcomes describing inline cache stubs that were generated.</p>
+
+<h3 id="ICOptStub_GenericSuccess">ICOptStub_GenericSuccess</h3>
+
+<h3 id="ICGetPropStub_ReadSlot">ICGetPropStub_ReadSlot</h3>
+
+<h3 id="ICGetPropStub_CallGetter">ICGetPropStub_CallGetter</h3>
+
+<h3 id="ICGetPropStub_ArrayLength">ICGetPropStub_ArrayLength</h3>
+
+<h3 id="ICGetPropStub_UnboxedRead">ICGetPropStub_UnboxedRead</h3>
+
+<h3 id="ICGetPropStub_UnboxedReadExpando">ICGetPropStub_UnboxedReadExpando</h3>
+
+<h3 id="ICGetPropStub_UnboxedArrayLength">ICGetPropStub_UnboxedArrayLength</h3>
+
+<h3 id="ICGetPropStub_TypedArrayLength">ICGetPropStub_TypedArrayLength</h3>
+
+<h3 id="ICGetPropStub_DOMProxyShadowed">ICGetPropStub_DOMProxyShadowed</h3>
+
+<h3 id="ICGetPropStub_DOMProxyUnshadowed">ICGetPropStub_DOMProxyUnshadowed</h3>
+
+<h3 id="ICGetPropStub_GenericProxy">ICGetPropStub_GenericProxy</h3>
+
+<h3 id="ICGetPropStub_ArgumentsLength">ICGetPropStub_ArgumentsLength</h3>
+
+<h3 id="ICSetPropStub_Slot">ICSetPropStub_Slot</h3>
+
+<h3 id="ICSetPropStub_GenericProxy">ICSetPropStub_GenericProxy</h3>
+
+<h3 id="ICSetPropStub_DOMProxyShadowed">ICSetPropStub_DOMProxyShadowed</h3>
+
+<h3 id="ICSetPropStub_DOMProxyUnshadowed">ICSetPropStub_DOMProxyUnshadowed</h3>
+
+<h3 id="ICSetPropStub_CallSetter">ICSetPropStub_CallSetter</h3>
+
+<h3 id="ICSetPropStub_AddSlot">ICSetPropStub_AddSlot</h3>
+
+<h3 id="ICSetPropStub_SetUnboxed">ICSetPropStub_SetUnboxed</h3>
+
+<h3 id="ICGetElemStub_ReadSlot">ICGetElemStub_ReadSlot</h3>
+
+<h3 id="ICGetElemStub_CallGetter">ICGetElemStub_CallGetter</h3>
+
+<h3 id="ICGetElemStub_ReadUnboxed">ICGetElemStub_ReadUnboxed</h3>
+
+<h3 id="ICGetElemStub_Dense">ICGetElemStub_Dense</h3>
+
+<h3 id="ICGetElemStub_DenseHole">ICGetElemStub_DenseHole</h3>
+
+<h3 id="ICGetElemStub_TypedArray">ICGetElemStub_TypedArray</h3>
+
+<h3 id="ICGetElemStub_ArgsElement">ICGetElemStub_ArgsElement</h3>
+
+<h3 id="ICGetElemStub_ArgsElementStrict">ICGetElemStub_ArgsElementStrict</h3>
+
+<h3 id="ICSetElemStub_Dense">ICSetElemStub_Dense</h3>
+
+<h3 id="ICSetElemStub_TypedArray">ICSetElemStub_TypedArray</h3>
+
+<h3 id="ICNameStub_ReadSlot">ICNameStub_ReadSlot</h3>
+
+<h3 id="ICNameStub_CallGetter">ICNameStub_CallGetter</h3>
+
+<h2 id="Call_Inlining_Outcomes">Call Inlining Outcomes</h2>
+
+<p>Optimization outcomes of attempts to inline function calls.</p>
+
+<h3 id="CantInlineGeneric">CantInlineGeneric</h3>
+
+<h3 id="CantInlineClassConstructor">CantInlineClassConstructor</h3>
+
+<h3 id="CantInlineExceededDepth">CantInlineExceededDepth</h3>
+
+<h3 id="CantInlineExceededTotalBytecodeLength">CantInlineExceededTotalBytecodeLength</h3>
+
+<h3 id="CantInlineBigCaller">CantInlineBigCaller</h3>
+
+<h3 id="CantInlineBigCallee">CantInlineBigCallee</h3>
+
+<h3 id="CantInlineBigCalleeInlinedBytecodeLength">CantInlineBigCalleeInlinedBytecodeLength</h3>
+
+<h3 id="CantInlineNotHot">CantInlineNotHot</h3>
+
+<h3 id="CantInlineNotInDispatch">CantInlineNotInDispatch</h3>
+
+<h3 id="CantInlineNativeBadType">CantInlineNativeBadType</h3>
+
+<h3 id="CantInlineNoTarget">CantInlineNoTarget</h3>
+
+<p>Unable to inline function call. The callee (target) function, f in f(x), is not known at JIT time.</p>
+
+<h3 id="CantInlineNotInterpreted">CantInlineNotInterpreted</h3>
+
+<p>Unable to inline function call. The callee function is not an interpreted function. For example, it could be a native function for which Ion has no built-in specialization.</p>
+
+<h3 id="CantInlineNoBaseline">CantInlineNoBaseline</h3>
+
+<p>Unable to inline function call. The interpreted callee function could not be compiled by the Baseline compiler.</p>
+
+<h3 id="CantInlineLazy">CantInlineLazy</h3>
+
+<p>Unable to inline function call. The interpreted callee function has a lazy, compiled on-demand script instead of an already compiled script.</p>
+
+<h3 id="CantInlineNotConstructor">CantInlineNotConstructor</h3>
+
+<p>Unable to inline function call. Rare. The interpreted callee function is invoked with new but cannot be called as a constructor. Property accessors, Function.prototype, and arrow (=&gt;) functions cannot be called as constructors.</p>
+
+<h3 id="CantInlineDisableIon">CantInlineDisableIon</h3>
+
+<p>Unable to inline function call. The interpreted callee function has been explicitly blacklisted against Ion compilation.</p>
+
+<h3 id="CantInlineTooManyArgs">CantInlineTooManyArgs</h3>
+
+<p>Unable to inline function call. The interpreted callee function either has too many parameters or is called with too many arguments. These thresholds are subject to change.</p>
+
+<h3 id="CantInlineRecursive">CantInlineRecursive</h3>
+
+<p>Unable to inline function call. The interpreted callee function recurs for more than one level. The first level of recursion is inlinable.</p>
+
+<h3 id="CantInlineHeavyweight">CantInlineHeavyweight</h3>
+
+<p>Unable to inline function call. The interpreted callee function contains variables bindings that are closed over. For example, <code>function f() { var x; return function () { x++; } }</code> closes over x in f.</p>
+
+<h3 id="CantInlineNeedsArgsObj">CantInlineNeedsArgsObj</h3>
+
+<p>Unable to inline function call. The interpreted callee function requires an arguments object to be created.</p>
+
+<h3 id="CantInlineDebuggee">CantInlineDebuggee</h3>
+
+<p>Unable to inline function call. The interpreted callee function is being debugged by the Debugger API.</p>
+
+<h3 id="CantInlineUnknownProps">CantInlineUnknownProps</h3>
+
+<p>Unable to inline function call. The engine knows nothing definite about the type of the callee function object.</p>
+
+<h3 id="CantInlineUnreachable">CantInlineUnreachable</h3>
+
+<p>Unable to inline function call. The call site has not been observed to have ever been executed. It lacks observed type information for its arguments, its return value, or both.</p>
+
+<h3 id="CantInlineBound">CantInlineBound</h3>
+
+<p>Unable to inline function call. The interpreted callee is a bound function generated from <code>Function.prototype.bind</code> that failed some sub-checks. (expand)</p>
+
+<h3 id="CantInlineNativeNoSpecialization">CantInlineNativeNoSpecialization</h3>
+
+<p>Unable to inline function call. Ion does not have built-in specialization for the native (implemented in C++) callee function.</p>
+
+<h3 id="CantInlineNativeBadForm">CantInlineNativeBadForm</h3>
+
+<p>Unable to inline function call. The native callee function was called with an unsupported number of arguments, or calling non-constructing functions with new.</p>
+
+<h3 id="CantInlineBadType">CantInlineBadType</h3>
+
+<p>Unable to inline function call. The native callee function was called with arguments with types that the built-in specialization does not support. For example, calling Math functions on objects.</p>
+
+<h3 id="CantInlineNativeNoTemplateObj">CantInlineNativeNoTemplateObj</h3>
+
+<p>Unable to inline function call. Cannot inline a native constructor (e.g., new Array) because no template object was cached by the Baseline compiler. (expand)</p>

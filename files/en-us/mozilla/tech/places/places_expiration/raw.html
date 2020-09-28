@@ -1,0 +1,32 @@
+<p>Expiration is handled in <span class="lang lang-en"><a class="external" href="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsPlacesExpiration.js" rel="external nofollow" title="http://mxr.mozilla.org/mozilla-central/source/toolkit/components/places/nsPlacesExpiration.js"><code>toolkit/components/places/nsPlacesExpiration.js</code></a></span>.</p>
+
+<h3 id="Algorithm">Algorithm</h3>
+
+<p>Expiration is based on hardware specs, specifically on memory size and available disk space. This means on mobile and old systems expiration will be more aggressive than on high-end hardware, to try keep the database size at a reasonable (and performant) value.</p>
+
+<p>All of expiration uses the Storage async API, that ensures I/O is in a separate thread, plus it won't block any read thanks to the use of the WAL journaling system.</p>
+
+<p>Common expiration runs on a timer, every 3 minutes and uses a simple adaptive algorithm: if the last step was unable to expire enough entries the next one will expire more entries, otherwise if the previous step completed the cleanup the next step will be delayed. This ensures expiration doesn't lag behind without hitting performances when there is no need for it.</p>
+
+<p>Apart this periodic expiration, there are other steps on idle, on shutdown on clear history.</p>
+
+<h3 id="On_Idle">On Idle</h3>
+
+<p>On idle it expires a larger chunk of pages, then timed expiration is stopped. This ensures to not interfere with standby tasks and preserves battery on mobile.</p>
+
+<h3 id="On_Shutdown">On Shutdown</h3>
+
+<p>Most of the times the adaptive algorithm will ensure the database is clean before shutdown, so the only task executed on shutdown will be removal of session data (like session annotations). In some cases, like when a clear history is executed just before shutdown, a larger step is executed instead.</p>
+
+<h3 id="On_maintenance">On maintenance</h3>
+
+<p>When Places maintenance runs (about once a week, on daily idle), an orphans expiration step is executed, this ensures database cleanup.</p>
+
+<h3 id="Preferences">Preferences</h3>
+
+<p>Usually there is no need to tweak or set any preference, since adaptive behavior should satisfy each need, though in case of unexpected issues it's possible to act on some hidden preferences:</p>
+
+<ul>
+ <li><em>places.history.expiration.interval_seconds</em>: Minimum number of seconds between expiration steps. Default is 180 seconds.</li>
+ <li><em>places.history.expiration.max_pages</em>: The maximum number of pages that may be retained in the database before starting to expire. Default value is calculated on startup and put into the <em>places.history.expiration.transient_current_max_pages</em> preference. This transient version of the preference is just mirroring the current value used by expiration, setting it won't have any effect<em>.</em></li>
+</ul>

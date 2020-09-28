@@ -1,0 +1,67 @@
+<p></p>
+<p>This document provides a quick start for those wishing to quickly retrieve a portion of the bookmarks tree. Bookmarks are retrieved using the <a href="/en-US/docs/Querying_Places">Places query system</a>.</p>
+<p>For more basic bookmarks examples, see <a href="/en-US/docs/Manipulating_bookmarks_using_Places">Manipulating bookmarks using Places</a>.</p>
+<h3 id="Get_the_query_and_options_objects" name="Get_the_query_and_options_objects">Get the query and options objects</h3>
+<p>All querying is done through the history service. First, you need to get an empty query and options objects from the history service:</p>
+<pre>var historyService = Components.classes["@mozilla.org/browser/nav-history-service;1"]
+                               .getService(Components.interfaces.nsINavHistoryService);
+var options = historyService.getNewQueryOptions();
+var query = historyService.getNewQuery();
+</pre>
+<h3 id="Find_the_folder_you_want_to_get" name="Find_the_folder_you_want_to_get">Find the folder you want to get</h3>
+<p>Known folder IDs are retrieved from the bookmarks service. Attributes defined in <code><a href="https://dxr.mozilla.org/mozilla-central/source//toolkit/components/places/public/nsINavBookmarksService.idl" rel="custom">/toolkit/components/places/public/nsINavBookmarksService.idl</a></code> are: <code>bookmarksMenuFolder</code>, <code>tagsFolder</code>, <code>unfiledBookmarksFolder</code> and <code>toolbarFolder</code>. You can also get folder IDs from a previous query.</p>
+<p>This example will get the ID of the bookmarks toolbar:</p>
+<pre>var bookmarksService = Components.classes["@mozilla.org/browser/nav-bookmarks-service;1"]
+                                 .getService(Components.interfaces.nsINavBookmarksService);
+var toolbarFolder = bookmarksService.toolbarFolder;
+</pre>
+<p>The <code>placesRoot</code> is the root folder in the whole Places hierarchy. It contains administrative data as well as user data, and is therefore not recommended for use in querying.</p>
+<h3 id="Configure_the_query" name="Configure_the_query">Configure the query</h3>
+<p>To get a hierarchical bookmarks result, pass the folder ID to <code>setFolders</code> in your query object:</p>
+<pre>query.setFolders([toolbarFolder], 1);
+</pre>
+<h3 id="Run_the_query" name="Run_the_query">Run the query</h3>
+<p>The <code>executeQuery</code> and <code>executeQueries</code> functions will return an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsINavHistoryResult" title="">nsINavHistoryResult</a></code> object containing the results of your query:</p>
+<pre>var result = historyService.executeQuery(query, options);
+</pre>
+<h3 id="Get_the_results" name="Get_the_results">Get the results</h3>
+<p>When you are querying for exactly one folder grouped by folder with no fancy query parameters such as keywords or date ranges (as in this example), the <code>root</code> of the result will be an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsINavHistoryContainerResultNode" title="">nsINavHistoryContainerResultNode</a></code> corresponding to your folder. If you have a complex query the root will be a <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsINavHistoryQueryResultNode" title="">nsINavHistoryQueryResultNode</a></code>.</p>
+<p>Before accessing the children of any result container, you must first open it, and then you can iterate the children. As long as the container is open, it will listen for notifications from the bookmarks system to keep itself up-to-date. When you're done, be sure to close the container to free up the resources. Otherwise, it will continue to get observer notifications and update itself, slowing down the whole browser.</p>
+<pre>var rootNode = result.root;
+rootNode.containerOpen = true;
+
+// iterate over the immediate children of this folder and dump to console
+for (var i = 0; i &lt; rootNode.childCount; i ++) {
+  var node = rootNode.getChild(i);
+  dump("Child: " + node.title + "\n");
+}
+
+// close a container after using it!
+rootNode.containerOpen = false;
+</pre>
+<p>If you encounter a node with a <code>type</code> of <code>RESULT_TYPE_FOLDER</code> or another type of container, you can open these folders and descend into the hierarchy. You will want to read the section "Using the results" in <a href="/en-US/docs/Places/Query_System">Places:Query System</a> to understand the different result types.</p>
+<h3 id="Complete_code_listing" name="Complete_code_listing">Complete code listing</h3>
+<pre>var historyService = Components.classes["@mozilla.org/browser/nav-history-service;1"]
+                               .getService(Components.interfaces.nsINavHistoryService);
+var options = historyService.getNewQueryOptions();
+var query = historyService.getNewQuery();
+
+var bookmarksService = Components.classes["@mozilla.org/browser/nav-bookmarks-service;1"]
+                                 .getService(Components.interfaces.nsINavBookmarksService);
+var toolbarFolder = bookmarksService.toolbarFolder;
+
+query.setFolders([toolbarFolder], 1);
+
+var result = historyService.executeQuery(query, options);
+var rootNode = result.root;
+rootNode.containerOpen = true;
+
+// iterate over the immediate children of this folder and dump to console
+for (var i = 0; i &lt; rootNode.childCount; i ++) {
+  var node = rootNode.getChild(i);
+  dump("Child: " + node.title + "\n");
+}
+
+// close a container after using it!
+rootNode.containerOpen = false;
+</pre>

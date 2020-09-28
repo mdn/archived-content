@@ -1,0 +1,55 @@
+<h2 id="GC_and_CC_logs">GC and CC logs</h2>
+
+<p>Garbage collector (GC) and cycle collector (CC) logs give information about why various JS and C++ objects are alive in the heap.  Garbage collector logs and cycle collector logs can be analyzed in various ways. In particular, CC logs can be used to understand why the cycle collector is keeping an object alive. These logs can either be manually or automatically generated, and they can be generated in both debug and non-debug builds.</p>
+
+<p>This logs the contents of the Javascript heap to a file named <code>gc-edges-NNNN.log</code>. It also creates a file named <code>cc-edges-NNNN.log</code> to which it dumps the parts of the heap visible to the cycle collector, which includes native C++ objects that participate in cycle collection, as well as JS objects being held alive by those C++ objects.</p>
+
+<h2 id="Generating_logs">Generating logs</h2>
+
+<h3 id="From_within_Firefox">From within Firefox</h3>
+
+<p>To manually generate GC and CC logs, navigate to <code>about:memory</code> and use the buttons under "Save GC &amp; CC logs." "Save concise" will generate a smaller CC log, "Save verbose" will provide a more detailed CC log. (The GC log will be the same size in either case.)</p>
+
+<p>With multiprocess Firefox, you can't record logs from the content process, due to sandboxing. You'll need to disable sandboxing by setting <code>MOZ_DISABLE_CONTENT_SANDBOX=t</code> when you run Firefox.</p>
+
+<h3 id="From_the_commandline">From the commandline</h3>
+
+<p>TLDR: if you just want shutdown GC/CC logs to debug leaks that happen in our automated tests, you probably want something along the lines of:</p>
+
+<p><code>MOZ_DISABLE_CONTENT_SANDBOX=t MOZ_CC_LOG_DIRECTORY=/full/path/to/log/directory/ MOZ_CC_LOG_SHUTDOWN=1 MOZ_CC_ALL_TRACES=shutdown ./mach ...</code></p>
+
+<p> </p>
+
+<p>As noted in the previous section, with multiprocess Firefox, you can't record logs from the content process, due to sandboxing. You'll need to disable sandboxing by setting <code>MOZ_DISABLE_CONTENT_SANDBOX=t</code> when you run Firefox.</p>
+
+<p>On desktop Firefox you can override the default location of the log files by setting the <code>MOZ_CC_LOG_DIRECTORY</code> environment variable. By default, they go to a temporary directory which differs per OS - it's <code>/tmp/</code> on Linux/BSD, <code>$LOCALAPPDATA\Temp\</code> on Windows, and somewhere in <code>/var/folders/</code> on Mac (whatever the directory service returns for <code>TmpD</code>/<code>NS_OS_TEMP_DIR</code>). Note that just <code>MOZ_CC_LOG_DIRECTORY=.</code> won't work - you need to specify a full path. On Firefox for Android you can use the <a class="external free" href="http://people.mozilla.com/%7Emleibovic/cc-dump.xpi" rel="nofollow">cc-dump</a> extension to save the files to <code>/sdcard</code>. By default, the file is created in some temp directory, and the path to the file is printed to the Error Console.</p>
+
+<p>To log every cycle collection, set the <code>MOZ_CC_LOG_ALL</code> environment variable. To log only shutdown collections, set <code>MOZ_CC_LOG_SHUTDOWN</code>. To make all CCs verbose, set <code>MOZ_CC_ALL_TRACES to "all</code>", or to "<code>shutdown</code>" to make only shutdown CCs verbose.</p>
+
+<p>Live GC logging can be enabled with the pref <code>javascript.options.mem.log</code>. Output to a file can be controlled with the MOZ_GCTIMER environment variable. See the <a href="/en-US/docs/SpiderMonkey/Internals/GC/Statistics_API">Statistics API</a> page for details on values.</p>
+
+<p>Set the environment variable <code>MOZ_CC_LOG_THREAD</code> to <code>main</code> to only log main thread CCs, or to <code>worker</code> to only log worker CCs. The default value is <code>all</code>, which will log all CCs.</p>
+
+<p>To get cycle collector logs on Try server, set <code>MOZ_CC_LOG_DIRECTORY</code> to <code>MOZ_UPLOAD_DIR</code>, then set the other variables appropriately to generate CC logs. The way to set environment variables depends on the test harness, or you can modify the code in nsCycleCollector to set that directly. To find the CC logs once the try run has finished, click on the particular job, then click on "Job Details" in the bottom pane in TreeHerder, and you should see download links.</p>
+
+<p>To set the environment variable, find the <code>buildBrowserEnv</code> method in the Python file for the test suite you are interested in, and add something like this code to the file:</p>
+
+<pre class="sourcelines"><span class="difflineplus" id="l1.13">browserEnv["MOZ_CC_LOG_DIRECTORY"] = os.environ["MOZ_UPLOAD_DIR"]</span>
+<span class="difflineplus" id="l1.12">browserEnv["MOZ_CC_LOG_SHUTDOWN"] = "1"</span></pre>
+
+<h2 id="Analyzing_GC_and_CC_logs">Analyzing GC and CC logs</h2>
+
+<p>There are numerous scripts that analyze GC and CC logs on <a class="external text" href="https://github.com/amccreight/heapgraph/tree/master/cc" rel="nofollow">GitHub</a>.</p>
+
+<p>To find out why an object is being kept alive, the relevant scripts are <code>find_roots.py</code> and <code>parse_cc_graph.py</code> (which is called by <code>find_roots.py</code>). Calling <code>find_roots.py</code> on a CC log with a specific object or kind of object will produce paths from rooting objects to the specified objects. Most big leaks include an <code>nsGlobalWindow</code>, so that's a good class to try if you don't have any better idea.</p>
+
+<p>To fix a leak, the next step is to figure out why the rooting object is alive. For a C++ object, you need to figure out where the missing references are from. For a JS object, you need to figure out why the JS object is reachable from a JS root. For the latter, you can use the corresponding <a class="external text" href="https://github.com/amccreight/heapgraph/tree/master/g" rel="nofollow"><code>find_roots.py</code> for JS</a> on the GC log.</p>
+
+<h2 id="Alternatives">Alternatives</h2>
+
+<p>There are two add-ons that can be used to create and analyze CC graphs.</p>
+
+<ul>
+ <li><a class="external text" href="https://bugzilla.mozilla.org/show_bug.cgi?id=726346" rel="nofollow">about:cc</a> is simple, ugly, but rather powerful.</li>
+ <li><a class="external text" href="https://addons.mozilla.org/en-US/firefox/addon/cycle-collector-analyzer/?src=ss" rel="nofollow">about:ccdump</a> is prettier but a bit slower.</li>
+</ul>

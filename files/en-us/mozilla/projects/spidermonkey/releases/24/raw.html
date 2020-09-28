@@ -1,0 +1,144 @@
+<div>{{SpiderMonkeySidebar("Releases")}}</div>
+
+<div class="note" style="color: black;">
+<p><strong>These release notes are an incomplete draft and were initially seeded from the SpiderMonkey 17 release notes, so they're not necessarily complete or fully accurate.</strong></p>
+
+<p>The Mozilla JavaScript team is pleased to announce the release of <strong>SpiderMonkey 24</strong>. You can download full source code here: <a href="https://ftp.mozilla.org/pub/mozilla.org/js/mozjs-24.2.0.tar.bz2">https://ftp.mozilla.org/pub/mozilla.org/js/mozjs-24.2.0.tar.bz2</a> (SHA1: ce779081cc11bd0c871c6f303fc4a0091cf4fe66)</p>
+
+<p>SpiderMonkey 24 is the JavaScript engine that shipped in Firefox 24. It continues to improve performance over previous SpiderMonkey releases, with a significantly improved garbage collector, a new JIT compilation mode, and other features.  It also contains new language and API features described in detail below.</p>
+
+<p>Please let us know about your experiences with this release by posting in the <a class="link-news" href="news://news.mozilla.org/mozilla.dev.tech.js-engine">mozilla.dev.tech.js-engine newsgroup</a>. Or file bugs at <a class="link-https" href="https://bugzilla.mozilla.org/">bugzilla.mozilla.org</a> under Product: Core, Component: JavaScript engine.</p>
+
+<p>— Dec 16, 2013</p>
+</div>
+
+<div>
+<p>The download url still available, but SpiderMonkey not RELEASE alone! Get it here <a href="https://hg.mozilla.org/releases/mozilla-esr24/archive/tip.tar.bz2">mozilla-esr24</a> if the download url is outdate</p>
+
+<p>You will find it in "Firefox Extended Support Release 24" package on <a href="https://hg.mozilla.org/releases">hg release</a></p>
+</div>
+
+<h2 id="Platform_support">Platform support</h2>
+
+<p>SpiderMonkey 24 is supported on all the platforms where Firefox 24 runs.  Compiling it requires a C++ compiler, and the JSAPI can only be used from C++ code.  (This change was motivated by garbage collector improvements, which lean quite heavily on C++'s support for RAII through constructors and destructors.)  If you are compiling with Microsoft's Visual Studio, note that the minimum supported version is MSVC10/2010: MSVC8/9 support has been dropped.</p>
+
+<p>SpiderMonkey 24 includes a just-in-time compiler (JIT) that compiles JavaScript to machine code, for a significant speed increase. It is supported on x86, x86_64, and ARM architectures. On some other platforms (SPARC, MIPS), the JIT is provided but not supported.  On all other platforms the JIT is simply disabled; JavaScript code runs in an interpreter, as in previous versions. It's the same language, just not as fast.</p>
+
+<h2 id="Migrating_to_SpiderMonkey_24">Migrating to SpiderMonkey 24</h2>
+
+<p>SpiderMonkey now provides a fully C++ interface, so embedders relying on embeddability in C projects will have to convert to C++, or implement their own adapter code.</p>
+
+<p>The following features in earlier versions of SpiderMonkey have been dropped.</p>
+
+<ul>
+ <li>E4X, an extension to ECMAScript adding XML support, has been removed.  The extension eventually became an evolutionary dead end, as TC39 chose not to incorporate it into ECMAScript proper.  It is recommended that you embed a separate XML parser, or include an XML parsing implementation written in JavaScript, as an alternative.</li>
+ <li>JaegerMonkey has been removed and replaced by IonMonkey</li>
+</ul>
+
+<p>SpiderMonkey 24 is not binary-compatible with previous releases, nor is it source-code compatible. Many JSAPI types, functions, and callback signatures have changed, though most of them still have the same names and do the same things. Applications will need significant changes, but most of those changes will be detected by the C/C++ compiler, so they are easy to detect and updating the code is a fairly straightforward job. Here is a list of the most significant changes.</p>
+
+<ul>
+ <li>Many of the garbage collector changes require type signature changes to JSAPI methods: specifically introducing JS::Rooted, JS::Handle, and JS::MutableHandle types.  These types, with the appropriate parametrizations, can roughly be substituted for plain types of GC things (values, string/object pointers, etc.).</li>
+</ul>
+
+<p>These and other changes are explained in detail below.</p>
+
+<h2 id="New_JavaScript_language_features">New JavaScript language features</h2>
+
+<p>JavaScript 24 includes significant updates to language features, yo.</p>
+
+<h2 id="typedef_Changes"><code>typedef</code> Changes</h2>
+
+<p>The fixed-size integer types introduced in SpiderMonkey 17 are defined in one of the following ways (XXX update for MSVC&lt;10 deprecation):</p>
+
+<ol>
+ <li>If the environment variable <code>MOZ_CUSTOM_STDINT_H</code> is set, that file will be included to provide definitions for these types.  The file must conform to the standard C99 <code>&lt;stdint.h&gt;</code> header interface in all respects, providing all that header's types and macro definitions.  (The <a class="external" href="http://code.google.com/p/msinttypes/" title="http://code.google.com/p/msinttypes/">msstdint project</a> includes <a class="external" href="http://msinttypes.googlecode.com/svn/trunk/stdint.h" title="http://msinttypes.googlecode.com/svn/trunk/stdint.h">an implementation of this header </a>for Microsoft Visual Studio which demonstrates what the C99 interface looks like.)</li>
+ <li>Otherwise, if the compiler doesn't provide a usable <code>&lt;stdint.h&gt;</code> header, a custom implementation shipped with the SpiderMonkey source is used.  Currently only versions of Visual Studio prior to 2010 (also known as version 10) are known to be deficient in this manner, so the custom implementation (which is compatible with the one shipped in Visual Studio 2010 and later) is only invoked for those compilers.</li>
+ <li>Otherwise <code>&lt;stdint.h&gt;</code> is used.</li>
+</ol>
+
+<p>The environment variable is provided as a solution for embedders whose code requires particular definitions of those types, and those particular definitions are incompatible with the standard definitions or the custom implementation needed for older versions of Visual Studio.  In the long run we anticipate removing the environment variable-based overriding when we drop support for versions of Visual Studio prior to 2010.  In the meantime <code>MOZ_CUSTOM_STDINT_H</code> is intended to function as a bridge to always using the standard header.</p>
+
+<p>For more information on the fixed-size integer types changes, see <a class="external" href="http://whereswalden.com/2011/12/08/party-like-its-1999-stdint-h-comes-to-mozilla/" title="http://whereswalden.com/2011/12/08/party-like-its-1999-stdint-h-comes-to-mozilla/">this blog post</a>.</p>
+
+<h2 id="New_C_APIs" style="position: static;">New C APIs</h2>
+
+<ul>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_GetArrayPrototype" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_GetArrayPrototype"><code>JS_GetArrayPrototype</code></a> provides access to the original value of <code>Array.prototype</code>.</li>
+</ul>
+
+<h2 id="New_C_helpers">New C++ helpers</h2>
+
+<p>While JSAPI remains a C API, the engine is now implemented in C++. Some C++ helpers have been introduced into the API, to help embedders writing C++ projects.  Please note that SpiderMonkey reserves the <code>JS::</code> namespace for itself (and the <code>js::</code> namespace for internal use).</p>
+
+<ul>
+ <li><code>...list new C++ helpers here...</code></li>
+</ul>
+
+<h2 id="Obsolete_APIs">Obsolete APIs</h2>
+
+<ul>
+ <li><code>...list obsolete methods/structs/APIs here...</code></li>
+</ul>
+
+<h2 id="Deleted_APIs">Deleted APIs</h2>
+
+<ul>
+ <li><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GET_CLASS" title="JS GetClass">JS_GET_CLASS</a> (use <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetClass" title="JS GetClass">JS_GetClass</a></code> instead)</li>
+ <li>JS_EnumerateResolvedStandardClasses</li>
+ <li>JS_GetGlobalObject</li>
+ <li><a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_CStringsAreUTF8">JS_SetCStringsAreUTF8</a></li>
+ <li>...list other deleted APIs...</li>
+</ul>
+
+<h2 id="API_changes">API changes</h2>
+
+<p>Break out and discuss all API changes here...</p>
+
+<p><code>JSOPTION_STRICT</code> has been renamed to <code>JSOPTION_EXTRA_WARNINGS</code>.</p>
+
+<p>JS_SetVersion has been removed, JS Version is now set on the compartment instead of context.</p>
+
+<p>JS_GetPrototype, takes context as first argument</p>
+
+<p>JS_EncodeStringToBuffer takes add context as first argument,</p>
+
+<p>JS_NewRuntime adds a JS_[USE|NO]_HELPER_THREADS flag</p>
+
+<p>Delete property in JSClass definitions now use JS_DeletePropertyStub<br>
+  </p>
+
+<p><strong>Garbage Collection functions now take runtime argument</strong></p>
+
+<p> </p>
+
+<p>Most garbage collection functions now take a runtime argument instead of a context. The one exception to this is <code>JS_MaybeGC </code>which still takes a context as argument.</p>
+
+<h2 id="JavaScript_shell_changes">JavaScript shell changes</h2>
+
+<p>Detail added/removed methods here...</p>
+
+<h2 id="Known_Issues">Known Issues</h2>
+
+<p>Detail any known issues here...</p>
+
+<h2 id="Future_Direction">Future Direction</h2>
+
+<p>...insert details on future plans...</p>
+
+<p>SpiderMonkey embedders should be aware that</p>
+
+<ul>
+ <li>Mozilla has no plans to keep the JSAPI, nor the JSDBGAPI stable for embedders. We have chosen to concentrate on performance and correctness as primary concerns instead.</li>
+ <li>The team is considering the removal of TinyIDs</li>
+ <li>JS_THREADSAFE is going away, with future versions supporting only thread-safe builds</li>
+ <li>A new debugging API is on the way to replace JSD.</li>
+</ul>
+
+<h2 id="Release_Notes_Errata">Release Notes Errata</h2>
+
+<p>This is a list of changes which need to be made to the release notes ASAP. Feel free to fix any problems you spot -- this is a Wiki!</p>
+
+<ul>
+ <li>Don't add anything here -- this is for after the release notes are completed.  :-)</li>
+</ul>

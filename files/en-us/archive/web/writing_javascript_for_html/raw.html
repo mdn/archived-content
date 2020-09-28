@@ -1,0 +1,179 @@
+<p>In practise, very few XHTML documents are served over the Web with the correct MIME media type, <code>application/xhtml+xml</code>. Whilst authored to the stricter rules of XML, they are sent with the media type for HTML (<code>text/html</code>). The receiving browser considers the content to be HTML, and does not utilise its XML parser.</p>
+
+<p>There are a number of reasons for this. Partially it is because, prior to version 9, Internet Explorer was incapable of handling XHTML sent with the official XHTML media type at all. (Rather than displaying content, it would present the user with a file download dialog.) But it is also founded in the experience that JavaScript, authored carefully for HTML, can break when placed with an XML environment.</p>
+
+<p>This article shows some of the reasons alongside with strategies to remedy the problems. It will encourage web authors to use more XML features and make their JavaScript interoperable with real XHTML applications.</p>
+
+<p>(Note that XHTML documents which behave correctly in both <code>application/xhtml+xml</code> and <code>text/html</code> environments are sometimes known as 'polyglot' documents.)</p>
+
+<p>To test the following examples locally, use <a href="/en/XML_in_Mozilla#XHTML" title="en/XML_in_Mozilla#XHTML">Firefox's extension switch</a>. Just write an ordinary (X)HTML file and save it once as <em>test.html</em> and once as <em>test.xhtml</em>.</p>
+
+<h3 id="Problem:_Nothing_Works" name="Problem:_Nothing_Works">Problem: Nothing Works</h3>
+
+<p>After switching the MIME type suddenly no inline script works anymore. Even the plain old <em>alert()</em> method is gone. The code looks something like this:</p>
+
+<pre class="brush: html"><span class="nowiki">&lt;script type="text/javascript"&gt;
+   //&lt;!--
+   window.alert("Hello World!");
+   //--&gt;
+ &lt;/script&gt;</span>
+</pre>
+
+<h4 id="Solution:_The_CDATA_Trick" name="Solution:_The_CDATA_Trick">Solution: The CDATA Trick</h4>
+
+<p>This problem usually arises, when inline scripts are included in comments. This was common practice in HTML, to hide the scripts from browsers not capable of JS. In the age of XML comments are what they were intended: comments. Before processing the file, all comments will be stripped from the document, so enclosing your script in them is like throwing your lunch in a Piranha pool. Moreover, there's really no point to commenting out your scripts -- <em>no browser written in the last ten years will display your code on the page</em>.</p>
+
+<p>The easy solution is to do away with the commenting entirely:</p>
+
+<pre class="brush: html"><span class="nowiki">&lt;script type="text/javascript"&gt;
+   window.alert("Hello World!");
+ &lt;/script&gt;</span>
+</pre>
+
+<p>This will work so long as your code doesn't contain characters which are "special" in XML, which usually means <code>&lt;</code> and <code>&amp;</code>. If your code contains either of these, you can work around this with CDATA sections:</p>
+
+<pre class="brush: html"><span class="nowiki">&lt;script type="text/javascript"&gt;
+ &lt;![CDATA[
+   // is the variable a non-negative integer less than 10?
+   if (variable &lt; 10 &amp;&amp; variable &gt;= 0)
+     action();
+ ]]&gt;
+ &lt;/script&gt;</span>
+</pre>
+
+<p>Note that the CDATA section is only necessary because of the <code>&lt;</code> in the code; otherwise you could have ignored it.</p>
+
+<p>A third solution is to <a href="/en/Properly_Using_CSS_and_JavaScript_in_XHTML_Documents" title="en/Properly_Using_CSS_and_JavaScript_in_XHTML_Documents">use only external scripts</a>, neatly sidestepping the special-character problem.</p>
+
+<p>Alternatively, the CDATA section can be couched within comments so as to be able to work in either application/xhtml+xml or text/html:</p>
+
+<pre class="brush: html">&lt;script type="text/javascript"&gt;
+//&lt;![CDATA[
+        ...
+//]]&gt;
+&lt;/script&gt;
+
+&lt;!-- (For styles, it is different) --&gt;
+
+&lt;style type="text/css"&gt;
+/*&lt;![CDATA[*/
+        ...
+/*]]&gt;*/
+&lt;/style&gt;</pre>
+
+<p>And if you really need compatibility with very old browsers that do not recognize the script or style tags resulting in their contents displayed on the page, you can use this:</p>
+
+<pre class="brush: html">&lt;script type="text/javascript"&gt;&lt;!--//--&gt;&lt;![CDATA[//&gt;&lt;!--
+        ...
+//--&gt;&lt;!]]&gt;&lt;/script&gt;
+
+&lt;!-- (For styles, it is different) --&gt;
+
+&lt;style type="text/css"&gt;&lt;!--/*--&gt;&lt;![CDATA[/*&gt;&lt;!--*/
+        ...
+/*]]&gt;*/--&gt;&lt;/style&gt;
+</pre>
+
+<p>See <a class="external" href="http://hixie.ch/advocacy/xhtml" title="http://hixie.ch/advocacy/xhtml">this document</a> for more on the issues related to application/xhtml+xml and text/html (at least as far as XHTML 1.* and HTML 4; HTML5 addresses many of these problems).</p>
+
+<h3 id="Problem_Names_in_XHTML_and_HTML_are_represented_in_different_cases">Problem: Names in XHTML and HTML are represented in different cases</h3>
+
+<p>Scripts that used getElementsByTagName() with an upper case HTML name no longer work, and attributes like nodeName or tagName return upper case in HTML and lower case in XHTML.</p>
+
+<h3 id="Solution_Use_or_convert_to_lower_case">Solution: Use or convert to lower case</h3>
+
+<p>For methods like getElementsByTagName(), passing the name in lower case will work in both HTML and XHTML. For name comparisons, first convert to lower case before doing the comparison (e.g., "el.nodeName.toLowerCase() === 'html'"). This will ensure that documents in HTML will compare correctly and will do no harm in XHTML where the names are already lower case.</p>
+
+<h3 id="Problem:_My_Cookie_Won.27t_Be_Saved.21" name="Problem:_My_Cookie_Won.27t_Be_Saved.21">Problem: My Cookie Isn't Saved!</h3>
+
+<p>We found out already, that the document object in XML files is different from the ones in HTML files. Now we take a look at one widly used property that is missing in XML files. In XML documents there is no <em>document.cookie</em>. That is, you can write something like</p>
+
+<pre class="brush: js">document.cookie = "key=value";
+</pre>
+
+<p>in XML as well, but nothing is saved in cookie storage.</p>
+
+<h4 id="Solution:_Use_the_Storage_Object" name="Solution:_Use_the_Storage_Object">Solution: Use the Storage Object</h4>
+
+<p>With Firefox 2 there was a new feature enabled, the <a href="/en/DOM/Storage" title="en/DOM/Storage">HTML 5 Storage object</a>. Although this feature is not free of critics, you can use it to bypass the non-existing cookie, if your document is of type XML. Again, you will have to write your own wrapper to respect any given combination of MIME type and browser.</p>
+
+<h3 id="Problem:_I_Can.27t_Use_document.write.28.29" name="Problem:_I_Can.27t_Use_document.write.28.29">Problem: I Can't Use <em>document.write()</em></h3>
+
+<p>This problem has the same cause as the one above. This method does not exist in <em>XMLDocument</em>s anymore. There are reasons why this decision was made, one being that a string of invalid markup will instantly break the whole document.</p>
+
+<h4 id="Solution:_Use_DOM_Methods" name="Solution:_Use_DOM_Methods">Solution: Use DOM Methods</h4>
+
+<p>Many people avoided DOM methods because of the typing to create one simple element, when <em>document.write()</em> worked. Now you can't do this as easily as before. Use DOM methods to create all of your elements, attributes and other nodes. This is XML proof, as long as you keep the namespace problem in focus (e.g., there is a <em>document.createElementNS</em> method).</p>
+
+<p>Of course, you can still use strings like in document.write(), but it takes a little more effort. For example:</p>
+
+<pre class="brush: js">var string = '<span class="nowiki">&lt;div xmlns="http://www.w3.org/999/xhtml"&gt;&lt;h1&gt;Hello World!&lt;/h1&gt;&lt;/div&gt;</span>';
+var parser = new DOMParser();
+var documentFragment = parser.parseFromString(string, "text/xml");
+body.appendChild(documentFragment); // assuming 'body' is the body element
+</pre>
+
+<p>But be aware that if your string is not well-formed XML (e.g., you have an &amp; where it should not be), then this method will crash, leaving you with a parser error.</p>
+
+<h3 id="Problem_I_want_to_remain_forward_compatible!">Problem: I want to remain forward compatible!</h3>
+
+<p>Given the direction away from formatting attributes and the possibility of XHTML becoming eventually more prominent (or at least the document author having the possibility of later wanting to make documents available in XHTML for browsers that support it), one may wish to avoid features which are not likely to stay compatible into the future.</p>
+
+<h3 id="Solution_Avoid_HTML-specific_DOM">Solution: Avoid HTML-specific DOM</h3>
+
+<p>The <a class="external" href="http://www.w3.org/TR/DOM-Level-2-HTML/html.html" title="http://www.w3.org/TR/DOM-Level-2-HTML/html.html">HTML DOM</a> , even though it is compatible with XHTML 1.0, is not guaranteed to work with future versions of XHTML (perhaps especially the formatting properties which have been deprecated as element attributes). The regular XML <a href="/en/DOM" title="En/DOM">DOM</a> provides sufficient methods via the <a href="/en/DOM/element" title="En/DOM/Element">Element</a> interface for getting/setting/removing attributes.</p>
+
+<h3 id="Problem:_My_Favourite_JS_Library_still_Breaks" name="Problem:_My_Favourite_JS_Library_still_Breaks">Problem: My Favourite JS Library still Breaks</h3>
+
+<p>If you use JavaScript libraries like the famous prototype.js or Yahoo's one, there is bad news for you: As long as the developers don't apply the fixes mentioned above, you won't be able to use them in your XML-XHTML applications.</p>
+
+<p>Two possible ways still are there, but neither is very promissing: Take the library, recode it and publish it or e-mail the developers, e-mail your friends to e-mail the developers and e-mail your customers to e-mail the developers. If they get the hint and are not too annoyed, perhaps they start to implement XML features in their libraries.</p>
+
+<h3 id="I_Read_about_E4X._Now.2C_This_Is_Perfect.2C_Isn.27t_It.3F" name="I_Read_about_E4X._Now.2C_This_Is_Perfect.2C_Isn.27t_It.3F">I Read about E4X. Now, This Is Perfect, Isn't It?</h3>
+
+<p>As a matter of fact, it isn't. <a href="/en/E4X" title="en/E4X">E4X</a> is a new method of using and manipulating XML in JavaScript. But, standardized by ECMA, they neglected to implement an interface to let E4X objects interact with DOM objects our document consists of. So, with every advantage E4X has, without a DOM interface you can't use it productively to manipulate your document. However, it can be used for data, and be converted into a string which can then be converted into a DOM object. DOM objects can similarly be converted into strings which can then be converted into E4X.</p>
+
+<h3 id="Finally:_Content_Negotiation" name="Finally:_Content_Negotiation">Finally: Content Negotiation</h3>
+
+<p>Now, how do we decide, when to serve XHTML as XML? We can do this on server side by evaluating the <a href="/en/HTTP" title="en/HTTP">HTTP</a> request header. Every browser sends with its request a list of MIME types it understands, as part of the <a href="/en/HTTP/Content_negotiation" title="https://developer.mozilla.org/en/HTTP/Content_negotiation">HTTP content negotiation</a> mechanism. So if the browser tells our server, that it can handle XHTML as XML, that is, the <a href="/en/HTTP/Content_negotiation#The_Accept.3a_header" title="https://developer.mozilla.org/en/HTTP/Content_negotiation#The_Accept.3a_header"><code>Accept:</code></a> field in the <a href="/en/HTTP/Headers" title="https://developer.mozilla.org/en/HTTP/Headers">HTTP head</a> contains <code>application/xhtml+xml</code> somewhere, we are safe to send the content as XML.</p>
+
+<p>In PHP, for example, you would write something like this:</p>
+
+<pre class="brush: js">if( strpos( $_SERVER['HTTP_ACCEPT'], "application/xhtml+xml" ) ) {
+  header( "Content-type: application/xhtml+xml" );
+  echo '&lt;?xml version="1.0" ?&gt;'."\n";
+} else {
+  header( "Content-type: text/html" );
+}
+</pre>
+
+<p>This distinction also sends the XML declaration, which is strongly recommended, when the document is an XML file. If the content is sent as HTML, an XML declaration would break IE's Doctype switch, so we don't want it there.</p>
+
+<p>For completeness here is the <em>Accept</em> field, that Firefox 2.0.0.9 sends with its requests:</p>
+
+<pre class="eval">Accept: text/xml,application/xml,<strong>application/xhtml+xml</strong>,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5
+</pre>
+
+<h3 id="Further_Reading" name="Further_Reading">Further Reading</h3>
+
+<p>You will find several useful articles in the developer wiki:</p>
+
+<ul>
+ <li><a href="/en/XML_in_Mozilla" title="en/XML_in_Mozilla">XML in Mozilla</a></li>
+ <li><a href="/en/DOM" title="en/DOM">DOM</a></li>
+ <li><a href="/en/XML_Introduction" title="en/XML_Introduction">XML Introduction</a></li>
+ <li><a href="/en/XML_Extras" title="en/XML_Extras">XML Extras</a></li>
+</ul>
+
+<p>DOM 2 methods you will need are:</p>
+
+<ul>
+ <li><a href="/en/DOM/document.createElementNS" title="en/DOM/document.createElementNS">DOM:document.createElementNS</a></li>
+ <li><a href="/en/DOM/document.getElementsByTagNameNS" title="en/DOM/document.getElementsByTagNameNS">DOM:document.getElementsByTagNameNS</a></li>
+</ul>
+
+<h3 id="See_also"> See also</h3>
+
+<ul>
+ <li><a href="/en/Properly_Using_CSS_and_JavaScript_in_XHTML_Documents" title="en/Properly_Using_CSS_and_JavaScript_in_XHTML_Documents">Properly Using CSS and JavaScript in XHTML Documents</a></li>
+</ul>

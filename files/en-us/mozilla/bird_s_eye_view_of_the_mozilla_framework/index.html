@@ -1,0 +1,190 @@
+---
+title: A bird's-eye view of the Mozilla framework
+slug: Mozilla/Bird_s_Eye_View_of_the_Mozilla_Framework
+tags:
+  - Developing Mozilla
+---
+<div>
+<ul>
+ <li>Author: Susan D. Tiner</li>
+ <li>Last Updated Date: 11/23/05</li>
+</ul>
+</div>
+
+<h2 id="Statement_of_Purpose" name="Statement_of_Purpose">Statement of purpose</h2>
+
+<p><span class="seoSummary">The purpose of this article is to provide a high-level technical overview of the architecture of the extensible, object-based Mozilla application framework.</span> It examines what happens when the user performs a simple user interface (UI) action such as clicking a link in the <em>Contents Panel</em> of the <em>Help Viewer</em> window shown below.</p>
+
+<p>The article focuses on the architecture of the overall framework supporting the Mozilla application suite, not the architecture of the individual applications themselves.</p>
+
+<p><img alt="Image:Help.PNG" src="/@api/deki/files/252/=en/Media_Gallery/Help.PNG"></p>
+
+<h2 id="Prerequisites" name="Prerequisites">Prerequisites</h2>
+
+<p>This article assumes you have access to Mozilla sources and are familiar with the directory structure of the source tree. The code samples in the article are based on Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9a1) Gecko/20051104 SeaMonkey/1.1a from a new source tree checked out 11/04/05. The build ID is 2005110409. The<em>Help Viewer</em> files referenced in the article are located in</p>
+
+<p>/seamonkey/extensions/help/</p>
+
+<p>This article also assumes you are familiar with the JavaScript and C++ programming languages, object-oriented programming (OOP) terminology and design concepts, the Microsoft® Component Object Model (<a class="external" href="https://docs.microsoft.com/en-us/windows/win32/com/component-object-model--com--portal">COM</a>), and the CORBA OMG Interface Definition Language (<a class="external" href="https://www.corba.org/omg_idl.htm">IDL</a>).</p>
+
+<h2 id="Organization" name="Organization">Organization</h2>
+
+<p>This article first covers some conceptual groundwork, then walks through a user scenario to illustrate how key Mozilla architectural components work together to support a simple<em>Help Viewer</em> UI action.</p>
+
+<h2 id="Framework_Layers" name="Framework_Layers">Framework Layers</h2>
+
+<p>At a high level, you can think of the Mozilla framework as consisting of a suite of applications, each of which is organized into three basic layers depicted in Figure 1.</p>
+
+<p><br>
+ <em><strong>Figure 1. </strong></em></p>
+
+<p><img alt="Image:Aol.png" src="/@api/deki/files/34/=en/Media_Gallery/Aol.png"></p>
+
+<h3 id="User_Interface_.28UI.29_Widgets_and_Services" name="User_Interface_.28UI.29_Widgets_and_Services">User Interface (UI) Widgets and Services</h3>
+
+<p>The <a class="external" href="http://www.xfree86.org/current/X.7.html">X Window System</a> Toolkit defines the term<em>widget</em> as a pre-defined object that encapsulates both the command actions and data associated with a graphical user interface (GUI) control. The various X Toolkit implementations provide a set of widgets for UI controls such as menus, command buttons, dialog boxes and scroll bars. The Mozilla <a class="external" href="https://www-archive.mozilla.org/xpfe/orig/xpfe.html">XPToolkit</a> module provides a similar set of facilities for building cross-platform UI controls implemented as <a href="/en-US/docs/Archive/Mozilla/XUL/Tutorial">XML User Interface Language (XUL)</a> packages. A <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/overview.html">XUL package</a> consists of</p>
+
+<ul>
+ <li>a XUL description of the UI widget</li>
+ <li><a class="external" href="https://www.w3.org/Style/CSS/">Cascading Style Sheets</a> customizing appearance</li>
+ <li>JavaScript services implementing the UI behavior</li>
+</ul>
+
+<p>A package (also known as <a href="/en-US/docs/Archive/Mozilla/XUL/A_XUL_Bestiary"><em>chrome</em></a>) is really just a bundling of a set of UI widgets and associated services implementing a particular application feature. Chrome and <a href="en/Extensions">Extensions</a> are examples of packages.</p>
+
+<h3 id="Content_.28DOM.29" name="Content_.28DOM.29">Content (DOM)</h3>
+
+<p>The Mozilla <a href="/en-US/docs/Glossary/DOM">Document Object Model (DOM)</a> specifies a logical tree structure for storing UI and document content, and provides an API (Application Programming Interface) for accessing and manipulating the content. An application such as the browser may have one or more open documents accessible via DOM APIs. When an HTML, XML, SVG or other type of document is loaded, the <a class="external" href="http://www.mozilla.org/newlayout/">NGLayout</a> engine (also known as Gecko) parses the contents into a DOM tree, and handles the layout and rendering of the document pages. The NGLayout engine also parses XUL UI controls into a DOM tree and handles rendering of the UI.</p>
+
+<h3 id="Core_Services" name="Core_Services">Core Services</h3>
+
+<p>Modules such as the NGLayout engine comprise the core application services available to</p>
+
+<ul>
+ <li>other core modules, and</li>
+ <li>XUL packages</li>
+</ul>
+
+<p>Core application modules are implemented as a set of one or more <a href="en/Creating_XPCOM_Components">XPCOM</a> (Cross-Platform COM) objects.</p>
+
+<h2 id="XPCOM_Object_Model" name="XPCOM_Object_Model">XPCOM Object Model</h2>
+
+<p>Before getting into the details of the UI example, it's helpful to have a basic understanding of the XPCOM object model. Mozilla architectural modules are comprised of groups of related XPCOM objects that provide services to and access services from each other through dynamically queryable interfaces.</p>
+
+<h3 id="Object_Model_At_a_Glance" name="Object_Model_At_a_Glance">Object Model At a Glance</h3>
+
+<p>Mozilla dynamically loads and integrates core modules and XUL packages into the runtime environment on startup. Once loaded, a module or package has full access to the XPCOM objects of all the other modules in the runtime environment. The ability to dynamically integrate modules and packages at startup is a powerful benefit of the object model, which defines a module as a set of one or more XPCOM objects called<em>components</em>. These objects provide services to client packages and modules and access services provided by other modules through dynamically queryable interfaces. Figure 2 shows this structure.</p>
+
+<p><br>
+ <em><strong>Figure 2. </strong></em></p>
+
+<p><img alt="Image:Object.png" src="/@api/deki/files/284/=en/Media_Gallery/Object.png"></p>
+
+<p>In the diagram above, each horizontal line extending from an object and terminated by an open circle indicates an interface to the object. The client object does not need to know anything about the internal structure or implementation of the provider object in order to take advantage of its services. The client simply queries the provider for a particular service, and if available, accesses that service through an interface defined in <a href="en/XPIDL">XPIDL</a> (Cross-Platform IDL), derived from the CORBA IDL. The XPIDL interface description is independent of the programming language used to implement the object itself. For example, a JavaScript object or C++ class could both implement the same XPIDL interface.</p>
+
+<p>Scripting languages such as JavaScript cannot directly access XPCOM components, but access them indirectly using <a href="en/XPConnect">XPConnect</a>. XPConnect also provides a required layer for XPCOM components written in a scripting language.</p>
+
+<p>Let’s consider a <a class="external" href="http://www.xml.com/pub/a/2001/01/24/rdf.html">Resource Description Framework (RDF)</a> example, where RDF is a framework for describing and interchanging<em>metadata</em>, that is, information about information. In this example, we’re interested in the RDF sub-graph underlying the<em>Contents Panel</em> widget within the<em>Help Viewer</em> window. Suppose the client already has an <code>nsIRDFDataSource</code> object representing a sub-graph of an RDF graph and calls <code>nsIRDFDataSource.GetTarget(resource, NC_LINK, true)</code> to obtain an <code>nsIRDFNode</code> representing a specific node in the graph, in this case a link to a<em>Help Viewer</em> document page. The client is completely unaware of which C++ class (or other language) actually implements <code>nsIRDFNode</code>; it only interacts with the IDL interface.</p>
+
+<p>The client would like to ask the <code>nsIRDFNode</code> whether its supports <code>nsIRDFLiteral</code>. An <code>nsIRDFNode</code> must be an <code>nsIRDFLiteral</code> or an <code>nsIRDFResource</code>. The link is a literal, so the client wants <code>nsIRDFLiteral</code>. Since all XPCOM interfaces inherit the base interface <code>nsISupports</code>, the client can ask whether <code>nsIRDFNode</code> supports <code>nsIRDFLiteral</code> by calling <code>nsIRDFNode.QueryInterface()</code>, a method in the <code>nsISupports</code> interface.</p>
+
+<pre>[scriptable, uuid(00000000-0000-0000-c000-000000000046)]
+  interface nsISupports {
+  void QueryInterface(in nsIIDRef uuid,
+            iid_is(uuid),retval] out nsQIResult result);
+  [noscript, notxpcom] nsrefcnt AddRef();
+  [noscript, notxpcom] nsrefcnt Release();
+};
+</pre>
+
+<p>The <code>uuid</code> parameter to <code>QueryInterface()</code> is the IID uniqely identifying the interface.</p>
+
+<p>If <code>nsIRDFNode</code> doesn't support <code>nsIRDFLiteral</code>, it returns <code>null</code> and it's up to the client to choose an alternate course of action.</p>
+
+<p>The XPCOM component keeps track of all interface pointers currently held by its clients using an internal reference count it increments via client calls to <code>AddRef()</code>. It is up to the client to call <code>Release()</code> when it no longer needs the interface. <code>Release()</code> decrements the reference count and then the object becomes a candidate for destruction.</p>
+
+<p>JavaScript handles its own garbage collection, so it doesn’t need to call <code>AddRef()</code> and <code>Release()</code>.</p>
+
+<h3 id="Inside_an_XPCOM_Component" name="Inside_an_XPCOM_Component">Inside an XPCOM Component</h3>
+
+<p>Figure 3 shows a more detailed view of an XPCOM component.</p>
+
+<p><br>
+ <em><strong>Figure 3. </strong></em></p>
+
+<p><img alt="Image:Xpcom.png" src="/@api/deki/files/481/=en/Media_Gallery/Xpcom.png"></p>
+
+<p>As noted earlier, the component-specific interfaces of an XPCOM component all inherit from <code>nsISupports</code>. Likewise, an XPCOM component must implement</p>
+
+<ul>
+ <li><code>nsIFactory</code>, which provides a mechanism for creating an object without having access to the class declaration for that object,</li>
+ <li><code>nsIModule</code>, which provides a mechanism for registering and unregistering the XPCOM component, as well as for accessing the underlying class objects implementing the IDL interfaces, and</li>
+ <li><code>NSGetModule()</code>, the entry point used to load the XPCOM component.</li>
+</ul>
+
+<p>XPCOM components also link with a set of XPCOM utilities, such as strings, smart pointers, basic assertion and condition checking. These utilities are referred to as XPCOM <a href="/en-US/docs/Mozilla/Tech/XPCOM/Glue"><em>glue</em></a>.</p>
+
+<p>At startup, the core application component identifies and loads all of the different XPCOM components comprising the core application services and builds a central registry it uses to generate instances of XPCOM components and instances of interface implementation classes on demand.</p>
+
+<h3 id="XPCOM_in_Summary" name="XPCOM_in_Summary">XPCOM in Summary</h3>
+
+<p>To summarize, the XPCOM object model</p>
+
+<ul>
+ <li>specifies the structure of XPCOM components,</li>
+ <li>builds a central registry based on the XPCOM components loaded at startup,</li>
+ <li>generates XPCOM component instances on demand using the registry, which specifies the supported interfaces, their corresponding implementation objects, and the <code>nsIFactory</code> interface,</li>
+ <li>provides API facilities clients can use to dynamically create XPCOM components, and</li>
+ <li>specifies the mechanism clients use to query an XPCOM component for one of its interfaces, and to release the interface when it’s no longer needed.</li>
+</ul>
+
+<h2 id="JavaScript_Client_Example" name="JavaScript_Client_Example">JavaScript Client Example</h2>
+
+<p>Suppose the JavaScript service in Figure 2 is <code>getLink()</code> in Help.js, which responds to the user clicking on a link in the<em>Contents Panel</em> within the<em>Help Viewer</em> window by obtaining the link from the<em>Contents Panel</em> elements stored in a DOM tree. As a client, <code>getLink()</code> begins by obtaining the <code>XULElement</code> in the DOM tree representing the<em>Contents Panel</em>.</p>
+
+<pre>var tocTree = document.getElementById("help-toc-panel");
+</pre>
+
+<p>The document object is a <a class="external" href="http://www.mozilla.org/xpfe/xptoolkit/xulintro.html"><code>XULDocument</code></a>, and tocTree is the<em>Contents Panel</em> <code>XULElement</code>. Using the <code>database</code> attribute of the <code>XULElement</code>, <code>getLink()</code> obtains an <code>nsIRDFCompositeDataSource</code>, which presents the individual <code>datasources</code> of the <code>XULElement</code> as a single RDF graph.</p>
+
+<pre>
+var tocDS = tocTree.database;
+</pre>
+
+<p><code>NsIRDFCompositeDataSource</code> inherits from <code>nsIRDFDataSource</code>.</p>
+
+<p>Help.js declares an <code>nsIRDFService</code> as a compile time constant at the beginning of the file.</p>
+
+<pre>
+const RDF = Components.classes["@mozilla.org/rdf/rdf-service;1"].getService(Components.interfaces.nsIRDFService);
+</pre>
+
+<p>The <a class="external" href="http://www.mozilla.org/scriptable/components_object.html"><code>Components</code></a> object is made available to JavaScript via XPConnect; it serves as a bridge connecting JavaScript and XPCOM.</p>
+
+<p><code>getLink()</code> uses the <code>nsIRDFService</code> to obtain an <code>nsIRDFResource</code> for the requested link.</p>
+
+<pre>
+var resource = RDF.GetResource(rdfID);
+</pre>
+
+<p><code>nsIRDFCompositeDataSource</code> inherits from <code>nsIRDFDataSource</code>, which supports a <code>GetTarget()</code> method for obtaining the <code>nsIRDFNode</code> for a given resource and property.</p>
+
+<pre>
+var link = tocDS.GetTarget(resource, NC_LINK, true);
+</pre>
+
+<p>Now that <code>getLink()</code> has the <code>nsIRDFNode</code> for the link, it can call <code>QueryInterface()</code> to check whether the <code>nsIRDFLiteral</code> is supported.</p>
+
+<pre>
+link = link.QueryInterface(Components.interfaces.nsIRDFLiteral);
+</pre>
+
+<p>If <code>nsIRDFLiteral</code> is supported, <code>getLink()</code> uses it to return the value of the link. Otherwise it returns <code>null</code>.</p>
+
+<pre>if (link)
+  return link.Value;
+else
+  return null;
+</pre>
+
+<p>The document page for the link is displayed in the<em>Help Viewer</em> window.</p>

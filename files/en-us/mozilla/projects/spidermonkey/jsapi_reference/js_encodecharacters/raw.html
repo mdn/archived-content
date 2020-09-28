@@ -1,0 +1,76 @@
+<div>
+ {{SpiderMonkeySidebar("JSAPI")}}</div>
+<p>{{ obsolete_header("jsapi19") }}</p>
+<div class="summary">
+<p>Convert a 16-bit string to an 8-bit string.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">JSBool
+JS_EncodeCharacters(JSContext *cx, const jschar *src, size_t srclen,
+                    char *dst, size_t *dstlen);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>A context.</td>
+  </tr>
+  <tr>
+   <td><code>src</code></td>
+   <td>{{jsapixref("jschar", "const jschar *")}}</td>
+   <td>The pointer to 16-bit values of JSString. This can be obtained with {{jsapixref("JS_GetStringChars")}}.</td>
+  </tr>
+  <tr>
+   <td><code>srclen</code></td>
+   <td><code>size_t</code></td>
+   <td>The length of the source string, in 16-bit values.</td>
+  </tr>
+  <tr>
+   <td><code>dst</code></td>
+   <td><code>const char *</code></td>
+   <td>The pointer to an array of bytes to be filled with encoded characters; or <code>NULL</code>. The caller is responsible for allocating and freeing this buffer.</td>
+  </tr>
+  <tr>
+   <td><code>dstlenp</code></td>
+   <td><code>size_t *</code></td>
+   <td>In/out parameter. On entry, if <code>dst</code> is non-null, <code>*dstlenp</code> must be the length of the destination string in 16-bit units. On success, <code>*dstlenp</code> receives the length of the converted string, in bytes. On failure, <code>*dstlenp</code> receives the number of bytes written to <code>dst</code> before the error occurred.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><strong><code>JS_EncodeCharacters</code></strong> copies the characters of a <code>jschar</code> array into a <code>char</code> array, converting the 16-bit values to 8-bit values. If SpiderMonkey was built with {{jsapixref("JS_C_STRINGS_ARE_UTF8")}} defined or {{jsapixref("JS_CStringsAreUTF8", "JS_SetCStringsAreUTF8")}} was called, the string is converted to UTF-8.  Otherwise each character is simply truncated to 8 bits.</p>
+<p>If UTF-8 is turned on, the length of the encoded string may vary.  To calculate the number of bytes needed, call <code>JS_EncodeCharacters</code> twice, like this:</p>
+<pre class="brush: cpp">    /* Determine how many bytes to allocate. */
+    size_t dstlen = 0;
+    if (!JS_EncodeCharacters(cx, src, srclen, NULL, &amp;dstlen))
+        return JS_FALSE;
+
+    /* Allocate. */
+    char *dst = (char *) JS_malloc(cx, dstlen);
+    if (dst == NULL)
+        return JS_FALSE;
+
+    /* Convert characters to bytes. */
+    JS_EncodeCharacters(cx, src, srclen, dst, &amp;dstlen);
+
+    /* Use the converted bytes for something. */
+    ...
+
+    /* Remember to free the bytes afterwards. */
+    JS_free(cx, dst);
+    return JS_TRUE;
+</pre>
+<p>On success, <code>JS_EncodeCharacters</code> sets <code>*dstlenp</code> to the real result length and returns <code>JS_TRUE</code>. Otherwise it reports an error and returns <code>JS_FALSE</code>.  This happens if the destination is too small for the resulting string or if the source buffer isn't proper UTF-16 because it contains unpaired surrogate values.</p>
+<p>The user is responsible for allocating and freeing the memory of the destination string.</p>
+<p><code>JS_EncodeCharacters</code> never adds a trailing null character. To obtain a null-terminated string, allocate an extra byte for the null character and set it manually.</p>
+<p>To convert bytes to <code>jschar</code>s, the opposite conversion, use {{jsapixref("JS_DecodeBytes")}}. To convert a {{jsapixref("JSString")}} to a C <code>char</code> string, use {{jsapixref("JS_EncodeString")}} or {{jsapixref("JS_GetStringBytes")}}.</p>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+<li>{{bug(805080)}}</li>
+</ul>

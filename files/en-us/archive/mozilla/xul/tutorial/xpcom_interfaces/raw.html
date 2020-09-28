@@ -1,0 +1,174 @@
+<p> </p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:Box_Objects" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:XPCOM_Examples">Next  »</a></p>
+</div>
+
+<p>In this section, we'll take a brief look at <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> (Cross-platform Component Object Model), which is the Object system that Mozilla uses.</p>
+
+<h3 id="Calling_Native_Objects" name="Calling_Native_Objects">Calling Native Objects</h3>
+
+<p>By using XUL we can build a complex user interface. We can attach scripts which modify the interface and perform tasks. However, there are quite a number of things that cannot be performed directly with JavaScript. For example, if we wanted to create a mail application, we would need to write scripts which would connect to mail servers to retrieve and send mail. JavaScript does not have the capability to do such things.</p>
+
+<p>The only way to handle this would be to write native code that would get mail. We also need to have a way for our scripts to call the native code easily. Mozilla provides such a method which involves using <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> (Cross-platform Component Object Model).</p>
+
+<div class="note">Mozilla provides many XPCOM components and interfaces. So, in most cases, you don't need to write native code for yourself. After learning this section, you can search suitable interfaces using <a class="external" href="https://developer.mozilla.org/en-US/docs/Mozilla/XPCOM">XULPlanet XPCOM Reference</a></div>
+
+<h3 id="About_XPCOM" name="About_XPCOM">About XPCOM</h3>
+
+<p>Mozilla is constructed from a collection of components, each of which performs a certain task. For example, there is a component for each menu, button and element. The components are constructed from a number of definitions called interfaces.</p>
+
+<p>An interface in Mozilla is a definition of a set of functionality that could be implemented by components. Components are what implement the code in Mozilla that does things. Each component implements the functionality as described by interfaces. A single component might implement multiple interfaces. And multiple components might implement the same interface.</p>
+
+<p>Let's take an example of a file component. An interface would need to be created which describes properties and functions that can be performed on files. A file would need properties for its name, modification date and its size. Functions of a file would include moving, copying and deleting it.</p>
+
+<p>The File interface only describes the characteristics of a file, it does not implement it. The implementation of the File interface is left to a component. The component will have code which can retrieve the file's name, date and size. In addition, it will have code which copies and renames it.</p>
+
+<p>We don't care how the component implements it, as long as it implements the interface correctly. Of course, we'll have different implementations anyway, one for each platform. The Windows and Macintosh versions of a file component would be significantly different. However, they would both implement the same interface. Thus, we can use a component by accessing it using the functions we know from the interface.</p>
+
+<p>In Mozilla, interfaces are usually preceded by 'nsI' or 'mozI' so that they are easily recognized as interfaces. For example, the <code>nsIAddressBook</code> is the interface for interacting with an address book, <code>nsISound</code> is used for playing files and <code>nsILocalFile</code> is used for files. For more interfaces in Mozilla, see <a href="/en/Interfaces" title="en/Interfaces">Interfaces</a>.</p>
+
+<p>XPCOM components are typically implemented natively, which means that they generally do things that JavaScript cannot do itself. However, there is a way in which you can call them, which we will see shortly. We can call any of the functions provided by the component as described by the interfaces it implements. For example, once we have a component, we can check if it implements <code>nsISound</code>, and, if so, we can play sound through it.</p>
+
+<p>The process of calling XPCOM from a script is called <a href="/en/XPConnect" title="en/XPConnect">XPConnect</a>, which is a layer which translates script objects into native objects.</p>
+
+<h3 id="Creating_XPCOM_Objects" name="Creating_XPCOM_Objects">Creating XPCOM Objects</h3>
+
+<p>There are three steps to calling an XPCOM component.</p>
+
+<ol>
+ <li>Get a component</li>
+ <li>Get the part of the component that implements the interface that we want to use.</li>
+ <li>Call the function we need</li>
+</ol>
+
+<p>Once you've done the first two steps, you can repeat the last step as often as necessary. Let's say we want to rename a file. For this we can use the nsILocalFile interface. The first step is getting a file component. Second, we query the file component and get the portion of it that implements the nsILocalFile interface. Finally, we call functions provided by the interface. This interface is used to represent a single file.</p>
+
+<p>We've seen that interfaces are often named starting with 'nsI' or 'mozI'. Components, however, are referred to using a URI like string. Mozilla stores a list of all the components that are available in its own registry. A particular user can install new components as needed. It works much like plug-ins.</p>
+
+<p>Mozilla provides a file component, that is, a component that implements <code><a href="/en/nsILocalFile" title="en/nsILocalFile">nsILocalFile</a></code>. This component can be referred to using the string <code><a class="link-mailto" href="mailto:'@mozilla.org" rel="freelink">'@mozilla.org</a>/file/local;1'</code>. This string is called a contract ID. The syntax of a contract ID is:</p>
+
+<pre class="eval">@&lt;internetdomain&gt;/module[/submodule[...]];&lt;version&gt;[?&lt;name&gt;=&lt;value&gt;[&amp;&lt;name&gt;=&lt;value&gt;[...]]]
+</pre>
+
+<p>Other components can be referred to in a similar way.</p>
+
+<p>The contract ID of the component can be used to get the component. You can get a component using JavaScript code like that below:</p>
+
+<pre>var aFile = Components.classes["@mozilla.org/file/local;1"].createInstance();
+</pre>
+
+<p>The file component is retrieved and stored in the <em>aFile</em> variable. <code><a href="/en/Components_object" title="en/Components_object">Components</a></code> in the example above refers to a general object that provides some component related functions. Here, we get a component class from the <code>classes</code> property. The <code>classes</code> property is an array of all of the available components. To get a different component, just replace the contract ID inside the square brackets with the contract ID of the component you want to use. Finally, an instance is created with the <code>createInstance()</code> function.</p>
+
+<p>You should check the return value of <code>createInstance()</code> to ensure that it is not null, which would indicate that the component does not exist.</p>
+
+<p>However, at this point, we only have a reference to the file component itself. In order to call the functions of it we need to get one of its interfaces, in this case <code><a href="/en/nsILocalFile" title="en/nsILocalFile">nsILocalFile</a></code>. A second line of code needs to be added as follows:</p>
+
+<pre>var aFile = Components.classes["@mozilla.org/file/local;1"].createInstance();
+if (aFile) aFile.QueryInterface(Components.interfaces.nsILocalFile);
+</pre>
+
+<p>The function <code>QueryInterface()</code> is a function provided by all components which can be used to get a specific interface of that component. This function takes one parameter, the interface that you want to get. The <code>interfaces</code> property of the <code>Components</code> object contains a list of all the interfaces that are available. Here, we use the nsILocalFile interface and pass it as a parameter to <code>QueryInterface()</code>. The result is that aFile will be a reference to the part of the component that implements the nsILocalFile interface.</p>
+
+<p>The two JavaScript lines above can be used to get any interface of any component. Just replace the component name with the name of the component you want to use and change the interface name. You can also use any variable names of course. For example, to get a sound interface, you can do the following:</p>
+
+<pre>var sound = Components.classes["@mozilla.org/sound;1"].createInstance();
+if (sound) sound.QueryInterface(Components.interfaces.nsISound);
+</pre>
+
+<p>XPCOM interfaces can inherit from other interfaces. The interfaces that inherit from others have their own functions and the functions of all the interfaces that they inherit from. All interfaces inherit from a top-level interface called <code>nsISupports</code>. It has one function supplied to JavaScript, <code>QueryInterface()</code>, which we have already seen. Because the interface nsISupports is implemented by all components, the function <code>QueryInterface()</code> function is available in every component.</p>
+
+<p>Several components may implement the same interface. Typically, they might be subclasses of the original but not necessarily. Any component may implement the functionality of nsILocalFile. In addition, a component may implement several interfaces. It is for these reasons that two steps are involved in getting an interface to call functions through.</p>
+
+<p>However, there is a shortcut we can use because we'll often use both of these lines together:</p>
+
+<pre>var aLocalFile = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsILocalFile);
+</pre>
+
+<p>This will do the same thing as the two lines but in one line of code. It eliminates the need to create the instance and then query it for an interface in two separate steps.</p>
+
+<p>If you call <code>QueryInterface()</code> on an object and the requested interface is not supported by an object, an exception is thrown. If you're not sure that an interface is supported by a component, you can use the <code><a href="/en/Core_JavaScript_1.5_Reference/Operators/Special_Operators/instanceof_Operator" title="en/Core_JavaScript_1.5_Reference/Operators/Special_Operators/instanceof_Operator">instanceof</a></code> operator to check:</p>
+
+<pre>var aFile = Components.classes["@mozilla.org/file/local;1"].createInstance();
+if (aFile instanceof Components.interfaces.nsILocalFile){
+  // do something
+}
+</pre>
+
+<p>The instanceof operator returns true if aFile implements the nsILocalFile interface. This also has the side effect of calling <code>QueryInterface()</code>, so aFile will be a valid nsILocalFile afterwards.</p>
+
+<h3 id="Calling_the_Functions_of_an_Interface" name="Calling_the_Functions_of_an_Interface">Calling the Functions of an Interface</h3>
+
+<p>Now that we have an object that refers to a component with the nsILocalFile interface, we can call the functions of nsILocalFile through it. The table below shows some of the properties and methods of the nsILocalFile interface.</p>
+
+<dl>
+ <dt>initWithPath </dt>
+ <dd>This method is used to initialize the path and filename for the nsILocalFile. The first parameter should be the file path, such as '/usr/local/mozilla'.</dd>
+ <dt>leafName </dt>
+ <dd>The filename without the directory part.</dd>
+ <dt>fileSize </dt>
+ <dd>The size of the file.</dd>
+ <dt>isDirectory() </dt>
+ <dd>Returns true if the nsILocalFile represents a directory.</dd>
+ <dt>remove(recursive) </dt>
+ <dd>Deletes a file. If the recursive parameter is true, a directory and all of its files and subdirectories will also be deleted.</dd>
+ <dt>copyTo(directory,newname) </dt>
+ <dd>Copies a file to another directory, optionally renaming the file. The directory should be a nsILocalFile holding the directory to copy the file to.</dd>
+ <dt>moveTo(directory,newname) </dt>
+ <dd>Moves a file to another directory, or renames a file. The directory should be a nsILocalFile holding the directory to move the file to.</dd>
+</dl>
+
+<p>In order to delete a file we first need to assign a file to the nsILocalFile. We can call the method <code>initWithPath()</code> to indicate which file we mean. Just assign the path of the file to this property. Next, we call the <code>remove()</code> function. It takes one parameter which is whether to delete recursively. The code below demonstrates these two steps:</p>
+
+<pre>var aFile = Components.classes["@mozilla.org/file/local;1"].createInstance();
+if (aFile instanceof Components.interfaces.nsILocalFile){
+  aFile.initWithPath("/mozilla/testfile.txt");
+  aFile.remove(false);
+}
+</pre>
+
+<p>This code will take the file at /mozilla/testfile.txt and delete it. Try this example by adding this code to an event handler. You should change the filename to an existing file that you have that you would like to delete.</p>
+
+<p>In the functions table above, you will see two functions copyTo() and moveTo(). These two functions can be used to copy files and move files respectively. Note that they do not take a string parameter for the directory to copy or move to, but instead take an nsILocalFile. That means that you'll need to get two file components. The example below shows how to copy a file.</p>
+
+<pre>function copyFile(sourcefile,destdir)
+{
+  // get a component for the file to copy
+  var aFile = Components.classes["@mozilla.org/file/local;1"]
+    .createInstance(Components.interfaces.nsILocalFile);
+  if (!aFile) return false;
+
+  // get a component for the directory to copy to
+  var aDir = Components.classes["@mozilla.org/file/local;1"]
+    .createInstance(Components.interfaces.nsILocalFile);
+  if (!aDir) return false;
+
+  // next, assign URLs to the file components
+  aFile.initWithPath(sourcefile);
+  aDir.initWithPath(destdir);
+
+  // finally, copy the file, without renaming it
+  aFile.copyTo(aDir,null);
+}
+
+copyFile("/mozilla/testfile.txt","/etc");
+</pre>
+
+<h3 id="XPCOM_Services" name="XPCOM_Services">XPCOM Services</h3>
+
+<p>Some XPCOM components are special components called services. You do not create instances of them because only one should exist. Services provide general functions which either get or set global data or perform operations on other objects. Instead of calling <code>createInstance()</code>, you call <code>getService()</code> to get a reference to the service component. Other than that, services are not very different from other components.</p>
+
+<p>One such service provided with Mozilla is a bookmarks service. It allows you to add bookmarks to the user's current bookmark list. An example is shown below:</p>
+
+<pre>var bmarks = Components.classes["@mozilla.org/browser/bookmarks-service;1"].getService();
+bmarks.QueryInterface(Components.interfaces.nsIBookmarksService);
+bmarks.addBookmarkImmediately("http://www.mozilla.org","Mozilla",0,null);
+</pre>
+
+<p>First, the component "@mozilla.org/browser/bookmarks-service;1" is retrieved and its service is placed in the variable <code>bmarks</code>. We use <code>QueryInterface()</code> to get the nsIBookmarksService interface. The function <code>addBookmarkImmediately()</code> provided by this interface can be used to add bookmarks. The first two parameters to this function are the bookmark's URL and its title. The third parameter is the bookmark type which will normally be 0 and the last parameter is the character encoding of the document being bookmarked, which may be null.</p>
+
+<p>Next, we will see some of the <a href="/en/XUL_Tutorial/XPCOM_Examples" title="en/XUL_Tutorial/XPCOM_Examples">interfaces provided with Mozilla that we can use</a>.</p>
+
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial:Box_Objects" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial:XPCOM_Examples">Next  »</a></p>
+</div>

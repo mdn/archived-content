@@ -1,0 +1,66 @@
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>Bindings can define methods and properties on a bound element using the <code>implementation</code> tag. A binding implementation provides a new set of methods and properties that can be invoked directly from the bound element.</p>
+
+<p>The methods and properties of an implementation can be defined declaratively using <code>method</code> and <code>property</code> tags in XML, or an external implementation (e.g., a binary implementation) can be specified using the <code>src</code> attribute. When the <code>src</code> attribute is specified, any children of the <code>implementation</code> element are ignored.</p>
+
+<h2 id="Methods" name="Methods">Methods</h2>
+
+<p>Methods are defined using the <code>method</code> element. The name given on the tag using the <code>name</code> attribute is the name that can be used to invoke the method on the element. A <code>method</code> with parameters specifies those parameters and their names with <code>parameter</code> elements declared underneath the <code>method</code> element.</p>
+
+<p>The implementation of the method is contained inside a <code>body</code> element. The parameters specified are bound to their names in the method body.</p>
+
+<pre>&lt;method name="scrollToIndex"&gt;
+  &lt;parameter name="index"/&gt;
+  &lt;body&gt;
+    &lt;![CDATA[
+      if (index &lt; 0)
+        return;
+      ...
+    ]]&gt;
+  &lt;/body&gt;
+&lt;/method&gt;
+</pre>
+
+<h2 id="Properties" name="Properties">Properties</h2>
+
+<p>Properties can also be defined on the bound element using <code>property</code> tags. There are two basic types of properties. The first type of property is a raw value that is set directly on the element itself. The second type of property is one that defines functions that are invoked when the property is either retrieved or set. These functions are called <em>getters</em> and <em>setters</em> in XBL.</p>
+
+<p>For properties with raw values, an initial value can be specified as a child of the <code>property</code> tag. The script is evaluated at the time of binding attachment and the resulting value is stored on the element. It can be assumed that the anonymous content of the binding has been fully constructed, although the <code>bindingattached</code> event will not have fired. Property initialization always takes place after content generation but before the firing of a binding attachment event, since the <code>bindingattached</code> handler needs to be able to assume that all properties will be accessible on the binding.</p>
+
+<p>Properties with getters and setters can define them using <code>onget</code> and <code>onset</code> attributes, or using the more verbose <code>getter</code> and <code>setter</code> elements. If both the attribute form and the element form are used to specify a getter or setter, then the element form is ignored.</p>
+
+<p>A getter contains script whose return value is handed back when the property is requested. A setter contains a script that is invoked when a new value is assigned to the property. In script, the word <code>val</code> is used to represent the new value.</p>
+
+<p>Properties can be designated as constant using the <code>readonly</code> attribute. When set to <code>true</code>, the property's value cannot be altered. If a property is readonly and a setter is defined, then the setter is ignored.</p>
+
+<p>Properties also support a shorthand syntax for defining getters and setters that forward requests or assignments to an anonymous content element. The <code>element</code> attribute specifies the ID of anonymous content underneath the bound element that should be used when obtained the property or setting the property.</p>
+
+<p>On the anonymous content element, the property can be obtained either from an attribute on the element or from a property on the element. The <code>property</code> attribute's value specifies the name of a property to use on the anonymous content element. The <code>attribute</code> attribute specifies the name of an attribute to use on the anonymous content element. If either of these attributes is specified on the <code>property</code> element, then any defined getters and setters are ignored. A raw initial value is also ignored. If both a property and attribute are specified, then the property takes precedence and the attribute is ignored.</p>
+
+<h2 id="Inheritance_of_Implementations" name="Inheritance_of_Implementations">Inheritance of Implementations</h2>
+
+<p>When two bindings in an inheritance chain both supply implementations, the derived binding's implementation inherits from the base binding's implementation. Method and property lookups are dynamic. Without disambiguating, if two bindings define the same method or property, then the most derived binding's method or property will be used.</p>
+
+<p>Because bindings extend DOM elements, they can override any built-in methods or properties on the DOM element. For example, a binding could override the <code>setAttribute</code> method on <code>Element</code> or the retrieval of the <code>value</code> property for an <code>HTMLInputElement</code>.</p>
+
+<p><em>The following is currently not implemented in Mozilla</em>, it seems. See <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=373652">bug #373652</a> for some details.</p>
+
+<p>Implementations can be named using a <code>name</code> attribute specified on the <code>implementation</code> element. When an implementation has a name, that name can be used to disambiguate the desired method or property.</p>
+
+<div class="blockIndicator note">
+<p><strong>Note:</strong> The following paragraphs suggest a syntax for how JavaScript might enable access to base class methods and properties. This is an open issue. Should we attempt to define a language-independent abstraction, or specify that it must be possible to access base bindings' methods and properties?</p>
+</div>
+
+<p>For example, given a binding with an implementation <code>ColorPickerGrid</code> that derives from an implementation <code>ColorPicker</code> where the two implementations both specify the <code>setColor</code> method, a caller could invoke <code>ColorPicker</code>'s method with the following syntax:</p>
+
+<pre>... // myElement is a ColorPickerGrid
+myElement.ColorPicker.setColor(); // Calls the ColorPicker method.
+myElement.setColor(); // Calls the ColorPickerGrid method.
+...
+</pre>
+
+<p>In addition to being able to specifically name a base class, the name <code>baseBinding</code> can be used to specify the method or property on the base binding without necessarily knowing what the base class is. This situation can occur when bindings implicitly inherit, e.g., through the use of <code>addBinding</code>.</p>
+
+<pre>myElement.baseBinding.setColor(); // Calls the ColorPicker method.
+</pre>

@@ -1,0 +1,528 @@
+<h2 id="Style_System" name="Style_System">Style System</h2>
+
+<p>Style sheets &amp; rules<br>
+   ↓<br>
+ Rule tree<br>
+   ↓<br>
+ Style context interface</p>
+
+<h2 id="Style_sheets_&amp;_rules" name="Style_sheets_&amp;_rules">Style sheets &amp; rules</h2>
+
+<ul>
+ <li><code>nsIStyleRuleProcessor</code> and <code>nsIStyleSheet</code> describe in C++ what a CSS stylesheet can do</li>
+ <li><code>nsIStyleRule</code> describes in C++ what a CSS style rule can do</li>
+ <li>Main implementations are for CSS, but we have other implementations in C++ that:
+  <ul>
+   <li>do what CSS can't do</li>
+   <li>do things faster than CSS would</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="CSS_Style_Sheets" name="CSS_Style_Sheets">CSS Style Sheets</h2>
+
+<ul>
+ <li>At basic level, sheet is collection of rules</li>
+ <li>Other special things: <code>@import</code>, <code>@media</code>, <code>@namespace</code>, etc.</li>
+ <li>A <em>rule</em> is a selector and a declaration block.</li>
+ <li>A <em>declaration block</em> is a group of declarations.</li>
+ <li>A <em>declaration</em> is a <em>property</em> and a <em>value</em>.</li>
+</ul>
+
+<pre> p {
+   color: green;
+   font-size: 12em;
+ }
+
+ <em>selector</em> {
+   <em>property</em>: <em>value</em>;
+   <em>property</em>: <em>value</em>;
+ }</pre>
+
+<h2 id="CSS_Style_Rules" name="CSS_Style_Rules">CSS Style Rules</h2>
+
+<p>What do style rules mean?</p>
+
+<ul>
+ <li>Selector <em>matches</em> elements in the document.</li>
+ <li>Rule applies to matched elements.</li>
+ <li>“cascaded” value for property + element:
+  <ul>
+   <li>if 0 rules matching the element have the property: some properties <em>inherit</em> and some properties use <em>initial value</em>.
+    <ul>
+     <li>inherited: <code>'font-size'</code>, <code>'color'</code>, etc.</li>
+     <li>“reset”: <code>'border'</code>, <code>'background'</code>, etc.</li>
+    </ul>
+   </li>
+   <li>1 matching rule: use value</li>
+   <li>2+ matching rules: <em>cascade</em> decides which wins: sort by
+    <ol>
+     <li>origin (UA, user, author) &amp; weight (<code>!important</code>),</li>
+     <li>then <a href="/en/CSS/Specificity" title="Specificity"><em>specificity</em></a> of selector,</li>
+     <li>then <em>order</em></li>
+    </ol>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Example_document_source" name="Example_document_source">Example document source</h2>
+
+<pre> &lt;doc&gt;
+   &lt;title&gt;A few quotes&lt;/title&gt;
+   &lt;para class="emph"&gt;
+     Franklin said that &lt;quote&gt;"A penny
+     saved is a penny earned."&lt;/quote&gt;
+   &lt;/para&gt;
+   &lt;para&gt;
+     FDR said &lt;quote&gt;"We have nothing to
+     fear but &lt;span class="emph"&gt;fear
+     itself.&lt;/span&gt;"&lt;/quote&gt;
+   &lt;/para&gt;
+ &lt;/doc&gt;
+</pre>
+
+<h2 id="Example_document_tree" name="Example_document_tree">Example document tree</h2>
+
+<table>
+ <tbody>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="border: 1px solid #333; text-align: center;">doc</td>
+   <td colspan="2"> </td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td style="text-align: center;">↙</td>
+   <td style="text-align: center;">↓</td>
+   <td style="text-align: center;">↘</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td style="border: 1px solid #333; text-align: center;">title</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">para class="emph"</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">para</td>
+  </tr>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+  </tr>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="border: 1px solid #333; text-align: center;">quote</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">quote</td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="text-align: center;">↓</td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="border: 1px solid #333; text-align: center;">span class="emph"</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Example_stylesheet" name="Example_stylesheet">Example stylesheet</h2>
+
+<pre> doc {
+   display: block;
+   text-indent: 1em;
+ }
+
+ title {
+   display: block;
+   font-size: 3em;
+ }
+
+ para { display: block; }
+ [class="emph"] { font-style: italic; }
+</pre>
+
+<h2 id="CSS_style_rule_representation" name="CSS_style_rule_representation">CSS style rule representation</h2>
+
+<ul>
+ <li>Each declaration block is represented by an <code>nsCSSDeclaration</code></li>
+ <li>An <code>CSSStyleRuleImpl</code> contains each selector associated with that declaration, and the declaration, and is the most important implementation of <code>nsIStyleRule</code>.</li>
+ <li>The declarations (properties &amp; values) are stored in data structs (<code>nsCSS*</code>).</li>
+ <li>The data format of the structs and selectors is mostly clear from the code and not worth going into (although the implementation of <code>:not()</code> is confusing).</li>
+</ul>
+
+<h2 id="CSS_style_rule_representation_2" name="CSS_style_rule_representation_2">CSS style rule representation</h2>
+
+<pre> h1, h2 {
+   color: green;
+   text-align: right;
+   text-indent: 0;
+ }
+</pre>
+
+<table>
+ <tbody>
+  <tr>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">CSSStyleRuleImpl</td>
+   <td> </td>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">CSSStyleRuleImpl</td>
+  </tr>
+  <tr>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+  </tr>
+  <tr>
+   <td style="border: 1px solid #333; text-align: center;">h1</td>
+   <td> </td>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">nsCSSDeclaration</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">h2</td>
+  </tr>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="text-align: center;">↙</td>
+   <td> </td>
+   <td style="text-align: center;">↘</td>
+   <td colspan="2"> </td>
+  </tr>
+  <tr>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">nsCSSColor<br>
+    —<br>
+    color: green</td>
+   <td> </td>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">nsCSSText<br>
+    —<br>
+    text-align: right<br>
+    text-indent: 0</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="CSS_style_rule_representation_3" name="CSS_style_rule_representation_3">CSS style rule representation</h2>
+
+<ul>
+ <li>Problem: The rule structures use too much memory (a few hundred kilobytes for all our chrome), and require large numbers of allocations to construct.</li>
+ <li>Detail: <code>!important</code> declarations cause an extra rule object <code>CSSImportantRule</code> to be created since they are in a separate part of the cascade</li>
+</ul>
+
+<h2 id="Other_nsIStyleRule_implementations" name="Other_nsIStyleRule_implementations">Other <code>nsIStyleRule</code> implementations</h2>
+
+<ul>
+ <li><code>nsHTMLMappedAttributes</code> represents stylistic HTML attributes turned into a style rule (one instance per unique set of attributes)</li>
+ <li><code>BodyRule</code> handles marginwidth/marginheight mixes on <code>BODY</code> and on <code>FRAME</code>.</li>
+ <li>Various rules in <code>nsHTMLStyleSheet.cpp</code> do other things with presentational color-related attributes and with tables.</li>
+ <li>Content nodes (instead of stylesheets) also hold onto <code>CSSStyleRuleImpl</code> objects that represent their <code>style</code> <em>attributes</em>.</li>
+</ul>
+
+<h2 id="The_cascade" name="The_cascade">The cascade</h2>
+
+<ul>
+ <li><code>StyleSetImpl</code> manages the different origins of rules in the cascade (UA, user, author)</li>
+ <li>Style set gets the <code>nsIStyleRuleProcessor</code> implementations from the style sheets, and the CSS stylesheets force one <code>CSSRuleProcessor</code> per origin (rather than one per stylesheet).</li>
+ <li><code>HTMLStyleSheetImpl</code> (HTML attributes) and <code>HTMLCSSStyleSheet</code> (style attributes) also implement <code>nsIStyleRuleProcessor</code>.</li>
+</ul>
+
+<h2 id="The_nsIStyleRuleProcessor_interface" name="The_nsIStyleRuleProcessor_interface">The <code>nsIStyleRuleProcessor</code> interface</h2>
+
+<ul>
+ <li>Implemented by <code>CSSRuleProcessor</code>, <code>HTMLStyleSheetImpl</code>, and <code>HTMLCSSStyleSheetImpl</code></li>
+ <li>Has a <code>RulesMatching</code> method, which is required to call <code>nsRuleWalker::Forward</code> on any rules that match the element. (We'll see what this does later.)</li>
+ <li>The main argument to <code>RulesMatching</code> is a structure of enumeration data that implementations use to determine more quickly which rules match.</li>
+ <li>Has a separate <code>RulesMatching</code> method for pseudo-<em>elements</em>.</li>
+</ul>
+
+<h2 id="CSSRuleProcessor" name="CSSRuleProcessor">CSSRuleProcessor</h2>
+
+<ul>
+ <li>One <code>CSSRuleProcessor</code> per origin (UA, User, Author)</li>
+ <li>CSS rule processor sorts all the rules in cascade order, and then puts them in <code>RuleHash</code>, which remembers order and then hashes by first of id, class, tag, namespace, or unhashed.</li>
+ <li>To match rules, we do lookups in the <code>RuleHash</code>'s tables, remerge the lists of rules using stored indices, and then call <code>SelectorMatchesTree</code> to find which selectors really match.</li>
+ <li>Matching of <code>class</code> and <code>id</code> selectors is much faster than, say, attribute selectors. (Important advice for chrome CSS authors.)</li>
+ <li>Pseudo-elements are hashed in element hash, so for matching pseudo-elements we only need one hashtable lookup.</li>
+</ul>
+
+<h2 id="Style_contexts" name="Style_contexts">Style contexts</h2>
+
+<ul>
+ <li>Each <em>style context</em> (<code>nsStyleContext</code>), which is the interface through which layout accesses the style data for a given element, points to one rule node.</li>
+ <li>We create one style context per frame, since frames point to style contexts rather than the other way around.</li>
+ <li>Style contexts own their parents, since inheritance operates through style context parents (ugly when we have multiple frames per content node).</li>
+ <li>There is one rule node on the path from the root rule node to the style context's rule node for each rule that the element matches.</li>
+</ul>
+
+<h2 id="Style_context_API" name="Style_context_API">Style context API</h2>
+
+<ul>
+ <li>The style context API allows data to be obtained through a set of structs (see <code>nsStyleStruct.h</code>).</li>
+ <li>A struct for a style context can be obtained through <code>nsIStyleContext::GetStyleData</code>. <code>nsIFrame::GetStyleData</code> does the same thing for the frame's <code>mStyleContext</code> member, and the global <code>::GetStyleData</code> is a typesafe helper that doesn't require the style struct ID.</li>
+ <li>This style struct is always <code>const</code>, and should always be declared as such (evil old-style casts often used with the non-typesafe forms sometimes hide this error), since the struct may be shared with other elements.</li>
+</ul>
+
+<h2 id="The_rule_tree" name="The_rule_tree">The rule tree</h2>
+
+<ul>
+ <li>As we call <code>nsRuleWalker::Forward</code> on all the rules that are matched, we build or walk along the rule tree.</li>
+ <li>The rule tree is a lexicographic tree of matched rules, where each node in the tree is represented by a <code>nsRuleNode</code>.</li>
+ <li>Some style data is cached on <code>nsRuleNode</code> objects to speed up computation and reduce memory use.</li>
+</ul>
+
+<h2 id="The_rule_tree_2" name="The_rule_tree_2">The rule tree</h2>
+
+<p>Rules:</p>
+
+<pre> /* rule 1 */ doc { display: block; text-indent: 1em; }
+ /* rule 2 */ title { display: block; font-size: 3em; }
+ /* rule 3 */ para { display: block; }
+ /* rule 4 */ [class="emph"] { font-style: italic; }
+</pre>
+
+<p>Rule tree:</p>
+
+<table>
+ <tbody>
+  <tr>
+   <td colspan="2"> </td>
+   <td colspan="3" style="border: 1px solid #333; text-align: center;">A: null</td>
+   <td colspan="2"> </td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td style="text-align: center;">↙</td>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+   <td style="text-align: center;">↘</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td style="border: 1px solid #333; text-align: center;">B: 1</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">C: 2</td>
+   <td style="width: 1em;"> </td>
+   <td style="border: 1px solid #333; text-align: center;">D: 3</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">E: 4</td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="text-align: center;">↓</td>
+   <td colspan="2"> </td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="border: 1px solid #333; text-align: center;">F: 4</td>
+   <td colspan="2"> </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Style context tree:</p>
+
+<table>
+ <tbody>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="border: 1px solid #333; text-align: center;">doc: B</td>
+   <td colspan="2"> </td>
+  </tr>
+  <tr>
+   <td> </td>
+   <td style="text-align: center;">↙</td>
+   <td style="text-align: center;">↓</td>
+   <td style="text-align: center;">↘</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td style="border: 1px solid #333; text-align: center;">title: C</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">para: F<br>
+    class="emph"</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">para: D</td>
+  </tr>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="text-align: center;">↓</td>
+   <td> </td>
+   <td style="text-align: center;">↓</td>
+  </tr>
+  <tr>
+   <td colspan="2"> </td>
+   <td style="border: 1px solid #333; text-align: center;">quote: A</td>
+   <td> </td>
+   <td style="border: 1px solid #333; text-align: center;">quote: A</td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="text-align: center;">↓</td>
+  </tr>
+  <tr>
+   <td colspan="4"> </td>
+   <td style="border: 1px solid #333; text-align: center;">span: E<br>
+    class="emph"</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="The_rule_tree_and_style_data" name="The_rule_tree_and_style_data">The rule tree and style data</h2>
+
+<ul>
+ <li>All of the style structs that can be obtained through a style context add up to around 900 bytes. This is big, and slow to fill in. The rule tree allows sharing.</li>
+ <li>To allow for optimizations, each style struct contains only inherited properties or only “reset” properties. (Thus these structs can be called <em>inherited structs</em> or <em>reset structs</em>.)</li>
+ <li>In the normal case, a style rule has a small number of declarations (hitting only a small number of structs).</li>
+</ul>
+
+<h2 id="The_rule_tree_and_style_data_2" name="The_rule_tree_and_style_data_2">The rule tree and style data</h2>
+
+<p>We optimize for the structs for which the rules have no declarations. In this case:</p>
+
+<ul>
+ <li>inherited structs: same value as parent style context (optimization breaks when property has non-<code>inherit</code> value)</li>
+ <li>reset structs: same struct for every style context using rule node (optimization breaks when a value is explicit <code>inherit</code>)</li>
+ <li>reset structs: rule nodes have the same shared struct as their parent (optimization breaks when a property is specified with a different value or when there is an explicit <code>inherit</code> value).</li>
+</ul>
+
+<p>Inherited structs act like reset ones in the descendants of any rule node for which the data are fully specified.</p>
+
+<h2 id="Style_data_cached_in_style_context_tree" name="Style_data_cached_in_style_context_tree">Style data cached in style context tree</h2>
+
+<ul>
+ <li>If a style struct for a context depends on the data in the parent context, we will cache that struct in the style context tree. This happens when properties are inherited or when percentage units are used in a way that is handled by the style code (rather than reflow).</li>
+ <li>If the data are exactly the same as those of the parent, we copy the struct to the child style context and set a bit saying that it doesn't own the struct. (The context tree can be deep.)</li>
+ <li>Each rule node has a per-struct set of “none bits” that say that the rule node's set of rules (the rules on the path to the root) specify nothing non-inherited for the struct.</li>
+</ul>
+
+<h2 id="Style_data_cached_in_rule_tree" name="Style_data_cached_in_rule_tree">Style data cached in rule tree</h2>
+
+<ul>
+ <li>If the data struct doesn't depend on the parent style context in any ways (inheritance, perhaps by omission; percentages and ems when computed), we can cache it in the rule tree.</li>
+ <li>When we compute a data struct, we cache it as high as possible in the rule tree -- on the lowest of the rule nodes on the path to the root that specified something for that struct.</li>
+ <li>A rule node that uses the same struct as its parent is marked with a “dependent bit” for that struct, which tells <code>nsRuleNode::GetStyleData</code> to just get the struct from the parent.</li>
+</ul>
+
+<h2 id="Style_data_computation" name="Style_data_computation">Style data computation</h2>
+
+<ul>
+ <li>All the style struct computation described in the previous few slides happens lazily.</li>
+ <li>First, <code>nsStyleContext::GetStyleData</code> checks for a cached struct on the style context, and returns it if present.</li>
+ <li>Then, <code>nsRuleNode::GetStyleData</code> checks for a cached struct or a dependent bit on the rule node, and returns the struct if present.</li>
+ <li>Otherwise, we need to compute the struct, so <code>nsRuleNode::GetStyleData</code> calls <code>nsRuleNode::Get*Data</code>, which initializes the correct one of the data structs on the stack (the structs used by <code>nsCSSDeclaration</code>)</li>
+</ul>
+
+<h2 id="Style_data_computation_2" name="Style_data_computation_2">Style data computation</h2>
+
+<ul>
+ <li><code>Get*Data</code> calls <code>nsRuleNode::WalkRuleTree</code>, which walks from the style context's rule node towards the root rule node.</li>
+ <li>To fill in the data, we call <code>nsIStyleRule::MapRuleInfoInto</code> on the rules.</li>
+ <li><code>MapRuleInfoInto</code> implementations must check that the property is not filled in before filling it in.</li>
+ <li><code>WalkRuleTree</code> stops walking up when it finds either a none bit, a cached struct, a dependent bit, or all the properties have been filled in.</li>
+ <li><code>WalkRuleTree</code> also remembers the first rule that contributed non-empty data.</li>
+</ul>
+
+<h2 id="Style_data_computation_3" name="Style_data_computation_3">Style data computation</h2>
+
+<ul>
+ <li>After <code>WalkRuleTree</code> stops walking up, it calls <code>nsRuleNode::Compute*Data</code> to turn the specified values into the mostly-computed style data in the style struct.</li>
+ <li><code>Compute*Data</code> use either a default or a <em>start struct</em> as the basis for the computation. A start struct is a cached struct in the rule tree that we can just copy and add to.</li>
+ <li>If the computation in <code>Compute*Data</code> used any data from the parent style context, we cache the struct on the style context.</li>
+ <li>Otherwise, we cache the struct in the rule tree, on the first rule node that contributed any data, and mark dependent bits on the path up to that rule node.</li>
+</ul>
+
+<h2 id="Managing_style_contexts" name="Managing_style_contexts">Managing style contexts</h2>
+
+<ul>
+ <li>Style contexts must (in most cases) be created before frames are constructed, to determine what frame to create.</li>
+ <li>Parent style context determines inheritance; it should always be the content parent. [design flaw in frame/SC relationship]</li>
+ <li>Three functions for creating style contexts on <code>nsIStyleSet</code>, wrapped by similarly named ones on <code>nsIPresContext</code>:
+  <ul>
+   <li><code>ResolveStyleContextFor</code>: For elements.</li>
+   <li><code>ResolvePseudoStyleContextFor</code>: for pseudo-elements (<code>:first-letter</code>, <code>:before</code>, etc.)</li>
+   <li><code>ResolveStyleContextForNonElement</code>: skips rule matching and uses root rule node (text frame optimization)</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Managing_style_contexts_2" name="Managing_style_contexts_2">Managing style contexts</h2>
+
+<ul>
+ <li>Style context resolving functions will walk the rule processors in <code>StyleSetImpl::FileRules</code>, find the correct rule node, and find a current child of the parent (“sibling sharing”) or create a new child.</li>
+ <li>Style context doesn't hold pointer to content, just rule node.</li>
+</ul>
+
+<h2 id="Dynamic_changes_to_content" name="Dynamic_changes_to_content">Dynamic changes to content</h2>
+
+<ul>
+ <li><code>FrameManager::ReResolveStyleContext</code> destroys and recreates style contexts for existing frames (rule node pointer immutable).</li>
+ <li><code>ReResolveStyleContext</code> is messy because it needs to create and parent style contexts correctly (sibling sharing may not be the same) rather than just changing data. [design flaw, again]</li>
+ <li>Any specially-parented style contexts (not along <em>frame</em> parents, which need not be content parents) are reconstructed using <code>nsIFrame::GetParentStyleContextFrame</code>.</li>
+ <li>Can return same style context due to sibling sharing unless we're destroying the rule tree for a style sheet/rule removal.</li>
+</ul>
+
+<h2 id="Dynamic_changes_to_content_2" name="Dynamic_changes_to_content_2">Dynamic changes to content</h2>
+
+<ul>
+ <li><code>ReResolveStyleContext</code> calculates differences (repaint, reflow, reframe, etc.) between style old and new style contexts and does appropriate cleanup</li>
+ <li>It uses <code>nsIStyleContext::CalcStyleDifference</code>, which only computes differences for structs that have been requested. (I'll call this the data-struct-based hint mechanism.)</li>
+ <li>Caller of <code>nsIFrameManager::ComputeStyleChangeFor</code> processes the change list, which has been built to avoid duplication.</li>
+ <li>We also have <code>ReParentStyleContext</code>, used in a few places (usually during frame construction), but it's broken (has many bugs that <code>ReResolveStyleContext</code> <em>used to</em> have).</li>
+</ul>
+
+<h2 id="Dynamic_changes_to_content:_optimizations" name="Dynamic_changes_to_content:_optimizations">Dynamic changes to content: optimizations</h2>
+
+<ul>
+ <li>We optimize <em>attribute changes</em> by storing all the attributes that have an effect on which rules match and only doing a <code>ReResolveStyleContext</code> if the attribute has an effect. <code>nsIStyleSheet::AttributeAffectsStyle</code> (should be on <code>nsIStyleRuleProcessor</code>).</li>
+ <li>We optimize <em>event state changes</em> (<code>:hover</code>, <code>:active</code>, etc.) using <code>nsIStyleRuleProcessor::HasStateDependentStyle</code>, which is much more accurate. The CSSRuleProcessor implementation does a slightly modified form of selector matching to implement it (includes matching on the middle of selectors to catch <code>p:hover a</code>).</li>
+</ul>
+
+<h2 id="Style_attribute_changes" name="Style_attribute_changes">Style attribute changes</h2>
+
+<ul>
+ <li>We handle <code>style</code> attribute (“inline style”) changes in a different way from other changes to style rules.</li>
+ <li>As for other style changes, we have to “walk” the rule tree and clear all the style data coming from the old inline style <code>nsIStyleRule</code>, since there could be an <code>!important</code> rule that overrides it, which would allow dynamic changes to put the style attribute in multiple places in the rule tree. However, we maintain a hashtable just for inline style rules so that we don't have to walk the whole tree to find the nodes.</li>
+ <li><code>nsCSSFrameConstructor::AttributeChanged</code> only re-resolves style on the subtree of the element, just like other <em>attribute</em> changes.</li>
+ <li>Different hint mechanism (from rule structs, not data structs) could make <code>AttributeChanged</code> just go straight to a frame-change, instead.</li>
+ <li>Bugs due to failure to call <code>nsIFrame::DidSetStyleContext</code>.</li>
+</ul>
+
+<h2 id="Style_sheet_addition_and_removal" name="Style_sheet_addition_and_removal">Style sheet addition and removal</h2>
+
+<ul>
+ <li>Handled in pres shell.</li>
+ <li><code>PresShell::ReconstructStyleData</code> calls <code>FrameManager::ComputeStyleChangeFor</code> (ReResolve) and then processes the frame-change list.</li>
+ <li>Rebuilds rule tree if stylesheet was removed to avoid dangling pointers (and perhaps aliasing that would cause problems). Otherwise we'd have to walk rule tree and compare each rule node to every rule in the sheet (<code>O(rules * rule-nodes)</code>).</li>
+ <li>When rebuilding rule tree, we have to clear cached style contexts from XUL menus and trees.</li>
+</ul>
+
+<h2 id="Style_rule_changes" name="Style_rule_changes">Style rule changes</h2>
+
+<ul>
+ <li>Handling of style rule changes is done in frame constructor (called from style set, called from pres shell, which is a document observer) and in the pres shell. Code should be merged.</li>
+ <li>Rule change applies the rule-struct hint as if the rule matched the root element. (inefficient) It does clearing of style data (through <code>StyleSetImpl::ClearStyleData</code>) by walking the rule tree and then the style context tree. (could be handled by simultaneous clearing and difference calculation of data (somewhat tricky))</li>
+ <li>Rule addition and removal just rebuild the entire world. We could at least do what we do for sheet addition/removal, or slightly better, by searching the rule tree (only one rule this time) instead of rebuilding it.</li>
+ <li><strong>Lots of room for optimization here.</strong> (but beware <code>DidSetStyleContext</code>)</li>
+</ul>
+
+<h2 id="The_style_system" name="The_style_system">The style system</h2>
+
+<p>Style sheets &amp; rules<br>
+ ↓<br>
+ Rule tree<br>
+ ↓<br>
+ Style context interface</p>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:dbaron@dbaron.org">David Baron</a></li>
+ <li>Last Updated Date: June 6, 2003</li>
+ <li>Copyright Information: Portions of this content are © 1998–2007 by individual mozilla.org contributors; content available under a Creative Commons license | <a class="external" href="http://www.mozilla.org/foundation/licensing/website-content.html">Details</a>.</li>
+</ul>
+</div>

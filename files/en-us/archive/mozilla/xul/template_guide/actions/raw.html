@@ -1,0 +1,84 @@
+<p>{{ PreviousNext("XUL/Template Guide/RDF Query Syntax", "XUL/Template Guide/Recursive Generation") }}</p>
+<p>The content to generate in a template is specified using the {{ XULElem("action") }} element which should either be the next sibling of the {{ XULElem("query") }} element (if no rules need be specified) or be a direct child of a {{ XULElem("rule") }} element. The content to generate goes directly inside the <code>action</code> element. This content will be copied for each matching result (though see below for an exception) and inserted into the document. Let's look at a simple example first.</p>
+<pre>&lt;vbox datasources="http://www.xulplanet.com/ds/sample.rdf"
+         ref="http://www.xulplanet.com/rdf/A"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;triple subject="?start"
+              predicate="http://www.xulplanet.com/rdf/relatedItem"
+              object="?relateditem"/&gt;
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;button uri="?relateditem" label="?relateditem"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p>In this example, we omit the {{ XULElem("rule") }} element around the {{ XULElem("action") }} as it is optional when we want to generate content unconditionally. Instead, the <code>action</code> element is placed directly inside the {{ XULElem("template") }} element after the query is defined. This action contains only one element, but you can put as many or as few elements as you need. In this case, a button will be created for each result. There are three results, so three buttons will be created. Here is the [<a href="/samples/xultemp/template-guide-ex1.xul">example</a>], and an image of what it looks like:</p>
+<p><img alt="Image:template-guide-p8.png" src="/samples/xultemp/template-guide-p8.png"></p>
+<p>The template builder iterates through the three results, processing the body of the action for each one in turn. The uri attribute on the button is used to specify the ending or member variable. In this example, there's only one variable to use, ?relateditem, since ?start is the starting point and the start and end points cannot be the same. There are a number of things that will happen for each result. Let's look at the results again:</p>
+<pre>(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/B)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/C)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/D)
+</pre>
+<p>The builder will start with the first result. The <code>button</code> element will be copied and inserted into the document after the template. The id attribute of the new element will be set to the same value of the member variable, ?relateditem. You could think of this as changing the uri attribute to the id attribute, and replacing the variable. Since the first result has a value of '<span class="nowiki">http://www.xulplanet.com/rdf/B</span>' for the ?relateditem variable, the id will be set to this value.</p>
+<p>Then, the remaining attributes on the element are examined and any variables are replaced in place. That is, the text ?relateditem in the label attribute will be replaced with the string '<span class="nowiki">http://www.xulplanet.com/rdf/B</span>' for the first result. In the image, you can see that the label for the first button does indeed have this value. Processing is now complete for the first result, so the builder moves on to the next result. For result B, the builder would have generated the following content:</p>
+<pre>&lt;button id="http://www.xulplanet.com/rdf/B" label="http://www.xulplanet.com/rdf/B"/&gt;
+</pre>
+<p>Naturally, you wouldn't use an id attribute inside a template action since the id would be replaced anyway. In fact, any ids you put inside a template action will be ignored. However, you may use ids on the other parts of the template, such as within the query statements, if you wish to change the statements and rebuild the template. You can use getElementById to get at particular results, for instance document.getElementById("<span class="nowiki">http://www.xulplanet.com/rdf/C</span>") would retrieve the second generated button.</p>
+<p>After all the results have been examined, the DOM tree will look like the following:</p>
+<pre>&lt;vbox datasources="http://www.xulplanet.com/ds/sample.rdf"
+         ref="http://www.xulplanet.com/rdf/A"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;triple subject="?start"
+              predicate="http://www.xulplanet.com/rdf/relatedItem"
+              object="?relateditem"/&gt;
+    &lt;/query&gt;
+    &lt;action&gt;
+      &lt;button uri="?relateditem" label="?relateditem"/&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+  &lt;button id="http://www.xulplanet.com/rdf/B" label="http://www.xulplanet.com/rdf/B"/&gt;
+  &lt;button id="http://www.xulplanet.com/rdf/C" label="http://www.xulplanet.com/rdf/C"/&gt;
+  &lt;button id="http://www.xulplanet.com/rdf/D" label="http://www.xulplanet.com/rdf/D"/&gt;
+&lt;/vbox&gt;
+</pre>
+<p>Since the <code>template</code> tag is hidden, the effect will be like in the image, three buttons with the labels of the data in the datasource.</p>
+<h3 id="Additional_Content" name="Additional_Content">Additional Content</h3>
+<p>The previous example generated only a set of buttons, but the action body may contain additional content. For instance, you might want to add a label to each item.</p>
+<pre>&lt;action&gt;
+  &lt;hbox uri="?relateditem"&gt;
+    &lt;label value="Related Item:"/&gt;
+    &lt;button label="?relateditem"/&gt;
+  &lt;/hbox&gt;
+&lt;/action&gt;
+</pre>
+<p>In this example, the <code>hbox</code> will be generated for each result, assigned an id of the value of the ?relateditem, and the label and button will be added inside it. The button's label will be the value of the ?relateditem variable. You would only use the uri attribute on a single element since only one of the generated elements should be given a particular id.</p>
+<p>Although the uri attribute should only be on one element, it does not have to be the outermost element in the action body. You can place other elements outside this to serve as containers for all the results. One difference is that this content is only generated once, not for every result. Only the content at the element with the uri attribute and below is copied for each result. For example, if the example were modified to the following:</p>
+<pre>&lt;action&gt;
+  &lt;toolbar&gt;
+    &lt;button uri="?relateditem" label="?relateditem"/&gt;
+  &lt;/toolbar&gt;
+&lt;/action&gt;
+</pre>
+<p>Here, only the button would be repeated for each result; the toolbar will only be generated once. The toolbar is created just before the content for the first result is generated. The effect will be a toolbar with a set of three buttons inside it. Of course, in this simple example you could really just make the toolbar the outer element with the datasources attribute rather than placing it inside the <code>action</code>.</p>
+<p>So far we have only been using the ?relateditem variable since that is really the only useful variable that is available. We could also use the ?start variable. Recall the results:</p>
+<pre>(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/B)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/C)
+(?start = http://www.xulplanet.com/rdf/A, ?relateditem = http://www.xulplanet.com/rdf/D)
+</pre>
+<p>We could display the value of the ?start variable in the results if desired:</p>
+<pre>&lt;action&gt;
+  &lt;hbox uri="?relateditem"&gt;
+    &lt;button label="?start"/&gt;
+    &lt;button label="?relateditem"/&gt;
+  &lt;/hbox&gt;
+&lt;/action&gt;
+</pre>
+<p>For the first button, the value of the variable ?start will be looked up in the result data while the second button will use the ?relateditem variable. Since all three results have the same value for the ?start variable, the result will be that the first buttons in each row will all have the same label. Here is an image of [<a href="/samples/xultemp/template-guide-ex2.xul">this example</a>]</p>
+<p><img alt="Image:template-guide-p9.png" src="/samples/xultemp/template-guide-p9.png"></p>
+<p>(Note: see the next section for an explanation of why there are extra buttons here.)</p>
+<p>{{ PreviousNext("XUL/Template Guide/RDF Query Syntax", "XUL/Template Guide/Recursive Generation") }}</p>

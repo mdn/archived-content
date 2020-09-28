@@ -1,0 +1,33 @@
+<p>1. <a href="https://developer.mozilla.org/en-US/docs/Building_Firefox_with_Address_Sanitizer#LLVM.2FClang" title="https://developer.mozilla.org/en-US/docs/Building_Firefox_with_Address_Sanitizer#LLVM.2FClang">Compile a recent version of LLVM &amp; Clang</a>.</p>
+<p>2. Save the following bash script, fixing LLVM_ROOT to point to your installation.</p>
+<pre>#! /bin/sh
+
+if [ -z $1 ] ; then
+    echo "usage: $0 &lt;dirname&gt;"
+elif [ -d $1 ] ; then
+    echo "directory $1 already exists"
+else
+    autoconf2.13
+    autoconf213
+    mkdir $1
+    cd $1
+    <strong>LLVM_ROOT="<span style="color: orange;">$HOME/llvm</span>"</strong>
+    SANFLAG="<strong>-fsanitize=undefined -fno-sanitize=alignment,float-cast-overflow,float-divide-by-zero,vptr</strong> -Dxmalloc=myxmalloc" \
+    CC="$LLVM_ROOT/build/Release+Asserts/bin/clang" \
+    CXX="$LLVM_ROOT/build/Release+Asserts/bin/clang++" \
+    CFLAGS="$SANFLAG" \
+    CXXFLAGS="$SANFLAG" \
+    <strong>MOZ_LLVM_HACKS=1</strong> \
+            ../configure --enable-debug --disable-optimize
+    make -j 8
+fi</pre>
+<p>3. Use the script to compile SpiderMonkey.</p>
+<p>This enables all the <strong><a href="http://clang.llvm.org/docs/UsersManual.html#controlling-code-generation" title="http://clang.llvm.org/docs/UsersManual.html#controlling-code-generation">cheap undefined behavior checks</a></strong> other than:</p>
+<ul>
+  <li><strong>alignment</strong>, which hits known bugs in SpiderMonkey, and is more implementation-defined (slow on x86 / crash on ARM) than undefined behavior</li>
+  <li><strong>float-cast-overflow</strong>, which hits known bugs in SpiderMonkey, and isn't exploited by today's compilers</li>
+  <li><strong>float-divide-by-zero</strong>, which Jesse doesn't think is actually undefined behavior (aside from the question of whether CPU overflow flags are set)</li>
+  <li><strong>vptr</strong>, a check that requires RTTI, which is disabled by default in SpiderMonkey</li>
+</ul>
+<p>4. When you hit a bug and want a stack trace, run under <strong>gdb</strong> with a breakpoint at the end of <strong>__ubsan::Diag::~Diag()</strong>.  The stack trace should show a function such as <strong>__ubsan_handle_load_invalid_value</strong> or <strong>__ubsan_handle_type_mismatch</strong> being called by the buggy C++ code.  (For automated testing outside of gdb, you can instead build with <strong>-fsanitize=undefined-trap -fsanitize-undefined-trap-on-error</strong>, but then you lose UBSan's diagnostics and the ability to continue past errors.)</p>
+<p><strong><a href='https://bugzilla.mozilla.org/buglist.cgi?quicksearch=sw%3A"[-fsanitize"' title='https://bugzilla.mozilla.org/buglist.cgi?quicksearch=sw%3A"[-fsanitize"'>Known bugs</a></strong>. Please file new bugs with e.g. [-fsanitize=float-cast-overflow] in the status whiteboard.</p>

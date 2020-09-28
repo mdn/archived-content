@@ -1,0 +1,185 @@
+---
+title: Frame script loading and lifetime
+slug: >-
+  Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/Frame_script_loading_and_lifetime
+tags:
+  - Constructor
+  - DOM
+  - Firefox
+  - Intermediate
+  - JavaScript
+  - Reference
+---
+<div><section class="Quick_links" id="Quick_Links">
+  <ol>
+    <li class="toggle">
+        <details>
+            <summary>Firefox developer release notes</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Releases">Firefox developer release notes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Add-ons</summary>
+            <ol>
+              <li><a href="/en-US/Add-ons/WebExtensions">Browser extensions</a></li>
+              <li><a href="/en-US/Add-ons/Themes">Themes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Firefox internals</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/">Mozilla project</a></li>
+              <li><a href="/en-US/docs/Mozilla/Gecko">Gecko</a></li>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Headless_mode">Headless mode</a></li>
+              <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules">JavaScript code modules</a></li>
+              <li><a href="/en-US/docs/Mozilla/js-ctypes">JS-ctypes</a></li>
+              <li><a href="/en-US/docs/Mozilla/MathML_Project">MathML project</a></li>
+              <li><a href="/en-US/docs/Mozilla/MFBT">MFBT</a></li>
+              <li><a href="/en-US/docs/Mozilla/Projects">Mozilla projects</a></li>
+              <li><a href="/en-US/docs/Mozilla/Preferences">Preference system</a></li>
+              <li><a href="/en-US/docs/Mozilla/WebIDL_bindings">WebIDL bindings</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XUL">XUL</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Building and contributing</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions">Build instructions</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options">Configuring build options</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works">How the build system works</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Source_Code/Mercurial">Mozilla source code</a></li>
+              <li><a href="/en-US/docs/Mozilla/Localization">Localization</a></li>
+              <li><a href="/en-US/docs/Mozilla/Mercurial">Mercurial</a></li>
+              <li><a href="/en-US/docs/Mozilla/QA">Quality assurance</a></li>
+              <li><a href="/en-US/docs/Mozilla/Using_Mozilla_code_in_other_projects">Using Mozilla code in other projects</a></li>
+            </ol>
+        </details>
+    </li>
+  </ol>
+</section></div>
+
+<h2 id="Loading_frame_scripts">Loading frame scripts</h2>
+
+<p><span class="seoSummary">To load a frame script use the <code>loadFrameScript()</code> function.</span></p>
+
+<p>This line of code loads a frame script into the currently selected tab. The script just writes "foo" to the command line:</p>
+
+<pre class="brush: js notranslate">// chrome script
+var mm = gBrowser.selectedBrowser.messageManager;
+mm.loadFrameScript('data:,dump("foo\\n")', true);</pre>
+
+<p><code>loadFrameScript()</code> takes two mandatory parameters:</p>
+
+<ul>
+ <li>A URL that points to the frame script you want to load</li>
+ <li>A boolean flag, <code>allowDelayedLoad</code></li>
+</ul>
+
+<p>Note: if the message manager is a <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Message_manager_overview#Global_frame_message_manager">global frame message manager</a> or a <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Message_manager_overview#Window_message_manager">window message manager</a>, <code>loadFrameScript() </code>may load the script multiple times, once in each applicable frame.</p>
+
+<h3 id="chrome_URLs">chrome: URLs</h3>
+
+<p>Extension developers usually use a <code>chrome://</code> URL to refer to the frame scripts.</p>
+
+<p>To define the mapping between a <code>chrome://</code> URL and a frame script packaged with an extension, use a "chrome.manifest" file to <a href="/en/docs/Chrome_Registration">register a chrome URL</a>:</p>
+
+<pre class="brush: js notranslate">// chrome.manifest
+content my-e10s-extension chrome/content/</pre>
+
+<pre class="brush: js notranslate">// chrome script
+mm.loadFrameScript("chrome://my-e10s-extension/content/content.js", true);</pre>
+
+<h3 id="allowDelayedLoad">allowDelayedLoad</h3>
+
+<p>If the message manager is a <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Message_manager_overview#Global_frame_message_manager">global frame message manager</a> or a <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Message_manager_overview#Window_message_manager">window message manager</a> then:</p>
+
+<ul>
+ <li>
+  <p>If <code>allowDelayedLoad</code> is <code>true</code>, the frame script will be loaded into any new frame, which has opened after the <code>loadFrameScript()</code> call. For example:</p>
+
+  <pre class="brush: js notranslate">var mm = window.messageManager;
+mm.loadFrameScript("chrome://my-e10s-extension/content/frame-script.js", true);</pre>
+
+  <p>The script will be loaded into all tabs currently open in this window, and all new tabs opened afterwards.</p>
+ </li>
+ <li>If <code>allowDelayedLoad</code> is <code>false</code>, the script will only be loaded into frames which are open when the call was made.</li>
+</ul>
+
+<p>If the message manager is a <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Message_manager_overview#Browser_message_manager">browser message manager</a>, you should always pass <code>true</code> here. Because a browser message manager only corresponds to a single browser tab, its <code>loadFrameScript()</code> function will only ever load the frame script into that one tab. Passing <code>allowDelayedLoad</code> is a way to ensure that the script is loaded correctly, in case the tab is not ready when making the call.</p>
+
+<p>If you use <code>allowDelayedLoad</code>, you can cancel it by using <code>removeDelayedFrameScript</code>:</p>
+
+<pre class="brush: js notranslate">var mm = window.messageManager;
+<code>mm.removeDelayedFrameScript</code>("chrome://my-e10s-extension/content/frame-script.js");</pre>
+
+<p>This means we will stop loading the script into new tabs. Note that this function will not remove any scripts which have been loaded earlier.</p>
+
+<h2 id="Frame_script_lifetime">Frame script lifetime</h2>
+
+<p>Frame scripts are loaded as soon as <code>loadFrameScript()</code> is called. If you've set <code>allowDelayedLoad</code>, the script is loaded into a new tab as soon as it is created.</p>
+
+<p>Frame scripts are associated with a browser tab and not with a page. So once you load them, they will stay loaded until the tab is closed, even if you reload the document or navigate. If you want to limit a script to the lifetime of a page you can create a <a href="/en-US/docs/Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.Sandbox">Sandbox</a> instead, where the current content page is used as prototype.</p>
+
+<p>If you want a frame script to do something when a new document is loaded, you need to listen for an appropriate DOM event, generally <code><a href="/en-US/docs/Web/Events/DOMWindowCreated">DOMWindowCreated</a></code>, <code><a href="/en-US/docs/Web/Events/DOMContentLoaded">DOMContentLoaded</a></code>, or <code><a href="/en-US/docs/Web/Events/load">load</a></code>.</p>
+
+<h2 id="Unloading_frame_scripts">Unloading frame scripts</h2>
+
+<p>Frame scripts are automatically unloaded when their hosting tab is closed. There is currently no way to unload them when loaded, other than closing the tab they were loaded into.</p>
+
+<p>To listen for an event, when your frame script is unloaded (due to tab close for instance), you must set the third argument of <code>addMessageListener</code> to true. For example, from <code>bootstrap.js</code>:</p>
+
+<pre class="brush: js notranslate">Services.mm.addMessageListener(
+    'my-addon-id',
+    {
+        receiveMessage: function() {
+            console.log('incoming message from frame script:', aMsg.data);
+        }
+    },
+    true // must set this argument to true, otherwise sending message from framescript will not work during and after the unload event on the ContentMessageManager triggers
+);</pre>
+
+<p>Then in your frame script, listen for the unload event of the message manager (which is the global <code>this</code>), and sending a message. If you did not set the third argument to true in <code>bootstrap.js</code> on <code>Services.mm.addMessageListener</code>, sending this message during, and after, the unloading event will do nothing.</p>
+
+<pre class="brush: js notranslate">var gContentFrameMessageManager = this;
+
+addEventListener('unload', function(aEvent) {
+    if (aEvent.target == gContentFrameMessageManager) {
+        sendAsyncMessage('my-addon-id', 'framescript-died'); // if you did not set third argument of `Services.mm.addMessageListener` to `true`, then this will fail to send a message
+    }
+}, false);</pre>
+
+<h3 id="Note_about_unload_during_uninstallationupgrade">Note about unload during uninstallation/upgrade</h3>
+
+<p>When your add-on is uninstalled, or disabled, you should:</p>
+
+<ul>
+ <li>Cancel it, If you have used <code>allowDelayedLoad</code>, by calling <code>removeDelayedFrameScript</code>; ensuring the frame script is not loaded into any new tabs.</li>
+ <li>Disable any frame scripts already loaded. There is no mechanism to unload frame scripts which are already loaded. You need to send a message to your frame scripts, telling them to disable themselves; for example, by undoing any changes they've made or removing any event listeners.</li>
+</ul>
+
+<div class="note">
+<div class="warning">
+<p>There is a bug in non-e10s where this order is not true. In e10s framescripts work fine on updating. For non-e10s waiting for <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1202125">Bug 1202125 - framescripts are not backwards loaded in message order in non-e10s</a>.</p>
+</div>
+
+<p>Note: you might think that there is a race condition here due to the asynchronous nature of the message passing:</p>
+
+<ul>
+ <li>Your add-on is disabled for an upgrade.</li>
+ <li>Your add-on broadcasts "disable" to your frame scripts.</li>
+ <li>Your add-on is upgraded, and the new code loads new frame scripts.</li>
+ <li>The new frame scripts receive the "disable" message and stop working.</li>
+</ul>
+
+<p>In fact, the message manager guarantees that <code>loadFrameScript</code> and <code>broadcastAsyncMessage</code> are guaranteed to affect frame scripts in the order that they are called, so in this case "disable" will be received and consumed before the new frame scripts are loaded.</p>
+</div>
+
+<p>At the moment, frame scripts are cached until the browser restarts: this problem is tracked as <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1051238">bug 1051238</a>. This is a problem especially for <a href="/en-US/Add-ons/Bootstrapped_extensions">restartless add-ons</a>; because when a new version of the add-on is installed, the old frame scripts will not be unloaded. The workaround is to randomize the frame script's URL; for example, by appending <code>"?" + Math.random()</code>.</p>

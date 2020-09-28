@@ -1,0 +1,267 @@
+---
+title: Communicating with frame scripts
+slug: >-
+  Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/Communicating_with_frame_scripts
+tags:
+  - API
+  - CPOW
+  - Chrome
+  - Guide
+  - Intermediate
+  - JSON
+  - Method
+---
+<div><section class="Quick_links" id="Quick_Links">
+  <ol>
+    <li class="toggle">
+        <details>
+            <summary>Firefox developer release notes</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Releases">Firefox developer release notes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Add-ons</summary>
+            <ol>
+              <li><a href="/en-US/Add-ons/WebExtensions">Browser extensions</a></li>
+              <li><a href="/en-US/Add-ons/Themes">Themes</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Firefox internals</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/">Mozilla project</a></li>
+              <li><a href="/en-US/docs/Mozilla/Gecko">Gecko</a></li>
+              <li><a href="/en-US/docs/Mozilla/Firefox/Headless_mode">Headless mode</a></li>
+              <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules">JavaScript code modules</a></li>
+              <li><a href="/en-US/docs/Mozilla/js-ctypes">JS-ctypes</a></li>
+              <li><a href="/en-US/docs/Mozilla/MathML_Project">MathML project</a></li>
+              <li><a href="/en-US/docs/Mozilla/MFBT">MFBT</a></li>
+              <li><a href="/en-US/docs/Mozilla/Projects">Mozilla projects</a></li>
+              <li><a href="/en-US/docs/Mozilla/Preferences">Preference system</a></li>
+              <li><a href="/en-US/docs/Mozilla/WebIDL_bindings">WebIDL bindings</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XPCOM">XPCOM</a></li>
+              <li><a href="/en-US/docs/Mozilla/Tech/XUL">XUL</a></li>
+            </ol>
+        </details>
+    </li>
+    <li class="toggle">
+        <details>
+            <summary>Building and contributing</summary>
+            <ol>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions">Build instructions</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/Configuring_Build_Options">Configuring build options</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works">How the build system works</a></li>
+              <li><a href="/en-US/docs/Mozilla/Developer_guide/Source_Code/Mercurial">Mozilla source code</a></li>
+              <li><a href="/en-US/docs/Mozilla/Localization">Localization</a></li>
+              <li><a href="/en-US/docs/Mozilla/Mercurial">Mercurial</a></li>
+              <li><a href="/en-US/docs/Mozilla/QA">Quality assurance</a></li>
+              <li><a href="/en-US/docs/Mozilla/Using_Mozilla_code_in_other_projects">Using Mozilla code in other projects</a></li>
+            </ol>
+        </details>
+    </li>
+  </ol>
+</section></div>
+
+<p>Chrome code and frame scripts communicate back and forth using a messaging API which can include JSON-serializable objects as arguments.</p>
+
+<p>The API is mostly symmetrical, with one major exception: frame scripts can send asynchronous or synchronous messages to chrome, but chrome can only send asynchronous messages to content. This is an intentional design decision made to prevent content code from making chrome code unresponsive.<br>
+ <br>
+ Where absolutely necessary, frame scripts can pass wrappers called <a href="/en-US/docs/Cross_Process_Object_Wrappers">Cross Process Object Wrappers</a> (also known as CPOWs) to chrome, and chrome can use these wrappers to get synchronous access to content objects.</p>
+
+<h2 id="Content_to_chrome">Content to chrome</h2>
+
+<p>The frame script can choose to send synchronous or asynchronous messages to chrome code.</p>
+
+<h3 id="Asynchronous_messaging">Asynchronous messaging</h3>
+
+<p>To send an asynchronous message the frame script uses the global <code>sendAsyncMessage()</code> function:</p>
+
+<pre class="brush: js notranslate">// frame script
+sendAsyncMessage("my-addon@me.org:my-e10s-extension-message");</pre>
+
+<p><code>sendAsyncMessage()</code> takes one mandatory parameter, which is the name of the message. All messages share the same namespace, so to avoid conflicts with other code, you'll need to ensure that the names you use are unique. If you're using the message manager in an add-on, a good way to do that is to prefix messages with your add-on's ID.</p>
+
+<p>After the name, you can pass detailed data as a string or a JSON-serializable object, and after that you can pass any objects it wants to pass to content as <a href="/en-US/docs/Cross_Process_Object_Wrappers">CPOWs</a>.</p>
+
+<p>The example below sends a message named "my-e10s-extension-message", with a <code>data</code> payload containing <code>details</code> and <code>tag</code> properties, and exposes the <code>event.target</code> object as a CPOW:</p>
+
+<pre class="brush: js notranslate">// frame script
+addEventListener("click", function (event) {
+  sendAsyncMessage("my-addon@me.org:my-e10s-extension-message", {
+    details : "they clicked",
+    tag : event.target.tagName
+  },
+  {
+     target : event.target
+  });
+}, false);</pre>
+
+<p>To receive messages from content, a chrome script needs to add a message listener using the message manager's <code>addMessageListener()</code> API.<br>
+ <br>
+ The message passed to the listener is an object containing the following properties:</p>
+
+<table class="fullwidth-table standard-table">
+ <tbody>
+  <tr>
+   <td><code>name</code></td>
+   <td>String containing the message name.</td>
+  </tr>
+  <tr>
+   <td><code>sync</code></td>
+   <td>Boolean declaring whether the message was send synchronously or aynchronously.</td>
+  </tr>
+  <tr>
+   <td><code>data</code></td>
+   <td>The JSON object passed as the second parameter to <code>sendAsyncMessage()</code>.</td>
+  </tr>
+  <tr>
+   <td><code>target</code></td>
+   <td>The XUL <code>&lt;browser&gt;</code> element from which this message was sent.</td>
+  </tr>
+  <tr>
+   <td><code>objects</code></td>
+   <td>An object whose properties are any CPOWs exposed by the sender as the third argument to <code>sendAsyncMessage()</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>In the example below the listener just logs all the messages details:</p>
+
+<pre class="brush: js notranslate">// chrome script
+messageManager.addMessageListener("my-addon@me.org:my-e10s-extension-message", listener);
+
+function listener(message) {
+  console.log(message.name);
+  console.log(message.sync);
+  console.log(message.data);
+  console.log(message.target);
+  console.log(message.objects);
+}
+</pre>
+
+<p>So combining this message listener with the message above will give console output somewhat like this, when the user clicks a <code>&lt;div&gt;</code>:</p>
+
+<pre class="notranslate">"my-addon@me.org:my-e10s-extension-message"
+false
+Object { details: "they clicked", tag: "div" }
+&lt;xul:browser anonid="initialBrowser" ... &gt;
+{ target: &lt;div#searchContainer&gt; }
+</pre>
+
+<p>If your code requires access to a <code>window</code> (for example to run <code>window.openDialog</code>), and your message listener is run from somewhere without access to a <code>window</code> (e.g. an XPCOM component), you can access the window of the <code>browser</code> that sent the message with <code>message.target.ownerDocument.defaultView</code>.</p>
+
+<h3 id="Synchronous_messaging">Synchronous messaging</h3>
+
+<p>To send a synchronous message, the frame script uses the global <code>sendSyncMessage()</code> function:</p>
+
+<pre class="brush: js notranslate">// frame script
+sendSyncMessage("my-addon@me.org:my-e10s-extension-message");</pre>
+
+<p>When a chrome script receives a synchronous message, it should return a value from its message listener:</p>
+
+<pre class="brush: js notranslate">// chrome script
+messageManager.addMessageListener("my-addon@me.org:my-e10s-extension-message", listener);
+
+function listener(message) {
+  return "value from chrome";
+}</pre>
+
+<p>This value is then presented to the frame script in the return value of <code>sendSyncMessage()</code>. Because a single message can be received by more than one listener, the return value of <code>sendSyncMessage()</code> is an array of all the values returned from every listener, even if it only contains a single value:</p>
+
+<pre class="brush: js notranslate">// frame script
+addEventListener("click", function (event) {
+  var results = sendSyncMessage("my-addon@me.org:my-e10s-extension-message", {
+    details : "they clicked",
+    tag : event.target.tagName
+  });
+  content.console.log(results[0]);    // "value from chrome"
+}, false);</pre>
+
+<p>Like arguments, return values from <code>sendSyncMessage()</code> must be JSON-serializable, so chrome can't return functions.</p>
+
+<h3 id="removeMessageListener">removeMessageListener()</h3>
+
+<p>To stop listening for messages from content, use the message manager's <code>removeMessageListener()</code> method:</p>
+
+<pre class="brush: js notranslate">// chrome script
+messageManager.removeMessageListener("my-addon@me.org:my-e10s-extension-message", listener);</pre>
+
+<h2 id="Chrome_to_content">Chrome to content</h2>
+
+<p>To send a message from chrome to content, you need to know what kind of message manager you're using. If it's a browser message manager, you can use the message manager's <code>sendAsyncMessage</code> method<code>:</code></p>
+
+<pre class="brush: js notranslate">// chrome script
+browser.messageManager.sendAsyncMessage("my-addon@me.org:message-from-chrome");</pre>
+
+<p>If you have a window or a global message manager, you need to use the <code>broadcastAsyncMessage</code> method:</p>
+
+<pre class="notranslate">// chrome script
+window.messageManager.broadcastAsyncMessage("my-addon@me.org:message-from-chrome");</pre>
+
+<p>These methods takes one mandatory parameter, which is the message name. All messages share the same namespace, so to avoid conflicts with other code, you'll need to ensure that the names you use are unique. If you're using the message manager in an add-on, a good way to do that is to prefix messages with your add-on's ID.</p>
+
+<p>After the message name, you can pass detailed data as a string or a JSON-serializable object:</p>
+
+<pre class="brush: js notranslate">// chrome script
+messageManager.sendAsyncMessage("my-addon@me.org:message-from-chrome", {
+  details : "some more details"
+});</pre>
+
+<p>To receive a message from chrome, a frame script uses the global <code>addMessageListener()</code> function. This takes two parameters: the name of the message and a listener function. The listener will be passed a <code>message</code> object whose <code>data</code> property is the message payload:</p>
+
+<pre class="brush: js notranslate">// frame script
+function handleMessageFromChrome(message) {
+  var payload = message.data.details;      // "some more details"
+}
+
+addMessageListener("my-addon@me.org:message-from-chrome", handleMessageFromChrome);</pre>
+
+<h3 id="message-manager-disconnect">message-manager-disconnect</h3>
+
+<p>If you're using a <a href="https://developer.mozilla.org/en-US/Firefox/Multiprocess_Firefox/The_message_manager">message manager</a> to communicate with a script that may be running in a different process, you can listen for the <a href="/en-US/docs/Observer_Notifications#Message_manager">message-manager-disconnect </a>observer notification to know when the message manager has disconnected from the other end of the conversation, so you can stop sending it messages or expecting to receive messages.</p>
+
+<p>For example, suppose we load a script into the current <code>&lt;browser&gt;</code> on some event, and keep the browser message manager in an array, so we can send it messages:</p>
+
+<pre class="brush: js notranslate">var messageManagers = [];
+
+...
+
+// on some event
+var browserMM = gBrowser.selectedBrowser.messageManager;
+browserMM.loadFrameScript("chrome://my-addon@me.org/content/frame-script.js", false);
+messageManagers.push(browserMM);
+console.log(messageManagers.length);</pre>
+
+<p>We can listen for <code>message-manager-disconnect</code> to update the array when the message managers disconnect (for example because the user closed the tab):</p>
+
+<pre class="brush: js notranslate">function myObserver() {
+}
+
+myObserver.prototype = {
+  observe: function(subject, topic, data) {
+    var index = messageManagers.indexOf(subject);
+    if (index != -1) {
+      console.log("one of our message managers disconnected");
+      mms.splice(index, 1);
+    }
+  },
+  register: function() {
+    var observerService = Cc["@mozilla.org/observer-service;1"]
+                          .getService(Ci.nsIObserverService);
+    observerService.addObserver(this, "message-manager-disconnect", false);
+    console.log("listening");
+  },
+  unregister: function() {
+    var observerService = Cc["@mozilla.org/observer-service;1"]
+                            .getService(Ci.nsIObserverService);
+    observerService.removeObserver(this, "message-manager-disconnect");
+  }
+}
+
+var observer = new myObserver();
+observer.register();</pre>

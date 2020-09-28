@@ -1,0 +1,229 @@
+<div class="warning"><strong>Warning:</strong> Microsummary support was removed in Gecko 6.0 (Firefox 6.0 / Thunderbird 6.0 / SeaMonkey 2.3)</div>
+
+<p>A microsummary generator is a set of instructions for creating a microsummary from the content of a page. Web pages can reference generators via <code>&lt;link rel="microsummary"&gt;</code> elements in their <code>&lt;head&gt;</code> elements. Generators can also be independently downloaded and installed by users if they include a list of pages to which they apply.</p>
+
+<p>In this tutorial we're going to create a microsummary generator for the <a class="external" href="http://www.spreadfirefox.com/">Spread Firefox home page</a> that displays the current Firefox download count along with the label <cite>Fx downloads</cite>; for example: <cite>174475447 Fx downloads</cite>.</p>
+
+<p>We'll build the XSLT transform sheet that converts that page into its microsummary, learn how to specify that the generator applies to that page, and find out how to make the generator available for download and installation.</p>
+
+<p>In each step of revising the transform sheet and other code in this tutorial, new material added will be shown in <strong>boldface</strong> so you can follow along more easily.</p>
+
+<p>Note: if you are a web site developer, and you want to create microsummaries for pages on your site, you can write generators to do so, but a simpler and more efficient approach is to create the microsummaries on the server-side using the same tools and languages you already use to generate pages.</p>
+
+<p>For example, if you use PHP scripts to generate pages on your site, you could write PHP code to output a microsummary when the view=microsummary URL parameter is present. Then just link to the microsummaries from within the pages themselves using a <code>&lt;link rel="microsummary"&gt;</code> element, f.e.:</p>
+
+<pre class="eval">&lt;head&gt;
+  <strong>&lt;link rel="microsummary" href="index.php?view=microsummary"&gt;</strong>
+&lt;/head&gt;
+</pre>
+
+<p>When Firefox encounters a <code>&lt;link rel="microsummary"&gt;</code> element, it loads the URL in the <code>href</code> attribute. If the URL points to a generator, it uses the generator to generate the microsummary for the page. Otherwise, if the URL returns plain text content (or HTML content that can be converted to plain text), Firefox uses the content as the microsummary for the page.</p>
+
+<h2 id="Beginnings" name="Beginnings">Beginnings</h2>
+
+<p>Generators are expressed as XML documents whose root element is the <code>&lt;generator&gt;</code> element in the <cite><a class="external" href="http://www.mozilla.org/microsummaries/0.1" rel="freelink">http://www.mozilla.org/microsummaries/0.1</a></cite> namespace. To begin building the generator, create a new empty text file and add an XML declaration and empty <code>&lt;generator&gt;</code> tag to it:</p>
+
+<pre class="eval"><strong>&lt;?xml version="1.0" encoding="UTF-8"?&gt;</strong>
+<strong>&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"&gt;</strong>
+<strong>&lt;/generator&gt;</strong>
+</pre>
+
+<h2 id="Giving_it_a_Name" name="Giving_it_a_Name">Giving it a Name</h2>
+
+<p>Generators should have <code>name</code> attributes which are arbitrary descriptions of the microsummaries the generator creates. Names should be descriptive enough to give users a good idea what information the microsummaries will provide. Since our generator will be creating microsummaries displaying the Firefox download count, let's give it the name "Firefox Download Count":</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           <strong>name="Firefox Download Count"</strong>&gt;
+&lt;/generator&gt;
+</pre>
+
+<h2 id="Adding_an_XSLT_Transform_Sheet" name="Adding_an_XSLT_Transform_Sheet">Adding an XSLT Transform Sheet</h2>
+
+<p>Generators must include an XSLT transform sheet (also known as an XSLT stylesheet) which transforms the page content into its microsummary. XSLT is a powerful language for transforming documents into different representations of the same information.</p>
+
+<p>Add the XSLT transform sheet to the generator by including it within a <code>&lt;template&gt;</code> element:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  <strong>&lt;template&gt;</strong>
+    <strong>&lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;</strong>
+    <strong>&lt;/transform&gt;</strong>
+  <strong>&lt;/template&gt;</strong>
+&lt;/generator&gt;
+</pre>
+
+<p>Note that while microsummary generators can include arbitrary XSLT, including XSLT that produces rich text output, Firefox currently only displays the text version of the XSLT output.</p>
+
+<h2 id="Specifying_the_Output_Type" name="Specifying_the_Output_Type">Specifying the Output Type</h2>
+
+<p>Since the XSLT transform sheet will generate a text microsummary, we should indicate this with the XSLT <code>&lt;output&gt;</code> element:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      <strong>&lt;output method="text"/&gt;</strong>
+    &lt;/transform&gt;
+  &lt;/template&gt;
+&lt;/generator&gt;
+</pre>
+
+<h2 id="Using_a_Simple_XSLT_.3Ctemplate.3E" name="Using_a_Simple_XSLT_.3Ctemplate.3E">Using a Simple XSLT <code>&lt;template&gt;</code></h2>
+
+<p>The XSLT processor transforms documents by comparing each XSLT <code>&lt;template&gt;</code> element in the transform sheet to a set of nodes in the document. When a <code>&lt;template&gt;</code>'s <code>match</code> attribute matches a node, the processor performs the transformations specified by the content of the element.</p>
+
+<p>This mechanism is powerful, because it lets you traverse the node tree of a document, recursively generating output based on the contents of the document. But for the purposes of generating a microsummary for the Spread Firefox page, we only need to use a single <code>&lt;template&gt;</code> element that matches the root node of the document and is processed once:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      &lt;output method="text"/&gt;
+      <strong>&lt;template match="/"&gt;</strong>
+      <strong>&lt;/template&gt;</strong>
+    &lt;/transform&gt;
+  &lt;/template&gt;
+&lt;/generator&gt;
+</pre>
+
+<h2 id="Including_the_Download_Count" name="Including_the_Download_Count">Including the Download Count</h2>
+
+<p>To include the download count in the output of the XSLT transform sheet, we need to add an XSLT <code>&lt;value-of&gt;</code> element to the template whose <code>select</code> attribute contains an XPath expression that points to the node containing the count.</p>
+
+<p>XPath is a language for identifying nodes in HTML/XML documents. It also contains basic functions for manipulating those nodes and their content. The easiest way to get an XPath expression that points to the node in question is to use the <a class="link-https" href="https://addons.mozilla.org/firefox/1095/">XPath Checker extension</a>.</p>
+
+<p>Install the extension (restarting Firefox to complete installation) then go to the <a class="external" href="http://www.spreadfirefox.com/">Spread Firefox home page</a>, find the Firefox download count (a large number at the bottom of the right-hand column), context click on the number, and select <cite>View XPath</cite> from the context menu.</p>
+
+<p>XPath Checker will open a new window. The new window will include an <cite>XPath</cite> field that contains this XPath expression pointing to the download count node: <cite>id('download-count')</cite>.</p>
+
+<p>Add a <code>&lt;value-of&gt;</code> element to the XSLT <code>&lt;template&gt;</code> element whose <code>select</code> attribute contains that XPath expression:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      &lt;output method="text"/&gt;
+      &lt;template match="/"&gt;
+        <strong>&lt;value-of select="id('download-count')"/&gt;</strong>
+      &lt;/template&gt;
+    &lt;/transform&gt;
+  &lt;/template&gt;
+&lt;/generator&gt;
+</pre>
+
+<h2 id="Adding_Text" name="Adding_Text">Adding Text</h2>
+
+<p>To include the label <cite>Fx downloads</cite> in the microsummary, we need to add an XSLT <code>&lt;text&gt;</code> element to the XSLT <code>&lt;template&gt;</code> element whose content is the text we want to add.</p>
+
+<p>Add a <code>&lt;text&gt;</code> element to the XSLT template with the content <cite>Fx downloads</cite>:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      &lt;output method="text"/&gt;
+      &lt;template match="/"&gt;
+        &lt;value-of select="id('download-count')"/&gt;
+        <strong>&lt;text&gt; Fx downloads&lt;/text&gt;</strong>
+      &lt;/template&gt;
+    &lt;/transform&gt;
+  &lt;/template&gt;
+&lt;/generator&gt;
+</pre>
+
+<p>Note that white space between XSLT tags is not included in the XSLT output, unlike in HTML where that white space is collapsed to a single space, so make sure to prepend a space to the phrase in order to separate it from the download count.</p>
+
+<p>With this addition, we've finished writing the XSLT transform sheet that converts the Spread Firefox home page to its microsummary.</p>
+
+<h2 id="Specifying_the_Page_to_which_the_Generator_Applies" name="Specifying_the_Page_to_which_the_Generator_Applies">Specifying the Page to which the Generator Applies</h2>
+
+<p>Now that we've written the transform sheet, we have to specify the page to which it applies. If we were the Spread Firefox webmasters, we might simply reference the generator within the page itself by adding a <code>&lt;link rel="microsummary"&gt;</code> tag to its <code>&lt;head&gt;</code> element:</p>
+
+<pre class="eval">&lt;head&gt;
+  <strong>&lt;link rel="microsummary" href="path/to/our/generator.xml"&gt;</strong>
+&lt;/head&gt;
+</pre>
+
+<p>Since we're not that site's webmasters, however, we can specify the page to which the generator applies within the generator itself and then make the generator available for download and installation. To specify pages to which a generator applies, we use a <code>&lt;pages&gt;</code> element within the <code>&lt;generator&gt;</code> element:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>"
+           name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      &lt;output method="text"/&gt;
+      &lt;template match="/"&gt;
+        &lt;value-of select="id('download-count')"/&gt;
+        &lt;text&gt; Fx downloads&lt;/text&gt;
+      &lt;/template&gt;
+    &lt;/transform&gt;
+  &lt;/template&gt;
+  <strong>&lt;pages&gt;</strong>
+  <strong>&lt;/pages&gt;</strong>
+&lt;/generator&gt;
+</pre>
+
+<p>The <code>&lt;pages&gt;</code> element can contain a sequence of <code>&lt;include&gt;</code> and <code>&lt;exclude&gt;</code> elements specifying the pages to which a generator does and doesn't apply, respectively.</p>
+
+<p>To make a generator apply to a page, add an <code>&lt;include&gt;</code> element whose content is a regular expression matching the page. To make the generator not apply to a page, add an <code>&lt;exclude&gt;</code> element whose content is a regular expression matching the page.</p>
+
+<p>By default, generators don't apply to any page, so you have to explicitly list the pages they apply to, and you don't have to exclude any pages unless you've previously included them.</p>
+
+<p>Add an <code>&lt;include&gt;</code> element matching the Spread Firefox home page:</p>
+
+<pre class="eval">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;generator xmlns="<span class="nowiki">http://www.mozilla.org/microsummaries/0.1</span>" name="Firefox Download Count"&gt;
+  &lt;template&gt;
+    &lt;transform xmlns="<span class="nowiki">http://www.w3.org/1999/XSL/Transform</span>" version="1.0"&gt;
+      &lt;output method="text"/&gt;
+      &lt;template match="/"&gt;
+        &lt;value-of select="id('download-count')"/&gt;
+        &lt;text&gt; Fx downloads&lt;/text&gt;
+      &lt;/template&gt;
+    &lt;/transform&gt;
+  &lt;/template&gt;
+  &lt;pages&gt;
+    <strong>&lt;include&gt;<span class="nowiki">http://(www\.)?spreadfirefox\.com/(index\.php)?</span>&lt;/include&gt;</strong>
+  &lt;/pages&gt;
+&lt;/generator&gt;
+</pre>
+
+<p>If you're unfamiliar with regular expressions, see <a href="en/Creating_regular_expressions_for_a_microsummary_generator">Creating regular expressions for a microsummary generator</a> for a tutorial on writing them.</p>
+
+<h2 id="Making_the_Generator_Available_for_Download" name="Making_the_Generator_Available_for_Download">Making the Generator Available for Download</h2>
+
+<p>Now that the generator applies to the Spread Firefox home page, the only thing left to do is to make it downloadable. To do so, we need to put it up on the web and then create a JavaScript link on some web page that calls Firefox's <cite>window.sidebar.addMicrosummaryGenerator()</cite> method to download and install the generator.</p>
+
+<p>For example, if we put the generator file on the web at <a class="external" href="http://people.mozilla.com/~myk/microsummaries/tutorial/sfx-generator.xml" rel="freelink">http://people.mozilla.com/~myk/micro...-generator.xml</a>, and we wanted users to be able to install it from <a class="external" href="http://people.mozilla.com/~myk/microsummaries/tutorial/index.html" rel="freelink">http://people.mozilla.com/~myk/micro...ial/index.html</a>, we might add the following code to the <cite>index.html</cite> page:</p>
+
+<pre class="eval"><strong>&lt;button onclick="window.sidebar.addMicrosummaryGenerator('<span class="nowiki">http://people.mozilla.com/~myk/microsummaries/tutorial/sfx-generator.xml</span>')"&gt;Install the Spread Firefox home page microsummary!&lt;/button&gt;</strong>
+</pre>
+
+<p>Clicking that button will generate a JavaScript error on browsers that don't support microsummaries, however, so to improve the experience for those users, we should check to see if the user is using a microsummaries-enabled browser and display an explanatory message if not. We might do so via the following code:</p>
+
+<pre class="eval"><strong>&lt;script&gt;</strong>
+<strong>  const warning = "Sorry, you need a microsummary-enabled browser like Firefox 2.0 to install and use microsummary generators.";</strong>
+<strong>  function addGenerator(url) {</strong>
+<strong>    if (typeof window.sidebar == "object" &amp;&amp;</strong>
+<strong>        typeof window.sidebar.addMicrosummaryGenerator == "function")</strong>
+<strong>      window.sidebar.addMicrosummaryGenerator(url);</strong>
+<strong>    else</strong>
+<strong>     alert(warning);</strong>
+<strong>  }</strong>
+<strong>&lt;/script&gt;</strong>
+<strong>&lt;button onclick="addGenerator('<span class="nowiki">http://people.mozilla.com/~myk/microsummaries/tutorial/sfx-generator.xml</span>')"&gt;Install the Spread Firefox home page microsummary!&lt;/button&gt;</strong>
+</pre>
+
+<p>Note that due to <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=341283" title="Can't install a microsummary generator if it has a non-absolute URL">bug 341283</a>, <cite>addMicrosummaryGenerator()</cite> will not accept a relative URL.</p>
+
+<h2 id="Conclusion" name="Conclusion">Conclusion</h2>
+
+<p>You should now have a microsummary generator that displays the current Firefox download count when you install it, bookmark the Spread Firefox home page, and select the microsummary from the <cite>Summary</cite> drop-down menu in the <cite>Add Bookmark</cite> dialog.</p>
+
+<p>For more information about Microsummaries, see the <a class="external" href="http://wiki.mozilla.org/Microsummaries">Microsummaries home page</a>.</p>

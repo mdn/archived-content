@@ -1,0 +1,550 @@
+---
+title: 'Raptor: Performance Tools for Gaia'
+slug: Archive/B2G_OS/Developing_Gaia/Raptor
+tags:
+  - Firefox OS
+  - Performance
+  - Raptor
+  - User Timing
+---
+<p></p><section class="Quick_links" id="Quick_Links">
+
+<ol>
+ <li data-default-state="closed"><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS">Build and install</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS">Build and install overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_OS_build_process_summary">B2G OS build process summary</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/B2G_OS_build_prerequisites">Build prerequisites</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Preparing_for_your_first_B2G_build">Preparing for your first build</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building">Building B2G OS</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_installer_add-on">B2G installer add-on</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/Building_for_Flame_on_OS_X">Building B2G OS for Flame on Mac OS X</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Choosing_how_to_run_Gaia_or_B2G">Choosing how to run Gaia or B2G OS</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/Compatible_Devices">Compatible Devices</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Installing_on_a_mobile_device">Installing B2G OS on a mobile device</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_OS_update_packages">Creating and applying B2G OS update packages</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building/FOTA_community_builds">Building and installing FOTA community builds</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Building_and_installing_B2G_OS/B2G_Build_Variables_Reference_Sheet">B2G build variables reference sheet</a></li>
+  </ol>
+ </li>
+ <li data-default-state="closed"><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS">Porting B2G OS</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS">Porting overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS/basics">Porting basics</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Porting_B2G_OS/Porting_on_CyanogenMod">Porting on CyanogenMod</a></li>
+  </ol>
+ </li>
+ <li data-default-state="open"><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia">Developing Gaia</a>
+  <ol>
+   <li><strong><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia">Developing Gaia overview</a></strong></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Running_the_Gaia_codebase">Running the Gaia codebase</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Mulet">Run Gaia on desktop using Mulet</a></li>
+
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Understanding_the_Gaia_codebase">Understanding the Gaia codebase</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Making_Gaia_code_changes">Making Gaia code changes</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Testing_Gaia_code_changes">Testing Gaia code changes</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Submitting_a_Gaia_patch">Submitting a Gaia patch</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Build_System_Primer">Gaia build system primer</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Different_ways_to_run_Gaia">Different ways to run Gaia</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/make_options_reference">Make options reference</a></li>
+   <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Gaia_tools_reference">Gaia tools reference</a></li>
+  </ol>
+ </li>
+ <li><a href="/en-US/docs/Mozilla/B2G_OS/API">B2G OS APIs</a></li>
+</ol>
+</section><p></p>
+
+<div class="summary">
+<p>This article presents Raptor: a CLI tool for measuring performance specifically on Firefox OS. It looks at the strategy behind the tool's functionality, shows you how to get started with the tool, and moves to some advanced topics such as writing your own tests, visualization, and automation.</p>
+</div>
+
+<div class="warning">
+<p>While the tooling presented in this article is still functional for performance testing Gaia-based devices, any associated automation and related external web sites are no longer maintained or have been decommissioned; they remain documented here for historial purposes. The documentation for this automation also remains in the event anyone would have use to stand this up on a self-hosted basis.</p>
+</div>
+
+<p>Raptor aims to overcome many of the pitfalls faced when testing performance with the previous tool, <code>make test-perf</code>:</p>
+
+<ul>
+ <li>The <code>test-perf</code> tool relies on Marionette.js to listen for events that each application would emit at key points in their loading lifecycles. This requires an atom script to be injected into every application to bind event listeners for these events. Every time new pseudo-standard events need to be captured, the script has to be modified. This means a lot of maintenance time, on top of the overhead of using Marionette.js itself.</li>
+ <li>The API for creating performance events is not consistent. In order to make capturing our standard performance events simpler, this is done in <code>test-perf</code> by dispatching a custom event, e.g. <code>window.dispatchEvent(new CustomEvent('moz-app-visually-complete'))</code>. Unfortunately if an application wants to emit its own performance event, it has to use a different API from a performance testing helper script.</li>
+ <li>Every application has to include a performance testing helper script. While this script is necessary for providing access to the API for emitting performance events, it also has its own associated overhead and maintenance.</li>
+ <li>The <code>test-perf</code> tool is suited to gathering performance metrics for core Gaia applications, but is difficult to extend to handling much outside of that. Applications like Homescreen, System, or other types of interactions outside of application launch are very difficult to test within the confines of the framework.</li>
+</ul>
+
+<p>Raptor is designed to solve these problems, providing a more efficient and extensible performance testing framework that doesn't add so many overheads of its own.</p>
+
+<h2 id="Strategies">Strategies</h2>
+
+<p>This section discusses the strategy undertaken in implementing Raptor's functionality.</p>
+
+<h3 id="User_Timing">User Timing</h3>
+
+<p>The <a href="http://www.w3.org/TR/user-timing/">User Timing API</a> provides web documents with a mechanism for indicating custom performance marks and measures. Using a standardized API lets applications avoid the need to include a helper script for emitting performance events. In fact, User Timing does not rely on events at all.</p>
+
+<pre class="brush: js">// Legacy performance events
+window.dispatchEvent(new CustomEvent('moz-app-visually-complete'));
+PerformanceTestingHelper.dispatch('settings-load-start');</pre>
+
+<pre class="brush: js">// User Timing API
+performance.mark('visuallyLoaded');
+
+performance.mark('settingsStart');
+performance.mark('settingsEnd');
+
+performance.measure('settingsLoad', 'settingsStart', 'settingsEnd');</pre>
+
+<h3 id="Logging">Logging</h3>
+
+<p>In order to capture performance entries in a manner that is decoupled from the application to avoid affecting performance, we opted to output performance metadata in a device's log stream, i.e. <code>adb logcat</code>. Raptor consumes this stream and parses performance entries from the log to gather metrics.</p>
+
+<h3 id="Phases_and_extensibility">Phases and extensibility</h3>
+
+<p>Raptor introduces a concept called "phases", which lays a framework for testing interactions in a generic manner. Currently Raptor supports phases of cold launch, reboot, and B2G restart, with additional phases planned. These work by placing a device in a certain phase before starting performance capturing — make writing actual performance test logic simpler.</p>
+
+<h3 id="Device_interaction">Device interaction</h3>
+
+<ul>
+ <li>Raptor uses the Marionette.js client for familiar device interactions using a high-level API. The same Marionette.js client used for writing integration tests can be used for trigger device actions which contain performance measurements.</li>
+ <li>Raptor also interacts with devices using the <a href="https://github.com/mozilla-b2g/fxos-device-service/">FXOS Device Service</a>. This service exposes a number of interactions via a RESTful interface, such as touch input, reading and writing logs, device restarting, and reading and writing files.</li>
+</ul>
+
+<h2 id="Getting_Started">Getting Started</h2>
+
+<div class="note">
+<p><strong>NOTE:</strong> While Raptor can be run on emulators, the results should not be relied on for performance comparisons. Desktop computers and their power means that they are not comparable to the performance characteristics of devices and end users, and should not be used for time-based decision making.</p>
+</div>
+
+<h3 id="Prerequisites">Prerequisites</h3>
+
+<p>You must have a copy of <a href="https://github.com/mozilla-b2g/gaia/">Gaia</a> v2.2+ available on your system, as well as Node.js v4.2+ installed.</p>
+
+<h3 id="Installing_the_Raptor_CLI_tool">Installing the Raptor CLI tool</h3>
+
+<p>Raptor has a CLI tool installable from npm. You can install it via:</p>
+
+<pre class="brush: bash">$ npm install -g @mozilla/raptor</pre>
+
+<p>Once the installation is finished, you can invoke it from the command line via the <code>raptor</code> command:</p>
+
+<pre class="brush: bash">$ raptor help</pre>
+
+<h4 id="Alternate_installations">Alternate installations</h4>
+
+<p>If you aren't comfortable with the way npm installs global packages to your <code>/usr</code> or <code>/usr/local</code> directories, you have a couple of different options:</p>
+
+<ol>
+ <li>Change npm's default directory to another directory. <a href="https://docs.npmjs.com/getting-started/fixing-npm-permissions#option-2-change-npm-s-default-directory-to-another-directory">Following the steps from npm</a>, you can change where npm installs global packages, possibly by placing them into a special directory in your home folder.</li>
+ <li>Install Raptor into a local directory and reference it relatively. Example:</li>
+</ol>
+
+<pre class="brush: bash">$ cd ~
+$ mkdir raptor-cli &amp;&amp; cd raptor-cli
+$ npm install @mozilla/raptor
+
+<strong># Elsewhere</strong>
+$ ~/raptor-cli/node_modules/@mozilla/raptor/raptor help
+
+<strong># Symlink or add to aliases to save on verbosity</strong>
+$ cd ~
+$ ln -s ~/raptor-cli/node_modules/@mozilla/raptor/raptor raptor
+
+<strong># Now you can use it elsewhere</strong>
+$ raptor help</pre>
+
+<h3 id="Installing_the_profile">Installing the profile</h3>
+
+<p>In order to interact with the device in a predictable way, Raptor needs a few profile options and custom settings. The default <code>make</code> command for Raptor optimizes Gaia, disables FTU, enables User Timing to write to logcat, and resets Gaia.</p>
+
+<pre class="brush: bash">make raptor</pre>
+
+<p>If you already have a profile on your device, at a bare minimum you need the following profile options/settings set in order to use Raptor for performance testing:</p>
+
+<ul>
+ <li><code>PERF_LOGGING=1</code>, this sets <code>dom.performance.enable_user_timing_logging</code> in the profile to true.</li>
+ <li><code>NOFTU=1</code>, this disables the First-time experience, which is only needed if you are dealing with a freshly-reset Gaia.</li>
+ <li><code>SCREEN_TIMEOUT=0</code>, prevents the device from going to sleep and shutting off the screen.</li>
+ <li><code>NO_LOCKSCREEN=1</code>, removes the lock screen for easy application launching from the homescreen.</li>
+</ul>
+
+<h3 id="Command-line_interface">Command-line interface</h3>
+
+<p>Raptor provides a bit of helpful information right through the command line:</p>
+
+<pre class="brush: bash">$ raptor help
+
+Commands:
+
+    help [command]                 Provides help for a given command.
+    version                        Outputs the raptor cli tool version
+    test [options] &lt;nameOrPath&gt;    Run a performance test by name or path location
+    query [options] &lt;measurement&gt;  Run a query against an InfluxDB data source; measurements: measure, memory, mtbf, power
+    regression                     Pipe in an InfluxDB query result to search for performance regressions
+    submit [options]               Submit piped in performance metrics to an InfluxDB database
+    track [options]                Pipe in regression search results to track in an InfluxDB database
+    bug [options]                  Pipe in a tracked regression result to automatically file bugs
+</pre>
+
+<p>The core command to execute is the <code>test</code> command, which also has some helpful information:</p>
+
+<pre class="brush: bash">$ raptor help test
+
+Usage: test [options]
+
+
+  Run a performance test by name or path location
+
+  Options:
+
+    --help                              output usage information
+    --runs [number]                     Number of times to run a test and aggregate results
+    --app [origin]                      Specify the origin or gaiamobile.org prefix of an application to test
+    --entryPoint [entrance]             Specify an application entrance point other than the default
+    --homescreen [origin]               Specify the origin or gaiamobile.org prefix of an application that is the device homescreen
+    --system [origin]                   Specify the origin or gaiamobile.org prefix or an application that is the system application
+    --serial [serial]                   Target a specific device for testing
+    --adbHost [host]                    Connect to a device on a remote host. Tip: use with --adbPort
+    --adbPort [port]                    Port for connecting to a device on a remote host. Use with --adbHost
+    --marionetteHost [host]             Connect to Marionette on a remote host. Tip: use with --marionettePort
+    --marionettePort [port]             Port for connecting to Marionette on a remote host. Use with --marionetteHost
+    --forwardPort [port]                Forward an adb port to the --marionettePort
+    --metrics [filepath]                File location to store historical test metrics
+    --output [mode]                     stdout output mode: console, json, quiet
+    --timeout [milliseconds]            Time to wait between runs for success to occur
+    --retries [number]                  Number of times to retry a test or run if a failure or timeout occurs
+    --time [epochMilliseconds]          Override the start time and UID of the test
+    --logcat [path]                     Write the output from logcat to a file
+    --launchDelay [milliseconds]        Time to wait between subsequent application launches
+    --memoryDelay [milliseconds]        Time to wait before capturing memory after application fully loaded
+    --scriptTimeout [milliseconds]      Time to wait when running scripts via Marionette
+    --connectionTimeout [milliseconds]  Marionette driver TCP connection timeout threshold
+</pre>
+
+<p>This should give us enough information to run our first performance test.</p>
+
+<h3 id="Running_a_performance_test">Running a performance test</h3>
+
+<p>Running a performance test consists of a few parts:</p>
+
+<ul>
+ <li>The raptor CLI command</li>
+ <li>A test to run, whether a named test or a path to a test</li>
+ <li>Any relevant test settings</li>
+</ul>
+
+<p>For the most basic test, we can do a cold launch test against an application with a command like this:</p>
+
+<pre class="brush: bash">$ raptor test coldlaunch --app clock
+
+[Cold Launch: clock.gaiamobile.org] Preparing to start testing...
+[Cold Launch: clock.gaiamobile.org] Priming application
+[Cold Launch: clock.gaiamobile.org] Starting run 1
+[Cold Launch: clock.gaiamobile.org] Run 1 complete
+[Cold Launch: clock.gaiamobile.org] Results from clock.gaiamobile.org
+
+| Metric                | Mean   | Median | Min    | Max    | StdDev | 95% Bound |
+| --------------------- | ------ | ------ | ------ | ------ | ------ | --------- |
+| navigationLoaded      | 355    | 355    | 355    | 355    | 0      | 355       |
+| navigationInteractive | 425    | 425    | 425    | 425    | 0      | 425       |
+| visuallyLoaded        | 496    | 496    | 496    | 496    | 0      | 496       |
+| contentInteractive    | 497    | 497    | 497    | 497    | 0      | 497       |
+| fullyLoaded           | 497    | 497    | 497    | 497    | 0      | 497       |
+| uss                   | 16.195 | 16.195 | 16.195 | 16.195 | 0      | 16.195    |
+| rss                   | 35.926 | 35.926 | 35.926 | 35.926 | 0      | 35.926    |
+| pss                   | 20.688 | 20.688 | 20.688 | 20.688 | 0      | 20.688    |
+
+[Cold Launch: clock.gaiamobile.org] Testing complete
+</pre>
+
+<p>During the cold launch test, you'll see B2G restart; the stated application will then launch once to prime it, and a second time to measure its performance. Looking at the log output above, you can see when each application run starts and stops. When a particular application has completed its testing, you will be given a table of metrics and testing will continue, if applicable. In the metrics table you'll see statistics for each performance entry captured during the lifespan of the test: mean (average), median, minimum value, maximum value, standard deviation, and 95% Upper Bound.</p>
+
+<div class="note">
+<p><strong>Note</strong>: One fun fact is that the table produced by Raptor is compatible with GitHub-flavored Markdown.</p>
+</div>
+
+<div class="note">
+<p><strong>Note:</strong> Standard deviation and 95% Upper Bound need a collection of runs before they output statistically-useful data.</p>
+</div>
+
+<p>All metrics relate to the name of the performance entry. The numbers gathered here are not just aggregations of the values produced by User Timing entries, so it's important to understand how these numbers are derived.</p>
+
+<h3 id="Metrics_aggregation">Metrics aggregation</h3>
+
+<p>While Raptor relies on the User Timing API to gather its metrics, it also makes some assumptions about measurements that are different to what's expected in the context of normal web pages. In a typical web page, a performance marker represents the High-Resolution time from the moment of <code>navigationStart</code>. The User Timing API still captures this data, but Raptor's calculations also include additional time depending on the type of test running. Let's compare the creation of a performance marker in the context of a typical web page versus a Firefox OS application being cold launched.</p>
+
+<h4 id="Typical_web_page">Typical web page</h4>
+
+<p>In any web page, Firefox OS application or not, creating a performance marker with the User Timing API is simple:</p>
+
+<pre class="brush: js">performance.mark('hello');</pre>
+
+<p>Now let's get the value back and inspect its contents:</p>
+
+<pre class="brush: js">performance.getEntriesByType('mark')[0];
+
+// returns the following object
+PerformanceMark { name: "hello", entryType: "mark", startTime: 5159.366323, duration: 0 }</pre>
+
+<p>Note the mark's <code>startTime</code> and <code>duration</code>. The <code>startTime</code> is nothing more than the high-resolution time elapsed since the time of <code>performance.timing.navigationStart</code>; in this case a little over 5,000 milliseconds. The duration is 0 because this represents a single point in time, which has no duration. The <code>startTime</code> simply states at what moment the marker was created. Inspecting the output of a performance marker is no different in Firefox OS.</p>
+
+<p>A performance measure on the other hand <em>does</em> include a duration, because it is the delta between two performance markers:</p>
+
+<pre class="brush: js">performance.mark('hello');
+performance.mark('goodbye');
+
+performance.measure('greeting', 'hello', 'goodbye');</pre>
+
+<p>Again, let's inspect the performance entry:</p>
+
+<pre class="brush: js">performance.getEntriesByType('measure')[0];
+
+// returns the following object
+PerformanceMeasure { name: "greeting", entryType: "measure", startTime: 3528.523661, duration: 4183.291375999805 }</pre>
+
+<p>The duration is populated for performance measures, and in this example it took approximately 4.2 seconds to perform a <code>greeting</code>; going from <code>hello</code> to <code>goodbye</code>.</p>
+
+<h4 id="Raptor_context">Raptor context</h4>
+
+<p>The difference comes in the calculations that Raptor will report. Raptor makes an assumption that all markers generated are actually performance <em><strong>measures</strong></em> in reality, with their duration measured as the time between the application being instructed to launch and the marker being generated. For cold launch, the homescreen application (<code>gaia_grid</code> specifically) creates a special performance marker when an application is launching:</p>
+
+<pre class="brush: js">performance.mark('appLaunch@' + appOrigin);</pre>
+
+<p>In Raptor, performance markers can be given an <code>@-directive</code> that overrides the context of the marker. If the homescreen instead had invoked <code>performance.mark('appLaunch')</code>, normally we'd assume it is in the application's context. With an <code>@-directive</code> however we can key the performance marker to be against a different application, in essense creating a performance marker for one application inside another. This would evaluate to something like:</p>
+
+<pre class="brush: js">performance.mark('appLaunch@clock.gaiamobile.org');</pre>
+
+<p>In this case the homescreen is generating a performance marker for the clock application denoting the time of <code>appLaunch</code>. Raptor will then calculate a delta between <code>appLaunch</code> and all performance markers to achieve a more accurate <em>user-perceived</em> time for a marker to be hit. By moving the moment of capture to earlier in the loading process, specifically as close to icon touch as possible, it makes the data between Raptor and camera-based measurements much more comparable.</p>
+
+<h3 id="Choosing_a_test">Choosing a test</h3>
+
+<p>Tests are selected by changing the name or file that Raptor executes. For example, to run the device reboot performance test instead of a cold launch test you'd do the following:</p>
+
+<pre class="brush: bash">$ raptor test reboot</pre>
+
+<p>More examples:</p>
+
+<pre class="brush: bash"><strong># Test Dialer cold launch</strong>
+$ raptor test coldlaunch --app communications --entry-point dialer
+
+<strong># Change the number of runs</strong>
+$ raptor test coldlaunch --app clock --runs 10
+
+<strong># Introduce a 1-second delay before capturing memory</strong>
+$ raptor test reboot --memory-delay 1000
+
+<strong># Target a particular device</strong>
+$ raptor test reboot --serial f30eccef
+$ ANDROID_SERIAL=f30eccef raptor test reboot
+
+<strong># Turn on Raptor debug output, useful for bugs or problems
+</strong>$ DEBUG=raptor:* raptor test reboot
+
+<strong># JSON mode, useful for post-processing of aggregate values</strong>
+$ raptor test coldlaunch --app clock --output json
+
+<strong># Quiet mode, useful if you only care about the results</strong>
+$ raptor test coldlaunch --app clock --output quiet
+</pre>
+
+<h2 id="Writing_tests">Writing tests</h2>
+
+<p>While Raptor currently contains a few tests for running cold launch tests, rebooting, and restarting B2G, it is possible to write tests that run custom logic.</p>
+
+<p>We can inspect the contents of the current launch test to glean how we can write new tests.</p>
+
+<pre class="brush: js">// mozilla-raptor/test
+// tests/coldlaunch.js
+
+setup(function(options) {
+  options.test = 'cold-launch';
+  options.phase = 'cold-launch';
+});
+
+afterEach(function(phase) {
+  return phase.closeApp();
+});
+</pre>
+
+<p>First comes setting up the test. In <code>setup</code>, pass a function to be executed, which will configure the test. This function will be passed all the current configuration settings. At a minimum, you will need the set the phase of the test, which determines the state the device is in when the test begins. Depending on which phase you select when setting options, you may need to pass additional information. For the launch test example, using the <code>cold</code> phase requires an application to be specified. This can either be set on the command line, or you can hard-code it via the <code>app</code> option to force the test to be specific to a certain app.</p>
+
+<div class="note">
+<p><strong>Note:</strong> If you hard-code the application to be launched, make you specify the origin host completely, e.g. "clock.gaiamobile.org". For entry-point-based apps, specify the <code>app</code> option and the <code>entryPoint</code> option.</p>
+</div>
+
+<div class="warning">
+<p><strong>Important</strong>: Any test harness functions doing asynchronous work should return a Promise so Raptor can properly wait.</p>
+</div>
+
+<p>The <code>afterEach()</code> function will be called once for each run after the phase has been started. For cold launch, it is after an application in context has been primed, exited, and re-opened, and the application denotes it is ready — i.e. <code>performance.mark('fullyLoaded')</code>. For reboot and B2G restart, the phase will be designated as ready when the System application and the Homescreen application are marked as fully loaded.</p>
+
+<p>The <code>phase</code> argument passed to <code>afterEach()</code> represents the current context instance of the phase test runner; in other words, it is specific to the current test being run. It contains methods and functionality that help you trigger device actions which will have profiled performance code. For example, you can start a Marionette.js session and trigger commands:</p>
+
+<pre class="brush: js">setup(function(options) {
+  options.phase = 'cold-launch';
+});
+
+afterEach(function(phase) {
+  // Returning a Promise denotes that we are done running the test when it has resolved
+  return phase.marionette
+    .startSession()
+    .then(function(client) {
+      client.executeScript(function() {
+        // trigger code that captures the performance.measures created
+        // by the application being tested
+      });
+      client.deleteSession();
+    });
+});
+
+</pre>
+
+<p>The runner can also run a <code>teardown()</code> function when all tests are complete.</p>
+
+<pre class="brush: js">teardown(function(phase) {
+  return new Promise(function(resolve) {
+    // teardown the test, then resolve
+    resolve();
+  });
+});
+</pre>
+
+<p>The Raptor Phase API has not yet been documented, so currently you'll need to <a href="https://github.com/mozilla-b2g/raptor/tree/master">read the source</a> for all the functionality available to you. It may be faster to <a href="#Support">seek help from a contributor</a> for help on getting started writing a particular test.</p>
+
+<h3 id="Pre-defining_parameters">Pre-defining parameters</h3>
+
+<p>Constantly specifying the parameters for commands which change infrequently can be cumbersome. Fortunately Raptor supports defining command-line parameters through directory-specific <code>.raptorrc</code> files. Raptor will search for <code>.raptorrc</code> files in the current working directory from which a test is being run, and will walk upward until it reaches your home/user directory. This means you can have preset command parameters which differ based on the directory where the test is run from, i.e. different <code>.raptorrc</code> files per directory.</p>
+
+<p>A <code>.raptorrc</code> file can be YAML or JSON, and each top-level key corresponds to a command for which to preset parameters:</p>
+
+<pre class="brush: json">{
+  "test": {
+    "runs": 30,
+    "app": "communications",
+    "entryPoint": "contacts",
+    "logcat": "logcat.txt"
+  },
+  "submit": {
+    "host": "localhost",
+    "database": "raptor",
+    ...
+  },
+  "query": {
+    ...
+  }
+}</pre>
+
+<h2 id="Visualization_and_automation">Visualization and automation</h2>
+
+<p>Raptor has improved tooling available for automation and visualization. The <code>test-perf</code> tool used to use the <a href="https://datazilla.mozilla.org/b2g/">Datazilla</a> tool for graphing and visualizing results to gain insight into possible regressions and performance pulse of applications. Raptor has moved away from Datazilla however for its visualization capabilities — for maintenance and usability reasons — instead having its own UI at <a href="https://raptor.mozilla.org/">https://raptor.mozilla.org</a>. The Raptor dashboards currently categorize performance metrics in a few key categories per device instance — measures and memory — with more metrics planned in the future.</p>
+
+<p>Raptor's front-end uses the <a href="http://grafana.org/">Grafana</a> visualization tool, and its backing store is <a href="http://influxdb.com/">InfluxDB</a>, a time series database. Grafana provides Raptor UI users with the ability to carry out custom drill-downs into charts, slice time as desired, view data point revisions, and build custom charts and data queries. The default view of several charts displays the 95% Upper Bound of many metrics, but charts can be user-edited to graph other mathematical functions.</p>
+
+<p>This guide is not meant to be a tutorial on the usage of Grafana and InfluxDB, so to learn more about taking full advantage of the Raptor dashboards read through these important pieces of documentation:</p>
+
+<ul>
+ <li><a href="http://docs.grafana.org/guides/gettingstarted/">Getting started with Grafana</a></li>
+ <li><a href="https://influxdb.com/docs/v0.9/query_language/functions.html">InfluxDB Aggregate Functions</a></li>
+</ul>
+
+<h3 id="Automation_in_Production">Automation in Production</h3>
+
+<p>Raptor's production automation runs in the QA Jenkins environment. When new TaskCluster builds arrive for the devices we test against, Raptor performs a number of automated tests and reports the metrics to the Raptor dashboards. Each job goes through a number of setup procedures before actually running the performance tests:</p>
+
+<ul>
+ <li>Full flash the related TaskCluster build. These are currently based on b2g-inbound.</li>
+ <li>Install the Raptor CLI tool</li>
+ <li>Create a Python virtualenv, used for installing reference workloads</li>
+ <li>Install the Raptor profile with <code>make raptor</code></li>
+ <li>Install the light reference workload</li>
+ <li>Tag the device with testing metadata, e.g. device flame-kk, memory 512, branch master</li>
+ <li>Inform Treeherder a performance test is in progress</li>
+ <li>Execute a test, report the metrics to InfluxDB</li>
+ <li>Report test to Treeherder</li>
+ <li>Repeat Treeherder reports and test executions if there are more applications to test</li>
+ <li>Archive test assets and mark the build as a success if all tests completed without error</li>
+</ul>
+
+<h3 id="Detecting_Regressions">Detecting Regressions</h3>
+
+<p>Raptor's automation uses the same CLI commands to detect regressions that can be used locally. The workflow for detection is as follows:</p>
+
+<ol>
+ <li>For a given context (e.g. Contacts, Video, etc.), query InfluxDB for the previous 14 days using the <code>query</code> command.</li>
+ <li>Pipe the output from querying to the <code>regression</code> command. This will return a JSON array of regressions.</li>
+ <li>Pipe the output from <code>regression</code> to the <code>track</code> command. This will creating InfluxDB entries for regressions which were previously unknown and return a JSON array of new regressions.</li>
+ <li>Pipe the output from <code>track</code> to the <code>bug</code> command. This will file bugs in the proper components in Bugzilla and CC relevant stakeholders. Returns a JSON array of bug numbers created.</li>
+</ol>
+
+<p>The code handling the automation of this flow is at <a href="https://github.com/mozilla-raptor/prey/blob/master/prey.sh">https://github.com/mozilla-raptor/prey/blob/master/prey.sh</a>.</p>
+
+<h3 id="Sheriffing_Regressions">Sheriffing Regressions</h3>
+
+<p>When a regression is detected and Raptor files a bug, the goal is to have its resolution follow the sheriffing flow in a manner similar to how the Desktop performance sheriffs regulate. This means that upon filing a bug, there should be a resolution in place within 48-72 hours:</p>
+
+<ul>
+ <li>Backout the offending patch</li>
+ <li>Have a follow-up patch in review</li>
+ <li>Determine acceptance of the regression</li>
+</ul>
+
+<p>Bugs that do not receive attention within the resolution window are subject to immediate backout.</p>
+
+<h2 id="Private_visualization">Private visualization</h2>
+
+<p>The Raptor dashboard visualization discussed in the previous section can also be installed and used privately. The installation is a Heroku-deployable environment for easy setup. It is also possible to run the Heroku application locally if you use Linux.</p>
+
+<p>To get started with private visualization, or want to learn more about its innards, see the repository: <a href="https://github.com/mozilla-raptor/dashboards">https://github.com/mozilla-raptor/dashboards</a>.</p>
+
+<p>You will also need an installation of InfluxDB 0.9.3+. You can learn more about installing it at: <a href="https://influxdb.com/docs/v0.9/introduction/installation.html">https://influxdb.com/docs/v0.9/introduction/installation.html</a>. Those who are familiar with Docker can also install InfluxDB from Docker Hub: <a href="https://hub.docker.com/r/tutum/influxdb/">https://hub.docker.com/r/tutum/influxdb/</a>.</p>
+
+<p>Raptor needs CLI options or environment variables for creating a connection to an InfluxDB database. It would be tedious to specify these continually on the command line, so to simplify this, you can values to a .raptorrc file.</p>
+
+<pre class="brush: bash">{
+  "submit": {
+    "host": "localhost",
+    "port": 8086,
+    "database": "raptor",
+    "username": "root",
+    "password": "root",
+    "protocol": "https"
+  }
+}</pre>
+
+<p>In addition, Raptor's database schema requires its results to be tagged properly in order to display it in correct categories in its dashboard UI. Failure to have these properties set when running performance tests will cause the data to not be displayed. By default, you need to persist the memory configuration of the device, the device type, and the branch the performance test is based on. For example, if you are performance testing a KitKat-based Flame set to 512MB of memory and your patch is based off of Gaia's master branch, you will set the following properties via ADB:</p>
+
+<pre class="brush: bash">$ adb shell setprop persist.raptor.device flame-kk
+$ adb shell setprop persist.raptor.memory 512
+$ adb shell setprop persist.raptor.branch master</pre>
+
+<div class="note">
+<p><strong>Note:</strong> If you are having trouble with the values being persisted or not saving at all, restart ADB as root with <code>adb root</code>.</p>
+</div>
+
+<p>If you were working on a branch that was based off of v2.5 on an Aries with 2 Gigabytes of memory, you would use the following properties:</p>
+
+<pre class="brush: bash">$ adb shell setprop persist.raptor.device aries
+$ adb shell setprop persist.raptor.memory 2048
+$ adb shell setprop persist.raptor.branch v2.5</pre>
+
+<div class="warning">
+<p><strong>Important</strong>: Currently visualization is highly-dependent on the existence of these persisted properties. They are only necessary when using the local visualization tooling; if you flash your device or otherwise unset these properties, you will need to re-set them in order to visualize performance metrics.</p>
+</div>
+
+<p>Other than setting up the environment and device tags, Raptor can be run as normal locally. Upon each successful run, Raptor will report its metrics to the database. Once the test is complete, you can open a browser to your private visualization instance and view your own custom performance data.</p>
+
+<h2 id="Adding_performance_marks_dynamically_when_needed">Adding performance marks dynamically when needed</h2>
+
+<p>One issue with Raptor is that since the tests require us to add performance marks into code, the Gaia codebase could quickly become littered with <code>Performance.mark()</code> calls without any meaningful relationship between them, making the code clutted and harder to understand. The best way to deal with this is to collect all the marks into some kind of patching files, and apply them dynamically as required when we want to run specific Raptor tests.</p>
+
+<p>To this end, Greg Weng has created a code transformer tool that will do just what is described above. The tool is currently a work in progress, but you can find more about it (including how to get it running) at this newsgroup entry: <a href="https://groups.google.com/forum/#!topic/mozilla.dev.gaia/vBRUjSRLG6g">Raptor: code transformer + marionette workflow now is almost ready</a>. See also <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1181069" title="FIXED: [Build][Raptor] Add a code transformer tool to support dynamically adding marks to help to test app performance">bug 1181069</a> for implementation specifics.</p>
+
+<p>We will publish more formal instructions once the tool has stabilised.</p>
+
+<h2 id="Support">Support</h2>
+
+<p>If you have questions about Raptor, visualization, or performance tooling in general, feel free to ping <code>:Eli</code> or <code>:rwood</code> in the #raptor channel on <a href="https://wiki.mozilla.org/IRC">Mozilla IRC</a>.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/B2G_OS/Developing_Gaia/Raptor/Responsiveness_guidelines">Firefox OS app startup: responsiveness guidelines</a></li>
+</ul>

@@ -1,0 +1,27 @@
+<p>
+Tuning pageload can be beneficial if you know what you're doing. Firefox (and all Mozilla Products/Projects which do page-loading) ship with what are considered the "best" settings for the most cases. This document explains which preferences to tweak to affect your pageload time. You use the URL <code>about:config</code> or the file <code>prefs.js</code> in your profile to change these.
+</p><p>To best understand what the following preferences affect, there are a few things you should know.
+</p>
+<ul><li> The data flows in Gecko as follows: network -&gt; necko -&gt; parser -&gt; content sink -&gt; content model -&gt; rendering model -&gt; layout -&gt; painting. </li></ul>
+<dl><dt> nglayout.initialpaint.delay
+</dt><dd> This is a preference that specifies a delay, in milliseconds, after the data from the server has started coming in.
+</dd><dd> During this delay, the page that's coming in is not painted, unless it ends up fully loaded before the delay expires. The idea here is twofold.<ul><li>This reduces ugly visual jitter as the new page comes in by not starting painting till after we have a bunch of the data.</li><li>This makes overall page load time shorter by not doing extra repaints very early on.</li></ul>
+</dd></dl>
+<dl><dt> content.interrupt.parsing </dt><dd> This preference, when true, means that the content sink can tell the parser to stop for now and return to the event loop, which allows layout and painting to happen.
+</dd><dd> If the parser gets a large chunk of data, it will try to parse it all, building the corresponding content model. Since layout and painting happen asynchronously, while the parser is working there is no layout or painting. So this preference is used to increase responsiveness, especially on cached loads (where data comes into the parser in large chunks)
+</dd></dl>
+<dl><dt> content.max.tokenizing.time
+</dt><dd> Controls how often the sink interrupts the parser.
+</dd><dd> The parser is interrupted at least every <code><b>content.max.tokenizing.time</b></code> microseconds, if it can be interrupted at all; <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=76722" title="FIXED: Gecko blocks the main thread for > 1 sec processing events">bug 76722</a> may have more details on this part. </dd></dl>
+<dl><dt> content.switch.threshold
+</dt><dd> Determines how often we switch content sink modes.
+</dd><dd> There are two modes. In mode <i>A</i> we interrupt the parser every <code><i>content.max.tokenizing.time</i></code> microseconds. In mode <i>B</i> we interrupt the parser every 3000 microseconds. Every <code><b>content.switch.threshold</b></code> microseconds, we decide whether we should be in mode <i>A</i> or mode <i>B</i>. The decision is based on whether there were any user events on the relevant widget in the last <code><b>content.switch.threshold</b></code> microseconds. As in, if the user is moving the mouse or typing in that window, we'll be more responsive; if there is no user activity, we will aim for less parser interruption and less responsiveness but lower overall load time.
+</dd></dl>
+<dl><dt> content.notify.*
+</dt><dd> Controls the information flow from content sink to rendering model.
+</dd><dd> In particular, the way things work right now is that the parser and content sink construct the DOM; then every so often, the content sink lets the rendering model constructor (nsCSSFrameConstructor) know that there are new DOM nodes. The reason for this is that nsCSSFrameConstructor is most efficient when doing a bunch of stuff at once instead of constructing rendering objects for one DOM node at a time. specifically - <code><b>content.notify.ontimer</b></code> controls whether the frame constructor is notified off a timer at all <code><b>content.notify.backoffcount</b></code> controls how many times that happens for a given page (the default is arbitrarily many times). Once the backoff count is reached, no more rendering model construction till after the whole page is parsed.
+</dd></dl>
+<dl><dt> content.maxtextrun
+</dt><dd> Controls the maximum length of data in a TextNode.
+</dd><dd> So if you have more than <code><b>content.maxtextrun</b></code> characters of text in a row, we'll create multiple textnodes for it. This is an optimization designed to prevent long text from ending up being O(N^2). It's also really a bug per the DOM spec and we should stop doing it...
+</dd></dl>

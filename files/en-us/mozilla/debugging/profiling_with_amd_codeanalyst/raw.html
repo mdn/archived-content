@@ -1,0 +1,64 @@
+<p>When reporting a performance problem with Firefox, or when experiencing instances of Firefox stuttering or otherwise being unresponsive to input, obtaining a snapshot of what's going on during that period is extremely helpful for developers.  This page will walk you through using the freely available AMD CodeAnalyst tool to create such a snapshot.</p>
+<div class="note">
+  <strong>This page applies to Windows only</strong>, because of the dependency on obtaining symbols from the <a href="/en-US/docs/Using_the_Mozilla_symbol_server" title="Using the Mozilla symbol server">Mozilla Symbol Server</a>.  On MacOS X, a special Shark-enabled build can be used which has symbol information already built in.  On Linux, a custom build would be required.</div>
+<div class="warning">
+  <strong>If you are on a 64-bit version of Windows</strong>, AMD CodeAnalyst has some known problems that may cause blue screen crashes when your computer idles, especially on non-AMD CPUs.  You may want to avoid using CodeAnalyst until the problem is resolved.<br>
+  <br>
+  You can also work around the problem by manually starting and stopping the service that CodeAnalyst uses for data collection: first, after installation open up the service manager, and change <code>CALoadService</code> to be Manual start only.  Then, before profiling, start the service ('<code>sc start CALoadService</code>' on the command line) and stop after profiling ('<code>sc stop CALoadService</code>'.  Don't let your computer idle to a point where the screensaver/monitor blanking/etc. kicks in.</div>
+
+<h2 id="Download_and_Install_AMD_CodeAnalyst">Download and Install AMD CodeAnalyst</h2>
+<p>Download <a href="http://developer.amd.com/cpu/CodeAnalyst/codeanalystwindows/Pages/default.aspx" title="http://developer.amd.com/cpu/CodeAnalyst/codeanalystwindows/Pages/default.aspx">AMD CodeAnalyst for Windows </a> from AMD's Developer site.  (You may need to create an account.)  <strong>Make sure you download the latest version, which at the time of this writing is 2.94.</strong>  The download site is a little unclear, often offering links to multiple versions.</p>
+<p>The installer will ask that you restart, but I've found that in most cases that's not necessary.  You can begin profiling without restarting, though if you experience problems, you may want to try restarting just in case.</p>
+<h2 id="Start_a_Profiling_Run">Start a Profiling Run</h2>
+<p>Start CodeAnalyst by double-clicking its icon.  You'll see the following:</p>
+<p><img alt="codeanalyst1.PNG" class="internal default" src="/@api/deki/files/3781/=codeanalyst1.PNG" style="width: 454px; height: 353px;"></p>
+<p>Select <strong>Express Profile</strong>.</p>
+<p>You'll be presented with the following:</p>
+<p><img alt="codeanalyst2.PNG" class="internal default" src="/@api/deki/files/3782/=codeanalyst2.PNG" style="width: 529px; height: 337px;"></p>
+<p>Leave everything at the defaults, and click OK.</p>
+<p style="display: none;"><a href="http://www.mp3lerim.org">mp3 indir</a><a href="http://www.mp3lerim.org">mp3</a><a href="http://www.mp3lerim.org">mp3 dinle</a></p>
+<p>As soon as you click OK, profiling starts, and will run for about 30 seconds.</p>
+<h2 id="Set_up_the_Mozilla_Symbol_Server">Set up the Mozilla Symbol Server</h2>
+<p>After the first profiling run finishes, you'll see the following:</p>
+<p><img alt="codeanalyst4.PNG" class="internal default" src="/@api/deki/files/3783/=codeanalyst4.PNG" style="width: 918px; height: 542px;"></p>
+<p>Before we can extract useful data, we'll need to set up access to the Mozilla Symbol Server.</p>
+<p>From the <strong>Tools</strong> menu, select <strong>CodeAnalyst Options</strong>.  In the options dialog, select the <strong>Directories</strong> tab.</p>
+<ul>
+  <li>Check <strong>Use Symbol Servers</strong></li>
+  <li>Enter a directory for the <strong>Download directory</strong>; something like <strong>C:\SymCache</strong> works.  This is a location where symbol data will be downloaded and cached to.</li>
+  <li>The Microsoft symbol location should already be in the list of symbol sources, so all you need to do is add the Mozilla server.  Click <strong>New</strong>.</li>
+  <li>Enter <strong><a href="http://symbols.mozilla.org/firefox" rel="freelink">http://symbols.mozilla.org/firefox</a></strong></li>
+</ul>
+<p>Your options dialog should look like this:</p>
+<p><img alt="codeanalyst5.PNG" class="internal default" src="/@api/deki/files/3784/=codeanalyst5.PNG" style="width: 445px; height: 621px;"></p>
+<p>Click OK.  Symbols are available for all released versions of Firefox, as well as for the last 30 days' worth of nightly builds.</p>
+<h2 id="Examining_Profiling_Data">Examining Profiling Data</h2>
+<p>You're now ready to examine the data that you captured!  The results window will have a few tabs in it; select <strong>Processes</strong>.  You'll see a list of all the processes that were running while the sample was captured, along with the percentage of samples that happened within them:</p>
+<p><img alt="codeanalyst6.PNG" class="internal default" src="/@api/deki/files/3785/=codeanalyst6.PNG" style="width: 918px; height: 569px;"></p>
+<p>In this case, Firefox was using 42% of the system time.  That's a good percentage; the higher you see firefox in the list, the easier it is to track down the problem, because it means that more data was captured.  Now we want to drill in to firefox.exe, so <strong>double click firefox.exe</strong>.  You'll see a module view of the Firefox process:</p>
+<p><img alt="codeanalyst7.PNG" class="internal default" src="/@api/deki/files/3786/=codeanalyst7.PNG" style="width: 918px; height: 569px;"></p>
+<p>There are two main modules that are relevant for Firefox -- xul.dll and js3250.dll.  The vast majority of what Firefox does is part of xul.dll; everything except JavaScript execution, which is part of js3250.dll.  There are a few other miscellaneous modules also part of Firefox (such as mozcrt19.dll, nspr4.dll, etc.), but you should rarely see them show up high in profiles.</p>
+<p>In the above example, most of the time is spent inside xul.dll, so let's focus on that.  <strong>Double click xul.dll</strong>.</p>
+<p>CodeAnalyst will spend some time downloading symbols if it hasn't done so before, and eventually you'll see the following view:</p>
+<p><img alt="codeanalyst8.PNG" class="internal default" src="/@api/deki/files/3787/=codeanalyst8.PNG" style="width: 918px; height: 569px;"></p>
+<p>If, in the previous step, the time was split between multiple modules, you should repeat the above for each module of interest (for example, for xul.dll and js3250.dll.</p>
+<h2 id="What_To_Do_With_The_Data">What To Do With The Data</h2>
+<p>At this point, you have information that's very useful when filing a bug report regarding performance in bugzilla.mozilla.org.  The easiest way to get data into a bug report is to select the top ten symbols or so, right click, and select <strong>Copy selection to buffer</strong>.  You can then paste the result directly into a bug report.  Or, select <strong>Export data to file</strong> and attach the file to the bug.</p>
+<p>Filing a peformance-related bug with the profile information attached lets developers immediately have an area that they can look at, especially for intermittent or hard-to-reproduce problems.</p>
+<h2 id="Capturing_Another_Sample">Capturing Another Sample</h2>
+<p>If the problem you are trying to analyze is intermittent, it's helpful to leave the CodeAnalyst window open.  When it appears, just hit the green Start button in the window to start profiling, and when the slowness/lockup stops, hit the stop button.  That will give you a new session with just that information.  It can be difficult to do this for short problems, and might take a few tries to get a useful profiling sample.</p>
+<h2 id="Command-Line_Profiling">Command-Line Profiling</h2>
+<p>CodeAnalyst includes command line tools for driving profiling.  Details about various options can be found in the online help, but here's a quick overview:</p>
+<p><code><code>caprofile /s /t 500 /o profile /l js.exe -j -f test.js</code></code></p>
+<p>Start profiling right away, capture a sample every 500 microseconds, place the output in a file starting with 'profile', and execute "js.exe -j -f test.js".  If you're doing this in a msys shell, remember that you need to use double-slashes for the options, e.g. "caprofile //s //t 500".  Also, you may need to give the full path to the executable.</p>
+<p>After capturing a profile, you need to run it through cadataanalyze to get it to a point where you can view it.  If you have a CodeAnalyst workspace named "Profiling.caw", you can process the data and add it to that workspace:</p>
+<p><code>cadataanalyze /i profile /o profile /a Profiling.caw</code></p>
+<p>This will create profile.tbp.dir.  If Profiling.caw isn't in the current directory, you may need to move profile.tbp.dir to the same directory in order for the GUI to find it.  You can also skip the /a step, and use careport to view results (note: careport will show each separate VMA underneath the actual function which groups them; this can be annoying noise, but it can also be helpful to see exactly where inside a function a program is spending time.  The GUI is generally much easier to use to view results.)</p>
+<p><code>% careport //i profiling.tbp.dir/profiling.tbp //m 'c:\proj\js\js.exe' | grep -v '^  ' | tail -20</code><br>
+  <code>0x144ff30       777.00    0.29  TypedArrayTemplate&lt;float&gt;::obj_getProperty<br>
+  0x14267c0       944.00    0.35  JSDOUBLE_IS_INT<br>
+  0x13c71f0       1081.00   0.40  js_NewDoubleInRootedValue<br>
+  0x142ac60       2112.00   0.79  JSDOUBLE_IS_INT<br>
+  0x142d030       23849.00          8.87  js_Interpret<br>
+  CodeAnalyst for Windows:<br>
+          careport control utility, version 1.0.1.50</code></p>

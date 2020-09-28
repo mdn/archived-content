@@ -1,0 +1,68 @@
+<p>As GCC compiles file, Dehydra calls functions in the user analysis script with information about the code being compiled. For more information, see the <a class="internal" href="/En/Dehydra/Function_Reference" title="En/Dehydra/Manual">function reference</a> and the <a class="internal" href="/En/Dehydra/Object_Reference" title="En/Dehydra/Object Reference">object reference</a>.</p>
+<h2 id="Example_printing_the_location_of_type_declarations">Example: printing the location of type declarations</h2>
+<p>Save the following C++ code <span style="font-family: Courier New;">dumptypes.cc</span>:</p>
+<pre>typedef int MyInt;
+struct Foo { int i; char *c; };
+</pre>
+<p>Save the following analysis script <span style="font-family: Courier New;">dumptypes.js</span>:</p>
+<pre>function process_type(t)
+{
+  print("Type found: " + t.name + " location: " + t.loc);
+}
+
+function input_end()
+{
+  print("Hello, world!");
+}
+</pre>
+<p>Compile using the following command:</p>
+<p><code><span style="font-family: Courier New;">$ g++ -fplugin=~/dehydra/gcc_dehydra.so -fplugin-arg=~/dumptypes.js -o/dev/null -c dumptypes.cc</span></code></p>
+<p><code><span style="font-family: Courier New;">Note:for g++4.5 and up</span></code></p>
+<p><code><span style="font-family: Courier New;">use -fplugin-arg-gcc_dehydra-script= rather than -fplugin-arg</span></code></p>
+<p>It should print the following results:</p>
+<pre>Type found: Foo location: test.cc:2:12
+Type found: MyInt location: test.cc:1:13
+Hello, world!
+</pre>
+<p>See documentation for: <a class="internal" href="/En/Dehydra/Function_Reference#process_type" title="More information on the process_type callback function">process_type</a>, <a class="internal" href="/En/Dehydra/Function_Reference#input_end" title="More information on the input_end callback function">input_end</a>, <a class="internal" href="/En/Dehydra/Function_Reference#print" title="More information on the print function">print</a>, <a class="internal" href="/En/Dehydra/Object_Reference#loc" title="More information on the .loc property">.loc property</a></p>
+<h2 id="final-example" name="final-example"> Example: using attributes to mark a class as "final"</h2>
+<p>Save the following code as final.cc:</p>
+<pre>// This class should not be subclassed!
+class __attribute__((user("final"))) MyClass
+{
+};
+
+// This subclass should be an error
+class SubClass : public MyClass
+{
+};
+</pre>
+<p>Save the following analysis script final.js:</p>
+<pre>/**
+ * Helper function: returns true if a class is marked with the "final" attribute.
+ */
+function isFinal(c)
+{
+  if (!c.<a class="internal" href="/En/Dehydra/Object_Reference#attributes" title="En/Dehydra/Object Reference">attributes</a>)
+    return false;
+  for each (let a in c.attributes)
+    if (a.name == 'user' &amp;&amp; a.value == 'final')
+      return true;
+  return false;
+}
+
+function process_type(t)
+{
+  if (t.bases)
+    for each (let base in t.<a class="internal" href="/En/Dehydra/Object_Reference#bases" title="En/Dehydra/Object Reference#bases">bases</a>)
+      if (isFinal(base.type))
+        <a class="internal" href="/En/Dehydra/Function_Reference#error" title="En/Dehydra/Function Reference#error">error</a>("class " + t.name + " extends final class " + base.type.name, t.<a class="internal" href="/En/Dehydra/Object_Reference#loc" title="En/Dehydra/Object Reference#loc">loc</a>);
+}
+</pre>
+<p>Compile using the following command:</p>
+<p><code><span style="font-family: Courier New;">$ g++ -fplugin=~/dehydra/gcc_dehydra.so -fplugin-arg=~/final.js -o/dev/null -c final.cc</span></code></p>
+<p>It should print the following results and return with an error code:</p>
+<pre>final.cc:8: error: class SubClass extends final class MyClass
+</pre>
+<p> See documentation for: <a class="internal" href="/En/Dehydra/Function_Reference#process_type" title="More information on
+the process_type callback function">process_type</a>, <a class="internal" href="/En/Dehydra/Function_Reference#error" title="More information on the error function">error</a>, <a class="internal" href="/En/Dehydra/Object_Reference#bases" title="More information on the .bases property">.bases property</a>, <a class="internal" href="/En/Dehydra/Object_Reference#attributes" title="More information on the .attributes property">.attributes property</a></p>

@@ -1,0 +1,42 @@
+<p>The framework for embedding Mozilla technologies was at one point called the GRE (Gecko Runtime Environment). This embedding framework allows applications to locate a compatible Gecko runtime and embed it without knowing in advance where that runtime will be installed. This document describes how embedders should dynamically link to a GRE. To understand how GREs are registered, see <a href="en/GRE_Registration">GRE Registration</a>.</p>
+
+<p>The <a href="en/XRE">XRE</a> project, which means "XUL Runtime Environment", has been replaced by <a href="en/XULRunner">XULRunner</a>.</p>
+
+<h3 id="Mozilla_Suite:_the_old_GRE" name="Mozilla_Suite:_the_old_GRE">Mozilla Suite: the old GRE</h3>
+
+<p>There are two different forms for the GRE: the "old" GRE was part of the Mozilla application suite. It was installed with the Windows installer of Mozilla 1.4 through 1.7.x. There was never an official GRE shipped for Linux, but various distributors such as Red Hat have registered Mozilla installations as if they were a GRE. The Mozilla suite never supported a GRE on Mac.</p>
+
+<h3 id="XULRunner:_the_new_GRE" name="XULRunner:_the_new_GRE">XULRunner: the new GRE</h3>
+
+<p><a href="en/XULRunner">XULRunner</a> is the new version of the GRE, which not only allows embedding but is capable of bootstrapping entire XUL applications such as Firefox. XULRunner supports or is planned to support embedding on all three major platforms (Windows, Mac, and Linux).</p>
+
+<h3 id="Finding_and_using_a_GRE_from_application_code" name="Finding_and_using_a_GRE_from_application_code">Finding and using a GRE from application code</h3>
+
+<h4 id="Avoid_linking_directly_against_xpcom.dll" name="Avoid_linking_directly_against_xpcom.dll">Avoid linking directly against xpcom.dll</h4>
+
+<p>If an application wishes to use the GRE, it must take careful steps to ensure that it links against the proper libraries. If you link directly against <code>xpcom.dll/libxpcom.so</code> (<code>xpcom.lib</code> import lib), your application will not launch unless xpcom.dll is in your <code>PATH</code>. This prevents dynamically finding a compatible GRE at runtime.</p>
+
+<h4 id="Find_a_compatible_GRE" name="Find_a_compatible_GRE">Find a compatible GRE</h4>
+
+<div class="note">
+<p><strong>Note:</strong> Support for locating a standalone glue was removed in <span title="(Firefox 6.0 / Thunderbird 6.0 / SeaMonkey 2.3)">Gecko 6.0</span>.</p>
+</div>
+
+<p>To find a compatible GRE, you should use the function <code>GRE_GetGREPathWithProperties()</code> (declared in <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/glue/standalone/nsXPCOMGlue.h" rel="custom">xpcom/glue/standalone/nsXPCOMGlue.h</a></code>). This allows the embedder to specify what version(s) of GRE are appropriate, and to specify any special features the GRE must have (currently there are no special features defined).</p>
+
+<h4 id="Statically_link_to_xpcomglue.lib_.28the_.22standalone_glue.22.29" name="Statically_link_to_xpcomglue.lib_.28the_.22standalone_glue.22.29">Statically link to xpcomglue.lib (the "standalone glue")</h4>
+
+<p>The solution is to statically link against <code>xpcomglue.lib</code>, also known as the "standalone glue" (see <a href="en/XPCOM_Glue">XPCOM Glue</a>). This library provides a layer of indirection between embedding code and XPCOM. To use the XPCOM glue, you must follow these steps:</p>
+
+<ul>
+ <li>Compile your code with <code>XPCOM_GLUE</code> defined.</li>
+ <li>Link with <code>xpcomglue.lib</code> (<em>not</em> <code>xpcomglue_s.lib</code>!). Don't link against the NSPR libs.</li>
+ <li>Find a compatible GRE (see above).</li>
+ <li>Dynamically link to that GRE using the <code>XPCOMGlueStartup()</code> function. See <a href="#Dependent_libraries_and_environment_variables">environment variables</a> below.</li>
+ <li>Initialize XPCOM and do your work; when finished, shut down XPCOM.</li>
+ <li>Unlink XPCOM with <code>XPCOMGlueShutdown()</code>.</li>
+</ul>
+
+<h4 id="Dependent_libraries_and_environment_variables" name="Dependent_libraries_and_environment_variables">Dependent libraries and environment variables</h4>
+
+<p>The XULRunner GRE is designed so that the embedder does not need to set any environment variables such as <code>PATH</code> or <code>LD_LIBRARY_PATH</code> before calling <code>XPCOMGlueStartup()</code>, because it dynamically loads the correct dependent libraries. Unfortunately, the Mozilla suite-based GRE is not as forgiving, especially on Linux. Embedders will need to set the <code>LD_LIBRARY_PATH</code> environment variable and start a new process in order to embed a suite-based GRE correctly.</p>

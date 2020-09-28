@@ -1,0 +1,549 @@
+---
+title: File I/O
+slug: Archive/Add-ons/Code_snippets/File_I_O
+tags:
+  - Add-ons
+  - Code snippets
+  - Extensions
+  - Files
+  - Streams
+  - Tutorial
+---
+<div class="warning">
+<p>Use of <a href="/en-US/docs/JavaScript_OS.File">OS.File</a> is preferred over the examples in this article. Only use these legacy interfaces if OS.File is not available to you.</p>
+</div>
+
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This article describes local file input/output in chrome JavaScript.</p>
+
+<p>You access the file system using Mozilla <a href="/en/XPCOM" title="en/XPCOM">XPCOM</a> components.</p>
+
+<div class="note"><strong>Note</strong>: File objects are <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>. For legacy reasons, there is also an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILocalFile" title="">nsILocalFile</a></code> interface.</div>
+
+<h3 id="Creating_a_file_object" name="Creating_a_file_object">Creating an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> object</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+var file = new FileUtils.File("/home");
+</pre>
+
+<p>Or the same without using <a href="/en-US/docs/JavaScript_code_modules/FileUtils.jsm" title="en-US/docs/JavaScript_code_modules/FileUtils.jsm">FileUtils.jsm</a>:</p>
+
+<pre class="brush: js">var file = Components.classes["@mozilla.org/file/local;1"].
+           createInstance(Components.interfaces.nsILocalFile);
+file.initWithPath("/home");
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> The path should be in the "native" form (for example<code>"C:\\Windows"</code>). If you need to use file:// URIs as initializers, see discussion of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIIOService" title="">nsIIOService</a></code> below.</p>
+
+<p><strong>Note:</strong> You can still get a file object even if the specified file does not exist, and no exception will be thrown. An exception is thrown only when methods that require the file to exist are called, e.g., <code>isDirectory()</code>, <code>moveTo()</code>, and so on.</p>
+</div>
+
+<h3 id="Getting_files_in_special_directories" name="Getting_files_in_special_directories">Getting files in special directories</h3>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+// get the "data.txt" file in the profile directory
+var file = FileUtils.getFile("ProfD", ["data.txt"]);
+</pre>
+
+<p>Or the same without using <a href="/en-US/docs/JavaScript_code_modules/FileUtils.jsm" title="en-US/docs/JavaScript_code_modules/FileUtils.jsm">FileUtils.jsm</a>:</p>
+
+<pre class="brush: js">// Get profile directory.
+var file = Components.classes["@mozilla.org/file/directory_service;1"].
+           getService(Components.interfaces.nsIProperties).
+           get("ProfD", Components.interfaces.nsIFile);
+// Or using Services.jsm and Ci = Components.interfaces
+var file = Services.dirsvc.get("ProfD", Ci.nsIFile);
+
+// Append the file name.
+file.append("data.txt");
+
+// Note: "file" is an object that implements nsIFile. If you want the
+// file system path, use file.path
+</pre>
+
+<p> </p>
+
+<div class="note"><strong>Note:</strong> <code>file</code> is an object that implements <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>. If you want the file system path, use <code>file.path</code>,</div>
+
+<p>.</p>
+
+<p> </p>
+
+<p>Here are some of the special locations the directory service supports:<br>
+ <br>
+ (Scope: d = pro<strong>d</strong>uct-wide, f = pro<strong>f</strong>ile wide)</p>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th>String</th>
+   <th>Scope</th>
+   <th>Meaning</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>AChrom</td>
+   <td>d</td>
+   <td><code>%</code>CurProcD<code>%/chrome</code></td>
+  </tr>
+  <tr>
+   <td>APlugns</td>
+   <td>d</td>
+   <td><code>%</code>CurProcD<code>%/plugins (Deprecated - use APlugnsDL)</code></td>
+  </tr>
+  <tr>
+   <td>APlugnsDL</td>
+   <td>d</td>
+   <td> </td>
+  </tr>
+  <tr>
+   <td>ComsD</td>
+   <td>n/a</td>
+   <td><code>%</code>CurProcD<code>%/components</code></td>
+  </tr>
+  <tr>
+   <td>CurProcD</td>
+   <td>n/a</td>
+   <td>Current working directory (usually the application's installation directory).</td>
+  </tr>
+  <tr>
+   <td>DefProfLRt</td>
+   <td>d</td>
+   <td>Location of user profile temporary directories live.</td>
+  </tr>
+  <tr>
+   <td>DefProfRt</td>
+   <td>d</td>
+   <td>The root of the default profile directory (for example <code>/root/.mozilla</code>).</td>
+  </tr>
+  <tr>
+   <td>DefRt</td>
+   <td>d</td>
+   <td colspan="1" rowspan="2">
+    <p><code>%</code>CurProcD<code>%/defaults -</code> The root directory of all defaults directories.</p>
+    The user's desktop directory (for example <code>~/Desktop</code> on Linux or Mac OS X, <code>C:\Documents and Settings\username\Desktop</code> on Windows).</td>
+  </tr>
+  <tr>
+   <td>Desk</td>
+   <td>f</td>
+  </tr>
+  <tr>
+   <td>DfltDwnld</td>
+   <td>f</td>
+   <td>The default Downloads directory (for example, <code>~/Downloads</code> on Mac OS X).</td>
+  </tr>
+  <tr>
+   <td>Home</td>
+   <td>f</td>
+   <td>The user's home directory (for example, <code>/home/username</code>).</td>
+  </tr>
+  <tr>
+   <td>PrefD</td>
+   <td>f</td>
+   <td>Directory containing user prefs</td>
+  </tr>
+  <tr>
+   <td>PrfDef</td>
+   <td>d</td>
+   <td><code>%installation%/defaults/pref</code></td>
+  </tr>
+  <tr>
+   <td>ProfD</td>
+   <td>f</td>
+   <td>The profile directory.</td>
+  </tr>
+  <tr>
+   <td>profDef</td>
+   <td>d</td>
+   <td>The profile defaults of the "current" locale. Should be the first choice.</td>
+  </tr>
+  <tr>
+   <td>ProfDefNoLoc</td>
+   <td>d</td>
+   <td><code>%installation%/defaults/profile</code> - The profile defaults of the "default" installed locale. Second choice when <code>profDef</code> is not available.</td>
+  </tr>
+  <tr>
+   <td>ProfLD</td>
+   <td>f</td>
+   <td>Local Settings on Windows; where the network cache and fastload files are stored.</td>
+  </tr>
+  <tr>
+   <td>Progs</td>
+   <td>d</td>
+   <td>User Start menu programs directory (for example, <code>C:\Documents and Settings\username\Start Menu\Programs</code>). This is a Windows-specific value.</td>
+  </tr>
+  <tr>
+   <td>TmpD</td>
+   <td>d</td>
+   <td>The operating system's temporary files directory (for example, <code>/tmp</code> on Mac OS X and Linux).</td>
+  </tr>
+  <tr>
+   <td>UChrm</td>
+   <td>f</td>
+   <td>The user chrome directory in their profile: <code>%profile%/chrome</code>.</td>
+  </tr>
+  <tr>
+   <td>resource:app</td>
+   <td>d</td>
+   <td>The application directory in an XULRunner application.</td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Look in the source for other strings available:</p>
+
+<ul>
+ <li><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsAppDirectoryServiceDefs.h" rel="custom">xpcom/io/nsAppDirectoryServiceDefs.h</a></code>, <code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsDirectoryServiceDefs.h" rel="custom">xpcom/io/nsDirectoryServiceDefs.h</a></code>.</li>
+ <li>Other such keys as the "ProfD" key are available; check the <a href="/en/Using_nsIDirectoryService#Known_Locations" title="https://developer.mozilla.org/en/Using_nsIDirectoryService#Known_Locations">known locations</a>.</li>
+</ul>
+
+<h4 id="Enumerating_drives_on_Windows">Enumerating drives on Windows</h4>
+
+<p>While you can use <code>initWithPath("/") </code>on UNIX-like systems (Linux, Mac) to get the root of the file system, there's no such root on Windows. However, you can enumerate available drives using the following code:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+var root = new FileUtils.File("\\\\.");
+var drivesEnum = root.directoryEntries, drives = [];
+while (drivesEnum.hasMoreElements()) {
+  drives.push(drivesEnum.getNext().
+    QueryInterface(Components.interfaces.nsILocalFile).path);
+}
+</pre>
+
+<h3 id="Creating_Folders" name="Creating_Folders">Creating Folders</h3>
+
+<p><a href="/en-US/docs/JavaScript_code_modules/FileUtils.jsm#getDir%28%29" title="en-US/docs/JavaScript_code_modules/FileUtils.jsm#getDir%28%29">FileUtils.getDir()</a> can create a folder automatically if it doesn't exist yet:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+var dir = FileUtils.getDir("ProfD", ["DIR"], true);
+</pre>
+
+<p>The above example creates a folder called <code>"DIR"</code> in the user's profile folder. You can also create a directory explicitly; for more information refer to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#create()">nsIFile.create()</a></code>.</p>
+
+<h3 id="Creating_temporary_files" name="Creating_temporary_files">Creating temporary files</h3>
+
+<p>To create a temporary file, use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#createUnique()">nsIFile.createUnique()</a></code>:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+var file = FileUtils.getFile("TmpD", ["suggestedName.tmp"]);
+file.createUnique(Components.interfaces.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
+// do whatever you need to the created file
+alert(file.path);
+</pre>
+
+<h3 id="User_input_via_nsIFilePicker" name="User_input_via_nsIFilePicker">User input via <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFilePicker" title="">nsIFilePicker</a></code></h3>
+
+<p>The file picker component, <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFilePicker" title="">nsIFilePicker</a></code>, can be used to open standard Open / Save dialogs. It returns the user-specified file as <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>.</p>
+
+<h3 id="nsIFile_and_path_strings" name="nsIFile_and_path_strings"><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> and path strings</h3>
+
+<p>You can use <code>nsIFile.path</code> to get a platform-specific path string, for example <code>"C:\Windows\System32"</code> or <code>"/usr/share"</code>.</p>
+
+<p>To get a URL of a file, use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIIOService#newFileURI()">nsIIOService.newFileURI()</a></code>:</p>
+
+<pre class="brush: js">// file is nsIFile
+Components.utils.import("resource://gre/modules/Services.jsm");
+var url = Services.io.newFileURI(file);
+// url is a nsIURI; to get the string "file://...", see url.spec
+</pre>
+
+<p>To get an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> from the 'file://' URL, use <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFileURL" title="">nsIFileURL</a></code>:</p>
+
+<pre class="brush: js">// url is a nsIURI; see nsIIOService::newURI for getting a string into a nsIURI.
+var file = url.QueryInterface(Components.interfaces.nsIFileURL).file;
+// file is a nsIFile
+</pre>
+
+<p>To load from <em>file://</em>, <em>http://</em>, <em>chrome://</em>, <em>resource://</em> and other URLs directly, use <a href="/en-US/docs/DOM/XMLHttpRequest" title="en-US/docs/DOM/XMLHttpRequest">XMLHttpRequest</a> or <a href="/en-US/docs/JavaScript_code_modules/NetUtil.jsm#asyncFetch%28%29" title="en-US/docs/JavaScript_code_modules/NetUtil.jsm#asyncFetch%28%29">NetUtil.asyncFetch()</a>.</p>
+
+<p>Also note that generally you don't need to use <code>nsIFile::path</code>. Use <code>nsIFile</code> directly wherever possible. An example below shows how you should save a path in user prefs.</p>
+
+<h3 id="Storing_nsILocalFile_in_preferences" name="Storing_nsILocalFile_in_preferences">Storing nsIFile in preferences</h3>
+
+<p>The following two snippets show the right way to store a file path in user preferences (<a href="/en/Code_snippets/Preferences" title="en/Code_snippets/Preferences">more about preferences in Mozilla</a>):</p>
+
+<h4 id="Absolute_path_.28nsILocalFile.29" name="Absolute_path_.28nsILocalFile.29">Absolute path (nsIFile)</h4>
+
+<p>To store an arbitrary path in user preferences, use this code:</p>
+
+<pre class="brush: js">// |file| is nsILocalFile. Uses Services.jsm.
+// 1. Write path to prefs
+var prefs = Services.prefs.getBranch("extensions.myext.");
+prefs.setComplexValue("filename", Components.interfaces.nsIFile, file);
+
+// 2. Read path from prefs
+var file = prefs.getComplexValue("filename", Components.interfaces.nsILocalFile);
+</pre>
+
+<h4 id="Relative_path_.28nsIRelativeFilePref.29" name="Relative_path_.28nsIRelativeFilePref.29">Relative path (nsIRelativeFilePref)</h4>
+
+<p>To store paths relative to one of the predefined folders listed above, for example file relative to profile folder, use the following code:</p>
+
+<pre class="brush: js">// 1. Write to prefs
+var relFile = Components.classes["@mozilla.org/pref-relativefile;1"].
+              createInstance(Components.interfaces.nsIRelativeFilePref);
+relFile.relativeToKey = "ProfD"; // or any other string listed above
+relFile.file = file;             // |file| is nsILocalFile
+prefs.setComplexValue("filename",
+     Components.interfaces.nsIRelativeFilePref, relFile);
+
+// 2. Read from prefs
+var value = prefs.getComplexValue("filename",
+     Components.interfaces.nsIRelativeFilePref);
+// |value.file| is the file.
+</pre>
+
+<h3 id="Navigating_with_nsIFile" name="Navigating_with_nsIFile">Navigating with <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code></h3>
+
+<h4 id="Get_a_file_in_given_directory" name="Get_a_file_in_given_directory">Get a file in given directory</h4>
+
+<p>Let us assume an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> file is pointing to some directory (for example a user profile directory). Then you may use <code>file.append("myfile.txt");</code> to make it point to <code>myfile.txt</code> inside that directory.</p>
+
+<div class="note"><strong>Note</strong>: Avoid using <code>dir.path+"\\"+"myfile.txt"</code>, as it is not cross-platform at all. Using something like <code>((path.search(/\\/) != -1) ? path + "\\" : path + "/") + "myfile.txt";</code> is possible, but <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#append()">nsIFile.append()</a></code> is much easier to read and is guaranteed to work on all platforms.</div>
+
+<h4 id="Enumerating_files_in_given_directory" name="Enumerating_files_in_given_directory">Enumerating files in given directory</h4>
+
+<p>The snippet below makes an array of <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code>s corresponding to sub-directories/"sub-files" of the given directory. You can tell files from folders by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isDirectory()">nsIFile.isDirectory()</a></code> and <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isFile()">nsIFile.isFile()</a></code> methods on each <code>entry</code>.</p>
+
+<pre class="brush: js">// file is the given directory (nsIFile)
+var entries = file.directoryEntries;
+var array = [];
+while(entries.hasMoreElements()) {
+  var entry = entries.getNext();
+  entry.QueryInterface(Components.interfaces.nsIFile);
+  array.push(entry);
+}
+</pre>
+
+<h3 id="Reading_from_a_file" name="Reading_from_a_file">Reading from a file</h3>
+
+<h4 id="Asynchronously" name="Asynchronously">Read into a stream or a string</h4>
+
+<p>This will allow you to read a file without locking up the UI thread while reading. Please note that some I/O, such as getting file information and opening the file can still happen on the main thread and therefore block the UI for periods of time. This sample code uses <a href="/en/JavaScript_code_modules/NetUtil.jsm" title="en/JavaScript_code_modules/NetUtil.jsm">NetUtil.jsm</a>. So therefore for the first parameter, file, you can pass an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> object or a string (such as a jar path) See: <a href="/en/JavaScript_code_modules/NetUtil.jsm#asyncFetch%28%29" title="https://developer.mozilla.org/en/JavaScript_code_modules/NetUtil.jsm#asyncFetch()">NetUtil.asyncFetch</a>:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/NetUtil.jsm");
+
+NetUtil.asyncFetch(file, function(inputStream, status) {
+  if (!Components.isSuccessCode(status)) {
+    // Handle error!
+    return;
+  }
+
+  // The file data is contained within inputStream.
+  // You can read it into a string with
+  var data = NetUtil.readInputStreamToString(inputStream, inputStream.available());
+});
+</pre>
+
+<h4 id="Read_with_content_type_hint">Read with content type hint</h4>
+
+<p>It's useful to provide a content type hint to prevent the file system from doing a potentially expensive content type look up (which would be synchronous I/O). In this case an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIChannel" title="">nsIChannel</a></code> object has to be explicitly created from the file:</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/NetUtil.jsm");
+// Content type hint is useful on mobile platforms where the filesystem
+// would otherwise try to determine the content type.
+var channel = NetUtil.newChannel(file);
+channel.contentType = "application/json";
+
+NetUtil.asyncFetch(channel, function(inputStream, status) {
+  ...
+});
+</pre>
+
+<h3 id="Writing_to_a_file" name="Writing_to_a_file">Writing to a file</h3>
+
+<h4 id="Write_a_string">Write a string</h4>
+
+<p>This sample uses <a href="/en/JavaScript_code_modules/NetUtil.jsm" title="en/JavaScript_code_modules/NetUtil.jsm">NetUtil.jsm</a> and <a href="/en/JavaScript_code_modules/FileUtils.jsm" title="en/JavaScript code modules/FileUtils.jsm">FileUtils.jsm</a>.</p>
+
+<pre class="brush: js">Components.utils.import("resource://gre/modules/NetUtil.jsm");
+Components.utils.import("resource://gre/modules/FileUtils.jsm");
+
+// file is nsIFile, data is a string
+
+// You can also optionally pass a flags parameter here. It defaults to
+// FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE | FileUtils.MODE_TRUNCATE;
+var ostream = FileUtils.openSafeFileOutputStream(file);
+
+var converter = Components.classes["@mozilla.org/intl/scriptableunicodeconverter"].
+                createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+converter.charset = "UTF-8";
+var istream = converter.convertToInputStream(data);
+
+// The last argument (the callback) is optional.
+NetUtil.asyncCopy(istream, ostream, function(status) {
+  if (!Components.isSuccessCode(status)) {
+    // Handle error!
+    return;
+  }
+
+  // Data has been written to the file.
+});
+</pre>
+
+<h4 id="Copy_a_stream_to_a_file" name="Copy_a_stream_to_a_file">Copy a stream to a file</h4>
+
+<p>This function copies all of the data from an input stream to a file asyncronously. It overwrites the file if it is there, and if it is not there it creates a file then writes into it. It takes an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIInputStream" title="">nsIInputStream</a></code> and an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> as arguments, and uses <a href="/en/JavaScript_code_modules/NetUtil.jsm" title="en/JavaScript_code_modules/NetUtil.jsm">NetUtil.jsm</a> and <a href="/en/JavaScript_code_modules/FileUtils.jsm" title="en/JavaScript code modules/FileUtils.jsm">FileUtils.jsm</a>. The <code>callback</code> argument is optional.</p>
+
+<pre class="brush: js">function StreamToFile(stream, file, callback) {
+    var output = FileUtils.openSafeFileOutputStream(file)
+    NetUtil.asyncCopy(stream, output, callback);
+}
+</pre>
+
+<h3 id="More" name="More">Synchronous</h3>
+
+<h4 id="Checking_the_existence_of_a_file">Checking the existence of a file</h4>
+
+<pre class="brush: js">// |file| is nsIFile
+if (file.exists()) {
+  // ...
+}
+</pre>
+
+<div class="note">
+<p><strong>Note:</strong> You should avoid checking the existence of a file, not only because of the synchronous I/O on the main thread this causes. There might be races between different processes and/or threads, e.g., a file could be immediately created or deleted after you check the existence but before you can perform any other actions such as opening the file for reading or writing.</p>
+</div>
+
+<h4 id="Reading_a_file">Reading a file</h4>
+
+<pre class="brush: js">// |file| is nsIFile
+var data = "";
+var fstream = Components.classes["@mozilla.org/network/file-input-stream;1"].
+              createInstance(Components.interfaces.nsIFileInputStream);
+var cstream = Components.classes["@mozilla.org/intl/converter-input-stream;1"].
+              createInstance(Components.interfaces.nsIConverterInputStream);
+fstream.init(file, -1, 0, 0);
+cstream.init(fstream, "UTF-8", 0, 0); // you can use another encoding here if you wish
+
+let (str = {}) {
+  let read = 0;
+  do {
+    read = cstream.readString(0xffffffff, str); // read as much as we can and put it in str.value
+    data += str.value;
+  } while (read != 0);
+}
+cstream.close(); // this closes fstream
+
+alert(data);</pre>
+
+<h4 id="Line_by_line" name="Line_by_line">Reading Line by Line</h4>
+
+<div class="note"><strong>NOTE</strong>: The sample code below does not handle text with non-ASCII characters. See <a href="/en/Reading_textual_data" title="en/Reading_textual_data">Reading textual data</a> details on how to read text from other character sets.</div>
+
+<pre class="brush: js">// open an input stream from file
+var istream = Components.classes["@mozilla.org/network/file-input-stream;1"].
+              createInstance(Components.interfaces.nsIFileInputStream);
+istream.init(file, 0x01, 0444, 0);
+istream.QueryInterface(Components.interfaces.nsILineInputStream);
+
+// read lines into array
+var line = {}, lines = [], hasmore;
+do {
+  hasmore = istream.readLine(line);
+  lines.push(line.value);
+} while(hasmore);
+
+istream.close();
+
+// do something with read data
+alert(lines);
+</pre>
+
+<h4 id="Binary_File" name="Binary_File">Reading a Binary File</h4>
+
+<p>For instance, to get the data in a PNG file:</p>
+
+<pre class="brush: js">var ios = Components.classes["@mozilla.org/network/io-service;1"].
+          getService(Components.interfaces.nsIIOService);
+var url = ios.newURI(aFileURL, null, null);
+
+if (!url || !url.schemeIs("file")) throw "Expected a file URL.";
+
+var pngFile = url.QueryInterface(Components.interfaces.nsIFileURL).file;
+
+var istream = Components.classes["@mozilla.org/network/file-input-stream;1"].
+              createInstance(Components.interfaces.nsIFileInputStream);
+istream.init(pngFile, -1, -1, false);
+
+var bstream = Components.classes["@mozilla.org/binaryinputstream;1"].
+              createInstance(Components.interfaces.nsIBinaryInputStream);
+bstream.setInputStream(istream);
+
+var bytes = bstream.readBytes(bstream.available());
+</pre>
+
+<h4 id="Writing_a_File">Writing a File</h4>
+
+<pre class="brush: js">// file is nsIFile, data is a string
+var foStream = Components.classes["@mozilla.org/network/file-output-stream;1"].
+               createInstance(Components.interfaces.nsIFileOutputStream);
+
+// use 0x02 | 0x10 to open file for appending.
+foStream.init(file, 0x02 | 0x08 | 0x20, 0666, 0);
+// write, create, truncate
+// In a c file operation, we have no need to set file mode with or operation,
+// directly using "r" or "w" usually.
+
+// if you are sure there will never ever be any non-ascii text in data you can
+// also call foStream.write(data, data.length) directly
+var converter = Components.classes["@mozilla.org/intl/converter-output-stream;1"].
+                createInstance(Components.interfaces.nsIConverterOutputStream);
+converter.init(foStream, "UTF-8", 0, 0);
+converter.writeString(data);
+converter.close(); // this closes foStream
+</pre>
+
+<div class="note"><strong>Note</strong>: The file status flags used in the <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFileOutputStream#init()">nsIFileOutputStream.init()</a></code> function are documented in <a href="/en/PR_Open#Parameters" title="en/PR_Open#Parameters">PR_Open</a>. For more information refer directly to <code><a href="https://dxr.mozilla.org/mozilla-central/source/nsprpub/pr/include/prio.h" rel="custom">nsprpub/pr/include/prio.h</a></code></div>
+
+<h4 id="Writing_a_Binary_File" name="Writing_a_Binary_File">Writing a Binary File</h4>
+
+<p>For example, here we can write PNG data to a file.</p>
+
+<pre class="brush: js">// pngBinary already exists
+var aFile = Components.classes["@mozilla.org/file/local;1"].
+            createInstance(Components.interfaces.nsILocalFile);
+
+aFile.initWithPath( "/tmp/mypicture.png" );
+aFile.createUnique(Components.interfaces.nsIFile.NORMAL_FILE_TYPE, 0600);
+
+var stream = Components.classes["@mozilla.org/network/safe-file-output-stream;1"].
+             createInstance(Components.interfaces.nsIFileOutputStream);
+stream.init(aFile, 0x04 | 0x08 | 0x20, 0600, 0); // readwrite, create, truncate
+
+stream.write(pngBinary, pngBinary.length);
+if (stream instanceof Components.interfaces.nsISafeOutputStream) {
+    stream.finish();
+} else {
+    stream.close();
+
+}
+</pre>
+
+<h3 id="More" name="More">More</h3>
+
+<p>There are more methods and properties on <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> and <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsILocalFile" title="">nsILocalFile</a></code> interfaces; please refer to their documentation for more details. Those methods/properties are mostly self-explanatory, so we haven't included examples of using them here.</p>

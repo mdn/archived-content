@@ -1,0 +1,178 @@
+<p>The <code>nsITemplateBuilder</code> interface controls the display of elements using a XUL template element and is automatically attached to an element containing a <code>datasources</code> attribute. A template builder, given an input source of data, a template, and a reference point, generates a list of results from the input, and copies part of the template for each result. Templates may generate content recursively, using the same template, but with the previous iteration's results as the reference point. As an example, for an XML data source the initial reference point would be a specific node in the DOM tree and a template might generate a list of all child nodes. For the next iteration, those children would be used to generate output for their child nodes and so forth.</p>
+<p>A template builder is attached to a single DOM node; this node is called the <strong>root node</strong> and is expected to contain a XUL <code>template</code> element as a direct child. Different template builders may be specialized in the manner in which they generate and display the resulting content from the template.</p>
+<p>The structure of a template is as follows:</p>
+<pre class="brush: xml">  &lt;rootnode datasources="" ref=""&gt;
+    &lt;template&gt;
+      &lt;queryset&gt;
+        &lt;query&gt;&lt;/query&gt;
+        &lt;rule&gt;
+          &lt;conditions&gt;...&lt;/conditions&gt;
+          &lt;bindings&gt;...&lt;/bindings&gt;
+          &lt;action&gt;...&lt;/action&gt;
+        &lt;/rule&gt;
+      &lt;/queryset&gt;
+    &lt;/template&gt;
+  &lt;/rootnode&gt;
+</pre>
+<p>The <code>datasources</code> attribute on the root node is used to identify the source of data to be used. The <code>ref</code> attribute is used to specify the reference point for the query.</p>
+<p>The <code>&lt;queryset&gt;</code> element contains a single query and one or more <code>&lt;rule&gt;</code> elements. There may be more than one <code>&lt;queryset&gt;</code> if multiple queries are desired, and this element is optional if only one query is needed -- in that case the <code>&lt;query&gt; </code>and <code>&lt;rule&gt;</code>s are allowed to be children of the <code>&lt;template&gt;</code> node.</p>
+<p>The contents of the query are processed by a separate component called a <strong>query processor</strong>. This query processor is expected to use this query to generate results when asked by the template builder. The template builder then generates output for each result based on the <code>&lt;rule&gt;</code> elements.</p>
+<p>This allows the query processor to be specific to a particular kind of input data or query syntax, while the template builder remains independent of the kind of data being used. Due to this, the query processor will be supplied with the <code>datasource</code> and query which the template builder handles in an opaque way, while the query processor handles these more specifically.</p>
+<p>Results implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> interface and may be identified by an id which must be unique within a given set of query results.</p>
+<p>Each query may be accompanied by one or more <code>&lt;rule&gt;</code> elements. These rules are evaluated by the template builder for each result produced by the query. A rule consists of conditions that cause a rule to be either accepted or rejected. The condition syntax allows for common conditional handling; additional filtering may be applied by adding a custom filter to a rule with the builder's <code>addRuleFilter() </code>method.</p>
+<p>If a result passes a rule's conditions, this is considered a match, and the content within the rule's <code>&lt;action&gt;</code> body is inserted as a sibling of the <code>&lt;template&gt;</code>, assuming the template builder creates real DOM content. Only one rule will match a result. For a tree builder, for example, the content within the action body is used to create the tree rows instead. A matching result must have its <code>ruleMatched() </code>method called. When a result no longer matches, the result's <code>hasBeenRemoved() </code>method must be called.</p>
+<p>Optionally, the rule may have a <code>&lt;bindings&gt;</code> section which may be used to define additional variables to be used within an action body. Each of these declared bindings must be supplied to the query processor via its <code>addBinding() </code>method. The bindings are evaluated after a rule has matched.</p>
+<p>Templates may generate content recursively, using the previous iteration's results as reference point to invoke the same queries. Since the reference point is different, different output will typically be generated. The reference point <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> object for the first iteration is determined by calling the query processor's <code>translateRef() </code>method using the value of the root node's <code>ref</code> attribute. This object may be retrieved later via the builder's <code>rootResult </code>property.</p>
+<p>For convenience, each reference point as well as all results implement the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> interface, allowing the result objects from each iteration to be used directly as the reference points for the next iteration.</p>
+<p>When using multiple queries, each may generate results with the same id. More than one of these results may match one of the rules in their respective queries, however only the result for the earliest matching query in the template becomes the active match and generates output. The <code>addResult</code>, <code>removeResult</code>, <code>replaceResult </code>and <code>resultBindingChanged </code>methods may be called by the query processor to indicate that the set of valid results has changed, such that a different query may match. If a different match would become active, the content for the existing match is removed and the content for the new match is generated. A query processor is not required to provide any support for updating results after they have been generated.</p>
+<p>See the <a href="/en/XUL/Template_Guide" title="en/XUL/Template_Guide">Template Guide</a> for more information about templates.</p>
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source//xul/templates/public/nsIXULTemplateBuilder.idl" rel="custom">/xul/templates/public/nsIXULTemplateBuilder.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+<i>Please add a summary to this article.</i>
+</span>
+
+<div style="background: #eee; padding: 2px;">
+<span> </span>
+<span style="text-align: right; float: right;">Last changed in Gecko 1.9 (Firefox 3)</span></div>
+</div><p></p>
+<p>Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></p>
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+<table class="standard-table"> <tbody> <tr> <td><code>void <a href="#rebuild()">rebuild</a>();</code></td> </tr> <tr> <td><code>void <a href="#refresh()">refresh</a>();</code></td> </tr> <tr> <td><code>void <a href="#addResult()">addResult</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> aResult, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMNode" title="">nsIDOMNode</a></code> aQueryNode);</code></td> </tr> <tr> <td><code>void <a href="#removeResult()">removeResult</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> aResult);</code></td> </tr> <tr> <td><code>void <a href="#replaceResult()">replaceResult</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> aOldResult, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> aNewResult, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMNode" title="">nsIDOMNode</a></code> aQueryNode);</code></td> </tr> <tr> <td><code>void <a href="#resultBindingChanged()">resultBindingChanged</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> aResult);</code></td> </tr> <tr> <td><code><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> <a href="#getResultForId()">getResultForId</a>(in AString aId);</code></td> </tr> <tr> <td><code><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code> <a href="#getResultForContent()">getResultForContent</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMElement" title="">nsIDOMElement</a></code> aElement);</code></td> </tr> <tr> <td><code>boolean <a href="#hasGeneratedContent()">hasGeneratedContent</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIRDFResource" title="">nsIRDFResource</a></code> aNode, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAtom" title="">nsIAtom</a></code> aTag);</code></td> </tr> <tr> <td><code>void <a href="#addRuleFilter()">addRuleFilter</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMNode" title="">nsIDOMNode</a></code> aRule, in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateRuleFilter" title="">nsIXULTemplateRuleFilter</a></code> aFilter);</code></td> </tr> <tr> <td><code>[noscript] void <a href="#init()">init</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContent" title="">nsIContent</a></code> aElement);</code></td> </tr> <tr> <td><code>[noscript] void <a href="#createContents()">createContents</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIContent" title="">nsIContent</a></code> aElement, in boolean aForceCreation);</code></td> </tr> <tr> <td><code>void <a href="#addListener()">addListener</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULBuilderListener" title="">nsIXULBuilderListener</a></code> aListener);</code></td> </tr> <tr> <td><code>void <a href="#removeListener()">removeListener</a>(in <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULBuilderListener" title="">nsIXULBuilderListener</a></code> aListener);</code></td> </tr> </tbody>
+</table>
+<h2 id="Attributes" name="Attributes">Attributes</h2>
+<table class="standard-table"> <tbody> <tr> <td class="header">Attribute</td> <td class="header">Type</td> <td class="header">Description</td> </tr> <tr> <td><code>root</code></td> <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMElement" title="">nsIDOMElement</a></code></td> <td><strong>Readonly:</strong> The root node in the DOM to which this builder is attached.</td> </tr> <tr> <td><code>datasource</code></td> <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsISupports" title="">nsISupports</a></code></td> <td> <p>The opaque datasource object that is used for the template. This object is created by the <code>getDataSource </code>method of the query processor. May be null if the datasource has not been loaded yet. Set this attribute to use a different datasource and rebuild the template.</p> <p>For an RDF datasource, this will be the same as the database. For XML this will be the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIDOMNode" title="">nsIDOMNode</a></code> for the datasource document or node for an inline reference (such as #name). Other query processors may use other types for the datasource.</p> </td> </tr> <tr> <td><code>database</code></td> <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIRDFCompositeDataSource" title="">nsIRDFCompositeDataSource</a></code></td> <td><strong>Readonly:</strong> The composite datasource that the template builder observes and uses to create content. This is used only for RDF queries and is maintained for backwards compatibility. It will be the same object as the datasource property. For non-RDF queries, it will always be null.</td> </tr> <tr> <td><code>rootResult</code></td> <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateResult" title="">nsIXULTemplateResult</a></code></td> <td><strong>Readonly:</strong> The virtual result representing the starting reference point, determined by calling the query processor's translateRef method with the root node's ref attribute as an argument.</td> </tr> <tr> <td><code>queryProcessor</code></td> <td><code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULTemplateQueryProcessor" title="">nsIXULTemplateQueryProcessor</a></code></td> <td><strong>[noscript] Readonly: </strong>The query processor used to generate results.</td> </tr> </tbody>
+</table>
+<h2 id="Methods" name="Methods">Methods</h2>
+<h3 id="rebuild()" name="rebuild()">rebuild()</h3>
+<p>Force the template builder to rebuild its content. All existing content will be removed first. The query processor's <code>done() </code>method will be invoked during cleanup, followed by its <code>initializeForBuilding() </code>method when the content is to be regenerated.</p>
+<pre>void rebuild();</pre>
+<h6 id="Parameters_2">Parameters</h6>
+<p>None.</p>
+<h3 id="refresh()" name="refresh()">refresh()</h3>
+<p>Reloads any RDF datasources that support <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIRDFRemoteDatasource" title="">nsIRDFRemoteDatasource</a></code>.</p>
+<div class="note"><strong>Note: </strong>This is a temporary hack so that remote-XUL authors can reload remote datasources. When RDF becomes remote-scriptable, this will no longer be necessary.</div>
+<pre>void refresh();</pre>
+<h6 id="Parameters_3">Parameters</h6>
+<p>None.</p>
+<h3 id="addResult()" name="addResult()">addResult()</h3>
+<p>Informs the template builder that a new result is available. The builder will add this result to the set of results. The query node that the new result applies to must be specified using the <code>aQueryNode </code>parameter. The builder will apply the rules associated with the query to the new result, unless a result with the same id from an earlier query supersedes it, and the result's <code>ruleMatched() </code>method will be called if it matches.</p>
+<pre>void addResult(
+  in nsIXULTemplateResult aResult,
+  in nsIDOMNode aQueryNode
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aResult</code></dt> <dd>The result to add.</dd> <dt><code>aQueryNode</code></dt> <dd>The query to which the result applies.<br> </dd>
+</dl>
+<h6 id="Errors" name="Errors">Errors</h6>
+<dl> <dd>Throws <code>NS_ERROR_NULL_POINTER</code> if <code>aResult </code>or <code>aQueryNode <span style="font-family: Verdana,Tahoma,sans-serif;">is</span></code> <code>null.</code></dd>
+</dl>
+<h3 id="removeResult()" name="removeResult()">removeResult()</h3>
+<p>Informs the template builder that a result no longer applies. The builder will call the remove content generated for the result, if any. If a different query would then match instead, it will become the active match. This method will have no effect if the result isn't known to the builder.</p>
+<pre>void removeResult(
+  in nsIXULTemplateResult aResult
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aResult</code></dt> <dd>The result to remove</dd>
+</dl>
+<h6 id="Errors" name="Errors">Errors</h6>
+<dl> <dd>Throws <code>NS_ERROR_NULL_POINTER</code> if <code>aResult </code>is <code>null</code></dd>
+</dl>
+<h3 id="replaceResult()" name="replaceResult()">replaceResult()</h3>
+<p>Inform the template builder that one result should be replaced with another. Both the old result (<code>aOldResult</code>) and the new result (<code>aNewResult</code>) must have the same id. The query node that the new result applies to must be specified using the <code>aQueryNode </code>parameter. This method is expected to have the same effect as calling both <code>removeResult </code>for the old result and <code>addResult </code>for the new result.</p>
+<pre>void replaceResult(
+  in nsIXULTemplateResult aOldResult,
+  in nsIXULTemplateResult aNewResult,
+  in nsIDOMNode aQueryNode
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aOldResult</code></dt> <dd>The old result.</dd> <dt><code>aNewResult</code></dt> <dd>The new result.</dd> <dt><code>aQueryNode</code></dt> <dd>The query that the new result applies to.</dd>
+</dl>
+<h6 id="Errors" name="Errors">Errors</h6>
+<dl> <dd>Throws <code>NS_ERROR_NULL_POINTER</code> if either argument is <code>null</code>, or <code>NS_ERROR_INVALID_ARG</code> if the ids don't match</dd>
+</dl>
+<h3 id="rebuild()" name="rebuild()">resultBindingChanged()</h3>
+<p>Informs the template builder that one or more of the optional bindings for a result has changed. In this case, the rules are not reapplied as it is expected that the same rule will still apply. The builder will resynchronize any variables that are referenced in the action body.</p>
+<pre>void resultBindingChanged(
+  in nsIXULTemplateResult aResult
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aResult</code></dt> <dd>The result to change</dd>
+</dl>
+<h6 id="Errors" name="Errors">Errors</h6>
+<dl> <dd>Throws <code>NS_ERROR_NULL_POINTER</code> if <code>aResult </code>is <code>null</code></dd>
+</dl>
+<h3 id="getResultForId()" name="getResultForId()">getResultForId()</h3>
+<p>Returns the result for a given ID. Only one such result is returned and is always the result with that ID associated with the active match. This method will return <code>null</code> is there is no result for the ID.</p>
+<pre>nsIXULTemplateResult getResultForId(
+  in AString aId
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aId</code></dt> <dd>The id to return the result for</dd>
+</dl>
+<h6 id="Return_value">Return value</h6>
+<p>The result for the given ID.</p>
+<h3 id="getResultForContent()" name="getResultForContent()">getResultForContent()</h3>
+<p>Retrieves the result corresponding to a generated element, or <code>null </code>is there isn't one.</p>
+<pre>nsIXULTemplateResult getResultForContent(
+  in nsIDOMElement aElement
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aContent</code></dt> <dd>Element to result the result of</dd>
+</dl>
+<h6 id="Return_value_2">Return value</h6>
+<p>The result for the specified element.</p>
+<h3 id="hasGeneratedContent()" name="hasGeneratedContent()">hasGeneratedContent()</h3>
+<p>Determines whether or not the node has content generated for it. This method is intended to be called only by the RDF query processor. If <code>aTag </code>is set, the content must have a tag name that matches <code>aTag</code>. <code>aTag </code>may be ignored for builders that don't generate real DOM content.</p>
+<pre>boolean hasGeneratedContent(
+  in nsIRDFResource aNode,
+  in nsIAtom aTag
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aNode</code></dt> <dd>Node to check.</dd> <dt><code>aTag</code></dt> <dd>Tag that must match.</dd>
+</dl>
+<h6 id="Return_value_3">Return value</h6>
+<p>Returns <code>true </code>if the node has content generated for it; otherwise returns false.</p>
+<h3 id="addRuleFilter()" name="addRuleFilter()">addRuleFilter()</h3>
+<p>Adds a rule filter for a given rule, which may be used for specialized rule filtering. Any existing filter on the rule is removed. The default conditions specified inside the <code>&lt;rule&gt;</code> tag are applied before the rule filter is applied, meaning that the filter may be used to further filter out results but not reaccept results that have already been rejected.</p>
+<pre>void addRuleFilter(
+  in nsIDOMNode aRule,
+  in nsIXULTemplateRuleFilter aFilter
+);</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aRule</code></dt> <dd>The rule to apply the filter to. </dd> <dt><code>aFilter</code></dt> <dd>The filter to add.</dd>
+</dl>
+<p></p><div><span class="indicatorInHeadline noscript noscriptMethod" title="This method may only be called from C++; don't use it from JavaScript.">Native code only!</span><h3 id="init">init</h3></div><p></p>
+<p>Called to initialize a XUL content builder on a particular root element. This element presumably has a <code>datasources</code> attribute, which the builder will parse to set up the template builder's data sources.</p>
+<pre>[noscript] void init(
+  in nsIContent aElement
+);</pre>
+<h6 id="Parameters_4">Parameters</h6>
+<dl> <dt><code>aElement</code></dt> <dd>The root element from which to derive the data. </dd>
+</dl>
+<p></p><div><span class="indicatorInHeadline noscript noscriptMethod" title="This method may only be called from C++; don't use it from JavaScript.">Native code only!</span><h3 id="createContents">createContents</h3></div><p></p>
+<p>Invoked lazily by a XUL element that needs its child content built.</p>
+<pre>[noscript] void createContents(
+  in nsIContent aElement,
+  in boolean aForceCreation
+);</pre>
+<h6 id="Parameters_5">Parameters</h6>
+<dl> <dt><code>aElement</code></dt> <dd>The element whose contents need to be built.</dd> <dt><code>aForceCreation</code></dt> <dd>If <code>true</code>, the contents of the element are generated even if the element is closed; this behavior is used with menus. If <code>false</code>, the element's contents are only generated if it's open.</dd>
+</dl>
+<h3 id="addListener()" name="addListener()">addListener()</h3>
+<p>Adds a listener to this template builder. The template builder holds a strong reference to the listener.</p>
+<pre>void addListener(
+  in nsIXULBuilderListener aListener
+);</pre>
+<h6 id="Parameters_6">Parameters</h6>
+<dl> <dt><code>aListener</code></dt> <dd>An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULBuilderListener" title="">nsIXULBuilderListener</a></code> object representing the listener to add to the template builder.<br> </dd>
+</dl>
+<h3 id="removeListener()" name="removeListener()">removeListener()</h3>
+<p>Removes a listener from this template builder.</p>
+<pre>void removeListener(
+  in nsIXULBuilderListener aListener
+);</pre>
+<h6 id="Parameters_7">Parameters</h6>
+<dl> <dt><code>aListener</code></dt> <dd>An <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIXULBuilderListener" title="">nsIXULBuilderListener</a></code> object representing the listener to remove from the template builder.</dd>
+</dl>

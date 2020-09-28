@@ -1,0 +1,62 @@
+
+<p><strong><a href="/en-US/docs/FileGuide/IO" title="FileGuide/IO">File and Stream Guide</a>:</strong> <strong>[</strong> <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIScriptableIO" title="">nsIScriptableIO</a></code> | <a href="/en-US/docs/FileGuide/Accessing_Files" title="FileGuide/Accessing_Files">Accessing Files</a> | <a href="/en-US/docs/FileGuide/FileInfo" title="FileGuide/FileInfo">Getting File Information</a> | <a href="/en-US/docs/FileGuide/FileReading" title="FileGuide/FileReading">Reading from Files</a> | <a href="/en-US/docs/FileGuide/FileWriting" title="FileGuide/FileWriting">Writing to Files</a> | <a href="/en-US/docs/FileGuide/MoveCopyDelete" title="FileGuide/MoveCopyDelete">Moving, Copying and Deleting Files</a> | <a href="/en-US/docs/FileGuide/FileUpDown" title="FileGuide/FileUpDown">Uploading and Downloading Files</a> | <a href="/en-US/docs/FileGuide/Directories" title="FileGuide/Directories">Working With Directories</a> <strong>]</strong></p>
+
+<div class="warning">
+  <strong>Important note:</strong> The pages from the <em>File and Stream Guide</em> use the <code>IO</code> object (<code>nsIScriptableIO</code>), which was not available in any released version of the platform (pending <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=396051" title="https://bugzilla.mozilla.org/show_bug.cgi?id=396051">some fixes</a>). There are alternative XPCOM APIs you can use, your help in updating this pages to use the supported API is very much welcome!</div>
+<p>Other documentation on files and I/O not using the unavailable nsIScriptableIO APIs: <a href="/en-US/docs/Code_snippets/File_I_O">Code snippets: File I/O</a>, <a href="/en-US/docs/XUL_Tutorial/Open_and_Save_Dialogs">Open and Save Dialogs</a>, <a href="/en-US/docs/Reading_textual_data">Reading textual data</a>, <a href="/en-US/docs/Writing_textual_data">Writing textual data</a>, <a href="/en-US/docs/Table_Of_Errors#File_Errors">List of file-related error codes</a>.</p>
+<p>A reference to a directory may be created in the same way as with a file by using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code>. You can access a subdirectory by supplying a directory name as the second argument, or refer to one of the special directories by supplying a null string for the second argument. The first line below with retrieve the directory corresponding to the user's home directory, while the second will retrieve the directory 'myfiles' on the desktop.</p>
+<pre class="brush: js">var dir1 = IO.getFile("Home", "");
+var dir2 = IO.getFile("Desktop", "myfiles");
+</pre>
+<p>To refer to a subdirectory, rather than using a path, use <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#append()">nsIFile.append()</a></code> to build up a path. For instance:</p>
+<pre class="brush: js">var dir2 = IO.getFile("Desktop", "myfiles");
+dir2.append("pictures");
+dir2.append("vacations");
+</pre>
+<p>In this example, a subdirectory several levels down is referenced. Each call to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#append()">nsIFile.append()</a></code> navigates to a further subdirectory. The result is a subdirectory three levels below the desktop directory. These directories do not need to exist yet, but they can be created using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#create()">nsIFile.create()</a></code>. See <a href="#Creating_Directories">Creating Directories</a> below for information about this. Note that <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#append()">nsIFile.append()</a></code> modifies the file object, rather than returning a new one.</p>
+<p>Both files and directories are represented using the same kind of object so most of the functions available for <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIFile" title="">nsIFile</a></code> will work for both. You can check if the object refers to a directory or a file by using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isDirectory()">nsIFile.isDirectory()</a></code>. This method returns true if a file object returned by <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIScriptableIO#getFile()">nsIScriptableIO.getFile()</a></code> refers to a directory, and false otherwise. There is also a corresponding <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isFile()">nsIFile.isFile()</a></code> method to check if an object refers to a file. In both cases, the method fails if the file or directory does not exist, so you should check first using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#exists()">nsIFile.exists()</a></code>.</p>
+<pre class="brush: js">var dir = IO.getFile("Desktop", "myfiles");
+dir.append("pictures");
+if (dir.exists() &amp;&amp; dir.isDirectory())
+  alert("This is a directory");
+</pre>
+<h4 id="Creating_Directories" name="Creating_Directories">Creating Directories</h4>
+<p>You can create a new directory by using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#create()">nsIFile.create()</a></code>. For directories, the first argument to this method should be the constant <code>DIRECTORY_TYPE</code> (which has a value of 1). To create a file instead, you could use the constant <code>NORMAL_FILE_TYPE</code> instead.</p>
+<pre class="brush: js">var dir = IO.getFile("Desktop", "myfiles");
+dir.append("pictures");
+if (!dir.exists())
+  dir.create(dir.DIRECTORY_TYPE, 0775);
+</pre>
+<p>This example checks if the directory exists and creates it if it does not. If the directory already exists, then no action is taken. In this case, the directory is the 'pictures' subdirectory within the 'myfiles' directory on the desktop. If either the 'myfiles' directory or the 'pictures' directory do not exist, they will be created. Thus, you do not have to create a series of directories individually, the set will all be created if needed. Naturally, if the 'myfiles' directory already exists, it won't be recreated.</p>
+<h4 id="Iterating_over_the_Files_in_a_Directory" name="Iterating_over_the_Files_in_a_Directory">Iterating over the Files in a Directory</h4>
+<p>The directory object's <code>directoryEntries</code> (<a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#Attributes">nsIFile.Attributes</a>) attribute is used to get a list of the items in a directory. It returns an enumeration which can be iterated over.</p>
+<pre class="brush: js">function getLatestFile()
+{
+  var lastmod = 0;
+  var homedir = IO.getFile("Home", "");
+  var items = homedir.directoryEntries;
+  while (items.hasMoreElements()) {
+    var item = items.getNext().QueryInterface(Components.interfaces.nsIFile);
+    if (item.isFile() &amp;&amp; item.lastModifiedTime &gt; lastmod.lastModifiedTime)
+      lastmod = item;
+  }
+
+  return lastmod;
+}
+</pre>
+<p>This example iterates through the files in the Home directory and looks for the file with the latest modification time (the last file in that directory that was written to). As the <code>directoryEntries</code> (<a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#Attributes">nsIFile.Attributes</a>) property is an enumeration, you can iterate over the items by using <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISimpleEnumerator#hasMoreElements()">nsISimpleEnumerator.hasMoreElements()</a></code> and <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsISimpleEnumerator#getNext()">nsISimpleEnumerator.getNext()</a></code>. For each item, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isFile()">nsIFile.isFile()</a></code> is called to check if an item is a file and <code>lastModifiedTime</code> (<a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#Attributes">nsIFile.Attributes</a>) attribute is compared with the time of the <code>lastmod</code> reference. If the time is higher, the <code>lastmod</code> variable is updated as needed. The result is that <code>lastmod</code> will be set to the file with the latest modification time. <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIFile#isFile()">nsIFile.isFile()</a></code> is used to ensure that the modification times are only examined for files, and not subdirectories.</p>
+<p>But you could iterate over subdirectories as well. The following example returns an array of all of a directory's subdirectories:</p>
+<pre class="brush: js">function getSubdirs()
+{
+  var arr = [];
+  var items = IO.getFile("Home", "").directoryEntries;
+  while (items.hasMoreElements()) {
+    var item = items.getNext();
+    if (item.isDirectory())
+      arr.push(item);
+  }
+
+  return arr;
+}
+</pre>
+<p> </p>

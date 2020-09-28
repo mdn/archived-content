@@ -1,0 +1,53 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Building_Hierarchical_Trees" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Template_and_Tree_Listeners">Next  »</a></p>
+</div>
+<p>When inserting an element into a XUL document, the element is checked to see if it has a datasources attribute. If so, a template builder will be created for the element and attached to the element. If the element is a &lt;tree&gt; element and has the flags attribute set to "dont-build-content", a tree builder will be created. Otherwise, a content builder will be created. Both types of builder share much of the same code except for how they generate output to be displayed. Both types of builders implement the nsIXULTemplateBuilder interface, while the tree builder also implements the nsIXULTreeBuilder interface.</p>
+<p>The builder associated with an element is accessible via the element's 'builder' property both for content builders and for tree builders. An element that does not have a builder will have this property set to null. The processes of creating a builder for an element applies both when an element is created when the window is loaded and when an element is inserted dynamically.</p>
+<p>Templates can only be used in XUL documents, however, there is no requirement that the templates generate XUL elements. They could also be used, for example, to generate HTML elements. This isn't a very common technique, however, here is an example of how this can be used:</p>
+<pre>&lt;html:div id="photosList" datasources="template-guide-photos5.rdf"
+          ref="http://www.xulplanet.com/rdf/myphotos"
+          xmlns:html="http://www.w3.org/1999/xhtml"&gt;
+  &lt;html:h1&gt;My Photos&lt;/html:h1&gt;
+  &lt;template&gt;
+    &lt;html:p uri="rdf:*"&gt;&lt;textnode value="rdf:http://purl.org/dc/elements/1.1/title"/&gt;&lt;/html:p&gt;
+  &lt;/template&gt;
+&lt;/html:div&gt;</pre>
+<p>This <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex33.xul">example</a> generates three paragraphs. Some static content before the &lt;template&gt; element displays a &lt;h1&gt; header. Since templates were designed for creating XUL content, sometimes there can be unusual results when using HTML. Sometimes this is due to different whitespace handling for HTML and XUL, which is why the content to generate in the above example is all on one line. If you do plan on generating non-XUL content with a template, just watch out for issues like this. Note that this particular whitespace issue has been fixed in Firefox 3 and later.</p>
+<p>Note also that the datasources attribute has been placed on an HTML element. This is also allowed. However, one thing to watch out for is that non-XUL elements do not have their content generated lazily so all of the content will be generated at once. Be careful that your templates do not recurse to deep levels.</p>
+<p>The builder property is a property of the nsIDOMXULElement interface, so all XUL elements will have this property, although, as mentioned earlier, is will be set to null for most elements. For non-XUL elements, the template builder will be assigned to a builder property on the element using a custom JavaScript property instead.</p>
+<h3 id="Rebuilding_and_Refreshing_a_Template" name="Rebuilding_and_Refreshing_a_Template">Rebuilding and Refreshing a Template</h3>
+<p>The main purpose of accessing the builder for an element is to call its 'rebuild' method. This method removes any existing generated content and deletes all data in the rule network. Then, the method recompiles the query and the rules and regenerates the content. Essentially, the rebuild method instructs the builder to remove any existing information and reconstruct it from the beginning. The only difference is that the datasource has already loaded so the data will be the same. However, this is often used if you modify the datasource or modify the rules.</p>
+<p>For RDF datasources, the builder's refresh method, however, will reload the datasources. It will not rebuild the template, but we'll see in a later section why this is not usually necessary. To summarize, the refresh method reloads the data, whereas the rebuild method reconstructs the content.</p>
+<p>The builder is accessible to unprivileged code, so the rebuild and refresh methods may be called by remote code.</p>
+<h3 id="Changing_the_Datasource" name="Changing_the_Datasource">Changing the Datasource</h3>
+<p>You can modify the datasource that is used for a template by setting the value of the <code id="a-datasources"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/datasources">datasources</a></code> attribute on the root element. Changing this attribute causes the new datasource to be retrieved and the template to be rebuilt.</p>
+<p>The RDF datasource associated with the template can be retrieved using the element's 'database' property. It implements the nsIRDFCompositeDataSource interface. Since this is a composite datasource, it may contain more than one datasource. These may be listed in the datasources attribute separated by spaces. For example:</p>
+<pre>&lt;vbox datasources="template-guide-photos5.rdf template-guide-streets.rdf"&gt;
+</pre>
+<p>Sometimes, you will want to calculate the datasource to be used and attach it to the template later. You can do this using the composite datasource's AddDataSource method. You can add as many datasources as you wish, and you can remove them using the RemoveDataSource method. A common pattern is to use the following:</p>
+<pre>var RDF = Components.classes["@mozilla.org/rdf/rdf-service;1"].
+            getService(Components.interfaces.nsIRDFService);
+
+var ds = RDF.GetDataSource("http://www.xulplanet.com/ndeakin/tests/xul/template-guide-streets.rdf");
+
+var tree = document.getElementById("theTree");
+tree.database.AddDataSource(ds);
+tree.builder.rebuild();
+</pre>
+<p>This is the typical way to add a datasource to an element, in this case to the tree with the id 'theTree'. The datasource is retrieved using the RDF service's GetDataSource method. After adding a datasource, the tree builder's rebuild method is invoked to rebuild the template with the new data. This doesn't happen automatically when you add the datasource, which is useful, since you will often want to add or remove other datasources at the same time.</p>
+<p>The composite datasource can only be accessed from privileged code, regardless of what datasources it contains. Fortunately in this situation, you can just set the datasources attribute (or the corresponding property) to the datasources that you want. For instance:</p>
+<pre>var tree = document.getElementById("theTree");
+tree.datasources = "template-guide-photos5.rdf template-guide-streets.rdf";
+</pre>
+<p>This will also change the datasources used. In this case, the template will be rebuilt automatically as you can set all of the datasources at once with this method of changing datasources. So you don't need to call the rebuild method. You can also do the same with the ref attribute (or the ref property) and the template will be rebuilt automatically. In the example above, there will be two datasources attached to the tree. They will both be loaded and the template reconstructed. Note that if one of the datasources is already loaded it will not be loaded again. This is convenient when you want to simply add a new datasource to an existing template without reloading existing data. If you do want to reload the data, you can call the builder's refresh method:</p>
+<pre>tree.builder.refresh();
+</pre>
+<p>This will reload the datasource attached to the template. If there is more than one datasource, as above, all of them will be reloaded. Due to the nature of the way templates are updated, you don't usually need to rebuild a template after a refresh call, although there may situtations where this will be necessary.</p>
+<p>If you do plan on determining the datasources dynamically, it is common to start with an empty datasource using the special URI 'rdf:null'.</p>
+<pre>&lt;tree datasources="rdf:null" ref="http://www.xulplanet.com/rdf/myphotos"&gt;
+</pre>
+<p>This will create a composite datasource with no datasources in it. This syntax is necessary as otherwise you wouldn't be able to specify a value for the datasources attribute, and a template builder would not be attached to the element. In a chrome context, the datasource 'rdf:local-store' is always included even if you don't specify it. This is something to watch out for if you are going to be manipulating the composite datasource.</p>
+<p>One more note: the datasources attribute may use either absolute or relative URLs. Relative URLs are relative to the XUL document the corresponding element is in. The RDF service's GetDataSource method however, only accepts absolute URLs. So you will need to use the full path in this situation.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Building_Hierarchical_Trees" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Template_and_Tree_Listeners">Next  »</a></p>
+</div>

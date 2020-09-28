@@ -1,0 +1,286 @@
+<div>
+ <strong style="line-height: 1.5;">An example </strong><span style="line-height: 1.5;">: https://github.com/laurentj/slimerjs/blob/master/src/modules/webserver.jsm</span></div>
+<div>
+  </div>
+<pre class="brush: js">var EXPORTED_SYMBOLS = ["create"];
+Components.utils.import("resource://gre/modules/Services.jsm");
+
+function create() {
+    var server = Components.classes["@mozilla.org/server/jshttp;1"]
+                           .createInstance(Components.interfaces.nsIHttpServer);
+    return {
+        get objectName () {
+            return "WebServer";
+        },
+
+        /**
+         * @param integer|string port    port or "host:port"
+         * @param object opt            optional options. (not supported)
+         * @param function callback     optional callback
+         */
+        listen: function(port, opt, callback) {
+            if (arguments.length == 2 &amp;&amp; "function" == typeof opt) {
+                callback = opt;
+            }
+            if (callback) {
+                this.registerPrefixHandler("/", callback);
+            }
+            let host = "localhost";
+            if (typeof port === "string" &amp;&amp; port.indexOf(':') != -1){
+                [host, port] = port.split(':');
+                port = parseInt(port);
+                server.identity.add('http', host, port);
+            }
+            server.wrappedJSObject._start(port, host);
+            return true;
+        },
+
+        registerFile: function(path, filePath) {
+            var file = Components.classes['@mozilla.org/file/local;1']
+                            .createInstance(Components.interfaces.nsILocalFile);
+            file.initWithPath(filePath);
+            return server.registerFile(path, file);
+        },
+
+        registerDirectory : function(path, directoryPath) {
+            var file = Components.classes['@mozilla.org/file/local;1']
+                            .createInstance(Components.interfaces.nsILocalFile);
+            file.initWithPath(directoryPath);
+            return server.registerDirectory(path, file);
+        },
+
+        registerPathHandler: function(path, handlerCallback) {
+            server.registerPathHandler(path, function (request, response) {
+                    var req = createHttpRequest(request);
+                    var resp = new HttpResponse(response);
+                    handlerCallback(req, resp);
+            });
+        },
+
+        registerPrefixHandler: function(prefix, handlerCallback) {
+            server.registerPrefixHandler(prefix, function (request, response) {
+                    var req = createHttpRequest(request);
+                    var resp = new HttpResponse(response);
+                    handlerCallback(req, resp);
+                });
+        },
+
+        close: function(){
+            server.stop(function(){});
+        },
+        get port() {
+            return server.identity.primaryPort
+        }
+    }
+}
+
+</pre>
+<div>
+ <div>
+  <strong>Reference </strong>:  mozilla-release/netwerk/test/httpserver/nsIHttpServer.idl</div>
+ <div>
+   </div>
+</div>
+<pre class="brush: cpp">[scriptable, uuid(cea8812e-faa6-4013-9396-f9936cbb74ec)]
+interface nsIHttpServer : nsISupports
+{
+  /**
+   * Starts up this server, listening upon the given port.
+   *
+   * @param port
+   *   the port upon which listening should happen, or -1 if no specific port is
+   *   desired
+   * @throws NS_ERROR_ALREADY_INITIALIZED
+   *   if this server is already started
+   * @throws NS_ERROR_NOT_AVAILABLE
+   *   if the server is not started and cannot be started on the desired port
+   *   (perhaps because the port is already in use or because the process does
+   *   not have privileges to do so)
+   * @note
+   *   Behavior is undefined if this method is called after stop() has been
+   *   called on this but before the provided callback function has been
+   *   called.
+   */
+  void start(in long port);
+
+  /**
+   * Shuts down this server if it is running (including the period of time after
+   * stop() has been called but before the provided callback has been called).
+   *
+   * @param callback
+   *   an asynchronous callback used to notify the user when this server is
+   *   stopped and all pending requests have been fully served
+   * @throws NS_ERROR_NULL_POINTER
+   *   if callback is null
+   * @throws NS_ERROR_UNEXPECTED
+   *   if this server is not running
+   */
+  void stop(in nsIHttpServerStoppedCallback callback);
+
+  /**
+   * Associates the local file represented by the string file with all requests
+   * which match request.
+   *
+   * @param path
+   *   the path which is to be mapped to the given file; must begin with "/" and
+   *   be a valid URI path (i.e., no query string, hash reference, etc.)
+   * @param file
+   *   the file to serve for the given path, or null to remove any mapping that
+   *   might exist; this file must exist for the lifetime of the server
+   */
+  void registerFile(in string path, in nsIFile file);
+
+  /**
+   * Registers a custom path handler.
+   *
+   * @param path
+   *   the path on the server (beginning with a "/") which is to be handled by
+   *   handler; this path must not include a query string or hash component; it
+   *   also should usually be canonicalized, since most browsers will do so
+   *   before sending otherwise-matching requests
+   * @param handler
+   *   an object which will handle any requests for the given path, or null to
+   *   remove any existing handler; if while the server is running the handler
+   *   throws an exception while responding to a request, an HTTP 500 response
+   *   will be returned
+   * @throws NS_ERROR_INVALID_ARG
+   *   if path does not begin with a "/"
+   */
+  void registerPathHandler(in string path, in nsIHttpRequestHandler handler);
+
+  /**
+   * Registers a custom prefix handler.
+   *
+   * @param prefix
+   *   the path on the server (beginning and ending with "/") which is to be
+   *   handled by handler; this path must not include a query string or hash
+   *   component. All requests that start with this prefix will be directed to
+   *   the given handler.
+   * @param handler
+   *   an object which will handle any requests for the given path, or null to
+   *   remove any existing handler; if while the server is running the handler
+   *   throws an exception while responding to a request, an HTTP 500 response
+   *   will be returned
+   * @throws NS_ERROR_INVALID_ARG
+   *   if path does not begin with a "/" or does not end with a "/"
+   */
+  void registerPrefixHandler(in string prefix, in nsIHttpRequestHandler handler);
+
+  /**
+   * Registers a custom error page handler.
+   *
+   * @param code
+   *   the error code which is to be handled by handler
+   * @param handler
+   *   an object which will handle any requests which generate the given status
+   *   code, or null to remove any existing handler.  If the handler throws an
+   *   exception during server operation, fallback is to the genericized error
+   *   handler (the x00 version), then to 500, using a user-defined error
+   *   handler if one exists or the server default handler otherwise.  Fallback
+   *   will never occur from a user-provided handler that throws to the same
+   *   handler as provided by the server, e.g. a throwing user 404 falls back to
+   *   400, not a server-provided 404 that might not throw.
+   * @note
+   *   If the error handler handles HTTP 500 and throws, behavior is undefined.
+   */
+  void registerErrorHandler(in unsigned long code, in nsIHttpRequestHandler handler);
+
+  /**
+   * Maps all requests to paths beneath path to the corresponding file beneath
+   * dir.
+   *
+   * @param path
+   *   the absolute path on the server against which requests will be served
+   *   from dir (e.g., "/", "/foo/", etc.); must begin and end with a forward
+   *   slash
+   * @param dir
+   *   the directory to be used to serve all requests for paths underneath path
+   *   (except those further overridden by another, deeper path registered with
+   *   another directory); if null, any current mapping for the given path is
+   *   removed
+   * @throws NS_ERROR_INVALID_ARG
+   *   if dir is non-null and does not exist or is not a directory, or if path
+   *   does not begin with and end with a forward slash
+   */
+  void registerDirectory(in string path, in nsIFile dir);
+
+  /**
+   * Associates files with the given extension with the given Content-Type when
+   * served by this server, in the absence of any file-specific information
+   * about the desired Content-Type.  If type is empty, removes any extant
+   * mapping, if one is present.
+   *
+   * @throws NS_ERROR_INVALID_ARG
+   *   if the given type is not a valid header field value, i.e. if it doesn't
+   *   match the field-value production in RFC 2616
+   * @note
+   *   No syntax checking is done of the given type, beyond ensuring that it is
+   *   a valid header field value.  Behavior when not given a string matching
+   *   the media-type production in RFC 2616 section 3.7 is undefined.
+   *   Implementations may choose to define specific behavior for types which do
+   *   not match the production, such as for CGI functionality.
+   * @note
+   *   Implementations MAY treat type as a trusted argument; users who fail to
+   *   generate this string from trusted data risk security vulnerabilities.
+   */
+  void registerContentType(in string extension, in string type);
+
+  /**
+   * Sets the handler used to display the contents of a directory if
+   * the directory contains no index page.
+   *
+   * @param handler
+   *   an object which will handle any requests for directories which
+   *   do not contain index pages, or null to reset to the default
+   *   index handler; if while the server is running the handler
+   *   throws an exception while responding to a request, an HTTP 500
+   *   response will be returned.  An nsIFile corresponding to the
+   *   directory is available from the metadata object passed to the
+   *   handler, under the key "directory".
+   */
+  void setIndexHandler(in nsIHttpRequestHandler handler);
+
+  /** Represents the locations at which this server is reachable. */
+  readonly attribute nsIHttpServerIdentity identity;
+
+  /**
+   * Retrieves the string associated with the given key in this, for the given
+   * path's saved state.  All keys are initially associated with the empty
+   * string.
+   */
+  AString getState(in AString path, in AString key);
+
+  /**
+   * Sets the string associated with the given key in this, for the given path's
+   * saved state.
+   */
+  void setState(in AString path, in AString key, in AString value);
+
+  /**
+   * Retrieves the string associated with the given key in this, in
+   * entire-server saved state.  All keys are initially associated with the
+   * empty string.
+   */
+  AString getSharedState(in AString key);
+
+  /**
+   * Sets the string associated with the given key in this, in entire-server
+   * saved state.
+   */
+  void setSharedState(in AString key, in AString value);
+
+  /**
+   * Retrieves the object associated with the given key in this in
+   * object-valued saved state.  All keys are initially associated with null.
+   */
+  nsISupports getObjectState(in AString key);
+
+  /**
+   * Sets the object associated with the given key in this in object-valued
+   * saved state.  The value may be null.
+   */
+  void setObjectState(in AString key, in nsISupports value);
+};
+</pre>
+<div>
+  </div>

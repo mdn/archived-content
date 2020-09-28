@@ -1,0 +1,256 @@
+<div class="warning">
+<p><strong>Important</strong>: This information is out of date; for up-to-date information on using these design patterns, as implemented in Firefox OS building blocks, go to our <a href="/en-US/Apps/Design/Firefox_OS_building_blocks">Firefox OS building blocks</a> page.</p>
+</div>
+
+<p>Here you can find examples of how to implement the multi-select mode (also known as "edit mode") on Firefox OS, as well as downloads for the CSS and image resources used by the built-in apps on Firefox OS. You can copy these resources into your app and make use of them to build apps that match these apps' appearances.</p>
+
+<h2 id="Implementing_multi_select">Implementing multi select</h2>
+
+<p>To implement multi-select mode using the style shown here, place the CSS and media files into your app and then include the CSS using <a href="/en-US/docs/Web/HTML/Element/link" title="The HTML &lt;link> element specifies relationships between the current document and an external resource. Possible uses for this element include defining a relational framework for navigation. This element is most used to link to style sheets."><code>&lt;link&gt;</code></a> in your HTML <a href="/en-US/docs/Web/HTML/Element/head" title="The HTML &lt;head> element provides general information (metadata) about the document, including its title and links to its scripts and style sheets."><code>&lt;head&gt;</code></a> block:</p>
+
+<pre class="brush: css">&lt;link href="resources/edit_mode.css" rel="stylesheet" type="text/css" media="all"&gt;</pre>
+
+<p>Make sure the media files are in the location expected by the CSS (either by placing them in a corresponding location or by revising the CSS).</p>
+
+<h2 id="Example">Example</h2>
+
+<p>This very simple example shows how to create the multi-select frame around your content. You will need to actually implement the body of your interface as well, of course, to appear between the <a href="/en-US/docs/Mozilla/Firefox_OS/UX/Building_blocks/Toolbar" title="/en-US/docs/Mozilla/Firefox_OS/UX/Building_blocks/Toolbar">toolbar</a> at the top of the screen and the button bar at the bottom.</p>
+
+<div class="note">
+<p><strong>Note:</strong> This example needs to actually have some items to select and deselect; otherwise, this UI isn't very useful a demonstration! Also need to sort things out into an edit mode example and a multi-select example.</p>
+</div>
+
+<h3 id="HTML">HTML</h3>
+
+<p>Our example consists of an app interface with a list of items, above which is a header that offers some buttons to add and delete items from the list. Let's look at the HTML in sections.</p>
+
+<p>First, we pull in the CSS for all the UX elements we're using, as well as for the fonts we use.</p>
+
+<pre>&lt;head&gt;
+  &lt;link href="resources/lists.css" rel="stylesheet" type="text/css" media="all"&gt;
+  &lt;link href="resources/edit_mode.css" rel="stylesheet" type="text/css" media="all"&gt;
+  &lt;link href="resources/headers.css" rel="stylesheet" type="text/css" media="all"&gt;
+  &lt;link href="resources/switches.css" rel="stylesheet" type="text/css" media="all"&gt;
+  &lt;link href="resources/fonts.css" rel="stylesheet" type="text/css" media="all"&gt;
+&lt;/head&gt;
+</pre>
+
+<h4 id="Header_and_toolbar">Header and toolbar</h4>
+
+<p>The first thing the HTML does is create a wrapper for the UX content and the list panel, then offers a <a href="/en-US/docs/Web/HTML/Element/section" title="The HTML &lt;section> element represents a standalone section — which doesn't have a more specific semantic element to represent it — contained within an HTML document."><code>&lt;section&gt;</code></a> containing the header, which contains a title (simply "Item List" for this example) and a <a href="/en-US/docs/Mozilla/Firefox_OS/UX/Building_blocks/Toolbar" title="/en-US/docs/Mozilla/Firefox_OS/UX/Building_blocks/Toolbar">toolbar</a> with two buttons: a "compose" button, which will not do anything in our example, and an "edit" button, which will bring up our delete form.</p>
+
+<pre class="brush: html">&lt;article id="main-wrapper" class="wrapper"&gt;
+  &lt;section id="item-list-panel" class="panel" role="region"&gt;
+    &lt;section role="region" class="item-list-header"&gt;
+      &lt;header class="view-header regular-header"&gt;
+        &lt;menu type="toolbar"&gt;
+          &lt;a href="#new" id="icon-compose"&gt;
+            &lt;span class="icon icon-compose"&gt;&lt;/span&gt;
+          &lt;/a&gt;
+          &lt;a href="#delete" id="icon-edit"&gt;
+            &lt;span class="icon icon-edit"&gt;Delete&lt;/span&gt;
+          &lt;/a&gt;
+        &lt;/menu&gt;
+        &lt;h1&gt;Item List&lt;/h1&gt;
+      &lt;/header&gt;
+    &lt;/section&gt;
+</pre>
+
+<h4 id="Item_list">Item list</h4>
+
+<p>The item list is a fairly standard Firefox OS style <a href="/docs/Mozilla/Firefox_OS/UX/Building_blocks/List" title="/docs/Mozilla/Firefox_OS/UX/Building_blocks/List">list</a> building block. Each item has a checkbox on it that uses the "danger" class; this class causes the checkboxes to be the red style used for delete switches. The CSS for these checkboxes causes them to not be visible, however, until we enter edit mode. We'll see more about how this works below.</p>
+
+<pre class="brush: html">    &lt;div id="item-list-container" class="item-list-scrollouter"&gt;
+      &lt;article data-type="list"&gt;
+        &lt;ul id="item-list"&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item One&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Two&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Three&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Four&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Five&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Six&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Seven&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Eight&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Nine&lt;/p&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;p&gt;&lt;label class="danger"&gt;&lt;input type="checkbox"&gt;&lt;span&gt;&lt;/span&gt;&lt;/label&gt;Item Ten&lt;/p&gt;&lt;/li&gt;
+        &lt;/ul&gt;
+      &lt;/article&gt;
+</pre>
+
+<h4 id="Delete_dialog">Delete dialog</h4>
+
+<p>The HTML below creates the <a href="/en-US/docs/Web/HTML/Element/form" title="The HTML &lt;form> element represents a document section that contains interactive controls to submit information to a web server."><code>&lt;form&gt;</code></a> for the app's delete dialog. It consists of a header containing a close button (which simply, as discussed in the <a href="/en-US/docs/Mozilla/Firefox_OS/UX/Patterns/Multi_select#Characteristics" title="/en-US/docs/Mozilla/Firefox_OS/UX/Patterns/Multi_select#Characteristics">Characteristics</a> of edit mode, is a bit of a misnomer) and a "Done" button. The header also includes a title indicating what type of action the user is about to perform; in this case, deleting items from a list.</p>
+
+<p>Below the list is a button bar with the buttons that perform actions on the selected items.</p>
+
+<pre class="brush: html">      &lt;form id="item-delete-dialog" role="dialog" data-type="edit"&gt;
+        &lt;section&gt;
+          &lt;header&gt;
+            &lt;button formaction="#deleteCancel"&gt;&lt;span class="icon icon-close"&gt;close&lt;/span&gt;&lt;/button&gt;
+            &lt;menu type="toolbar"&gt;
+              &lt;button formaction="#deleteDone"&gt;done&lt;/button&gt;
+            &lt;/menu&gt;
+            &lt;h1&gt;Delete items&lt;/h1&gt;
+          &lt;/header&gt;
+        &lt;/section&gt;
+        &lt;menu&gt;
+          &lt;button formaction="#deleteAll"&gt;Delete all&lt;/button&gt;
+          &lt;button formaction="#deleteSelected"&gt;Delete selected&lt;/button&gt;
+        &lt;/menu&gt;
+      &lt;/form&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+&lt;/article&gt;
+</pre>
+
+<h3 id="CSS">CSS</h3>
+
+<p>In addition to all the CSS we've imported from the standard UX, we add some styles to customize the appearance and behavior of our interface.</p>
+
+<h4 id="Background">Background</h4>
+
+<p>This first bit of CSS sets the background to be white, and indicates that the main interface shouldn't scroll vertically.</p>
+
+<pre class="brush: css">body, html {
+  background: white;
+  overflow-y: hidden;
+}
+</pre>
+
+<h4 id="Delete_dialog_2">Delete dialog</h4>
+
+<p>Next is the CSS for the delete dialog; this is our multi-select interface for choosing items to delete. Initially, the edit form should be invisible, since we don't start out in edit mode.</p>
+
+<pre class="brush: css">#item-delete-dialog {
+  display:none;
+}
+</pre>
+
+<h4 id="Item_list_2">Item list</h4>
+
+<p>The item list needs CSS for two modes—its regular display mode and for when it's presented in edit mode. The edit mode versions, indicated by the addition of "-edit" to their names, adjust the height of the list based on whether or not the edit mode bottom toolbar is visible, and toggle the visibility of the checkboxes that are used to select items to be deleted. They also indicate that the list should be scrollable vertically but not horizontally.</p>
+
+<pre class="brush: css">.item-list-scrollouter {
+  height: calc(100% - 5rem);
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+.item-list-scrollouter label {
+  display: none;      // Hide checkboxes unless in edit mode
+}
+
+.item-list-scrollouter-edit {
+  height: calc(100% - 11.5rem);
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+.item-list-scrollouter-edit label {
+  display: inline-block;
+}
+</pre>
+
+<h4 id="Wrapper">Wrapper</h4>
+
+<p>The content is wrapped in an <a href="/en-US/docs/Web/HTML/Element/article" title="The HTML &lt;article> element represents a self-contained composition in a document, page, application, or site, which is intended to be independently distributable or reusable (e.g., in syndication). Examples include: a forum post, a magazine or newspaper article, or a blog entry."><code>&lt;article&gt;</code></a> and <a href="/en-US/docs/Web/HTML/Element/section" title="The HTML &lt;section> element represents a standalone section — which doesn't have a more specific semantic element to represent it — contained within an HTML document."><code>&lt;section&gt;</code></a> which have the following CSS applied to indicate that the main user interface occupies the full height of the screen.</p>
+
+<pre class="brush: css">#main-wrapper, #item-list-panel {
+  height: 100%;
+}
+</pre>
+
+<h3 id="JavaScript_content">JavaScript content</h3>
+
+<p>Then we need some JavaScript code to handle our mode switches as well as to handle the buttons to delete items from the list.</p>
+
+<h4 id="Showing_and_hiding_edit_mode">Showing and hiding edit mode</h4>
+
+<p>The "delete dialog" is an edit mode interface applied to our list view. The two methods below toggle edit mode on and off by switching the delete dialog form's <a href="/en-US/docs/Web/CSS/display" title="The display CSS property specifies the type of rendering box used for an element. In HTML, default display property values are taken from behaviors described in the HTML specifications or from the browser/user default stylesheet. The default value in XML is inline, including SVG elements."><code>display</code></a> mode between <code>none</code> (not in edit mode) and <code>block</code> (in edit mode).</p>
+
+<pre class="brush: js">function showDeleteDialog() {
+  document.getElementById("item-delete-dialog").style.display = "block";
+  document.getElementById("item-list-container").className = "item-list-scrollouter-edit";
+}
+
+function hideDeleteDialog() {
+  document.getElementById("item-delete-dialog").style.display = "none";
+  document.getElementById("item-list-container").className = "item-list-scrollouter";
+  location.hash = "";
+}
+</pre>
+
+<h4 id="Removing_an_element_from_the_DOM">Removing an element from the DOM</h4>
+
+<p>Next is the <code>removeItem()</code> method, which is a utility method that simply removes the specified element from the DOM. The <code>deleteSelected()</code> method will make use of it. It works by simply looking at the element's <a href="/en-US/docs/Web/API/Element/parentNode" title="The documentation about this has not yet been written; please consider contributing!"><code>parentNode</code></a> and calling <a href="/en-US/docs/Web/API/Element/removeChild" title="The documentation about this has not yet been written; please consider contributing!"><code>removeChild()</code></a> on that node.</p>
+
+<pre class="brush: js">function removeItem(el) {
+  if (el.parentNode) {
+    el.parentNode.removeChild(el);
+  }
+}
+</pre>
+
+<h4 id="Deleting_the_selected_items">Deleting the selected items</h4>
+
+<p>The <code>deleteSelected()</code> method, shown here, uses <a href="/en-US/docs/Web/API/Element/querySelectorAll" title="Returns a static (not live) NodeList of all elements descended from the element on which it is invoked that matches the specified group of CSS selectors. (The base element itself is not included, even if it matches.)"><code>element.querySelectorAll()</code></a> to get a <a href="/en-US/docs/Web/API/NodeList" title="NodeList objects are collections of nodes such as those returned by properties such as Node.childNodes and the document.querySelectorAll() method."><code>NodeList</code></a> containing all the checkbox elements in the item list. It then scans that list, looking for elements that are checked. For each checked item, we walk up through the DOM tree to find the nearest surrounding <a href="/en-US/docs/Web/HTML/Element/li" title="The HTML &lt;li> element is used to represent an item in a list. It must be contained in a parent element: an ordered list (&lt;ol>), an unordered list (&lt;ul>), or a menu (&lt;menu>). In menus and unordered lists, list items are usually displayed using bullet points. In ordered lists, they are usually displayed with an ascending counter on the left, such as a number or letter."><code>&lt;li&gt;</code></a> element and remove it from the DOM. This deletes the entire list item from the DOM.</p>
+
+<pre class="brush: js">function deleteSelected() {
+  var itemList = document.getElementById("item-list").querySelectorAll('input[type="checkbox"]');
+  var numItems = itemList.length;
+
+  for (var i=0; i&lt;numItems; i++) {
+    var item = itemList[i];
+
+    // If the item is checked, scan up the DOM tree to find the
+    // parent &lt;li&gt; element and remove it.
+
+    if (item.checked) {
+      while (item.nodeName.toLowerCase() != "li") {
+        item = item.parentNode;
+      }
+      removeItem(item);
+    }
+  }
+}
+</pre>
+
+<h4 id="Deleting_all_items">Deleting all items</h4>
+
+<p>Deleting all of the items in the list is really easy. We just call set <a href="/en-US/docs/Web/API/Element/innerHTML" title="The Element.innerHTML property sets or gets the HTML syntax describing the element's descendants."><code>element.innerHTML</code></a> to the empty string. This immediately removes every <a href="/en-US/docs/Web/HTML/Element/li" title="The HTML &lt;li> element is used to represent an item in a list. It must be contained in a parent element: an ordered list (&lt;ol>), an unordered list (&lt;ul>), or a menu (&lt;menu>). In menus and unordered lists, list items are usually displayed using bullet points. In ordered lists, they are usually displayed with an ascending counter on the left, such as a number or letter."><code>&lt;li&gt;</code></a> from the list, emptying it.</p>
+
+<pre class="brush: js">function deleteAll() {
+  document.getElementById("item-list").innerHTML = "";    // BOOM!
+}
+</pre>
+
+<h4 id="Event_handling">Event handling</h4>
+
+<p>Each button clicked by the user asks the Gecko runtime to load an anchor; for example, clicking the cancel button when in edit mode loads "<code>#deleteCancel</code>". To handle these button clicks, we use the <code><a href="/en-US/docs/Web/Events/hashchange" title="/en-US/docs/Web/Events/hashchange">hashchange</a></code> event. When this event is called, we look at <code>location.hash</code> to see which button was clicked, and handle it appropriately.</p>
+
+<pre class="brush: js">function handleHashChange() {
+  switch(location.hash) {
+    case "#add":
+      break;
+    case "#delete":
+      showDeleteDialog();
+      break;
+    case "#deleteCancel":
+      hideDeleteDialog();
+      break;
+    case "#deleteSelected":
+      deleteSelected();
+      hideDeleteDialog();
+      break;
+    case "#deleteAll":
+      deleteAll();
+      hideDeleteDialog();
+      break;
+  }
+}
+window.onhashchange = handleHashChange;
+</pre>
+
+<h3 id="Working_demo">Working demo</h3>
+
+<p>You can try out edit mode in this live demonstration. Click the "edit" button at the right end of the header bar to enter edit mode.</p>

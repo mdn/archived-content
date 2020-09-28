@@ -1,0 +1,159 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ jsapi_minversion_header("17") }}</p>
+
+<div class="summary">
+<p>Helper class encapsulating access to the callee, <code>this</code> value, arguments, and argument count for a function call.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JS::CallArgs
+JS::CallArgsFromVp(unsigned argc, JS::Value *vp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>args</code></td>
+   <td><code>unsigned</code></td>
+   <td>Number of argument. (2nd argument of JSNative)</td>
+  </tr>
+  <tr>
+   <td><code>vp</code></td>
+   <td>{{jsapixref("JS::Value", "JS::Value *")}}</td>
+   <td>A pointer to the argument value array. (3nd argument of JSNative)</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="Methods_of_JSCallArgs">Methods of <code>JS::CallArgs</code></h3>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Method</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>bool requireAtLeast(JSContext *cx, const char *fnname, unsigned required)</code></td>
+   <td>Returns <code>true</code> if there are at least <code>required</code> arguments passed in. If <code>false</code>, it reports an error message on the context.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods_inherited_from_JSCallArgsBase">Methods inherited from <code>JS::CallArgsBase</code></h3>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Method</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>unsigned length() const</code></td>
+   <td>Returns the number of arguments..</td>
+  </tr>
+  <tr>
+   <td><code>JS::MutableHandleValue operator[](unsigned i) const</code></td>
+   <td>Returns the <code>i</code>-th zero-indexed argument.</td>
+  </tr>
+  <tr>
+   <td><code>JS::HandleValue get(unsigned i) const</code></td>
+   <td>Returns the <code>i</code>-th zero-indexed argument, or <code>undefined</code> if there's no such argument.</td>
+  </tr>
+  <tr>
+   <td><code>bool hasDefined(unsigned i) const</code></td>
+   <td>Returns <code>true</code> if the <code>i</code>-th zero-indexed argument is present and is not <code>undefined</code>.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods_inherited_from_JSdetailCallReceiverBase">Methods inherited from <code>JS::detail::CallReceiverBase</code></h3>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Method</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>JSObject &amp;callee() const</code></td>
+   <td>Returns the function being called, as an object. Must not be called after <code>rval()</code> has been used!</td>
+  </tr>
+  <tr>
+   <td><code>JS::HandleValue calleev() const</code></td>
+   <td>Returns the function being called, as a value. Must not be called after <code>rval()</code> has been used!</td>
+  </tr>
+  <tr>
+   <td><code>JS::HandleValue thisv() const</code></td>
+   <td>Returns the <code>this</code> value passed to the function. This method must not be called when the function is being called as a constructor via <code>new</code>. The value may or may not be an object: it is the individual function's responsibility to box the value if needed.</td>
+  </tr>
+  <tr>
+   <td><code>JS::Value computeThis(JSContext *cx) const</code></td>
+   <td>Returns the <code>this</code> value if <code>this</code> is an object, otherwise calls {{jsapixref("JS_ComputeThis")}} and returns it.</td>
+  </tr>
+  <tr>
+   <td><code>bool isConstructing() const</code></td>
+   <td>Returns <code>true</code> if the function is called via <code>new</code>.</td>
+  </tr>
+  <tr>
+   <td><code>MutableHandleValue rval() const</code></td>
+   <td>
+    <p>Returns the currently-set return value. The initial contents of this value are unspecified. Once this method has been called, <code>callee()</code> and <code>calleev()</code> can no longer be used. (If you're compiling against a debug build of SpiderMonkey, these methods will assert to aid debugging.)</p>
+
+    <p>If the method you're implementing succeeds by returning <code>true</code>, you *must* set this. (SpiderMonkey doesn't currently assert this, but it will do so eventually.) You don't need to use or change this if your method fails.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><strong><code>JS::CallArgs</code></strong> is helper class encapsulating access to the callee, <code>this</code> value, arguments, and argument count for a function call.</p>
+
+<p>The intent of <code>JS::CallArgs</code> is that they be used to encapsulate access to the un-abstracted <code>unsigned argc, Value *vp</code> arguments to a function. New code should use <code>CallArgs</code> instead of <code>JS_CALLEE</code> etc. whenever possible.</p>
+
+<p>The eventual plan is to change <code>JSNative</code> to take <code>const CallArgs&amp;</code> directly, for automatic assertion of correct use and to make calling functions more efficient. Embedders should start internally switching away from using <code>argc</code> and <code>vp</code> directly, except to create a <code>CallArgs</code>. Then, when an eventual release making that change occurs, porting efforts will require changing methods' signatures but won't require invasive changes to the methods' implementations, potentially under time pressure.</p>
+
+<p><strong><code>JS::CallArgs</code></strong> encapsulates access to the callee, <code>this</code>, the function call's arguments, and eventual return value for a function call. The principal way to create a <code>CallArgs</code> is like so, using <code>JS::CallArgsFromVp</code>:</p>
+
+<pre class="brush: cpp">static bool
+FunctionReturningArgcTimesArg0(JSContext *cx, unsigned argc, JS::Value *vp)
+{
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+
+    // Guard against no arguments or a non-numeric arg0.
+    if (args.length() == 0 || !args[0].isNumber()) {
+        args.rval().setInt32(0);
+        return true;
+    }
+
+    // Access to the callee must occur before accessing/setting
+    // the return value.
+    JSObject &amp;callee = rec.callee();
+
+    // It's always fine to access thisv().
+    HandleValue thisv = rec.thisv();
+
+    args.rval().set(JS::NumberValue(args.length() * args[0].toNumber()));
+    // callee() and calleev() will now assert.
+    return true;
+}
+</pre>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS::CallArgs") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::CallArgsFromVp") }}</li>
+ <li>{{jsapixref("JS::Call")}}</li>
+ <li>{{bug(770586)}}</li>
+</ul>

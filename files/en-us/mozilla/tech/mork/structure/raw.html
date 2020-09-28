@@ -1,0 +1,413 @@
+<h4 id="Terms" name="Terms">Terms</h4>
+
+<p>First let's introduce terms describing elements of Mork documents. Each term describes an entity used in Mork. Each type of entity has it's own style of markup in Mork.<br>
+ Before we describe the markup, let's define each type of entity.<br>
+ Each entry will include a short name in<em>italic</em> , a typical representative letter in <strong>bold</strong>, and a full name in <font color="blue"><em>blue</em> </font>. Sometimes we prefer short names, using (eg) lit in preference to literal.</p>
+
+<ul>
+ <li><em>val</em>- (<strong>V</strong>) <font color="blue"><em>value</em> </font>: the value part of a cell; a<em>lit</em> eral or a<em>ref</em> erence</li>
+ <li><em>lit</em>- (<strong>L</strong>) <font color="blue"><em>literal</em> </font>: a binary octet sequence; e.g., a text value; e.g., a cell value in a row.</li>
+ <li><em>tab</em>- (<strong>T</strong>) <font color="blue"><em>table</em> </font>: a sparse matrix; a collection of<em>row</em> s; a garbage collection root.</li>
+ <li><em>row</em>- (<strong>R</strong>) <font color="blue"><em>row</em> </font>: a sequence of<em>cell</em> s; attributes of one object; a horizontal<em>tab</em> le slice.</li>
+ <li><em>col</em>- (<strong>C</strong>) <font color="blue"><em>column</em> </font>: a<em>lit</em> eral used to name an attribute; a vertical<em>tab</em> le slice.</li>
+ <li><em>cell</em>- (<strong>.</strong>) <font color="blue"><em>cell</em> </font>: a pair (<em>col val</em> ) at the intersection of<em>col</em> and<em>row</em> in a<em>tab</em> le.</li>
+ <li><em>id</em>- (<strong>I</strong>) <font color="blue"><em>identity</em> </font>: a unique hex number in some namespace<em>scope</em> , naming a literal or object.</li>
+ <li><em>oid</em>- (<strong>O</strong>) <font color="blue"><em>object identity</em> </font>: a scoped unique name or<em>id</em> of an object or entity, large or small.</li>
+ <li><em>ref</em>- (<strong>^</strong>) <font color="blue"><em>reference</em> </font>: a<em>val</em> ue expressed using the<em>id</em> of an object or<em>lit</em> eral, instead of a<em>lit</em> eral.</li>
+ <li><em>dict</em>- (<strong>D</strong>) <font color="blue"><em>dictionary</em> </font>: a<em>map</em> of<em>lit</em> erals associated with assigned<em>id</em> s inside some<em>scope</em> .</li>
+ <li><em>atom</em>- (<strong>A</strong>) <font color="blue"><em>atom</em> </font>: a<em>lit</em> eral which is not used as a<em>col</em> umn name; e.g., a text value.</li>
+ <li><em>map</em>- (<strong>M</strong>) <font color="blue"><em>hashmap</em> </font>: a hash table mapping keys to values (e.g. ids to objects).</li>
+ <li><em>scope</em>- (<strong>S</strong>) <font color="blue"><em>scope</em> </font>: a (colon suffixed) namespace within which<em>id</em> s are unique</li>
+ <li><em>group</em>- (<strong>G</strong>) <font color="blue"><em>group</em> </font>: a set of related changes applied<em>atomically</em> ; a markup transaction.</li>
+</ul>
+
+<h4 id="Model" name="Model">Model</h4>
+
+<p>The basic Mork content model is a<em>table</em> (or synonymously, a sparse<em>matrix</em> ) composed of<em>rows</em> containing<em>cells</em> , where each cell is a member of exactly one<em>column</em> (<em>col</em> ). Each cell is one attribute in a row. The name of the attribute is a<em>lit</em> eral designating the<em>col</em> umn, and the content of the attribute is the<em>value</em> . The content<em>val</em> ue of a cell is either a literal (<em>lit</em> ) or a reference (<em>ref</em> ). Each ref points to a lit or row or table, so a a cell can "contain" another shared object by reference.</p>
+
+<p>Mork content exists as mentioned, without need of forward references or declarations. By default, new content is considered additive to old content if something already exists due to earlier mention. Mork markup is update oriented, with syntax to edit existing objects, or objects newly mentioned. Mork updates can be gathered into<em>group</em> s of related edits that must be applied atomically (all edits or none) as a transaction. A typical Mork file might contain a sequence of groups in a log structured format. Any group that starts but does not end correctly must be ignored by a reader.</p>
+
+<h4 id="Roots" name="Roots">Roots</h4>
+
+<p>When copying an old Mork store to a freshly written new file, unused content in the old copy can be omitted. But what defines<em>unused</em> ? Any or root or literal not reachable from at least one table is considered unused, and can be pruned or scavenged to reduce space consumption.</p>
+
+<p>Any table is a garbage collection root making referenced content reachable for preservation. Tables are never collected. To reduce table space consumption, one can only remove all row members.</p>
+
+<p>Naive Mork implementations must avoid a subtle refcounting bug that can arise due to content written in nearly random hash based order. Markup might say to remove a row from one table early on, then add this same row to another table later. In between, the refcount might be zero, but the row's content must not be destroyed eagerly. A zero refcount only means dead content after all markup has been applied.</p>
+
+<h4 id="Parser" name="Parser">Parser</h4>
+
+<p>You're expected to write a parser by hand. The grammar is only a clue, not a spec. The hard part is not the grammar, which is is simple and unambiguous. The hard part is the meaning of the Mork markup.</p>
+
+<h4 id="Start" name="Start">Start</h4>
+
+<p>In version 1.4, a Mork file begins with this on the first line:</p>
+
+<pre>// &lt;!-- &lt;mdb:mork:z v="1.4"/&gt; --&gt;
+</pre>
+
+<p>You can ignore this magic header because it's meaningless. All it does is announce the file format. Presumably later versions of Mork will have different values where 1.4 appears.<br>
+ Even if you did not ignore the first line, this is a C++ style comment which Mork takes as equivalent to whitespace, hence meaningless.</p>
+
+<pre>* start ::= magic (items | group)+
+</pre>
+
+<h4 id="Comments" name="Comments">Comments</h4>
+
+<p>Your Mork tokenizer should treat a C++ style comment -- starting with // and ending at line's end -- as a single whitespace byte.<br>
+ Mork considers any combination of CR or LF (#xD or #xA) to be a line ending, taken singly or in pairs.</p>
+
+<h4 id="Space" name="Space">Space</h4>
+
+<p>Whitespace is optional in most places where Mork allows it to appear.<br>
+ The grammar is apt to sprinkle space where it's likely to occur.</p>
+
+<ul>
+ <li>space ::= (white)*</li>
+ <li>white ::= ( #xA | #xD | #x9 | #x20 | comment | sp )</li>
+ <li>sp ::= /*other bytes you might wish to consider whitespace*/</li>
+ <li>comment ::= // not-endline endline</li>
+</ul>
+
+<h4 id="Header" name="Header">Header</h4>
+
+<p><em>This entire section might be obsolete. The 1.4 source code doesn't seem to process the 1.1 grammar showing a file row. So perhaps this was dropped before version 1.4. The parser in morkParser.cpp appears to recognize @ only as part of group syntax.</em></p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td>After the first line, Mork typically begins with exactly one file row which is metainfo about the Mork file itself, expressed as a row. This special purpose row is its own gc root, so it doesn't need to be a member of a table to persist. It looks different from any other row because it surrounds the normal row syntax with @ bytes. Here's an example with a single cell inside:
+    <p>@{{ mediawiki.external(' (author=rys)') }}@</p>
+    Rows are enclosed in [] square brackets. This row contains a single cell in column author with literal value rys. This example is arbitrary. Presumably the file row metainfo is a good place for apps to embed their own magic head info, without disturbing the other content of the file. If a file has more than one file row, or perhaps none, you might tolerate this to be lenient and permissive since no harm is done.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Content" name="Content">Content</h4>
+
+<p>After the magic first line and the distinguished file row, the rest of the content in a Mork file is a sequence of items: either objects (rows, dicts, tables) or updates.<br>
+ Items are optionally collected into groups applied as atomic transactions.</p>
+
+<ul>
+ <li>items ::= (object | update)*</li>
+ <li>group ::= gather items (commit | abort)</li>
+</ul>
+
+<p>The syntax for groups is most complex, so let's address this one first.</p>
+
+<h4 id="Groups" name="Groups">Groups</h4>
+
+<p>A Mork group is a related set of top level content applied all together in one atomic unit, either in its entirety or not at all, as a mechanism for handling transactions in a log structured format.<br>
+ In version 1.4, @ is always followed by $$ as part of the group markup syntax.</p>
+
+<ul>
+ <li>group ::= gather items (commit | abort)</li>
+ <li>gather ::= space @$${ id {@</li>
+ <li>commit ::= space @$$} id }@</li>
+ <li>abort ::= space @$$}~abort~ id }@</li>
+</ul>
+
+<p>In practice, a parser should expect to see $$ after @ is seen. Then { says a transaction group is starting, and<em>id</em> is the hex identity of this transaction. For example, suppose<em>id</em> is equal to FACE.<br>
+ The same value for id must appear in<em>commit</em> or<em>abort</em> for an end-of-group to be recognized.<br>
+ How should a parser go about ensuring that content through either<em>commit</em> or<em>abort</em> is applied atomically (all or none)?</p>
+
+<p>Basically, a parser should remember the byte position immediately following<em>gather</em> , so it can reseek this position after locating the group end. Then it should scan forward looking for @$$}FACE}@ or for @$$}~abort~FACE}@. If the first is found, then the parser should seek the saved position after<em>gather</em> and parse all the content inside the group. Otherwise the group should be ignored.</p>
+
+<p>If a parser sees a new group start before the old one ends, this should probably be seen as equivalent to an abort of the first group. This interpretation allows updates to be added on the end of stores that have previously aborted due to truncated file writes.</p>
+
+<p><em>Note</em>: the choice of group markup syntax seen here and literal escape metachar syntax shown <a href="#Literals">later</a> are related. Well-formed Mork documents should not be able to embed $$ inside a literal, because $ is a metachar which<em>only</em> escapes hex and not itself. This was done on purpose, so content inside a literal value would not accidentally terminate a transaction group, just because @$$ appears inside a literal. A well-formed literal would encode this sequence as @$\$ instead. This is the answer to jwz's question, about why there is more than one escape metachar: because it helps avoid corruption of user data.</p>
+
+<p>As a result, a parser can generally get along with one non-space character lookahead. Seeing @ means group markup is expected. Then a parser looks for $$ which can't appear inside literals when Mork writers follow the rules. This is<em>exactly</em> why $$ was chosen here.</p>
+
+<h4 id="Tokens" name="Tokens">Tokens</h4>
+
+<p>You were probably expecting to see material about<em>item</em> s here, right after<em>group</em> s. But here we switch tactics momentarily and take a bottom-up look at tokens and primitive data representation used to compose the higher level constructs used by <a href="#Items">items</a> further below.</p>
+
+<p><s>Your Mork tokenizer might want to see @{{ mediawiki.external(' and ') }}@ as special file row tokens</s>. Most tokens are single bytes, or can be treated as if single bytes had been seen. Some complex multibyte tokens that are not<em>lit</em> erals have the same meaning as a single #x20 whitespace byte after having whatever parsing effect is needed.</p>
+
+<p>For example, markup for indicating a<em>group</em> is equivalent to whitespace once it serves the purpose of clustering other content inside a group.</p>
+
+<p>Note that a<em>line continuation</em> , consisting of a backslash \ followed by<em>line-end</em> , is not a token at all when it appears inside a<em>lit</em> eral. Instead, a tokenizer should ignore a line continuation as if it never appeared.</p>
+
+<p>In addition, Mork uses the following set of single byte tokens:</p>
+
+<ul>
+ <li>&lt; -<em>open angle</em> - begins a dict (inside a dict, begins metainfo row)</li>
+ <li>&gt; -<em>close angle</em> - ends a dict</li>
+ <li>[ -<em>open bracket</em> - begins a row (inside a row, begins metainfo row)</li>
+ <li>] -<em>close bracket</em> - ends a row</li>
+ <li>{ -<em>open brace</em> - begins a table (inside a table, begins metainfo row)</li>
+ <li>} -<em>close brace</em> - ends a table</li>
+ <li>( -<em>open paren</em> - begins a cell</li>
+ <li>) -<em>close paren</em> - ends a cell</li>
+ <li>^ -<em>up arrow</em> - dereference following<em>id</em> for<em>lit</em> eral value</li>
+ <li>r -<em>lower r</em> - dereference following<em>oid</em> for<em>row</em> (by<em>ref</em> ) value</li>
+ <li>t -<em>lower t</em> - dereference following<em>oid</em> for<em>tab</em> le (by<em>ref</em> ) value</li>
+ <li> : -<em>colon</em> - next value is<em>scope</em> namespace for preceding<em>id</em></li>
+ <li>= -<em>equals</em> - begin a<em>lit</em> eral value inside a cell</li>
+ <li>+ -<em>plus</em> - add update: insert content</li>
+ <li>- -<em>minus</em> - cut update: remove content</li>
+ <li> ! -<em>bang</em> - put update: clear and set content</li>
+</ul>
+
+<h4 id="Ids" name="Ids">Ids</h4>
+
+<p>Under Mork, object<em>id</em> entities are written in hex. So an<em>id</em> token is just a naked sequence of hex bytes, either upper or lowercase. Because the interpretation is an integer, case is not significant.</p>
+
+<p>Some namespace is always understood as the<em>scope</em> for every<em>id</em> , but this does not appear in the<em>id</em> token itself. Whenever a<em>scope</em> is explicitly given, it appears after a colon following the<em>id</em> , as described next for<em>oid</em> s.</p>
+
+<ul>
+ <li>id ::= hex+.</li>
+ <li>hex ::= {{ mediawiki.external('0-9a-fA-F') }}</li>
+</ul>
+
+<h4 id="Oids" name="Oids">Oids</h4>
+
+<p>A Mork<em>oid</em> is an object<em>id</em> , and includes both the hex<em>id</em> and the namespace<em>scope</em> . When not explicitly stated, the scope is implicitly understood as some default for each context.</p>
+
+<ul>
+ <li>oid ::= id | id:scope</li>
+ <li>scope ::= literal | ^id | ^oid</li>
+</ul>
+
+<p>Note the third option for<em>scope</em> might not be supported or used in practice, since it would make<em>oid</em> and<em>scope</em> recursive. You might expect to see ^id:literal and ^id:^id, but probably not ^id:^id:literal.</p>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td>
+    <p>According to the Mork parser source code the actual syntax for the Oid is as follows:</p>
+
+    <ul>
+     <li>oid ::= id | id:scope</li>
+     <li>scope ::= name | ^id</li>
+     <li>name ::= {{ mediawiki.external('A-Za-z_:') }}+</li>
+    </ul>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<h4 id="Literals" name="Literals">Literals</h4>
+
+<p>A Mork<em>lit</em> eral is a binary octet sequence encoded as plain text. Every byte becomes literally the next byte of the value, unless certain bytes are seen which have metacharacter status. (Why is there more than one metachar? Because it might shrink markup. Complexity here is worth some compression.)</p>
+
+<ul>
+ <li>) -<em>close paren</em> - end of literal</li>
+ <li>$ -<em>dollar</em> - escape the next two hex bytes which encode a single octet</li>
+ <li>\ -<em>backslash</em> - if the next byte is either #xA or #xD, omit linebreak from literal; otherwise escape next byte. For example, \ removes metachar status from an immediately following \, $, or ).</li>
+</ul>
+
+<p>The first metachar is<em>close paren</em> . A<em>lit</em> eral always appears at the tail end of a<em>cell</em> which is always terminated by a<em>close paren</em> ), so in practice every<em>lit</em> eral is terminated by ). The only way to get ) inside a literal is by escaping the ) byte one way or other.</p>
+
+<p>The second metachar is<em>dollar</em> $, which allows you to encode any octet as two digits of hex. Some writers might encode all non-ascii octets this way, and the year 2000 version of Mozilla did this, but it's not required. You are never required to use $ to escape bytes when writing, but readers must escape hex following $ when $ itself is not escaped, say using \. (Why did I choose $ for this metachar? Because I thought URLs might be common Mork content, and I wanted to use a byte that might appear less often in URLs.)</p>
+
+<p>The third metachar is<em>backslash</em> \, which was added to allow escaping metachars using C like syntax, and to allow line continuation in a C like manner so very long lines need not be generated unless a writer insists.</p>
+
+<p>(If I was going to extend Mork for base 64, I'd probably extend the meaning of the $ metachar to understand a following non-hex byte was the start of a base 64 sequence. For example, ${ABC} might mean ABC was base 64 content. I've seen folks online bitch about Mozilla's verbose encoding of unicode under Mork using $ to encode every null byte. Why didn't you speak up during the year I discussed it online? In five years, why did no one tweak Mork so version 1.5 would do better? Why not just write unicode as raw binary, since Mork supports that? Why does Mork suck because no one spends an hour making changes? Whatever.)</p>
+
+<h4 id="Items" name="Items">Items</h4>
+
+<p>Okay, now we'll finally cover<em>items</em> , which is where all interesting Mork content is actually found.</p>
+
+<ul>
+ <li>items ::= (object | update)*</li>
+ <li>object ::= (dict | row | table)</li>
+ <li>edit ::= (+ | - | !)</li>
+ <li>update ::= edit (row | table)</li>
+</ul>
+
+<p>(Note<em>dict</em> does not appear in<em>update</em> only because dicts have no identity, and thus can't be updated.)</p>
+
+<p>When a parser does not see @ for a group at top level, it expects to see one of these first:</p>
+
+<ul>
+ <li>+ : the next object<em>adds</em> or<em>inserts</em> content listed to existing content.</li>
+ <li>- : the next object<em>cuts</em> or<em>removes</em> content listed from existing content.</li>
+ <li> ! : the next object<em>adds</em> content listed, after<em>clearing</em> or<em>deleting</em> old existing content.</li>
+ <li>&lt; : begin a<em>dict</em> .</li>
+ <li>[ : begin a<em>row</em> .</li>
+ <li>{ : begin a<em>table</em> .</li>
+</ul>
+
+<p>Because following sections describe<em>dict</em> s,<em>row</em> s, and<em>table</em> s, this rest of this section says more about those three<em>edit</em> bytes. The + for<em>add</em> is really Mork's default state because it is implied when missing before a row or table. If a row or table already exists, then new content listed is simply added to whatever already exists. (Of course, adding a cell with the same column as an existing column will replace the old value.)</p>
+
+<p>When a writer can see that rewriting an object from scratch is more space efficient that incremental adds or cuts, it can use ! to clear all old content and start afresh.</p>
+
+<p>When a writer sees an incremental cut is cheaper than rebuilding a large object from scratch, it can use - before an object to indicate content<em>removal</em> instead of content<em>insertion</em> .</p>
+
+<h4 id="Dicts" name="Dicts">Dicts</h4>
+
+<p>The purpose of a<em>dict</em> is to enumerate instances of <a href="#Literals">literals</a> with associated <a href="#Ids">ids</a>. A parser is expected to populate a<em>map</em> (hashmap) associating each<em>id</em> key with each<em>lit</em> value, so later references to any given<em>id</em> inside <a href="#Cells">cells</a> is understood as a reference to the<em>lit</em> value.</p>
+
+<p>A Mork implementation should have more than one<em>map</em> -- one for each<em>scope</em> is needed. But version 1.4 of Mork only uses two scopes: a for<em>atom</em> literals and c for<em>col</em> umn literals. The former, a, is the default<em>scope</em> for<em>ids</em> s in a<em>dict</em> , unless explicitly changed to the latter by a<em>metadict</em> containing a (atomScope=c) cell.</p>
+
+<p>(Note: to simplify this grammar, optional<em>space</em> has been omitted before each literal token, except those inside<em>value</em> . We don't want optional space before<em>value</em> because it encourages space inefficienty, but you might choose to be tolerant here.)</p>
+
+<ul>
+ <li>dict ::= &lt; (metadict | alias)* &gt;</li>
+ <li>metadict ::= &lt; (cell)* &gt;</li>
+ <li>alias ::= ( id value )</li>
+ <li>value ::= ^oid | =literal</li>
+ <li>oid ::= id | id:scope</li>
+</ul>
+
+<p>This grammar does not show a constraint on<em>id</em> , which should be a hex value not less than 80. All<em>id</em> s less than 80 have reserved definitions: any single ascii byte<em>lit</em> eral with ascii value 0xNN is defined to have<em>id</em> NN. Mork implementations which assign<em>id</em> s dynamically should use ascending values from 80 (or from the greatest<em>id</em> already assigned).</p>
+
+<p>In principle,<em>metadict</em> might contain cells of any type. But in Mork version 1.4, only cells equal to (atomScope=a) and (atomScope=c) have any meaning. These change the default<em>scope</em> for the<em>id</em> found in subsequent<em>alias</em> definitions. But instead of using (atomScope=a) in a metadict to return the default scope to a, you can simply use &gt;&lt; to close and reopen a new dict with fewer bytes, which also returns the default scope to a.</p>
+
+<pre>&lt; &lt;(atomScope=c)&gt; (80=cards)(81=dn)(82=modifytimestamp)(83=cn)
+(84=givenname)(85=mail)(86=xmozillausehtmlmail)(87=sn)&gt;
+
+&lt;(90=cn=John Hackworth,mail=jhackworth@atlantis.com)(91=19981001014531Z)
+(92=John Hackworth)(93=John)(94=jhackworth@atlantis.com)(95=FALSE)
+(96=Hackworth)&gt;
+</pre>
+
+<p>After the examples above have been parsed, the<em>oid</em> 85:c has value mail, and the<em>oid</em> 96:a has value Hackworth. Using ^ syntax to indicate an oid, these are usually written ^85 when column scope c is the default, and ^96 when atom scope a is the default.</p>
+
+<h4 id="Alias" name="Alias">Alias</h4>
+
+<p>Each<em>alias</em> inside a<em>dict</em> has syntax almost identical to that of<em>cell</em> s; they both use parens to delimit a pair. But the first element of the pair in an<em>alias</em> is an<em>id</em> , where a<em>cell</em> has a<em>col</em> in the first position. Additionally, a<em>cell</em> allows more variation in the second element of the pair, where an<em>alias</em> is constrained to a<em>lit</em> eral or an<em>oid</em> that references a<em>lit</em> eral.</p>
+
+<ul>
+ <li>alias ::= ( id value )</li>
+ <li>value ::= ^oid | =literal</li>
+</ul>
+
+<p>Optional<em>space</em> here is a bad idea for writers, because it decreases space efficiency. But readers might want to tolerate unexpected<em>space</em> .</p>
+
+<p>Should you allow forward references to<em>id</em> s that have not yet been defined by an<em>alias</em> ? Maybe, since it does little harm. It would be consistent with the system of making things exist as soon as they are mentioned. So an<em>oid</em> with no definition might refer to an empty value in general. This is what happens with<em>row</em> s and<em>table</em> s, and you might do this with<em>lit</em> eral<em>oid</em> s as well.</p>
+
+<h4 id="Rows" name="Rows">Rows</h4>
+
+<p>A<em>row</em> is a logically unordered sequence of<em>cell</em> s. Any physical ordering is not considered semantically meaningful. All that matters is which<em>col</em> umns appear in the<em>cell</em> s, and what<em>lit</em> erals are referenced by values.</p>
+
+<p>(To simplify the grammar, optional<em>space</em> before tokens is not shown.)</p>
+
+<ul>
+ <li>row ::= {{ mediawiki.external(' roid (metarow | cell)* ') }}</li>
+ <li>roid ::= oid /*default scope is rowScope from table*/</li>
+ <li>metarow ::= {{ mediawiki.external(' (cell)* ') }}</li>
+ <li>cell ::= ( col slot )</li>
+ <li>col ::= ^oid /*default scope is c*/ | name</li>
+ <li>slot ::= ^oid /*default scope is a*/ | =literal</li>
+</ul>
+
+<p>In the<em>col</em> position, the<em>scope</em> of all<em>id</em> s defaults to c, and in the<em>slot</em> position, the<em>scope</em> defaults to a. The default<em>scope</em> for<em>roid</em> depends on context -- a containing<em>table</em> will supply the default. If the scope is itself an<em>oid</em> for a<em>lit</em> eral, the default scope is c; so when<em>roid</em> is 1:^80 this means 1:^80:c.</p>
+
+<pre>&lt; &lt;(atomScope=c)&gt; (80=cards)(81=dn)(82=modifytimestamp)(83=cn)
+(84=givenname)(85=mail)(86=xmozillausehtmlmail)(87=sn)&gt;
+
+&lt;(90=cn=John Hackworth,mail=jhackworth@atlantis.com)(91=19981001014531Z)
+(92=John Hackworth)(93=John)(94=jhackworth@atlantis.com)(95=FALSE)
+(96=Hackworth)&gt;
+
+[1:^80 (^81^90)(^82^91)(^83^92)(^84^93)(^85^94)(^86^95)(^87^96)]
+</pre>
+
+<p>This row example was written entirely with<em>oid</em> s, which is not very human readable. So let's rewrite this row using all<em>lit</em> erals with identical resulting content. Note that all<em>col</em> s default to<em>scope</em> c and all<em>slot</em> s default to<em>scope</em> a.</p>
+
+<pre>[ 1:cards (dn=cn=John Hackworth,mail=jhackworth@atlantis.com)
+(modifytimestamp=19981001014531Z)(cn=John Hackworth)(givenname=John)
+(mail=jhackworth@atlantis.com)(^xmozillausehtmlmail=FALSE)(sn=Hackworth)]
+</pre>
+
+<p>This version of the row has identical content, but is much more readable, at the expense of duplicating strings in places when other rows have the same values, which is often the case.</p>
+
+<h4 id="Cells" name="Cells">Cells</h4>
+
+<p>A<em>cell</em> is basically a named value, where the name is a<em>col</em> umn<em>lit</em> eral constant. If you line up cells with the same<em>col</em> inside a table, the cells will form a column in the sparse table matrix.</p>
+
+<ul>
+ <li>cell ::= ( col slot )</li>
+ <li>col ::= ^oid /*default scope is c*/ | name</li>
+ <li>name ::= {{ mediawiki.external('a-zA-Z:_') }} {{ mediawiki.external('a-zA-Z:_+-?!') }}*</li>
+ <li>slot ::= ^oid /*default scope is a*/ | =literal</li>
+ <li>oid ::= id | id:scope</li>
+</ul>
+
+<p>Note cells can also refer to a row or a table by<em>oid</em> , even if this feature is not actually used by specific Mork applications.</p>
+
+<p>In practice, a reader might allow<em>col</em> umn<em>name</em> s to include any byte except ^, =, or ). Notice that an empty literal value in column sn will be written like this: (sn=).</p>
+
+<h4 id="Tables" name="Tables">Tables</h4>
+
+<p>A<em>table</em> is a collection of<em>row</em> s. I can't recall whether they are ordered; my guess is no, since otherwise you'd plausibly be able to add a<em>twice</em> twice in different positions. I think each<em>table</em> is a<em>map</em> (hashmap) of<em>row</em> s, mapping<em>roid</em> s to<em>row</em> s, in which case member<em>row</em> s might appear in any order.</p>
+
+<p>But I seem to recall the idea of using tables to represent the sorted ordering of other tables. So maybe tables are ordered, in which case an array representation is also a good idea. In any case, the Mork syntax for serialization is immune to such concerns.</p>
+
+<ul>
+ <li>table ::= { toid (metatable | row | roid )* }</li>
+ <li>toid ::= oid /*default scope is c*/</li>
+ <li>metatable ::= { (cell)* }</li>
+</ul>
+
+<pre>{ 1:cards {(rowScope=cards)(tableKind=Johns)} 1 2 }
+</pre>
+
+<p>The<em>metatable</em> contains<em>cell</em> s of metainfo, but Mork only considers a few possible<em>col</em> umns interesting. Here we see the default<em>scope</em> for<em>roid</em> row<em>id</em> s has been set to cards using (rowScope=cards). This means the row<em>id</em> s 1 and 2 are understood the same as if they had been written 1:cards and 2:cards, or alternatively as 1:^80 and 2:^80 (assuming ^80 resolves to cards).</p>
+
+<p>The role (or purpose or type) of the table is specified by (tableKind=Johns). This supports an examination of tables at runtime by<em>kind</em> instead of merely by<em>toid</em> table<em>oid</em> .</p>
+
+<pre>{ 1:^80 {(rowScope^80:c)(tableKind=Johns)} 1:^80 2:^80 } // with oids
+</pre>
+
+<p>Here the table has been rewritten using<em>lit</em> eral<em>oid</em> s instead of string<em>lit</em> erals. But this table is considered identity to the last, if<em>oid</em> 80:c has been defined as cards in some<em>dict</em> .</p>
+
+<pre>{ 1:^80 {(rowScope^80:c)(tableKind=Johns)} // with explicit row cells
+  [ 1:^80 (^81^90)(^82^91)(^83^92)(^84^93)(^85^94)(^86^95)(^87^96)]
+  [ 2 (mail=galtj@atlantis.com)(cn=John Galt)]
+}
+</pre>
+
+<p>This last version of the same table actually defines contents of the member<em>row</em> s using explicit [] notation. You need only define a row in one place, and any other use of that same row can include the row as a member by reference, using only the row's<em>oid</em> . The Mork writer for Mozilla in 2000 made an effort to write the actual contents of any entity one time only, by keeping track of whether it was "clean" in the sense of having been written once already in the current printing task.</p>
+
+<h4 id="Identity" name="Identity">Identity</h4>
+
+<p>Each object has a unique identity called an<em>oid</em> (for<em>o</em> bject<em>id</em> entity), composed of two parts:<em>id</em> and<em>scope</em> .</p>
+
+<p>Note<em>scope</em> is a short synonym for<em>namespace</em> . Please avoid confusing this use of the word namespace with any other. (There is<em>no</em> relation to the meaning of namespace under XML, except in similar function.)</p>
+
+<p>Mork reverses conventional namespace order, with namespace coming last instead of first. Mork uses<em>id</em> :<em>scope</em> instead of<em>namespace</em> :<em>name</em> . But it's all the same.</p>
+
+<p>The purpose of<em>scope</em> namespaces is to allow content from multiple apps to mix in a single Mork store without possibility of identity collision, as long as apps use different namespaces. Very long scope names to ensure uniqueness has no penalty because scopes can appear by id instead of by name.</p>
+
+<h4 id="Atoms" name="Atoms">Atoms</h4>
+
+<p>Mork is grounded in primitive interned-string octet sequence values, usually called<em>atom</em> s. (David Bienvenu prefers<em>atomized</em> strings to<em>interned</em> strings.) This terminology makes an assumption about Mork implementations: each value namespace scope should have a map hashing string keys to<em>atom</em> values, so every instance of the same string can be shared as the same<em>atom</em> instance. You needn't do this, but it's less confusing if you do. You also want a map from id to atom, to resolve<em>val</em> hex oid references.</p>
+
+<h4 id="Unicode" name="Unicode">Unicode</h4>
+
+<p>Mork doesn't know or care about unicode or wide characters. All Mork content is uninterpreted octet sequences, containing whatever an app likes. All content that looks like binary is escaped, so it won't interfere with Mork's markup, which is basically ascii (or the moral equivalent). Mork's simple syntax for framing embedded content does not constrain the type of content put inside. Mork does not escape binary content very efficiently, typically using three bytes to represent each awkward byte: zero appears in hex as $00. (The choice of $ as metacharacter was arbitrary, and picked to be less common within Mozilla embedded content. Space efficiency for binary was never high priority in whimsical demands from managment.)</p>
+
+<h4 id="Brevity" name="Brevity">Brevity</h4>
+
+<p>Why is there more than one namespace for octet string vals? Column names have their own namespace so the ids of columns will usually be no more than two hex digits in length, assuming an app does not have a huge number of distinct attribute names.</p>
+
+<p>If cols and vals were in the same namespace, Mork files would likely be larger if common column names had ids that were longer. So this is a compression strategy, making the format more complex.</p>
+
+<h4 id="Bootstrap" name="Bootstrap">Bootstrap</h4>
+
+<p>Parts of Mork are self describing, making it reflective. This causes a bootstrap problem where metainfo would describe itself, and well known constants would be desired for scope names. For this reason, Mork defines the ids of single byte scope names specially: the integer value of a single octet name is defined to be the id of that name. This means all scope name ids less than 0x80 are already assigned. A Mork implementation must dynamically assign ids increasing from 0x80.</p>
+
+<p>Default scope names for<em>col</em> <span class="nowiki">'</span>s and ordinary atom<em>val'</em> s are defined as follows:</p>
+
+<ul>
+ <li>col - c (for col) with id 0x63 (equal to 'c')</li>
+ <li>val - a (for atom) with id 0x61 (equal to 'a')</li>
+</ul>
+
+<h4 id="Objects" name="Objects">Objects</h4>
+
+<p>Mork models an app object with a<em>row</em> , where each object attribute is a separate cell in the row. The attribute name is the column. A collection of objects is a sparse matrix in the form of a table enumerating rows.</p>
+
+<p>Mork also represents the attributes as metainfo as a row, so the anotation of a table or row with metainfo appears as another row, distinguished by privileged syntax. Primary parts of metainfo include object identity, kind or type, and default scope for contained objects.</p>
+
+<p></p><p></p><div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+<ul>
+<li>Author(s): David McCusker</li>
+<li>Original Location: <a class="external" href="http://www.erys.org/resume/netscape/mork/mork.html_-_returns_404_Not_Found_(&lt;a_href='&quot;http://web.archive.org/web/20050324235032/http://erys.org/resume/netscape/mork/mork.html&quot;'_class='&quot;external&quot;'>parent_page_on_archive.org&lt;/a>)" rel="noopener">http://www.erys.org/resume/netscape/mork/mork.html - returns 404 Not Found (&lt;a href='"http://web.archive.org/web/20050324235032/http://erys.org/resume/netscape/mork/mork.html"' class='"external"'&gt;parent page on archive.org&lt;/a&gt;)</a></li>
+</ul>
+</div><p></p><p></p>

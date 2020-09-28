@@ -1,0 +1,71 @@
+<p>This article describes troubleshooting actions to deal with a broken places.sqlite database.</p>
+
+<h2 id="How_to_try_to_recover_from_a_corrupt_places.sqlite">How to (try to) recover from a corrupt places.sqlite</h2>
+
+<p>Sometimes after a Firefox/Aurora/Nightly upgrade, history disappears, but bookmarks are at their place. In the profile folder a places.sqlite-corrupt file has been created.</p>
+
+<p>In some cases, this procedure may allow you to recover the corrupt file along with all of its contents (history).</p>
+
+<p>Close Firefox and ensure it's done closing in your task manager.</p>
+
+<div class="warning">
+<p>Before you proceed, make a backup of the Firefox profile folder, in any case.</p>
+</div>
+
+<p>Create a folder to use temporarily for this work, such as <em>my_work_folder</em>.<br>
+ Copy places.sqlite-corrupt from the Firefox profile folder to the work folder.</p>
+
+<p>Download the latest precompiled binary Sqlite command-line shell from:<br>
+ <a href="https://www.sqlite.org/download.html">https://www.sqlite.org/download.html</a><br>
+ Extract sqlite3 executable into the work folder.</p>
+
+<p>Open a terminal window and navigate to the work folder.<br>
+ Then open an sqlite shell:</p>
+
+<pre class="brush: bash"><strong>my_work_folder&gt;</strong> sqlite3 places.sqlite-corrupt
+
+<strong>sqlite&gt;</strong> PRAGMA integrity_check;</pre>
+
+<div class="note">
+<p>If the result IS OK, this guide won't help; stop here and please <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Toolkit&amp;component=Places">file a bug</a>.</p>
+</div>
+
+<pre class="brush: bash"><strong>sqlite&gt;</strong> .clone places.sqlite
+
+<strong>sqlite&gt;</strong> PRAGMA user_version;</pre>
+
+<p>Note the version number returned by the last pragma query.</p>
+
+<pre class="brush: bash"><strong>sqlite&gt;</strong> .exit</pre>
+
+<p>Open a new shell for the new database:</p>
+
+<pre class="brush: bash"><strong>my_work_folder&gt;</strong> sqlite3 places.sqlite
+
+<strong>sqlite&gt;</strong> PRAGMA integrity_check;</pre>
+
+<div class="note">
+<p>If the result IS NOT OK, the file cannot be recovered; stop here and please <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Toolkit&amp;component=Places">file a bug</a>.</p>
+</div>
+
+<p>Let's fix the schema version.<br>
+ <em>NN</em> must be replaced with the number we had noted previously:</p>
+
+<pre class="brush: bash"><strong>sqlite&gt;</strong> PRAGMA user_version = <em>NN</em>;</pre>
+
+<p>Let's update the page_size value:</p>
+
+<pre class="brush: bash"><strong>sqlite&gt;</strong> PRAGMA journal_mode = truncate;
+<strong>sqlite&gt;</strong> PRAGMA page_size = 32768;
+<strong>sqlite&gt;</strong> VACUUM;
+<strong>sqlite&gt;</strong> PRAGMA journal_mode = wal;
+<strong>sqlite&gt;</strong> .exit</pre>
+
+<p>Copy the new places.sqlite to the profile folder, overwriting the existing one.<br>
+ Remove the places.sqlite-corrupt file.</p>
+
+<p>Launch Firefox.</p>
+
+<div class="note">
+<p>If the database is still broken (missing history, creating -corrupt file, ...), please <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Toolkit&amp;component=Places">file a bug</a>.</p>
+</div>

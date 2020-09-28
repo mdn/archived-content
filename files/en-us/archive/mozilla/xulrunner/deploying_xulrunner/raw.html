@@ -1,0 +1,242 @@
+<p>Current <a href="/en-US/docs/XULRunner">XULRunner</a> is a stable developer preview release. This means that while the release is immature in some areas such as embedding, application deployment, and OS integration, it can be used by developers that are releasing standalone XUL applications. This document explains how deployment should be managed for self contained portable applications built on XULRunner.</p>
+
+<div class="note">
+<p><strong>Note</strong>: To actually install a XULRunner application, a compatible version of XULRunner must be registered on the system and the app must be deployed per the instructions at <a href="/en-US/docs/XUL_Application_Packaging">XUL Application Packaging</a>. If your installer is capable of determining whether or not XULRunner has been registered on the system you could perform the check and register the appropriate version if necessary. After that, the app could be installed to the registered XULRunner and appear in start menus, lists of installed programs, etc. (Bonus points for checking the operating system and downloading the right XULRunner on the fly, or bundling them into your installer). Registration and app installation are performed with command line switches as outlined in the XULRunner section of article <a href="/en-US/docs/Mozilla/Command_Line_Options">Command Line Options</a>.</p>
+
+<p>It may turn out to be easier to create a self contained portable application, as described here, and deploy it with a generic installer that would create shortcuts to scripts that launch your application in the unregistered bundled XULRunner. The responsibility still lies with the developer to provide the correct version of XULRunner per platform. In the end, most users are afraid of links that don't have a pretty icon so you may want to have a look at the Branding section of <a href="/en-US/docs/XULRunner_tips">XULRunner tips</a>.</p>
+</div>
+
+<h2 id="Windows" name="Windows">Windows</h2>
+
+<p>On Windows, XULRunner does not yet have a complete built-in installation solution; app developers should use pre-existing solutions for a native Windows installer. An example of one such solution may be found in the article: <a href="/en-US/docs/XULRunner/Creating_a_Windows_Inno_Setup_installer_for_XULRunner_applications">Creating a Windows Inno Setup installer for XULRunner applications</a>. The installed files should be arranged in the following directory structure:</p>
+
+<ul>
+ <li><code><var>installdir</var>/</code>
+
+  <ul>
+   <li><code>application.ini</code></li>
+   <li><code>components/</code>
+    <ul>
+     <li>... components which are part of the application</li>
+    </ul>
+   </li>
+   <li><code>chrome/</code>
+    <ul>
+     <li>... chrome which is part of the application</li>
+    </ul>
+   </li>
+   <li>... additional application files such as icons, etc</li>
+   <li><code><var>myapplicationname</var>.exe</code> (This is the "stub executable"... you should copy and rename this file from <code>xulrunner-stub.exe</code> in your XULRunner installation.)</li>
+   <li><code>xulrunner/</code>
+    <ul>
+     <li>... copy <code>xulrunner/</code> to this directory</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<div class="note">
+<p>When deploying with XULRunner 2.0 and above do the following:</p>
+
+<ul>
+ <li>
+  <p>Move chrome.manifest to the root directory, and adjust resource paths inside chrome.manifest accordingly</p>
+ </li>
+ <li>
+  <p>With XULRunner 9.0 or 10.0 you may need to copy "mozutils.dll" and/or "mozcrt19.dll" from the xulrunner directory to the root directory. This should be fixed with XULRunner 11.0</p>
+ </li>
+ <li>
+  <p>With XULRunner 11.0 you may need to copy "gkmedias.dll" from the xulrunner directory to the root directory</p>
+ </li>
+</ul>
+</div>
+
+<h2 id="Mac_OS_X">Mac OS X</h2>
+
+<p>On Mac OS X, the exact layout of your application bundle depends on which version of XULRunner you're using.</p>
+
+<h3 id="XULRunner_39_and_later">XULRunner 39 and later</h3>
+
+<p>Due to Mac OS X code signing rules and how they interact with the design of XULRunner (see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1105044" title="FIXED: XULRunner fails with &quot;Couldn't load XPCOM&quot;">bug 1105044</a> for the inside scoop), starting with XULRunner 39 the XULRunner library files are no longer able to reside in a XULRunner framework directory. Instead, the library files are placed directly into the <code>MacOS</code> directory alongside the main executable file. Here's how the entire application bundle looks:</p>
+
+<ul>
+ <li><code>MyApp.app/</code>
+
+  <ul>
+   <li><code>Contents/</code>
+
+    <ul>
+     <li><code>Info.plist</code></li>
+     <li><code>PkgInfo</code></li>
+     <li><code>Resources/</code>
+      <ul>
+       <li><code>application.ini</code></li>
+       <li><code>app_icon.icns</code></li>
+       <li><code>components/</code>
+        <ul>
+         <li>... components which are part of the application</li>
+        </ul>
+       </li>
+       <li><code>chrome/</code>
+        <ul>
+         <li>... chrome which is part of the application</li>
+        </ul>
+       </li>
+       <li>... additional application files such as icons, etc</li>
+      </ul>
+     </li>
+     <li><code>MacOS/</code>
+      <ul>
+       <li><code>xulrunner</code> (This is the "stub executable"... you should copy this file from <code>/Library/Frameworks/XUL.framework/Versions/1.8/xulrunner</code>.)</li>
+       <li><code>libmozglue.dylib</code> (the main XUL library)</li>
+       <li>... other executables and libraries</li>
+      </ul>
+     </li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<div class="note">
+<p>The core changes to XUL and Gecko that require this new file layout were implemented in Gecko 34, except that the XULRunner application was not updated to know about the change, so it will report an error: "Unable to load XPCOM." XULRunner was fixed in Gecko 39. See <a href="http://hearsum.ca/blog/upcoming-changes-to-mac-package-layout-signing.html">this blog post</a> for additional background about this change.</p>
+</div>
+
+<h3 id="XULRunner_38_and_earlier">XULRunner 38 and earlier</h3>
+
+<p>In XULRunner 38 and earlier, XULRunner is provided in a Mac OS X Framework bundle, which is placed in your application bundle's <code>Frameworks</code> directory. The complete bundle structure is as follows:</p>
+
+<ul>
+ <li><code>MyApp.app/</code>
+
+  <ul>
+   <li><code>Contents/</code>
+
+    <ul>
+     <li><code>Info.plist</code></li>
+     <li><code>PkgInfo</code></li>
+     <li><code>Frameworks/</code>
+      <ul>
+       <li><code>XUL.framework/</code>
+        <ul>
+         <li>files copied from <code>/Library/Frameworks/XUL.framework/Versions/1.8/</code>... make sure you copy all symlinks correctly (use <code>rsync -rl /Library/Frameworks/XUL.framework ...</code>).</li>
+        </ul>
+       </li>
+      </ul>
+     </li>
+     <li><code>Resources/</code>
+      <ul>
+       <li><code>application.ini</code></li>
+       <li><code>app_icon.icns</code></li>
+       <li><code>components/</code>
+        <ul>
+         <li>... components which are part of the application</li>
+        </ul>
+       </li>
+       <li><code>chrome/</code>
+        <ul>
+         <li>... chrome which is part of the application</li>
+        </ul>
+       </li>
+       <li>... additional application files such as icons, etc</li>
+      </ul>
+     </li>
+     <li><code>MacOS/</code>
+      <ul>
+       <li><code>xulrunner</code> (This is the "stub executable"... you should copy this file from <code>/Library/Frameworks/XUL.framework/Versions/1.8/xulrunner</code>.)</li>
+      </ul>
+     </li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<p>When deploying with XULRunner 2.0, move <code>chrome.manifest</code> to the root directory, and adjust resource paths inside <code>chrome.manifest</code> accordingly. Additionally, your Mac app <em>will not run</em> without a valid <code>Info.plist</code> file. Here's a sample one:</p>
+
+<pre class="brush:xml;">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+	&lt;key&gt;CFBundleDevelopmentRegion&lt;/key&gt;
+	&lt;string&gt;English&lt;/string&gt;
+	&lt;key&gt;CFBundleExecutable&lt;/key&gt;
+	&lt;string&gt;xulrunner&lt;/string&gt;
+	&lt;key&gt;CFBundleGetInfoString&lt;/key&gt;
+	&lt;string&gt;1.0&lt;/string&gt;
+	&lt;key&gt;CFBundleIconFile&lt;/key&gt;
+	&lt;string&gt;app_icon.icns&lt;/string&gt;
+	&lt;key&gt;CFBundleIdentifier&lt;/key&gt;
+	&lt;string&gt;net.yourcompany.yourapplication&lt;/string&gt;
+	&lt;key&gt;CFBundleInfoDictionaryVersion&lt;/key&gt;
+	&lt;string&gt;6.0&lt;/string&gt;
+	&lt;key&gt;CFBundleName&lt;/key&gt;
+	&lt;string&gt;applicationName&lt;/string&gt;
+	&lt;key&gt;CFBundlePackageType&lt;/key&gt;
+	&lt;string&gt;APPL&lt;/string&gt;
+	&lt;key&gt;CFBundleShortVersionString&lt;/key&gt;
+	&lt;string&gt;1.0&lt;/string&gt;
+	&lt;key&gt;CFBundleSignature&lt;/key&gt;
+	&lt;string&gt;????&lt;/string&gt;
+        &lt;!--only useful if your app handle urls--&gt;
+	&lt;key&gt;CFBundleURLTypes&lt;/key&gt;
+	&lt;array&gt;
+		&lt;dict&gt;
+			&lt;key&gt;CFBundleURLIconFile&lt;/key&gt;
+			&lt;string&gt;app_icon.icns&lt;/string&gt;
+			&lt;key&gt;CFBundleURLName&lt;/key&gt;
+			&lt;string&gt;YOURAPP Entity&lt;/string&gt;
+			&lt;key&gt;CFBundleURLSchemes&lt;/key&gt;
+			&lt;array&gt;
+				&lt;string&gt;chrome&lt;/string&gt;
+			&lt;/array&gt;
+		&lt;/dict&gt;
+	&lt;/array&gt;
+	&lt;key&gt;CFBundleVersion&lt;/key&gt;
+	&lt;string&gt;1.0&lt;/string&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;</pre>
+
+<p>Here's a sample of the <code>PkgInfo</code> file</p>
+
+<pre><code>AAPL????</code></pre>
+
+<p>Edit this as you need to, but <code>CFBundleExecutable</code> MUST be <code>xulrunner</code>, and <code>CFBundleIconFile</code> and <code>CFBundleURLIconFile</code> should be set to the filename of your application icon (<code>app_icon.icns</code>).</p>
+
+<p>Finally :</p>
+
+<ul>
+ <li>You can use any paint or graphics utility to create your application's icon, which should be provided as a 512 by 512 pixel PNG file.</li>
+ <li>To make it all work, change the permissions of your bundle by running <code>chmod -R 755 YourApp.app</code>.</li>
+</ul>
+
+<h2 id="Linux">Linux</h2>
+
+<p>Most Linux applications are distributed as simple <code>.tar.bz2</code> archives which can be unpacked by the user wherever they wish. The archive should be structured as follows:</p>
+
+<ul>
+ <li><code><var>appname</var>/</code>
+
+  <ul>
+   <li><code>application.ini</code></li>
+   <li><code>components/</code>
+    <ul>
+     <li>... components which are part of the application</li>
+    </ul>
+   </li>
+   <li><code>chrome/</code>
+    <ul>
+     <li>... chrome which is part of the application</li>
+    </ul>
+   </li>
+   <li>... additional application files such as icons, etc</li>
+   <li><code><var>myapplicationname</var></code> (This is the "stub executable"... you should copy and rename this file from <code>xulrunner-stub</code> in your XULRunner installation.)</li>
+   <li><code>xulrunner/</code>
+    <ul>
+     <li>... copy <code>xulrunner/</code> to this directory</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>

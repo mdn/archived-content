@@ -1,0 +1,207 @@
+<p><strong>A <code>Promise</code> object represents a value that may not be available yet.</strong></p>
+
+<p>A reference to an existing promise may be received by different means, for example as the return value of a call into an asynchronous API. Once you have a reference to a promise, you can call its <a href="#then()" title="#then()"><code>then()</code></a> method to execute an action when the value becomes available, or when an error occurs.</p>
+
+<p>Promises may also be created using the <a href="#Constructor" title="#Constructor"><code>new Promise()</code></a> constructor. You don't need to import the <code>Promise.jsm</code> module to use a <code>Promise</code> object to which you already have a reference.</p>
+
+<p>Internally, a promise can be in one of three states:</p>
+
+<ul>
+ <li><strong>Pending</strong>, when the final value is not available yet. This is the only state that may transition to one of the other two states.</li>
+ <li><strong>Fulfilled</strong>, when and if the final value becomes available. A <em>fulfillment value</em> becomes permanently associated with the promise. This may be any value, including <code>undefined</code>.</li>
+ <li><strong>Rejected</strong>, if an error prevented the final value from being determined.  A <em>rejection reason</em> becomes permanently associated with the promise. This may be any value, including <code>undefined</code>, though it is generally an <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Global_Objects/Error" title="/en-US/docs/JavaScript/Reference/Global_Objects/Error"><code>Error</code></a> object, like in exception handling.</li>
+</ul>
+
+<div class="note">
+<p><strong>Note:</strong> You should always handle, forward, or report errors (rejection reasons). If you see the message "<strong>A promise chain failed to handle a rejection</strong>", there is likely something to be fixed in the code. See <a href="#Handling_errors_and_common_pitfalls" title="#Handling_errors_and_common_pitfalls">handling errors and common pitfalls</a> below.</p>
+</div>
+
+<h2 id="Documentation_conventions">Documentation conventions</h2>
+
+<p>In documentation, the type of the fulfillment value is usually specified between angular brackets. For example, the <code><a href="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.exists()" title="/en-US/docs/JavaScript_OS.File/OS.File_for_the_main_thread#OS.File.exists()">OS.File.exists</a></code> function returns a promise that will eventually fulfill with a boolean:</p>
+
+<pre>Promise&lt;boolean&gt; exists(string path);
+</pre>
+
+<p>The rejection reason may be specified separately in the function's documentation, and is considered to be an <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Global_Objects/Error" title="/en-US/docs/JavaScript/Reference/Global_Objects/Error"><code>Error</code></a> object unless otherwise specified.</p>
+
+<h2 id="Method_overview">Method overview</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td><code>Promise <a href="#then()">then</a>([optional] <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">Function</a> onFulfill, </code><code>[optional] </code><code><a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function" title="/en-US/docs/JavaScript/Reference/Global_Objects/Function">Function</a> onReject</code><code>);</code></td>
+  </tr>
+  <tr>
+   <td><code>Promise <a href="#catch">catch</a>([optional] <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Function">Function</a> onReject);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Constructor">Constructor</h2>
+
+<p>Creates a new promise, initially in the pending state, and provides references to the resolving functions that can be used to change its state.</p>
+
+<pre>new Promise(executor);
+</pre>
+
+<h3 id="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>executor</code></dt>
+ <dd>
+ <p>This function is invoked immediately with the resolving functions as its two arguments:</p>
+
+ <pre>executor(resolve, reject);
+</pre>
+
+ <p>The constructor will not return until the executor has completed. The resolving functions can be used at any time, before or after the executor has completed, to control the final state of the promise. If the executor throws an exception, its value will be passed to the <code>reject</code> resolving function.</p>
+ </dd>
+</dl>
+
+<h3 id="Resolving_functions">Resolving functions</h3>
+
+<h4 id="resolve()">resolve()</h4>
+
+<p>Fulfills the associated promise with the specified value, or propagates the state of an existing promise. If the associated promise has already been resolved, either to a value, a rejection, or another promise, this method does nothing.</p>
+
+<div class="note"><strong>Note:</strong> Calling this method with a pending promise as the <code>aValue</code> argument, and then calling it again with another value before the promise is fulfilled or rejected, will have no effect the second time, as the associated promise is already resolved to the pending promise.</div>
+
+<pre>void resolve(
+  aValue
+);
+</pre>
+
+<h6 id="Parameters_2">Parameters</h6>
+
+<dl>
+ <dt><code>aValue</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>If this value is not a promise, including <code>undefined</code>, it becomes the fulfillment value of the associated promise. If this value is a promise, then the associated promise will be resolved to the passed promise, and follow the state as the provided promise (including any future transitions).</dd>
+</dl>
+
+<h4 id="reject()">reject()</h4>
+
+<p>Rejects the associated promise with the specified reason. If the promise has already been resolved, either to a value, a rejection, or another promise, this method does nothing.</p>
+
+<pre>void reject(
+  aReason
+);
+</pre>
+
+<h6 id="Parameters_3">Parameters</h6>
+
+<dl>
+ <dt><code>aReason</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>
+ <p>The rejection reason for the associated promise. Although the reason can be <code>undefined</code>, it is generally an <a href="https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Global_Objects/Error" title="/en-US/docs/JavaScript/Reference/Global_Objects/Error"><code>Error</code></a> object, like in exception handling.</p>
+
+ <div class="note"><strong>Note:</strong> This argument should not be a promise. Specifying a rejected promise would make the rejection reason equal to the rejected promise itself, and not its rejection reason.</div>
+ </dd>
+</dl>
+
+<h2 id="Methods">Methods</h2>
+
+<h3 id="then()">then()</h3>
+
+<p>Calls one of the provided functions as soon as this promise is either fulfilled or rejected.  A new promise is returned, whose state evolves depending on this promise and the provided callback functions.</p>
+
+<p>The appropriate callback is always invoked after this method returns, even if this promise is already fulfilled or rejected.  You can also call the <code>then</code> method multiple times on the same promise, and the callbacks will be invoked in the same order as they were registered.</p>
+
+<div class="warning">
+<p><strong>Warning: I</strong>f the <code>onFulfill</code> callback throws an exception, the <code>onReject</code> callback is not invoked and the exception won't be caught, nor shown in the console (you will see a promise chain failed error). You can register a rejection callback on the returned promise instead (using catch() or then()), to process any exception occurred in either of the callbacks registered on this promise.</p>
+</div>
+
+<div class="note"><strong>Note:</strong> When you call the <code>then</code> method multiple times on the same promise, the registered callbacks are always executed independently. For example, if an exception occurs in one callback, it does not affect the execution of subsequent callbacks. The behavior of the callback only affects the promise returned by the <code>then</code> method with which the callback was registered, that is actually a different promise for each invocation of the method.</div>
+
+<pre>Promise then(
+  Function onFulfill,
+  Function onReject
+);
+</pre>
+
+<h6 id="Parameters_4">Parameters</h6>
+
+<dl>
+ <dt><code>onFulfill</code> {{optional_inline()}}</dt>
+ <dd>If the promise is fulfilled, this function is invoked with the fulfillment value of the promise as its only argument, and the outcome of the function determines the state of the new promise returned by the <code>then</code> method. In case this parameter is not a function (usually <code>null</code>), the new promise returned by the <code>then</code> method is fulfilled with the same value as the original promise.</dd>
+ <dt><code>onReject</code> {{optional_inline()}}</dt>
+ <dd>
+ <p>If the promise is rejected, this function is invoked with the rejection reason of the promise as its only argument, and the outcome of the function determines the state of the new promise returned by the <code>then</code> method. In case this parameter is not a function (usually left <code>undefined</code>), the new promise returned by the <code>then</code> method is rejected with the same reason as the original promise.</p>
+ </dd>
+</dl>
+
+<h6 id="Return_value">Return value</h6>
+
+<p>A new promise that is initially pending, then assumes a state that depends on the outcome of the invoked callback function:</p>
+
+<ul>
+ <li>If the callback returns a value that is not a promise, including <code>undefined</code>, the new promise is fulfilled with this fulfillment value, even if the original promise was rejected.</li>
+ <li>If the callback throws an exception, the new promise is rejected with the exception as the rejection reason, even if the original promise was fulfilled.</li>
+ <li>If the callback returns a promise, the new promise will eventually assume the same state as the returned promise.</li>
+</ul>
+
+<h3 id="catch()"><a name="catch">catch()</a></h3>
+
+<p>Equivalent to <code>then()</code> with an <code>undefined</code> value for the <code>onFulfill</code> parameter. If you chain then( onFulfill ).catch( onReject ), exceptions thrown in onFulfill will be caught and passed to onReject, which is not the case when just passing onReject to then().</p>
+
+<pre>Promise catch(
+  Function onReject
+);
+</pre>
+
+<p>The following calls are therefore identical:</p>
+
+<pre>p.then(undefined, logError);
+p.catch(logError);
+</pre>
+
+<h2 id="Debugging">Debugging</h2>
+
+<p>By design, the instant state and value of a promise cannot be inspected synchronously from code, without calling the <code><a href="#then()" title="#then()">then()</a></code> method.</p>
+
+<p>To help with debugging, only when inspecting a promise object manually, you can see more information as special properties that are inaccessible from code (this, at present, is implemented by randomizing the property name, for the lack of more sophisticated language or debugger support).</p>
+
+<p>These code-inaccessible, inspectable properties are:</p>
+
+<ul>
+ <li><code><strong><span>{</span>{private:status}}</strong></code>: <strong>0</strong> for pending, <strong>1</strong> for fulfilled, or <strong>2</strong> for rejected.</li>
+ <li><code><strong><span>{</span>{private:value}}</strong></code>: Fulfillment value or rejection reason, for fulfilled or rejected promises only.</li>
+ <li><code><strong><span>{</span>{private:handlers}}</strong></code>: Array of objects holding references to functions registered by the <code><a href="#then()" title="#then()">then()</a></code> method, for pending promises only.</li>
+</ul>
+
+<p style="text-align: center;"><img alt="Promise properties are visible in the debugger." src="https://mdn.mozillademos.org/files/6471/Promise-Debug-1.png" style="border-style: solid; border-width: 2px; height: 482px; margin-bottom: 15px; margin-top: 15px; width: 403px;"><img alt="Promise handlers can be watched from the Console." src="https://mdn.mozillademos.org/files/6473/Promise-Debug-2.png" style="border-style: solid; border-width: 2px; height: 161px; width: 977px;"></p>
+
+<h2 id="Examples">Examples</h2>
+
+<p>See the <a href="/Mozilla/JavaScript_code_modules/Promise.jsm/Examples">examples</a> page.</p>
+
+<h2 id="Handling_errors_and_common_pitfalls">Handling errors and common pitfalls</h2>
+
+<p>You should report unhandled errors, unless you're handing off the promise to a caller or another code path that will handle the error.</p>
+
+<pre class="brush: js">// ###### WRONG: Silently drops any rejection notified by "OS.File.Exists".
+OS.File.exists(path).then(exists =&gt; { if (exists) myRead(path); });
+
+// ###### WRONG: Silently drops any exception raised by "myRead".
+OS.File.exists(path).then(exists =&gt; { if (exists) myRead(path); }, Components.utils.reportError);
+
+// CORRECT (for example, might report the exception "myRead is not defined")
+OS.File.exists(path).then(exists =&gt; { if (exists) myRead(path); })
+                    .catch(Components.utils.reportError);
+
+// CORRECT (the function returns a promise, and the caller will handle the rejection)
+function myReadIfExists(path)
+{
+  return OS.File.exists(path).then(exists =&gt; { if (exists) myRead(path); });
+}</pre>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm">Promise.jsm</a></li>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Deferred" title="/en-US/docs/Mozilla/JavaScript_code_modules/Promise.jsm/Deferred">Deferred</a></li>
+ <li><a href="/Mozilla/JavaScript_code_modules/Promise.jsm/Examples">Examples</a></li>
+ <li><a href="/en-US/docs/JavaScript_OS.File" title="/en-US/docs/JavaScript_OS.File">JavaScript OS.File</a></li>
+ <li><a href="http://kryogenix.org/days/2013/12/12/promises-promises">Promises, Promises</a>: a useful simple explanation by Stuart Langridge</li>
+ <li><a href="http://dom.spec.whatwg.org/#promises">WHATWG Living Standard</a></li>
+</ul>

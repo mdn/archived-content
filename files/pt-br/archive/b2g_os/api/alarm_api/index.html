@@ -1,0 +1,186 @@
+---
+title: Alarme API
+slug: Archive/B2G_OS/API/Alarm_API
+tags:
+  - B2G
+  - Firefox OS
+  - WebAPI
+  - alarm
+translation_of: Archive/B2G_OS/API/Alarm_API
+---
+<div class="blockIndicator experimental indicator-warning">
+    <p><span class="icon-only-inline" title="This is an experimental API that should not be used in production code."><i class="icon-beaker"> </i></span> <strong>Esta é uma <a href="/pt-BR/docs/MDN/Contribute/Guidelines/Conventions_definitions#Experimental">tecnologia experimental</a></strong><br>Verifique a <a href="#Compatibilidade_de_navegadores">tabela de compatibilidade entre Navegadores</a> cuidadosamente antes de usar essa funcionalidade em produção.</p>
+</div>
+
+<h2 id="Resumo">Resumo</h2>
+
+<p>A API de Alarme provê acesso à configuração de alarmes do dispositivo, com a qual se pode programar notificações ou aplicações para que se iniciem em um momento específico. Porexemplo, algumas aplicações, como o despertador, calendário ou atualizações automáticas utilizam essa API para ativar comportamentos específicos do dispositivo no momento indicado.</p>
+
+<p>Por si só, a API de alarme permite apenas programar os alarmes. Um alarme é enviado para as aplicações através da API de mensagem do sistema, então as aplicações que precisam acionar os alarmes novamente precisam se registrar nas mensagens de alarme.</p>
+
+<p>Os alarmes são estabelecidos usando o objeto <a href="/pt-BR/docs/Web/API/Window/navigator/mozAlarms" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>window.navigator.mozAlarms</code></a> que é uma instância de <a href="/pt-BR/docs/Web/API/MozAlarmsManager" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>MozAlarmsManager</code></a>.</p>
+
+<h2 id="example" name="example">Programar Alarmes</h2>
+
+<p>A primeira a fazer quando se utiliza o alarme é progrmá-lo. Existem dois tipos de alarme baseados nos fusos-horários. Em ambos os casos é utilizado o método <a href="/pt-BR/docs/Web/API/MozAlarmsManager/add" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>MozAlarmsManager.add</code></a>.</p>
+
+<div class="note">
+<p><strong>Nota:</strong> Se um alarme não é apontado para uma aplicação específica, o sistema poderá enviá-lo a todas as aplicações que escutam os alarmes.</p>
+</div>
+
+<h3 id="Alarmes_ignorando_os_fusos-horários">Alarmes ignorando os fusos-horários</h3>
+
+<p>Esse tipo de alarme é enviado baseado na hora do dispositivo. Se o usuário muda o fuso-horário, o alarme será enviado baseado no novo fuso-horário. Por exemplo, se um usuário está em Paris e configura um alarme que deverá ser enviado às 12PM CET (hora da europa central) e o usuário viaja para San Francisco, o alarme será enviado às 12 PM PDT (hora do pacífico).</p>
+
+<pre class="brush: js">// Data e hora programada para o alarme
+var myDate  = new Date("May 15, 2012 16:20:00");
+
+// Informação passada com o alarme
+var data    = {
+  foo: "bar"
+}
+
+// A string "ignoreTimezone" é o que faz o alarme ignorar isso
+var request = navigator.mozAlarms.add(myDate, "ignoreTimezone", data);
+
+request.onsuccess = function () {
+  console.log("O alarme foi programado");
+};
+
+request.onerror = function () {
+  console.log("Ocorreu um erro: " + this.error.name);
+};
+</pre>
+
+<h3 id="Alarmes_respeitando_os_fusos-horários">Alarmes respeitando os fusos-horários</h3>
+
+<p>Esse tipo de alarme é enviado baseado no fuso-horário definido quando o alarme foi programado. Se por alguma razão o usuário do dispositivo mudar seu fuso-horário, o alarme será enviado com base no fuso-horário original. Por exemplo, se um usuário está em Paris e programa um alarme que deveria ser enviado às 12 PM CET (hora da europa central) e se o usuário viaja para San Francisco, o alarme será enviado às 3 AM PDT (hora do pacífico).</p>
+
+<pre class="brush: js">// Data e hora do alarme
+var myDate  = new Date("May 15, 2012 16:20:00");
+
+// Informação passada com o alarme
+var data    = {
+  foo: "bar"
+}
+
+// A string "honorTimezone" fará com que o alarme respeite o fuso-horário
+var request = navigator.mozAlarms.add(myDate, "honorTimezone", data);
+
+request.onsuccess = function () {
+  console.log("O alarme foi programado");
+};
+
+request.onerror = function () {
+  console.log("Ocorreu um erro: " + this.error.name);
+};
+</pre>
+
+<h2 id="Gerenciando_os_alarmes">Gerenciando os alarmes</h2>
+
+<p>Uma vez um alarme é programado, é possível gerenciá-lo.</p>
+
+<p>O método <a href="/pt-BR/docs/Web/API/MozAlarmsManager/getAll" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>MozAlarmsManager.getAll</code></a> retornará a lista completa de alarmes atualmente programados pela aplicação.. Essa lista é um <code><a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array" title="/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array">Array</a></code> de objetos <a href="#mozAlarm">mozAlarm</a>.</p>
+
+<h3 id="mozAlarm">mozAlarm</h3>
+
+<p>São objetos javascript anônimos com as seguintes propriedades:</p>
+
+<dl>
+ <dt><code>id</code></dt>
+ <dd>um número represetando o id do alarme</dd>
+ <dt><code>date</code></dt>
+ <dd>um objeto <a href="/en-US/docs/JavaScript/Reference/Global_Objects/Date" title="/en-US/docs/JavaScript/Reference/Global_Objects/Date">Date</a> representando a hora agendada para o alarme.</dd>
+ <dt><code>respectTimezone</code></dt>
+ <dd>String que indica se o alarme irá respeitar ou ignorar o fuso-horário do objeto <code>date</code>. o valor da string pode ser <code>ignoreTimezone</code> ou <code>honorTimezone </code></dd>
+ <dt><code>data</code></dt>
+ <dd>um objeto JavaScript contendo uma data que será armazenada com o alarme</dd>
+</dl>
+
+<pre class="brush: js">var request = navigator.mozAlarms.getAll();
+
+request.onsuccess = function () {
+  this.result.forEach(function (alarm) {
+    console.log('Id: ' + alarm.id);
+    console.log('date: ' + alarm.date);
+    console.log('respectTimezone: ' + alarm.respectTimezone);
+    console.log('data: ' + JSON.stringify(alarm.data));
+  });
+};
+
+request.onerror = function () {
+  console.log("An error occurred: " + this.error.name);
+};
+</pre>
+
+<p>O método <a href="/pt-BR/docs/Web/API/MozAlarmsManager/remove" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>MozAlarmsManager.remove</code></a> é utilizado para desprogramar um alarme já programado, ou seja, removê-lo.</p>
+
+<pre class="brush: js">var alarmId;
+
+// Programa um alarme e obtém o ID do mesmo
+var request = navigator.mozAlarms.add(new Date("May 15, 2012 16:20:00"), "honorTimezone");
+
+request.onsuccess = function () {
+  alarmId = this.result;
+}
+
+// ...
+
+// Remove o alarme se ele existir
+if (alarmId) {
+  navigator.mozAlarms.remove(alarmId);
+}
+</pre>
+
+<h2 id="Manipulação_de_alarmes">Manipulação de alarmes</h2>
+
+<p>Qualquer aplicação pode ser reativada quando um alarme é programado pelo sistema. Com a finalidade de ser capaz de manipular alarmes, uma aplicação deve ser registrada como manipuladora de alarmes. Isto é feito através da API de mensagens do sistema, em dois passos:</p>
+
+<p>Primeiro, as aplicações deverão incluir alarm na propriedade de mensagens, no manifesto da aplicação, com a URL do documento que registra a função de retorno (callback) que será usada quando o alarme for enviado.</p>
+
+<pre class="brush: js">"messages": [
+  { "alarm": "/index.html" }
+]</pre>
+
+<p>Segundo, a aplicação deve linkar a função de retorno com a mensagem de alarm. Isso [e feito utilizando  o método  <a href="/pt-BR/docs/Web/API/Window/navigator/mozSetMessageHandler" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>navigator.mozSetMessageHandler</code></a>. Essa função receberá o objeto <a href="#mozAlarm">mozAlarm</a> contendo a informação do alarme.</p>
+
+<pre class="brush: js">navigator.mozSetMessageHandler("alarm", function (mozAlarm) {
+  alert("alarm fired: " + JSON.stringify(mozAlarm.data));
+});
+</pre>
+
+<p>Se uma aplicação deseja saber se existe um alarme pendente a nível de sistema, é possível utilizar o método <a href="/pt-BR/docs/Web/API/Window/navigator/mozHasPendingMessage" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>navigator.mozHasPendingMessage</code></a> com o valor <code>alarm</code>.</p>
+
+<pre class="brush: js">navigator.mozHasPendingMessage("alarm");
+</pre>
+
+<h2 id="Especificações">Especificações</h2>
+
+<table class="standard-table">
+ <thead>
+  <tr>
+   <th scope="col">Especificação</th>
+   <th scope="col">Status</th>
+   <th scope="col">Comentário</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><a class="external" href="https://www.w3.org/2012/sysapps/web-alarms/" hreflang="en" lang="en" title="The 'Web Alarms API' specification">Web Alarms API</a></td>
+   <td><span class="spec-Obsolete">Obsoleto</span></td>
+   <td>Especificação inicial.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Navegadores_compatíveis">Navegadores compatíveis</h2>
+
+<p>Supported in Firefox OS 1.0.1.</p>
+
+<h2 id="Veja_mais">Veja mais</h2>
+
+<ul>
+ <li><a href="/pt-BR/docs/Web/API/Window/navigator/mozAlarms" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>navigator.mozAlarms</code></a></li>
+ <li><a href="/pt-BR/docs/Web/API/MozAlarmsManager" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>MozAlarmsManager</code></a></li>
+ <li><a href="/pt-BR/docs/Web/API/Window/navigator/mozSetMessageHandler" title="A documentação sobre isto ainda não foi escrita; por favor considere contribuir!"><code>window.navigator.mozSetMessageHandler</code></a></li>
+</ul>

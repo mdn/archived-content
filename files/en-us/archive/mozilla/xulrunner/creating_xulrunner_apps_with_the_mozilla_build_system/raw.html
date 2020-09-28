@@ -1,0 +1,85 @@
+<p> </p>
+<p>In most cases, developers of XULRunner applications can download an existing SDK and follow the instructions in <a href="/en/Getting_started_with_XULRunner" title="en/Getting_started_with_XULRunner">Getting started with XULRunner</a>. This is by far the simplest approach. In some cases, however, you may want to use the Mozilla build system to create your application. The only obvious reason for this would be if you need to implement part of your application in C++, as described in the introduction to the now classic <a href="/en/Creating_Custom_Firefox_Extensions_with_the_Mozilla_Build_System" title="en/Creating_Custom_Firefox_Extensions_with_the_Mozilla_Build_System">Creating Custom Firefox Extensions with the Mozilla Build System</a>.</p>
+<p>For the purposes of this article I'm using Dave Townsend's <a href="/en/McCoy" title="en/McCoy">McCoy</a> as an example. It's a straightforward XULRunner app that nonetheless uses most of the features any given application is likely to need.</p>
+<h3 id="Building_XULRunner">Building XULRunner</h3>
+<h4 id="Do_I_need_to_build_XULRunner">Do I need to build XULRunner?</h4>
+<p>If you are just creating a XULRunner app with some C++ components, you can avoid the challenge of building XULRunner itself by downloading a <a href="/en/Gecko_SDK" title="en/Gecko_SDK">prebuilt SDK</a>. Do this if at all possible and send me some of the money you save on psychiatry sessions.</p>
+<p>If you are actively modifying XULRunner as part of your development, however, you'll have to bite the bullet. For example, you may be fixing bugs in XULRunner, applying patches from <a href="/en/Bugzilla" title="en/Bugzilla">Bugzilla</a> that aren't yet checked into the main repository or making your own changes to deploy as part of a customized XULRunner build.</p>
+<p>So basically, almost everyone should be able to skip the next section.</p>
+<h4 id="Building_XULRunner_2">Building XULRunner</h4>
+<p>Still here? Hey, it's not all bad. You'll get a warm fuzzy feeling from mastering the complex but very powerful Mozilla build system. And all that furniture you smash in the meantime makes great kindling to get you through those cold winter nights. Let's face it, it was probably time for you to get some new furniture anyway.</p>
+<p>Everything you ever wanted to know about building Mozilla (and thus XULRunner) can be found in the <a href="/En/Developer_Guide/Build_Instructions" title="En/Developer_Guide/Build_Instructions">Build Documentation</a>. Follow the instructions for meeting build requirements and getting the source, then come back here since the build process itself will be slightly different.</p>
+<p>Got source? Now you need to set up a special <code>.mozconfig</code> file to tell Mozilla to build both XULRunner and your application. Here's a sample <code>.mozconfig</code> for building XULRunner and McCoy:</p>
+<pre># Options for client.mk.
+mk_add_options MOZ_BUILD_PROJECTS="xulrunner mccoy"
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/../mccoybase
+
+# Global options
+ac_add_options --enable-debug
+ac_add_options --disable-optimize
+
+# XULRunner options
+ac_add_app_options xulrunner --enable-application=xulrunner
+
+# mccoy options
+ac_add_app_options mccoy --enable-application=mccoy
+ac_add_app_options mccoy --with-libxul-sdk=../xulrunner/dist
+</pre>
+<p>The first section tells Mozilla what to build and where to put the resulting object files. In this case, we are building both XULRunner and McCoy and placing the build in the directory <code>mccoybase</code>, located at the same level as the current (i.e. source) directory. To build just one of the projects, remove the name of the other from <code>MOZ_BUILD_PROJECTS</code>. For example, you might want to set it to "xulrunner" now and run make to ensure that everything is set up correctly so far.</p>
+<p>The second section contains general options for your build. In this case we're creating a debug build, so you'd have to change the relevant options if you want a release build instead. You can find out more about which options to use in <a href="/en/Configuring_Build_Options" title="en/Configuring_Build_Options">Configuring Build Options</a>.</p>
+<p>The third section contains options for building XULRunner. You shouldn't have to change this. Finally, the final section contains options specific to your application. Make sure you change the application name (following <code>ac_add_app_options</code> to that of your app. Do the same with the name that follows <code>--enable-application</code>. You shouldn't have to change the value of <code>--with-libxul-sdk</code> if you are building your own XULRunner. You can also add other options to this section if you want them to apply to your app only.</p>
+<h3 id="Building_Your_Application">Building Your Application</h3>
+<p>If you decided that you needed a custom-built XULRunner and read the previous section then you're way ahead of the game. You simply need to place your application's root directory directly under the <code>mozilla</code> root on your disk. And what's more, you can skip the following section, partially compensating you for all that extra work you put in just now. See, it all balances out in the end!</p>
+<h4 id="Building_with_a_prebuilt_SDK">Building with a prebuilt SDK</h4>
+<p>Once you've downloaded the <a href="/en/Gecko_SDK" title="en/Gecko_SDK">XULRunner SDK</a>, you'll need a <code>.mozconfig</code> of your own. Here's an example for McCoy:</p>
+<pre># Options for client.mk.
+mk_add_options MOZ_CO_PROJECTS=browser
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/../mccoybase
+
+# Options for 'configure' (same as command-line options).
+ac_add_options --with-libxul-sdk=/path/to/xulrunner-sdk
+ac_add_options --enable-application=mccoy
+</pre>
+<p>You still need to get the <a href="/En/Developer_Guide/Source_Code/CVS" title="En/Developer_Guide/Source_Code/CVS">Mozilla Source Code (CVS)</a> and put your project in a subdirectory underneath the <code>mozilla</code> root. Of course, you only really need the Mozilla build system since all the other Mozilla files are in the XULRunner SDK, and there is a <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=381900">bug filed</a> to make it possible to check out the build system only.</p>
+<h4 id="Okay_okay_can_I_build_it_now">Okay, okay, can I build it now?</h4>
+<p>Sorry, no. First you're going to have to write a whole bunch of makefiles and stuff. Oh, and actually develop the application itself. The first part, at least, should be fairly straightforward since you just have to copy and adapt the files from the <a class="external" href="http://viewvc.svn.mozilla.org/vc/projects/mccoy/trunk/">McCoy repository</a>. You'll learn a lot more by looking at the project files than you will from reading this drivel, but just to be safe let's run through the files one by one:</p>
+<ul> <li><code>Makefile.in</code> - the top-level makefile. Contains the names of the subdirectories that need to be built, which at very least will include <code>chrome</code> and <code>app</code>.</li> <li><code>build.mk</code> - maybe you thought that the <code>--enable-application</code> option told Mozilla which directory your app is located in. Wrong! It tells Mozilla where to look for the <code>build.mk</code> file, which is what tells it where to start building your app. Don't think to hard about this, just copy McCoy's file and adapt accordingly.</li> <li><code>confvars.sh</code> - some basic configuration options. You should be able to use the McCoy version, changing just your application name and version.</li> <li><code>makefiles.sh</code> - you don't absolutely need this file since the build system will generate makefiles as need by walking the tree (based on the value of <code>DIRS</code>). You will need it if you want to generate a makefile but keep it out of the main build, which is what McCoy does with <code>installer/Makefile</code>. In addition, builds are faster when you include all makefiles in this file since they can be generated with a single shell invocation.</li>
+</ul>
+<p>And that's all there is to it. Now that wasn't so bad, was it? Well, actually there are still a bunch of subdirectories you're going to need. And did I mention you'll have to write your application as well?</p>
+<h5 id="The_app_subdirectory">The app/ subdirectory</h5>
+<p>The <code>app/</code> subdirectory is where you put files that are necessary for packaging your application as a XULRunner app.</p>
+<ul> <li><code>Makefile.in</code> - didn't we already do this one? Nope. Mozilla has a separate <code>Makefile.in</code> for each directory that is part of the build. In this case, you'll be a happy, healthier and more well-balanced if you don't try to understand the file at all. Just copy it from McCoy. You don't even have to substitute in your application name for <code>mccoy</code> since it uses the <code>APP_NAME</code> variable.</li> <li><code>application.ini</code> - used for application packaging. A complete description can be found in <a href="/en/XUL_Application_Packaging" title="en/XUL_Application_Packaging">XUL Application Packaging</a>. In this case you can basically copy over the file as is, since once again variables are used for things like the application name and version. But you will have to change the ID to something unique to your app.</li> <li><code>default-prefs.js</code> - these are the default Mozilla preferences used by XULRunner when running your app. The important ones are described in <a href="/en/XULRunner/Specifying_Startup_Chrome_Window" title="en/XULRunner/Specifying_Startup_Chrome_Window">XULRunner:Specifying Startup Chrome Window</a>. You can add other preferences for things like debugging, as McCoy does (e.g. <code>javascript.options.showInConsole</code>).</li> <li><code>default.ico</code> and <code>default.xpm</code> - Icons for your app on Windows and Linux.</li> <li><code>macbuild/</code> - When Steve Jobs said "think different", we took that to heart, and not just by rejecting useless adverbial endings. We've included a whole subdirectory <em>just for the Mac</em>. It's got a lot of stuff in it, but once again you can mostly ignore this and copy the whole directory over from McCoy. You will, however, need to change the name of the icon file in <code>Info.plist.in</code>. And, of course you'll need to replace <code>mccoy.icns</code> with the icon file to be used by your app on OS X.</li>
+</ul>
+<h5 id="The_chrome_subdirectory">The chrome/ subdirectory</h5>
+<p>Chrome for your application should be placed in the <code>chrome/</code> subdirectory as described in <a href="/en/XUL_Tutorial/XUL_Structure" title="en/XUL_Tutorial/XUL_Structure">XUL Tutorial:XUL Structure</a>. Chrome will be packaged automatically by the build system, so you also need to specify which files get put into which packages by using <a href="/en/JAR_Manifests" title="en/JAR_Manifests">JAR Manifests</a>. In the case of McCoy, a separate manifest is used for <code>content/</code>, <code>skin/</code> and <code>locale/</code>. This also means that you will need to put a makefile in each directory.</p>
+<p>If you're lazy like me, you can also use one big JAR manifest in the <code>chrome/</code> directory, which means you don't need to put makefiles in the chrome subdirectories either. You can make this <code>jar.mn</code> to rule them all just by concatenating the three files in the McCoy example and updating the path to each file (since you will need to point to the correct subdirectory):</p>
+<pre>mccoy.jar:
+% content mccoy %content/
+* content/mccoy.xul                    (content/mccoy.xul)
+  content/mccoy.js                     (content/mccoy.js)
+* content/mccoy.xml                    (content/mccoy.xml)
+
+...etc...
+</pre>
+<p>Note that the locale manifest uses a variable to specify the name of the locale which has to be defined in the makefile (and you need to say <code>#filter substitution</code> in the manifest for the variable to be expanded).</p>
+<p>You will also need to include a <code>branding/</code> subdirectory. Follow the example in McCoy carefully since XULRunner is sensitive about having exactly the right files in exactly the right packages.</p>
+<h5 id="The_components_subdirectory">The components/ subdirectory</h5>
+<p>If you are reading this guide, you probably need to include C++ components in your application. If you've never done this before, you should consult <a href="/en/Creating_XPCOM_Components" title="en/Creating_XPCOM_Components">Creating XPCOM Components</a> or another XPCOM reference.</p>
+<p>The <code>public/</code> and <code>src/</code> directories that you put in the <code>components/</code> directory will look the same as for an extension that includes C++ components, so you can use the relevant sections of <a href="/en/Creating_Custom_Firefox_Extensions_with_the_Mozilla_Build_System" title="en/Creating_Custom_Firefox_Extensions_with_the_Mozilla_Build_System">Creating Custom Firefox Extensions with the Mozilla Build System</a> as a reference. The makefiles, however, will be difference since you won't be defining things like <code>XPI_NAME</code> (this is used only for extensions). So use the makefiles in the <code>components/</code> directory of McCoy as a guide instead.</p>
+<p>Don't forget to put <code>components</code> into the <code>DIRS</code> variable in the top-level makefile, or your components won't be built. So for most XULRunner apps that use the Mozilla build system, the top-level makefile will contain:</p>
+<pre>DIRS = components chrome app
+</pre>
+<h5 id="The_installer_subdirectory">The installer/ subdirectory</h5>
+<p>The <code>installer/</code> makefile lets you create a setup program for distributing your application. This is a single file that can be used to install the app (e.g. a <code>.dmg</code> file on Mac).</p>
+<p>Simply copy the makefile from the <code>installer/</code> subdirectory of McCoy. You shouldn't have to change anything since <code>MOZ_APP_NAME</code> is automatically set to the name of your application.</p>
+<p>Note that the installer is not build automatically when you build you application, since the <code>installer/</code> directory is not included in the <code>DIRS</code> variable in the top-level makefile. You can add it at the end if you want to make an installer every time you build the app, but this will add significant time to each build cycle. Instead, you probably want to do like McCoy and use <code>make package</code> to build the installer (see below for building instructions).</p>
+<h4 id="Building_it..._finally!">Building it... finally!</h4>
+<p>To build your application, make sure you have the right <code>.mozconfig</code> file in your top-level source directory, then run the following from that directory:</p>
+<pre>make -f client.mk build
+</pre>
+<p>So if you are building XULRunner as well as your app, this will cause both to be built in sequence.</p>
+<p>Just walking the Mozilla tree to build XULRunner can take a fair amount of time, even if it has already been built and the sources haven't changed. So you'll probably find it convenient to use two <code>.mozconfig</code> files, one for building both and one just for your app. Rather than renaming files all the time, you can use the <code>MOZCONFIG</code> environment variable to specify which one to use. So if I have files called <code>mozconfig-both</code> and <code>mozconfig-mccoy</code>, for example, and I just want to build McCoy, I could run something like:</p>
+<pre>MOZCONFIG=`pwd`/mozconfig-mccoy make -f client.mk build
+</pre>
+<h3 id="Acknowledgements">Acknowledgements</h3>
+<p>Many thanks first of all to Benjamin Smedberg for maintaining the build system (by this time he probably deserves credit for writing most of it) and answering my endless stupid questions. Thanks also to Dave Townsend for the many hours of trial-and-error he doubtless put into figuring this all out when writing McCoy. He suffered so that we don't have to. Finally, Ben Turner and the Songbird folks were perhaps the first to write any documentation about <a class="external" href="http://www.songbirdnest.com/node/1771">building XULRunner apps with the Mozilla build system</a>, something I know Dave took advantage of.</p>

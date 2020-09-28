@@ -1,0 +1,58 @@
+<p>
+</p>
+<h3 id="Introduction" name="Introduction"> Introduction </h3>
+<p>In certain circumstances, you may want to evaluate <a href="cn/JavaScript">JavaScript</a> code with restricted privileges. In <a href="cn/Firefox_1.5">Firefox 1.5</a> (Gecko 1.8) or later, an API exists to allow you to do this. It contains the notion of a "sandbox" that you can create and evaluate code in its context. Code evaluated using this method will always execute with restricted privileges, as on a normal web page.
+</p>
+<h3 id="Use" name="Use"> Use </h3>
+<p>To use <code>evalInSandbox()</code>, you must first create a sandbox object using its constructor, <code><a href="cn/Components.utils.Sandbox">Components.utils.Sandbox</a></code>. The sandbox must be initialized with either an origin URI or preferably a DOM window (nsIDOMWindow, like the <code>window</code> object in a web page). In <a href="cn/Firefox_3">Firefox 3</a> (Gecko 1.9) or later, it can also be initialized with an <code>nsIPrincipal</code> object. Using an <code>nsIPrincipal</code> is preferable to using an origin URI. This URI, window, or <code>nsIPrincipal</code> is used as the origin of the string being evaluated for all security purposes (e.g. for same-origin security checks). For example, passing a URI of <code><span class="nowiki">http://www.example.com/</span></code> will allow code evaluated using this sandbox to make AJAX requests from <span class="nowiki">http://www.example.com</span>. If the JavaScript you run in the sandbox sets <code><a href="cn/DOM/document.domain">document.domain</a></code>, that is it changes the same-origin security checks, you should pass a DOM window object or <code>nsIPrincipal</code> to the sandbox constructor rather than a URI. </p><p>Here is an example with a URI:
+</p>
+<pre>// create a sandbox with a given origin URI
+var s = Components.utils.Sandbox("http://www.example.com/");
+</pre>
+<p>The sandbox is just an empty JavaScript object marked as being created by the restricted privilege principal. It will become the global scope object when you pass it to <code>evalInSandbox(text, sandbox)</code>. You may want to add objects to this scope. Continuing the example:
+</p>
+<pre>s.y = 5;  // insert property 'y' with value 5 into global scope.
+var result = Components.utils.evalInSandbox("x = y + 2; x + 3", s);
+// result is 10, s.x is now 7
+</pre>
+<p>Operations on objects you insert into this sandbox global scope do not carry privileges into the sandbox:
+</p>
+<pre>s.foo = Components;
+// this will give a "Permission Denied" error
+Components.utils.evalInSandbox("foo.classes", s);
+</pre>
+<p>On the other hand, any function that comes out of the sandbox executes with the privileges of chrome code. This can happen in a surprising number of ways as you can see in the next section.
+</p><p>Note <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=350558" title="FIXED: Arrays returned by evalInSandbox aren't instanceof Array">bug 350558</a>.
+</p>
+<h3 id="Security" name="Security">Security</h3>
+<div class="warning"><b>Security warning:</b> There is potential for security problems to arise when using <code>evalInSandbox()</code> if you rely on the properties of an object resulting from the code executed in the sandbox.</div>
+<p>Some examples:
+</p>
+<pre class="eval">&lt;script src="prototype.js"&gt;&lt;/script&gt;
+
+&lt;script&gt;
+var s = new Components.utils.Sandbox(url);
+var x = Components.utils.evalInSandbox(untrusted_code, s);
+if (x == 1) {
+  /* this code is unsafe; calls x.valueOf() */
+}
+
+if (x === 1) {
+  /* this code is safe */
+}
+
+var y = x.y; /* this is unsafe */
+var z = sandbox.z; /* unsafe */
+
+if (typeof x == "number") {
+  /* safe */
+}
+&lt;/script&gt;
+</pre>
+<p>To understand how the security risk arises, let's take the example of <code>(x == 1)</code>. When this is evaluated, the <code>x.valueOf()</code> method gets called by chrome code. When this happens, unsafe code can create a String object in the chrome code's global scope.
+</p><p>If the chrome code has added a function that has chrome privileges to <code>String.prototype</code>, <code>Object.prototype</code>, or <code>Function.prototype</code>, then unsafe code can abuse that function. What the unsafe code can do depends on what that function is, but the unsafe code can wind up being executed with chrome privileges.
+</p><p>To avoid this potential security risk, you should either carefully avoid using objects resulting from <code>evalInSandbox()</code> in any way that might result in a function in that object being called, or you should make sure that untrusted JSON strings don't contain any functions or expressions before using <code>evalInSandbox()</code> to evaluate them.
+</p><p><br>
+See also:
+<a class="external" href="http://simile.mit.edu/wiki/Piggy_Bank_Scraper_Risk">PiggyBank analysis of sandbox</a>
+</p>

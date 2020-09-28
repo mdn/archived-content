@@ -1,0 +1,213 @@
+<p>This is a work in progress document at this stage helping review and land <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=600307" title="https://bugzilla.mozilla.org/show_bug.cgi?id=600307">bug 600307</a>.</p>
+
+<h2 id="Overview">Overview</h2>
+
+<p>Implementation has been completely overhauled and practically all in dom/src/storage has been thrown away.</p>
+
+<p>The core implementation has been layered, from top to bottom, as:</p>
+
+<ul>
+ <li><strong>DOMStorageManager</strong>
+
+  <ul>
+   <li>class creating and managing DOMStorage and DOMStorageCache (bellow) instances for each origin</li>
+   <li>implements (updated) nsIDOMStorageManager</li>
+   <li>there are two derived classes, DOMLocalStorageManager and DOMSessionStorageManager</li>
+   <li><strong>DOMLocalStorageManager </strong>is intended to be used as a service managing localStorage instances in scope of the whole application</li>
+   <li>each top-level doc shell keeps its own instance of <strong>DOMSessionStorageManager </strong>to manage per top-level browsing context sessionStorage instances</li>
+   <li>DOMLocalStorageManager object doesn't refer any objects in this hierarchy</li>
+   <li>DOMSessionStorageManager object hard-refers sessionStorage caches</li>
+  </ul>
+ </li>
+</ul>
+
+<p> </p>
+
+<ul>
+ <li><strong>DOMStorage</strong>
+
+  <ul>
+   <li>class exposed to web content scripts as either localStorage or sessionStorage</li>
+   <li>implements nsIDOMStorage</li>
+   <li>can be obtained only through a DOMStorageManager</li>
+   <li>references a DOMStorageCache object for its origin (described bellow) and its DOMStorageManager</li>
+   <li>more then just a single instance of DOMStorage per origin may exist, while all of them reference the same DOMStorageCache object</li>
+   <li>this class is responsible for access security checks ; holds reference to a principal it has been created for</li>
+   <li>keeps track of whether is running in a private browsing window and whether should keep data only per-session</li>
+   <li>previously implemented by mishmash of nsDOMStorage2, nsDOMStorage, DOMStorageBase, DOMStorageImpl, DOMStorageChild and DOMStorageParent classes</li>
+  </ul>
+ </li>
+</ul>
+
+<p> </p>
+
+<ul>
+ <li><strong>DOMStorageCache</strong>
+
+  <ul>
+   <li>class collecting and caching data per a single origin in a hash table, internally created by DOMStorageManager</li>
+   <li>exposes methods, similar to methods of nsIDOMStorage, to manipulate origin data ; DOMStorage forwards to them</li>
+   <li>there is always only a single instance per origin within a DOMStorageManager object</li>
+   <li>cache never overlives its manager</li>
+   <li>a cache holds 3 sets of data, a cache selects the proper data set by inspecting properties of DOMStorage demanding the manipulation:
+    <ul>
+     <li>default "normal browsing" data, whom changes are persisted for localStorage</li>
+     <li>private browsing data</li>
+     <li>session-only data</li>
+    </ul>
+   </li>
+   <li><strong>localStorage </strong>(persisting) cache specifics:
+    <ul>
+     <li>when data modification has to be persisted, asynchronous tasks are posted by the cache to a background I/O thread (DOMStorageDBThread, bellow)</li>
+     <li>before data can be read, the cache asynchronously preloads, such preload starts early during opening of a DOM window</li>
+     <li>caches are referencing its manager to be able to remove them self from the manager's hash table when no longer used by any DOMStorage object</li>
+     <li>a cache is held alive by DOMStorage objects who refer it</li>
+     <li>a cache is held alive for 20 seconds after preload or after release from the last DOMStorage instance</li>
+     <li>a cache is held alive by async tasks scheduled on the DB thread ; this way it cannot happen that data pending to write are only present in the task list but neither in the database nor in a cache</li>
+     <li>a cache removes it self from its manager's hash table when the cache is completely released, i.e. not used for some time</li>
+    </ul>
+   </li>
+   <li><strong>sessionStorage </strong>(just in-memory) cache specifics:
+    <ul>
+     <li>a cache is hard-referenced by its manager to never lose the in-memory data</li>
+     <li>a cache is not referencing the manager to prevent cycles</li>
+     <li>there is no keep-alive timer</li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<p> </p>
+
+<ul>
+ <li><strong>DOMStorageDBThread</strong>
+
+  <ul>
+   <li>class responsible for all database I/O</li>
+   <li>all database I/O operations are executed on a background thread when possible and optimal</li>
+   <li>there is only a single instance per application (even with child processes)</li>
+   <li>exposes methods to schedule asynchronous tasks to preload and to set/remove/clear key-value pairs of an origin as well as delete data per domain (and its sub-domains), app data and complete erase</li>
+   <li>asynchronous preloads are processed immediately ; but only if there is not a pending update task for the scope to preserve cached data consistency (this may happen actually only in the IPC scenario)</li>
+   <li>asynchronous updates, such as set/remove/clear/clear domain/clear all, are queued, being coalesced when overlapping and in short interval (~5 seconds) are flushed as a batch in a single transaction</li>
+   <li>when flush fails, the task list is retried until the number of unsuccessful continues flushes reaches 5 ; then the database thread refuses to work and all localStorage operations start synchronously fail</li>
+   <li>there are two database connections, one used by the background thread for r/w, other for the main thread to do only read operations such as sync preload</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="Start-up">Start-up</h2>
+
+<p>Database is being open early during the browser start to minimize waits for preloads that are only cause of main thread blocking now.</p>
+
+<p>In "sessionstore-windows-restored" observer notification a timer with 0ms delay <em>*)</em> is scheduled.  When the timer fires, the background I/O thread is started that opens the database.  Pre-loads of about:blank pages are blocked to prevent earlier database opening from influencing session restore time.  This way, when about:home or any web page set as a home page waits for its load from network or cache, we silently open the localStorage database in the background.  When response from the network or cache starts to be fetched, we may start preload of the localStorage data if present for the origin as soon as possible.</p>
+
+<p><em>*)</em> Timer is used just because of some legacy start up mechanism to be able to play with the timing.  If it's found out there is no need for a delay, this will turn to just an even dispatch to the main thread.</p>
+
+<h2 id="Preloading">Preloading</h2>
+
+<p>When a DOM window is opening and there are data for the origin, preload of it is triggered.  This creates a cache object, if not already existing, and queues a task to load it with the origin's localStorage data.  The background thread executes the SELECT query as soon as possible and calls <code>cache-&gt;LoadData(key, value)</code> for each key found in the database.  After all keys has been loaded, <code>cache-&gt;LoadDone()</code> is called to tell the cache the load has been finished.<code> LoadDone()</code> method switches <code>mLoaded</code> flag on the cache from <code>false </code>to <code>true</code>. Since this time access to the cache no more blocks the main UI thread.  The <code>mLoaded</code> flag then never goes back to <code>false</code>.</p>
+
+<p>It may happen, however, that the preload has not yet finished before a script makes access to localStorage data.  At this moment we do either of two things:</p>
+
+<ol>
+ <li>if the preload has already started, which means we have already started getting data, we just wait for the preload to finish</li>
+ <li>if the preload has not started so far, we do an immediate synchronous load of origin data on the main thread ; we can do this only when WAL mode could be set on the database connection, otherwise we fallback to the first option</li>
+</ol>
+
+<p>According the telemetry collected so far, synchronous loads of origin data are very quick, and since we have a good chance to preload at least some data, blocking of the main thread should definitely be no worse then with the original implementation.</p>
+
+<div class="warning">
+<p><strong>NOTE</strong>: DB reads only seem quick because the Telemetry histograms in question are skewed by measurements of time to "load" data for scopes with 0 keys stored in the DB, i.e. the time to check an indexed column for a non-existent key -- vdjeric</p>
+</div>
+
+<p>Here is some space to optimize.</p>
+
+<p>Reading a key, it will obviously always have to block when the key has not yet been loaded:</p>
+
+<ul>
+ <li>most obvious is if we want to read just a single key and that key has already been loaded, don't wait for the whole load</li>
+ <li>if we want to read just a single key that <strong>has not </strong>yet been loaded, load just that one key synchronously when WAL is enabled ; according telemetry, reads from the database are very fast</li>
+</ul>
+
+<p>Writing a key, it may be asynchronous, but we may have a problem with checking on quota usage.  However, there are bugs to make quota checking also better:</p>
+
+<ul>
+ <li>if we want to modify just a single key and that key has already been loaded, don't wait, but be careful with quota checking</li>
+ <li>and finally, if we want to modify just a single key that <strong>has not</strong> yet been loaded, do a rough quota check only and post StorageEvent that has to expose the old value after the key actually loaded</li>
+</ul>
+
+<p>Cleanup is obvious, but still may hit problems with quota usage update:</p>
+
+<ul>
+ <li>if we want to clear the whole storage, just do it and ignore the preload ; however, I don't think this is a usual scenario, who would delete persistent storage as the first operation?</li>
+</ul>
+
+<p>I don't want to do the complicated optimization for writing before I get telemetry results.</p>
+
+<h2 id="IPC">IPC</h2>
+
+<p>The IPC "cut" has been made between caches (DOMStorageCache) and the database (DOMStorageDBThread).  It is an obvious edge because of its asynchronous nature.</p>
+
+<p>DOMStorageDBThread is running only on the parent process.  Data are cached only on the child process(es).</p>
+
+<p>There is <strong>DOMStorageCacheBridge</strong> abstract class, implemented primarily by DOMStorageCache, exposing methods to load items into the cache, already described in the 'Preloading' section.  DOMStorageCacheBridge is an interface passed as a target callback to all asynchronous tasks queued on DOMStorageDBThread.</p>
+
+<p>Then, there is <strong>DOMStorageDBBridge </strong>abstract class, implemented primarily by DOMStorageDBThread, having all the methods to schedule asynchronous tasks.</p>
+
+<p>On the child process, instead of DOMStorageDBThread, <strong>DOMStorageDBChild </strong>is transparently used in place of a true DB implementation.  DOMStorageDBChild, implementing DOMStorageDBBridge, forwards tasks to the parent process.</p>
+
+<p>On the parent process <strong>DOMStorageDBParent</strong> is running.  It receives all requests for asynchronous tasks from its child side.  Fake DOMStorageCacheBridge implementations are passed to the real DOMStorageDBThread running on the parent process.  For a preload, that fake implementation just purely sends the loaded origin data back to the child process where DOMStorageDBChild forwards the data to the originally requesting cache.  A cache is identified across processes simply by its origin scope string.</p>
+
+<p>There is one glitch, however.  When a content script demands access to localStorage sooner the preload has finished, we have to do a synchronous IPC call to finish the preload.  It is optimized at least to load only the data we didn't get so far.  I implemented it this way since IPC messages are received on the main thread and there is no WaitForMessages-like API in the chromium IPC code to just let the messages (actually processed on a background thread) be received by the main thread in a blocking way.  Time to wait for the preload can be minimized by optimizations outlined in the 'Preloading' section.  I was also thinking of sending just key names and only later send the corresponding values, maybe urgently on demand when accessing a key.  I'll be waiting for telemetry data here first to decide.</p>
+
+<h2 id="Clear_cookies_and_other_chrome_initiated_eviction_operations">Clear cookies and other chrome initiated eviction operations</h2>
+
+<p><strong>DOMStorageObserver </strong>is a singleton, started as one of the layout-statics. It observes all chrome notifications regarding cookie, domain, app, private browsing or session-only data eviction.  It schedules tasks on the database to do the actual cleanup and also notifies all existing DOMStorageManager objects they have to update their respective caches according the cleanup operation.</p>
+
+<p>The DOMStorageDBChild/Parent pair is used to communicate these notifications to the child process.  DOMStorageDBChild forwards notifications to DOMStorageObserver running on the child process.  DOMStorageDBChild's implementation of <em>clear-all </em>and <em>clear-domain </em>operations is just no-op since those operations were already processed on the parent process.  Existence of the IPC bridge is ensured by instantiation of DOMLocalStorageManager happening soon during the child process startup.</p>
+
+<h2 id="Telemetry">Telemetry</h2>
+
+<p>Existing probes have not been touched.</p>
+
+<p>To see how often we are blocked by a preload I introduced a new boolean probe, <code>LOCALDOMSTORAGE_PRELOAD_PENDING_ON_FIRST_ACCESS,</code> giving a rate of preload state on first access to localStorage data by content scripts (whether we had to wait or preload was fast enough we didn't have to block at all.)</p>
+
+<p>I've added new probes to measure how long and which operation (getItem/setItem/length/key/clear) blocks on first access, if preload has not completed and we must wait.  These new probes are not accumulated when preload has already completed before first access.</p>
+
+<h2 id="Access_security_checks">Access security checks</h2>
+
+<p><strong>window.localStorage</strong>:</p>
+
+<ul>
+ <li>Access is denied when DOM storage has been disabled. </li>
+ <li>Access is denied from third-party IFrames if the user has <a href="https://support.mozilla.org/en-US/kb/disable-third-party-cookies">disabled third-party cookies</a> (Firefox implements this behaviour from <a href="/en-US/docs/Mozilla/Firefox/Releases/43">version 43</a> onwards.)</li>
+ <li>A localStorage object can be otherwise obtained from a DOM window at any time and is bound to window's principal.  The localStorage object is cached in the window.</li>
+ <li>Following access on the cached localStorage object is always granted since localStorage is scoped by origin, not by principal objects.</li>
+</ul>
+
+<p><strong>window.sessionStorage</strong>:</p>
+
+<ul>
+ <li>Access is denied when DOM storage has been disabled.</li>
+ <li>Access is denied from third-party IFrames if the user has <a href="https://support.mozilla.org/en-US/kb/disable-third-party-cookies">disabled third-party cookies</a> (Firefox implements this behaviour from <a href="/en-US/docs/Mozilla/Firefox/Releases/43">version 43</a> onwards.)</li>
+ <li>If window.sessionStorage for the window has not yet been accessed, a new sessionStorage object is created and bound to the window's principal.  The sessionStorage object is cached in the window. </li>
+ <li>Following access to window.sessionStorage checks the current window's principal is equal-ignoring-domain with cached sessionStorage object's principal.  On a failure sessionStorage object is uncached from the window and the previous step is applied.</li>
+</ul>
+
+<p><strong>localStorage.* </strong>and<strong> sessionStorage.*</strong>:</p>
+
+<p>Every method of DOM storage exposed to DOM and every access to storage data are checked against the subject's (caller) principal as:</p>
+
+<ul>
+ <li>Access denied when DOM storage has been disabled.</li>
+ <li>Access denied from third-party IFrames if the user has <a href="https://support.mozilla.org/en-US/kb/disable-third-party-cookies">disabled third-party cookies</a> (Firefox implements this behaviour from <a href="/en-US/docs/Mozilla/Firefox/Releases/43">version 43</a> onwards.)</li>
+ <li>Access always granted to chrome callers.</li>
+ <li>Access denied when cookies have been disabled for a domain.</li>
+ <li>Access denied when cookies have been globally disabled.</li>
+ <li>Access denied when cookies lifetime decision needs to be prompted to user.</li>
+ <li>Access denied when subject neither subsumes nor subsumes-ignoring-domain the storage principal.</li>
+ <li>Otherwise, access is granted.</li>
+</ul>
+
+<p> </p>

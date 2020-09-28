@@ -1,0 +1,100 @@
+---
+title: Fun With XBL and XPConnect
+slug: Mozilla/Tech/XPCOM/Fun_with_XBL_and_XPConnect
+tags:
+  - XBL
+  - XPCOM
+  - 'XPCOM:Language Bindings'
+  - XPConnect
+---
+<p> </p>
+
+<h2 id="Introduction" name="Introduction">Introduction</h2>
+
+<p>This article describes an application of <a href="en/XBL">XBL</a> in which a simple <a href="en/XPCOM">XPCOM</a> interface is made accessible to a <a href="en/XUL">XUL</a> widget. The interface definition feature of XBL is used to define an interface through <a href="en/XPConnect">XPConnect</a> to a C++ object that does auto completion. Once the regular XUL textfield widget is bound to this interface, it calls the auto complete function of the object using regular JavaScript. The basic model of interaction is as follows:</p>
+
+<p><img alt="Image:xpconnect_textfield.png"></p>
+
+<h2 id="Binding_to_the_XPCOM_Object" name="Binding_to_the_XPCOM_Object">Binding to the XPCOM Object</h2>
+
+<p>The widget holds onto an XPCOM object that is the auto complete engine that will perform our auto complete lookups.</p>
+
+<pre>&lt;binding name="autocomplete" extends="xul:box"&gt;
+  &lt;content&gt;
+    &lt;xul:textfield class="addressingWidget"/&gt;
+    &lt;xul:menupopup/&gt;
+  &lt;/content&gt;
+
+  &lt;implementation&gt;
+    &lt;property name="autoCompleteSession"&gt;
+      &lt;![CDATA[
+       Components.classes['component://netscape/messenger/autocomplete&amp;type=addrbook'].
+        getService(Components.interfaces.nsIAutoCompleteSession);
+      ]]&gt;
+    &lt;/property&gt;
+</pre>
+
+<p>So we've defined a property on the widget called <code>autoCompleteSession</code>. The initial value of this property evaluates to an xp-connect object. Now accesses to <code>autoCompleteSession</code> will return the xp-connect object.</p>
+
+<h2 id="Exposing_the_XPCOM_Interfaces" name="Exposing_the_XPCOM_Interfaces">Exposing the XPCOM Interfaces</h2>
+
+<p>One somewhat nasty trick you need to do is to manually expose the interfaces of the XPCOM object that you want your widget to support. All you have to do is specifically defining a method on the XBL widget which forwards the method call to the XPCOM object.</p>
+
+<pre>    &lt;method name="autoComplete"&gt;
+      &lt;argument name="aSearchString"/&gt;
+      &lt;argument name="resultListener"/&gt;
+      &lt;body&gt;
+        &lt;![CDATA[
+          return this.autoCompleteSession.autoComplete(null,
+            anonymousContent[0], aSearchString, this.autoCompleteListener);
+        ]]&gt;
+      &lt;/body&gt;
+    &lt;/method&gt;
+</pre>
+
+<p>You can see that the body of the method is just getting the auto complete session object and calling the auto complete method on it.</p>
+
+<h2 id="Implementing_a_Widget_Interface" name="Implementing_a_Widget_Interface">Implementing a Widget Interface</h2>
+
+<p>The next thing I needed to do was to implement an interface on the widget which I could then pass into the auto complete session. I wanted the auto complete session to call back into the widget with search results. I could apply a trick similar to what I did for the XPCOM object:</p>
+
+<pre>    &lt;property name="autoCompleteListener"&gt;
+      &lt;![CDATA[
+        ({
+          onAutoCompleteResult: function(aItem, aOriginalString, aMatch)
+          {
+            if ( aItem )
+            {
+              anonymousContent[0].value = aMatch;
+            }
+          }
+        })
+      ]]&gt;
+    &lt;/property&gt;
+</pre>
+
+<p>As long as the JS for the value of <code>autoCompleteListener</code> evaluates to an object (and wrapping the expression with a set of parens like I did, does this), then the value of <code>autoCompleteListener</code> is an object that implements my interface.</p>
+
+<p>Now I can pass the result of <code>autoCompleteListener</code> into methods that require an auto complete listener (like my auto complete session object).</p>
+
+<h2 id="Creating_the_Event_Handler" name="Creating_the_Event_Handler">Creating the Event Handler</h2>
+
+<p>The last part is the easy part. I wanted a handler that would kick off the auto complete search. The handler calls the auto complete method we've exposed on the widget which in turn forwards the call to the XPCOM object, passing in our implementation of <code>nsIAutoCompleteListener</code>.</p>
+
+<pre>    &lt;handlers&gt;
+      &lt;handler type="keypress" keycode="vk_return"
+        value="autoComplete(anonymousContent[0].value, this.autoCompleteListener);"/&gt;
+    &lt;/handlers&gt;
+  &lt;/implementation&gt;
+&lt;/binding&gt;
+</pre>
+
+<div class="originaldocinfo">
+<h2 id="Original_Document_Information" name="Original_Document_Information">Original Document Information</h2>
+
+<ul>
+ <li>Author(s): <a class="link-mailto" href="mailto:mscott@netscape.com">Scott MacGregor</a></li>
+ <li>Last Updated Date: April 13, 2000</li>
+ <li>Copyright Information: Copyright (C) <a class="link-mailto" href="mailto:mscott@netscape.com">Scott MacGregor</a></li>
+</ul>
+</div>

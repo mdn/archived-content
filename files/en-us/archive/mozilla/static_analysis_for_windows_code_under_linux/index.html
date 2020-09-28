@@ -1,0 +1,95 @@
+---
+title: Static Analysis for Windows Code under Linux
+slug: Archive/Mozilla/Static_Analysis_for_Windows_Code_under_Linux
+---
+<p>This document will describe how to run Mozilla static check for Windows code under Linux platform by creating a cross-compiler with Dehydra support for Mingw.
+</p><p>We highly recommend you to read the <a href="http://developer.mozilla.org/en/docs/Cross_Compile_Mozilla_for_Mingw32" class="external">cross compiling manual</a> and the <a href="http://developer.mozilla.org/en/docs/Dehydra_GCC" class="external">Dehydra build manual</a> before you start the following reading.
+</p>
+<h3 id="Build_GCC_Corss-compiler_with_Plugin_Support" name="Build_GCC_Corss-compiler_with_Plugin_Support"> Build GCC Corss-compiler with Plugin Support </h3>
+<p>By default GCC does not support plugins. Dehydra requires patching GCC such that it can load plugins as shared libraries:
+</p>
+<pre class="eval"># Prepare a directory
+mkdir $HOME/dehydra
+cd $HOME/dehydra
+#Obtain GCC 4.3 sources
+wget <a href="ftp://mirrors.kernel.org/gnu/gcc/gcc-4.3.0/gcc-4.3.0.tar.bz2" class=" link-ftp" rel="freelink">ftp://mirrors.kernel.org/gnu/gcc/gcc...-4.3.0.tar.bz2</a>
+tar jxvf gcc-4.3.0.tar.bz2
+
+# Get the patches which enable plugins
+cd gcc-4.3.0/
+# Create an hg repository. This makes it easy to apply patches, they can be applied manually
+hg init .
+hg clone <a href="http://hg.mozilla.org/users/tglek_mozilla.com/gcc-moz-plugin-mq" class=" external" rel="freelink">http://hg.mozilla.org/users/tglek_mo...-moz-plugin-mq</a> .hg/patches
+# Apply gty.diff and plugin.diff
+# If you have mq setup, do hg qpush -a
+(for file in `cat .hg/patches/series`; do cat .hg/patches/$file; done) |patch -p1
+cd ..
+
+</pre>
+<p>Now, the Gcc source with plugin supports is ready, we should now build a cross compiler from this source. And the instructions are exactly the same with the one <a href="http://developer.mozilla.org/en/docs/Cross_Compile_Mozilla_for_Mingw32#Build_a_GCC_mingw_cross-compiler" class="external">here</a>. Follow that instructions strictly for making a cross compiler.
+</p>
+<h3 id="Build_Dehydra_for_Cross-compiler" name="Build_Dehydra_for_Cross-compiler"> Build Dehydra for Cross-compiler </h3>
+<h4 id="Build_the_Dehydra_plugin" name="Build_the_Dehydra_plugin"> Build the Dehydra plugin </h4>
+<p>Dehydra is a shared library which will be loaded by the above plugin-support gcc. Build Dehydra for a cross compiler has nothing difference with building one for a Linux native compiler. So, please follow <a href="http://developer.mozilla.org/en/docs/Dehydra_GCC#Building_Dehydra" class="external">this</a> link exactly.
+</p>
+<h4 id="Check_the_build" name="Check_the_build"> Check the build </h4>
+<pre class="eval">make check
+</pre>
+<p>If all tests past, you have gotten a workable Dehydra.
+</p>
+<h3 id="Build_Treehydra" name="Build_Treehydra"> Build Treehydra </h3>
+<h4 id="Build_the_Treehydra_plugin" name="Build_the_Treehydra_plugin"> Build the Treehydra plugin </h4>
+<p>Building Treehydra for a cross compiler is something tricky. That is because the GCC with plugin support is needed to produce Treehydra shared library. But we just made a Mingw cross compiler, that means it can't produce the correct shared library. </p><p>So, we should make a Linux native compiler with plugin support to make Treehydra! This sound crazy, but it may be the only right way to do this. </p><p>Just follow <a href="http://developer.mozilla.org/en/docs/Dehydra_GCC" class="external">this</a> and <a href="http://developer.mozilla.org/en/docs/Dehydra_Manual" class="external">this</a> to compile both Dehydra and Treehydra shared libraries. And these libraries can be used directly with our cross compiler.
+</p>
+<h4 id="Check_the_build_2" name="Check_the_build_2"> Check the build </h4>
+<p>Run:
+</p>
+<pre class="eval">make check_treehydra
+</pre>
+<h3 id="Run_Static_Analysis_on_Mozilla_Windows_Code" name="Run_Static_Analysis_on_Mozilla_Windows_Code"> Run Static Analysis on Mozilla Windows Code </h3>
+<p>Static analysis is hooked into Mozilla repository from Mozilla 2. You can obtain Mozilla 2 code by:
+</p>
+<pre class="eval">hg clone <a href="http://hg.mozilla.org/mozilla-central/" class=" external" rel="freelink">http://hg.mozilla.org/mozilla-central/</a>
+</pre>
+<p><br>
+And compose a .mozconfig file for cross-compiling Mozilla with static analysis hooked:
+</p>
+<pre class="eval">#Specify the cross compile
+CROSS_COMPILE=1
+ac_add_options --enable-application=browser
+ac_add_options --host=i686-linux
+ac_add_options --target=i686-mingw32
+ac_add_options --enable-default-toolkit=cairo-windows
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/../mozilla-mingw
+
+# Mozilla trunk uses many Vista only features on Windows, so we should disable some components to make it buildable with mingw32.
+ac_add_options  --enable-debug
+ac_add_options  --disable-optimize
+ac_add_options  --disable-tests
+ac_add_options  --disable-embedding-tests
+ac_add_options  --disable-installer
+ac_add_options  --disable-accessibility
+
+ac_add_options --disable-vista-sdk-requirements
+ac_add_options --disable-updater
+
+#change this to where your libIDL-config file locate.
+HOST_LIBIDL_CONFIG=/usr/bin/libIDL-config
+#Config your moztools position
+GLIB_PREFIX=$HOME/moztools
+LIBIDL_PREFIX=$HOME/moztools
+
+#disable xpcom stdcall calling convention because of gcc 4.3.0 bug
+CPPFLAGS="-DMOZ_DISABLE_XPCOM_STDCALL"
+
+#Specify the CXX and static analysis
+#Point CXX to the cross compile g++ with plugin support
+CXX=$HOME/mingw-install/bin/i686-mingw32-g++
+ac_add_options --with-static-checking=$HOME/dehydra/dehydra-gcc/gcc_dehydra.so
+</pre>
+<p>Then, you can start building your Mozilla. The static check will be done when compiling is going on.
+</p><p><br>
+</p>
+<h3 id="Troubles" name="Troubles"> Troubles </h3>
+<p>You can post any question about static check to the mozilla.dev.static-analysis newsgroup and any question about cross compiling to the mozilla.dev.builds newsgroup.
+</p>

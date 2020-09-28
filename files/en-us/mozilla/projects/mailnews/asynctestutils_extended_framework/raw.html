@@ -1,0 +1,219 @@
+<p>The AsyncTestUtils Extended Framework is one mechanism for testing the MailNews component of Thunderbird. See <a href="/en-US/docs/Mozilla/Projects/MailNews/MailNews_Automated_Testing" title="en/MailNews/MailNews Automated Testing">MailNews automated testing</a> for a description of the other testing mechanisms.</p>
+
+<h2 id="Boilerplate">Boilerplate</h2>
+
+<p>Add the following code to the top of your test file to import everything you need:</p>
+
+<p><code>load("../../mailnews/resources/logHelper.js");<br>
+ load("../../mailnews/resources/asyncTestUtils.js");<br>
+ load("../../mailnews/resources/messageGenerator.js");<br>
+ load("../../mailnews/resources/messageModifier.js");<br>
+ load("../../mailnews/resources/messageInjection.js");</code></p>
+
+<p>If the directory where you are adding the tests does not have a <code>head_*.js</code> file that has the two following lines, add them at the top of your test file (before the lines shown above):</p>
+
+<p><code style="color: rgb(37, 34, 29); font-weight: inherit;">load("../../mailnews/resources/mailDirService.js");</code><br>
+ <code>load("../../mailnews/resources/mailTestUtils.js");</code></p>
+
+<p>At the bottom of the test file, add the following:</p>
+
+<p><code>var tests =[<br>
+   // list your tests here<br>
+ ];<br>
+ function run_test() {<br>
+   configure_message_injection({mode: "local"});<br>
+   async_run_tests(tests);<br>
+ }</code></p>
+
+<h2 id="Asynchronous_testing_basics">Asynchronous testing basics</h2>
+
+<h4 id="Why_do_we_need_it">Why do we need it?</h4>
+
+<p>Sometimes in your tests you need to wait for an operation to complete that does not occur synchronously (that is, it is not done when the function call you made to initiate the operation returns control to you). This is likely to happen when I/O is involved or a potentially expensive process wants to break itself up into smaller chunks (like a search operation) so that the UI stays responsive.</p>
+
+<p>In the Mozilla platform, the "top level" of a program is the event loop. It is a never-ending loop that dequeues pending events and runs them. This is how asynchronous callbacks get their chance to run again. When I/O results in newly read data it places an event in the queue. When a timer fires because the requested duration is up, it also places an event in the queue.</p>
+
+<p>In order to give these events a chance to run we either need to make sure we yield control to the top-level event loop or spin our own nested event loop. AsyncTestUtils is currently implemented by the first method (yielding control to the top-level event loop). <a href="/en-US/docs/Mozilla/QA/Mozmill" title="en/Mozmill">MozMill</a> is an example of a testing framework that uses a nested event loop. In the future we will probably move the AsyncTestUtils framework to a nested event loop in a backwards-compatible fashion.</p>
+
+<h4 id="How_does_this_affect_my_tests">How does this affect my tests?</h4>
+
+<p>Thanks to JavaScript enhancements available on the Mozilla platform, it is possible for a function to yield control in such a way that the function stops running at the line where you use a <code>yield</code> statement and resumes execution on the next line when resumed. This allows you to write reasonably normal looking functions instead of having to chain together a whole bunch of functions and callbacks. Your test functions need to agree to the following contract:</p>
+
+<h4 id="The_Asynchronous_Function_Contract">The Asynchronous Function Contract</h4>
+
+<ol>
+ <li>A function should yield false or return false when something asynchronous is going on. When the asynchronous operation is complete, something needs to call <code>async_driver()</code>. Returning false tells the asynchronous driver that it should yield control up to the top-level. Calling <code>async_driver()</code> lets it know to start up again.</li>
+ <li>A function should yield true or return true when the asynchronous driver should continue executing without stopping.</li>
+ <li>A function that does not return anything (or returns undefined) and is not a generator is treated like a function that returned true.</li>
+</ol>
+
+<p>Most of the things you will want to do already have helper functions that take care of all of this, so all you need to do is pass their return values through. For example, you would do "<code>yield async_move_messages(...);</code>" and be done with it.</p>
+
+<h4 id="Helpers_for_the_Asynchronous_Function_Contract">Helpers for the Asynchronous Function Contract</h4>
+
+<p>It can be annoying to have to write interface boilerplate just to call <code>async_driver</code>. If you have the following types of listeners you can use the following pre-defined helpers:</p>
+
+<ul>
+ <li><code>nsIUrlListener</code>: <code>asyncUrlListener</code> (predefined). If you need to wrap an existing url listener or need a callback or fancy promise, create an instance of <code>AsyncUrlListener</code>.</li>
+ <li>copy listener: <code>asyncCopyListener</code>.</li>
+</ul>
+
+<dl>
+</dl>
+
+<h2 id="Bringing_messages_into_the_picture">Bringing messages into the picture</h2>
+
+<h3 id="Synthetic_set_definitions">Synthetic set definitions</h3>
+
+<p>Most of the code involved in creating synthetic messages takes an object that defines how to generate the set. The following is a list of frequently used attributes where the default value is listed after the attribute name. There are more attributes you can specify; consult the documentation for more information. (See the bottom of this page for links to the source files.)</p>
+
+<dl>
+ <dt>count: 10</dt>
+ <dd>The number of messages that should be in the set. Note that the default is subject to change, so if you want 10, say 10, instead of relying on the default.</dd>
+ <dt>msgsPerThread: 1</dt>
+ <dd>How many messages should be in each thread? The default is that every message is its own thread; no message is a reply to any other message. If you pass a number greater than 1, then you get a direct reply-chain that long. For example, if you pass 3, then 1 &lt;- 2 &lt;- 3 is what the reply chain looks like. If you need more complicated threads you will need to use the <code>MessageScenarioFactory</code>.</dd>
+ <dt>age: (strictly incrementing from arbitrary origin)</dt>
+ <dd>The default starts at Jan 1, 2000 and adds an hour for every message. If you pass an object, it should be an object with one or more of the following attributes: <code>minutes</code>, <code>hours</code>, <code>days</code>, <code>weeks</code>. These attributes specify how old the message should be. For example, <code>{weeks: 2, days: 3}</code> would be a message sent exactly 17 days ago. If you pass age, you should also pass <code>age_incr</code>.</dd>
+ <dt>age_incr: (no increment)</dt>
+ <dd>Takes an object of the same style taken by age. This specifies the time interval we should add to the date for each message. Due to a bug, you should pass negative values. (We will probably auto-correct that in the future.) If your set definition was <code>{count: 3, age: {days: 7}, age_incr: {days: -1}}</code>, then you would generate messages from 7, 6, and 5 days ago.</dd>
+ <dt>subject: (automatically generated random subject)</dt>
+ <dd>Force all the messages to have the same subject you pass in. For example, <code>{count: 1, subject: "my suitcase"}</code> would result in a single message with the subject "my suitcase" with a random sender and random recipient.</dd>
+ <dt>to: (automatically generated single recipient)</dt>
+ <dd>A list of recipients, where each recipient is a list whose first element is a (display) name and second element is an email address. For example, <code>{to: [["John Doe", "<a class="link-mailto" href="mailto:john_doe@example.com" rel="freelink">john_doe@example.com</a>"], ["John Smith", "<a class="link-mailto" href="mailto:smitty@example.com" rel="freelink">smitty@example.com</a>"]]}</code> would specify two recipients.</dd>
+ <dt>cc: (none)</dt>
+ <dd>A list of recipients like 'to', but in this case the default is zero recipients.</dd>
+ <dt>from: (automatically generated)</dt>
+ <dd>A list whose first element is a (display) name and second element is an email address. For example, <code>{count: 4, from: ["John Doe", "<a class="link-mailto" href="mailto:john_doe@example.com" rel="freelink">john_doe@example.com</a>"]}</code> would result in four messages from John Doe to random recipients.</dd>
+</dl>
+
+<h3 id="Synthetic_message_sets">Synthetic message sets</h3>
+
+<p>The code that creates synthetic message sets returns instances of the <code>SyntheticMessageSet</code> class. This class not only holds references to the <code>SyntheticMessage</code> instances, but it also tracks what folders they were injected into as well as what folders you move them to. This allows you to get at the <a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/base/public/nsIMsgHdr.idl" title="http://mxr.mozilla.org/comm-central/source/mailnews/base/public/nsIMsgHdr.idl">nsIMsgDBHdr</a> instances directly. Keep in mind that the class is not magic and will lose track of the message headers if you manipulate them without referencing the message set.</p>
+
+<h4 id="Accessing_synthetic_messages_and_headers">Accessing synthetic messages and headers</h4>
+
+<dl>
+ <dt>synMessages [attribute]</dt>
+ <dd>The JS list of <code>SyntheticMessages</code> held in the set. While you should not modify this list, you can get its length and read from it.</dd>
+ <dt>getMsgHdr(aIndex) [function]</dt>
+ <dd>Retrieve the <code>nsIMsgDBHdr</code> at the given index.</dd>
+ <dt>getMsgURI(aIndex) [function]</dt>
+ <dd>Retrieve the URI of the message header at the given index.</dd>
+ <dt>msgHdrList [getter]</dt>
+ <dd>Return a JS list with all the <code>nsIMsgDbHdrs</code> for the messages that have been injected into folders.</dd>
+ <dt>xpcomHdrArray [getter]</dt>
+ <dd>Return an <code>nsIMutableArray</code> of the message headers that have been injected into folders.</dd>
+ <dt>foldersWithMsgHdrs [getter]</dt>
+ <dd>Return a list where each element is a list with two sub-elements. The first is an <code>nsIMsgFolder</code> and the second is a JS list of all the <code>nsIMsgDBHdrs</code> for the messages that were inserted into the folder. This is used by routines that need to process the messages grouped by the folder they belong to, such as initiating message moves.</dd>
+ <dt>foldersWithXpcomHdrArrays [getter]</dt>
+ <dd>Same as <code>foldersWithMsgHdrs</code> but the second element in each sub-list is an <code>nsIMutableArray</code> instead of a JS list.</dd>
+</dl>
+
+<h4 id="Manipulating_messages">Manipulating messages</h4>
+
+<dl>
+ <dt>setRead(aBeRead)</dt>
+ <dd><code>setRead(true)</code> marks all the messages in the set as read, <code>setRead(false)</code> marks them as unread.</dd>
+ <dt>setStarred(aBeStarred)</dt>
+ <dd><code>setStarred(true)</code> marks all the messages in the set as starred ("flagged" in IMAP parlance), <code>setStarred(false)</code> makes them not be starred.</dd>
+ <dt>addTag(aTagKey)</dt>
+ <dd>Adds the given tag to all the messages in the set. The tag key must correspond to an existing tag. The tag key is not the label, but what is actually stored on the IMAP server. For example, all our default tags are actually things like <code>$label1</code> and <code>$label2</code>, but that is not what we show to the user.</dd>
+ <dt>removeTag(aTagKey)</dt>
+ <dd>Removes the given tag from all the messages in the set. See the <code>addTag</code> notes.</dd>
+ <dt>setJunk(aBeJunk)</dt>
+ <dd>Sets the junk score for the messages in the set as junk (true) / not junk (false). This does not involves the bayesian classifier and does not do anything like moving the message to the junk folder. It does, however, send a <code>JunkStatusChanged</code> notification via the <a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/base/public/nsIMsgFolderNotificationService.idl" title="http://mxr.mozilla.org/comm-central/source/mailnews/base/public/nsIMsgFolderNotificationService.idl"><code>nsIMsgFolderNotificationService</code></a>'s <code>itemEvent</code> mechanism.</dd>
+</dl>
+
+<h4 id="Set_manipulation">Set manipulation</h4>
+
+<dl>
+ <dt>union(aOtherSet)</dt>
+ <dd>Take the union of this set and the provided other set and return the (new, not modified) result. You should stop using both the message set that you called this on and the other set that you passed in unless you are very careful. Namely, if you use <code>async_move_messages / async_trash_messages</code> on the resulting set, the original sets won't know the messages moved and will get confused if you try and access headers via them again.</dd>
+ <dt>slice(...)</dt>
+ <dd>Uses the JS <code>Array.slice</code> semantics to slice the set. Same warnings as union apply.</dd>
+</dl>
+
+<h3 id="Configuring_message_injection">Configuring message injection</h3>
+
+<dl>
+ <dt>Local Injection</dt>
+ <dd><code>let inboxFolder = configure_message_injection({mode: "local"});</code><br>
+ Set up message injection to happen locally. This is different from using a POP fake-server. We just cram them using <code>addMessage</code>, although we try and approximate what would happen with POP in terms of still invoking filters and such.</dd>
+ <dt>IMAP Injection, do not bring messages offline</dt>
+ <dd><code>let inboxFolder = configure_message_injection({mode: "imap", offline: false});</code><br>
+ Use an IMAP fake-server to inject messages. We do not mark the folders as offline and therefore do not attempt to download the messages so that they are immediately available for offline use. If you later want to bring the messages offline, use the <code>make_folder_and_contents_offline</code> function.</dd>
+ <dt>IMAP Injection, do bring messages offline</dt>
+ <dd><code>let inboxFolder = configure_message_injection({mode: "imap", offline: true});</code><br>
+ Use an IMAP fake-server to inject messages. We mark the folders as offline and download the messages so that they are immediately available for offline use.</dd>
+</dl>
+
+<h3 id="Creating_injecting_messages">Creating / injecting messages</h3>
+
+<p>All of these functions take synthetic set definitions. Look at the section on Synthetic Message Sets above to understand how to specify these.</p>
+
+<dl>
+ <dt>Create a single folder with messages in it</dt>
+ <dd><code>let [folder, set1, set2, ...] = make_folder_with_sets([aSynSetDef1, aSynSetDef2, ...]);<br>
+ yield wait_for_message_injection();</code><br>
+ <br>
+ This creates a folder with an automatically generated name and adds one or more sets of messages to it. If multiple sets are specified, their messages will be interleaved. Example:<br>
+ <code>let [folder, messageSet] = make_folder_with_sets([{count: 3}]);</code><br>
+ This creates a new folder with a set of three messages in it and saves the folder handle into 'folder' and the message set into 'messageSet'. Another example:<br>
+ <code>let [fooBarFolder, fooSet, barSet] = make_folder_with_sets([{count: 3, subject: "foo"}, {count: 3, subject: "bar"}]);</code><br>
+ This creates a folder with two message sets in it. Three of the messages will have the subject "foo" and three will have the subject "bar". Because the message sets are interleaved, if you read the subject lines in the order they were added (or in date order), you would read "foo", "bar", "foo", "bar", "foo", "bar".</dd>
+ <dt>Create multiple folders with a set of messages distributed across the folders</dt>
+ <dd><code>let [[folder1, folder2, ...], set1, set2, ...] = make_folders_with_sets(aFolderCount, [aSynSetDef1, aSynSetDef2, ...]);<br>
+ yield wait_for_message_injection();</code><br>
+ Like <code>make_folder_with_sets</code> but multiple folders are created and the messages are spread across the folders. You would only want to do this when you are testing logic that could be impacted by having multiple folders.</dd>
+ <dt>Add messages to an existing folder</dt>
+ <dd><code>let [set1, set2, ...] = make_new_sets_in_folder(aFolder, [aSynSetDef1, aSynSetDef2, ...]);<br>
+ yield wait_for_message_injection();</code><br>
+ Create one or more new sets of messages and add them to a Folder.</dd>
+ <dt>Add messages distributed among multiple folders</dt>
+ <dd><code>let [set1, set2, ...] = make_new_sets_in_folder([aFolder1, aFolder2, ...], [aSynSetDef1, aSynSetDef2, ...]);<br>
+ yield wait_for_message_injection();</code><br>
+ Create one or more new sets of messages and add them to the provided folders. Like <code>make_folders_with_sets</code>, the messages are spread across the folders.</dd>
+ <dt></dt>
+</dl>
+
+<h3 id="Folders">Folders</h3>
+
+<dl>
+ <dt>Create a folder</dt>
+ <dd><code>let folderHandle = make_empty_folder(aOptionalFolderName);</code><br>
+ You do not have to specify a folder name - if you don't care, we'll make one up for you. If you need to get fancy about having flags set on the folder, we support that, but please check the method documentation.</dd>
+ <dt>Get / create the Junk folder</dt>
+ <dd><code>let junkFolder = get_junk_folder();</code></dd>
+ <dt>Create a Virtual folder (a folder whose contents are the result of a saved search)</dt>
+ <dd><code>let virtualFolder = make_virtual_folder([aFolderToSearch1, aFolderToSearch2, ...],<br>
+                                         {subject: "", body: "", from: "", to: "", cc: "", recipient: "", involves: ""},<br>
+                                         aAndTermsTogether, aOptionalName);</code><br>
+ This is a convenience function to help you create a new virtual folder. The first argument is the list of folders we should search. The second argument defines the search query; each attribute defines a "contains" string constraint. If you include the attribute, the constraint is created. So if you want no constraints, pass an empty object, but if you just want a subject constraint, pass {subject: "foo"}. The third argument decides whether to "AND" together multiple constraints (if there are multiple constraints); true for AND, false for OR.</dd>
+ <dt>Mark an IMAP folder as offline and bring the messages offline</dt>
+ <dd><code>yield make_folder_and_contents_offline(folderHandle);</code></dd>
+</dl>
+
+<h3 id="Messages_and_folders">Messages and folders</h3>
+
+<dl>
+ <dt>Move messages to a folder</dt>
+ <dd><code>yield async_move_messages(aSynMessageSet, aDestFolder);</code></dd>
+ <dt>Trash messages (move them to the trash folder)</dt>
+ <dd><code>yield async_trash_messages(aSynMessageSet);</code></dd>
+ <dt>Empty the trash folder</dt>
+ <dd><code>yield async_empty_trash();</code></dd>
+ <dt>Delete messages (without moving them to the trash folder)</dt>
+ <dd><code>yield async_delete_messages(aSynMessageSet);</code></dd>
+</dl>
+
+<h2 id="Implementation_details">Implementation details</h2>
+
+<p>The following files make up the framework:</p>
+
+<ul>
+ <li><a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/asyncTestUtils.js" title="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/asyncTestUtils.js">asyncTestUtils.js</a>: Core async testing logic. Dependent on <code>logHelper.js</code> so it can log what test it is on, etc.</li>
+ <li><a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/logHelper.js" title="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/logHelper.js">logHelper.js</a>: This allows rich logging via <a class="external" href="http://hg.mozilla.org/users/bugmail_asutherland.org/logsploder/" title="http://hg.mozilla.org/users/bugmail_asutherland.org/logsploder/">LogSploder</a>. If you aren't using LogSploder, then this just makes your tests fail if errors get logged to the error console (like you see if you go to the "<strong>Tools | Error Console</strong>" menu).</li>
+ <li><a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageGenerator.js" title="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageGenerator.js">messageGenerator.js</a>: Provides the <code>SyntheticMessage</code> abstraction and <code>MessageGenerator</code> class that can generate one or more <code>SyntheticMessages</code> at a time. The <code>MessageScenarioFactory</code> produces specific pre-configured message threading configurations using fresh messages (important in avoiding duplicate messages for code that cares, like <a href="/en/Thunderbird/gloda" title="en/Thunderbird/gloda">gloda</a>).</li>
+ <li><a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageModifier.js" title="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageModifier.js">messageModifier.js</a>: Slightly misnamed, this provides the <code>SyntheticMessageSet</code> abstraction that is a set abstraction for <code>SyntheticMessages</code> that also tracks what folders they got injected into and provides code to directly manipulate or aid other code that wants to directly manipulate them.</li>
+ <li><a class="external" href="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageGenerator.js" title="http://mxr.mozilla.org/comm-central/source/mailnews/test/resources/messageGenerator.js">messageInjection.js</a>: All the logic for injecting messages into folders via local / IMAP and then doing further folder-level manipulations.</li>
+</ul>

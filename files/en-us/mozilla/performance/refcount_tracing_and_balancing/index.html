@@ -1,0 +1,155 @@
+---
+title: Refcount tracing and balancing
+slug: Mozilla/Performance/Refcount_tracing_and_balancing
+---
+<p>Refcount tracing and balancing are advanced techniques for tracking down leak of refcounted objects found with <a href="/en-US/docs/Mozilla/Performance/BloatView">BloatView</a>. The first step is to run Firefox with refcount tracing enabled, which produces one or more log files. Refcount tracing logs calls to <code>Addref</code> and <code>Release</code>, preferably for a particular set of classes, including call-stacks in symbolic form (on platforms that support this). Refcount balancing is a follow-up step that analyzes the resulting log to help a developer figure out where refcounting went wrong.</p>
+
+<h2 id="How_to_build_for_refcount_tracing">How to build for refcount tracing</h2>
+
+<p>Build with <code>--enable-debug</code> or <code>--enable-logrefcnt</code>.</p>
+
+<h2 id="How_to_run_with_refcount_tracing_on">How to run with refcount tracing on</h2>
+
+<p>There are several environment variables that can be used.</p>
+
+<p>First, you select one of three environment variables to choose what kind of logging you want. You almost certainly want <code>XPCOM_MEM_REFCNT_LOG</code>.</p>
+
+<p>NOTE: Due to an issue with the sandbox on Windows (bug <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1345568" id="this-bug">1345568</a>), refcount logging currently requires the MOZ_DISABLE_CONTENT_SANDBOX environment variable to be set.</p>
+
+<dl>
+ <dt><code>XPCOM_MEM_REFCNT_LOG</code></dt>
+</dl>
+
+<dl>
+ <dd>Setting this environment variable enables refcount tracing. If you set this environment variable to the name of a file, the log will be output to that file. You can also set it to 1 to log to stdout or 2 to log to stderr, but these logs are large and expensive to capture, so you probably don't want to do that.  <strong>WARNING</strong>: you should never use this without <code>XPCOM_MEM_LOG_CLASSES</code> and/or <code>XPCOM_MEM_LOG_OBJECTS</code>, because without some filtering the logging will be completely useless due to how slow the browser will run and how large the logs it produces will be.</dd>
+</dl>
+
+<dl>
+ <dt><code>XPCOM_MEM_COMPTR_LOG</code></dt>
+</dl>
+
+<dl>
+ <dd>This environment variable enables logging of additions and releases of objects into <code>nsCOMPtr</code>s. This requires C++ dynamic casts, so it is not supported on all platforms.  However, having an nsCOMPtr log and using it in the creation of the balance tree allows AddRef and Release calls that we know are matched to be eliminated from the tree, so it makes it much easier to debug reference count leaks of objects that have a large amount of reference counting traffic.</dd>
+</dl>
+
+<dl>
+ <dt><code>XPCOM_MEM_ALLOC_LOG</code></dt>
+</dl>
+
+<dl>
+ <dd>For platforms that don't have stack-crawl support, XPCOM supports logging at the call site to <code>AddRef</code>/<code>Release</code> using the usual cpp <code>__FILE__</code> and __LINE__ number macro expansion hackery. This results in slower code, but at least you get some data about where the leaks might be occurring from.</dd>
+</dl>
+
+<p>You must also set one or two additional environment variables, <code>XPCOM_MEM_LOG_CLASSES</code> and <code>XPCOM_MEM_LOG_OBJECTS,</code> to reduce the set of objects being logged, in order to improve performance to something vaguely tolerable.</p>
+
+<dl>
+ <dt><code>XPCOM_MEM_LOG_CLASSES</code></dt>
+</dl>
+
+<dl>
+ <dd>This variable should contain a comma-separated list of names which will be used to compare against the types of the objects being logged. For example:</dd>
+</dl>
+
+<pre class="eval  language-html"><code class="language-html">env XPCOM_MEM_LOG_CLASSES=nsDocShell XPCOM_MEM_REFCNT_LOG=./refcounts.log ./mach run</code></pre>
+
+<dl>
+ <dd>This will log the <code>AddRef</code> and <code>Release</code> calls only for instances of <code>nsDocShell</code> while running the browser using <code>mach</code>, to a file <code>refcounts.log</code>. Note that setting <code>XPCOM_MEM_LOG_CLASSES</code> will also list the <em>serial number</em> of each object that leaked in the "bloat log" (that is, the file specified by the <code>XPCOM_MEM_BLOAT_LOG</code> variable; see <a href="/en-US/docs/Mozilla/Performance/BloatView">the BloatView documentation</a> for more details). An object's serial number is simply a unique number, starting at one, that is assigned to the object when it is allocated.</dd>
+</dl>
+
+<p>You may use an object's serial number with the following variable to further restrict the reference count tracing:</p>
+
+<dl>
+ <dt><code>XPCOM_MEM_LOG_OBJECTS</code></dt>
+</dl>
+
+<dl>
+ <dd>Set this variable to a comma-separated list of object <em>serial number</em> or ranges of <em>serial number</em>, e.g., <code>1,37-42,73,165</code> (serial numbers start from 1, not 0). When this is set, along with <code>XPCOM_MEM_LOG_CLASSES</code> and <code>XPCOM_MEM_REFCNT_LOG</code>, a stack track will be generated for <em>only</em> the specific objects that you list. For example,</dd>
+</dl>
+
+<pre class="eval  language-html"><code class="language-html">env XPCOM_MEM_LOG_CLASSES=nsDocShell XPCOM_MEM_LOG_OBJECTS=2 XPCOM_MEM_REFCNT_LOG=./refcounts.log ./mach run</code></pre>
+
+<dl>
+ <dd>will log stack traces to <code>refcounts.log</code> for the 2nd <code>nsDocShell</code> object that gets allocated, and nothing else.</dd>
+</dl>
+
+<h2 id="Post-processing_step_1_finding_the_leakers"><strong>Post-processing step 1: finding the leakers</strong></h2>
+
+<p>First you have to figure out which objects leaked. The script <code>tools/rb/find_leakers.py</code> does this. It grovels through the log file, and figures out which objects got allocated (it knows because they were just allocated because they got <code>AddRef()</code>-ed and their refcount became 1). It adds them to a list. When it finds an object that got freed (it knows because its refcount goes to 0), it removes it from the list. Anything left over is leaked.</p>
+
+<p>The scripts output looks like the following.</p>
+
+<pre class="code">0x00253ab0 (1)
+0x00253ae0 (2)
+0x00253bd0 (4)
+</pre>
+
+<p>The number in parentheses indicates the order in which it was allocated, if you care. Pick one of these pointers for use with Step 2.</p>
+
+<h2 id="Post-processing_step_2_filtering_the_log">Post-processing step 2: filtering the log</h2>
+
+<p>Once you've picked an object that leaked, you can use  <code>tools/</code><code>rb</code><code>/filter-log.pl</code> to filter the log file to drop the call stack for other objects; This process reduces the size of the log file and also improves the performance.</p>
+
+<pre><code>perl -w tools/rb/</code><code>filter-log.pl --object </code>0x00253ab0<code> &lt; ./refcounts.log &gt; my-leak.log</code></pre>
+
+<h4 id="Linux_Users">Linux Users</h4>
+
+<p>The log file generated on Linux system often lack function names, file names and line numbers. Linux users need to run a script to fix the call stack. </p>
+
+<pre>python tools/rb/fix_stacks.py &lt; <code>./refcounts.log</code> &gt; fixed_stack.log</pre>
+
+<h2 id="Post-processing_step_3_building_the_balance_tree"><strong>Post-processing step 3: building the balance tree</strong></h2>
+
+<p>Now that you've the log file fully prepared, you can build a <em>balance tree</em>. This process takes all the stack <code>AddRef()</code> and <code>Release()</code> stack traces and munges them into a call graph. Each node in the graph represents a call site. Each call site has a <em>balance factor</em>, which is positive if more <code>AddRef()</code>s than <code>Release()</code>es have happened at the site, zero if the number of <code>AddRef()</code>s and <code>Release()</code>es are equal, and negative if more <code>Release()</code>es than <code>AddRef()</code>s have happened at the site.</p>
+
+<p>To build the balance tree, run <code>tools/rb/make-tree.pl</code>, specifying the object of interest. For example:</p>
+
+<pre class="code">perl -w tools/rb/make-tree.pl --object 0x00253ab0 &lt; my-leak.log
+</pre>
+
+<p>This will build an indented tree that looks something like this (except probably a lot larger and leafier):</p>
+
+<pre class="code">.root: bal=1
+  main: bal=1
+    DoSomethingWithFooAndReturnItToo: bal=2
+      NS_NewFoo: bal=1
+</pre>
+
+<p>Let's pretend in our toy example that <code>NS_NewFoo()</code> is a factory method that makes a new foo and returns it. <code>DoSomethingWithFooAndReturnItToo()</code> is a method that munges the foo before returning it to <code>main()</code>, the main program.</p>
+
+<p>What this little tree is telling you is that you leak <em>one refcount</em> overall on object <code>0x00253ab0</code>. But, more specifically, it shows you that:</p>
+
+<ul>
+ <li><code>NS_NewFoo()</code> "leaks" a refcount. This is probably "okay" because it's a factory method that creates an <code>AddRef()</code>-ed object.</li>
+ <li><code>DoSomethingWithFooAndReturnItToo()</code> leaks <em>two</em> refcounts. Hmm...this probably isn't okay, especially because...</li>
+ <li><code>main()</code> is back down to leaking <em>one</em> refcount.</li>
+</ul>
+
+<p>So from this, we can deduce that <code>main()</code> is correctly releasing the refcount that it got on the object returned from <code>DoSomethingWithFooAndReturnItToo()</code>, so the leak <em>must</em> be somewhere in that function.</p>
+
+<p>So now say we go fix the leak in <code>DoSomethingWithFooAndReturnItToo()</code>, re-run our trace, grovel through the log by hand to find the object that corresponds to <code>0x00253ab0</code> in the new run, and run <code>make-tree.pl</code>. What we'd hope to see is a tree that looks like:</p>
+
+<pre class="code">.root: bal=0
+  main: bal=0
+    DoSomethingWithFooAndReturnItToo: bal=1
+      NS_NewFoo: bal=1
+</pre>
+
+<p>That is, <code>NS_NewFoo()</code> "leaks" a single reference count; this leak is "inherited" by <code>DoSomethingWithFooAndReturnItToo()</code>; but is finally balanced by a <code>Release()</code> in <code>main()</code>.</p>
+
+<h2 id="Hints">Hints</h2>
+
+<p>Clearly, this is an iterative and analytical process. Here are some tricks that make it easier.</p>
+
+<p><strong>Check for leaks from smart pointers.</strong> If the leak comes from a smart pointer that is logged in the XPCOM_MEM_COMPTR_LOG, then find-comptr-leakers.pl will find the exact stack for you, and you don't have to look at trees.</p>
+
+<p><strong>Ignore balanced trees</strong>. The <code>make-tree.pl</code> script accepts an option <code>--ignore-balanced</code>, which tells it <em>not</em> to bother printing out the children of a node whose balance factor is zero. This can help remove some of the clutter from an otherwise noisy tree.</p>
+
+<p><strong>Ignore matched releases from smart pointers.</strong> If you've checked (see above) that the leak wasn't from a smart pointer, you can ignore the references that came from smart pointers (where we can use the pointer identity of the smart pointer to match the AddRef and the Release). This requires using an XPCOM_MEM_REFCNT_LOG and an XPCOM_MEM_COMPTR_LOG that were collected at the same time. For more details, see the <a href="http://www-archive.mozilla.org/performance/leak-tutorial.html">old documentation</a> (which should probably be incorporated here). This is best used with <code>--ignore-balanced</code></p>
+
+<p><strong>Play Mah Jongg</strong>. An unbalanced tree is not necessarily an evil thing. More likely, it indicates that one <code>AddRef()</code> is cancelled by another <code>Release()</code> somewhere else in the code. So the game is to try to match them with one another.</p>
+
+<p><strong>Exclude Functions.</strong> To aid in this process, you can create an "excludes file", that lists the name of functions that you want to exclude from the tree building process (presumably because you've matched them). <code>make-tree.pl</code> has an option <code>--exclude [file]</code>, where <code>[file]</code> is a newline-separated list of function names that will be <em>excluded</em> from consideration while building the tree. Specifically, any call stack that contains that call site will not contribute to the computation of balance factors in the tree.</p>
+
+<h2 id="How_to_instrument_your_objects_for_refcount_tracing_and_balancing">How to instrument your objects for refcount tracing and balancing</h2>
+
+<p>The process is the same as <a href="/en-US/docs/Mozilla/Performance/BloatView#How_to_instrument_your_objects_for_BloatView">instrumenting them for BloatView</a>, because BloatView and refcount tracing share underlying infrastructure.</p>

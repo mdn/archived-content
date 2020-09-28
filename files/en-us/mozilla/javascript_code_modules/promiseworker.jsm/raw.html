@@ -1,0 +1,334 @@
+<p>{{ gecko_minversion_header("33") }}</p>
+
+<h2 id="Summary">Summary</h2>
+
+<p>A <code>PromiseWorker</code> is a {{domxref("ChromeWorker")}} except instead of calling <code>postMessage()</code> to send a message, you call <code>post()</code>, which returns a {{jsxref("Promise")}}. JavaScript files imported into the worker scope and main thread scope which allows posting to the worker and receiving in the form of a {{jsxref("Promise", "promise", "", 1)}}. Like <code>ChromeWorker</code> objects, <code>PromiseWorker</code> is mostly used for <a href="/en-US/docs/Mozilla/js-ctypes">js-ctypes</a> but it is not limited to that. There is no <a href="/en-US/docs/Mozilla/Tech/XPCOM/Guide/Creating_components/An_Overview_of_XPCOM">XPCOM</a> access, similar to <code>ChromeWorker</code>. This answers the question "When should I use a <code>PromiseWorker</code>?", and the answer is, whenever you would normally use a <code>ChromeWorker</code>, but want <code>postMessage</code> to return promises.</p>
+
+<p>The PromiseWorker object is used to deliver all of the <code><a href="/en-US/docs/Mozilla/JavaScript_code_modules/OSFile.jsm">OS.File</a></code> functionality to the main thread. Here is the test case from Firefox codebase: <a href="https://dxr.mozilla.org/mozilla-central/source/toolkit/components/promiseworker/tests/xpcshell/test_Promise.js">Mozilla DXR :: test_Promise.js</a>.</p>
+
+<p><code>PromiseWorker</code> module consists of two JavaScript files, <code>PromiseWorker.jsm</code> and <code>PromiseWorker.js</code>.</p>
+
+<h3 id="PromiseWorker.jsm">PromiseWorker.jsm</h3>
+
+<p><span class="pl-s">Path: </span><code><span class="pl-s">resource://gre/modules/PromiseWorker.jsm</span></code></p>
+
+<p>A JavaScript code module used by the main thread to create a worker thread and communicate with it. <code>PromiseWorker.jsm</code> provides <code>BasePromiseWorker</code>.</p>
+
+<h3 id="PromiseWorker.js">PromiseWorker.js</h3>
+
+<p><code id="line-9"><span class="str">Path: </span></code><code><span class="str">resource://gre/modules/workers/PromiseWorker.js</span></code></p>
+
+<p>A JavaScript file used by the worker thread, which is created by <code>PromiseWorker.jsm</code> in main thread, to communicate with the main thread. <code>PromiseWorker.js</code> provides <code>AbstractWorker</code>.</p>
+
+<p>Here's the simplified diagram of how PromiseWorker works (<a href="https://mdn.mozillademos.org/files/11223/PromiseWorker.svg">SVG version of the PromiseWorker diagram</a>)</p>
+
+<p><img alt="Describes how PromiseWorker works both in Main thread and Worker thread." src="https://mdn.mozillademos.org/files/11221/PromiseWorker.png" style="height: 864px; width: 768px;"></p>
+
+<h2 id="Setup_and_usage">Setup and usage</h2>
+
+<p>This section explains how to set up and use a <code>PromiseWorker</code>. As well known with workers, there is a minimum of two files required. The worker file, and the main thread file. The following sections tell you which content to use in your worker and main thread files, in order to use <code>PromiseWorker</code> objects.</p>
+
+<h3 id="Worker_file">Worker file</h3>
+
+<p>There is some standard templating that must be dropped into the worker file by the developer. The <code>require.js </code>file must be imported with {{domxref("WorkerGlobalScope/importScripts()")}}. Next, the <code>PromiseWorker.js</code> file should be brought in with the <code>require()</code> method. Finally, the template code should be added in. The code below is what should be copied and pasted:</p>
+
+<pre class="brush: js"><code id="line-8">importScripts(<span class="str">'resource://gre/modules/workers/require.js'</span>);</code>
+<code id="line-9"><span class="k">let</span> PromiseWorker = require(<span class="str">'resource://gre/modules/workers/PromiseWorker.js'</span>);</code>
+
+// Instantiate AbstractWorker (see below).
+<code id="line-11"><span class="k">let</span> worker = <span class="k">new</span> PromiseWorker.AbstractWorker()
+</code>
+<code id="line-12">worker.dispatch = <span class="k">function</span>(method, args = []) {</code>
+  // Dispatch a call to method `method` with args `args`
+<code id="line-13">  <span class="k">return</span> self[method](...args);</code>
+<code id="line-14">};</code>
+<code id="line-15">worker.postMessage = <span class="k">function</span>(...args) {
+  </code><code>// Post a message to the main thread</code>
+<code id="line-16">  self.postMessage(...args);</code>
+<code id="line-17">};</code>
+<code id="line-18">worker.close = <span class="k">function</span>() {
+  </code><code>// Close the worker</code>
+<code id="line-19">  self.close();</code>
+<code id="line-20">};</code>
+<code id="line-21">worker.log = <span class="k">function</span>(...args) {</code>
+  // Log (or discard) messages (optional)
+<code id="line-22">  dump(<span class="str">'Worker: '</span> + args.join(<span class="str">' '</span>) + <span class="str">'\n'</span>);</code>
+<code id="line-23">};</code>
+
+// Connect it to message port.
+<code id="line-24">self.addEventListener(<span class="str">'message'</span>, msg =&gt; worker.handleMessage(msg));</code>
+</pre>
+
+<p><code>AbstractWorker</code> is a base class for the worker, and it's designed to be used by derived class, which provides above four methods (<code>dispatch</code>, <code>postMessage</code>, <code>close</code>, and <code>log</code>). but you can instantiate <code>AbstractWorker</code> itself and set its properties later, instead of creating derived class.</p>
+
+<h3 id="Main_thread_file">Main thread file</h3>
+
+<p>The <code>BasePromiseWorker</code> object needs to be imported:</p>
+
+<pre class="brush: js"><code>const { utils: Cu } = Components;
+const</code> { BasePromiseWorker } <span class="pl-k">=</span> Cu.import(<span class="pl-s"><span class="pl-pds">'</span>resource://gre/modules/PromiseWorker.jsm<span class="pl-pds">'</span></span>, {});
+
+let myWorker = new BasePromiseWorker('path_to_worker_file.js');
+</pre>
+
+<p>You're now ready to start using <code>PromiseWorker</code>.</p>
+
+<h3 id="Sending_a_message_from_main_thread">Sending a message from main thread</h3>
+
+<p>To send a message to a worker from the main thread, one normally uses <code>postMessage()</code>. For <code>PromiseWorker</code> objects, however, you can't do that. Instead, use the <code>post()</code> method, as seen below.</p>
+
+<h4 id="post"><code>post</code></h4>
+
+<h5 id="Syntax">Syntax</h5>
+
+<pre>promise = myWorker.post(aFunctionName, aArgs, aClosure, aTransferList);</pre>
+
+<h5 id="Parameters">Parameters</h5>
+
+<ul>
+</ul>
+
+<dl>
+ <dt><code>aFunctionName</code></dt>
+ <dd>The name of the function to be called as it appears in the worker file.</dd>
+ <dt><code>aArgs</code></dt>
+ <dd>
+ <p>An array of arguments to pass to the function named <code>aFunctionName</code> in the worker file. If the worker function does not have any arguments and the empty array should be passed here. If any of the arguments is a {{jsxref("Promise")}}, it is resolved before posting the message. If any of the arguments needs to be transferred instead of copied, this may be specified by making the argument an instance of <code>BasePromiseWorker.Meta</code> or by using the <code>aTransferList</code> argument.</p>
+
+ <p>By convention, the last argument may be an object options with some of the following fields:</p>
+
+ <dl>
+  <dt>outExecutionDuration</dt>
+  <dd>{number|null} A parameter to be filled with the duration of the off main thread execution for this call.</dd>
+ </dl>
+ </dd>
+ <dt><code>aClosure</code> {{optional_inline}}</dt>
+ <dd>An object holding strong references to value that should not be garbage-collected before the reply has been received.</dd>
+ <dt><code>aTransferList</code> {{optional_inline}}</dt>
+ <dd>An optional {{jsxref("Array", "array", "", 1)}} of {{domxref("Transferable")}} objects to transfer ownership of. If the ownership of an object is transferred, it becomes unusable (neutered) in the context it was sent from, and it becomes available only to the worker it was sent to.</dd>
+ <dd>Only {{domxref("MessagePort")}} and {{domxref("ArrayBuffer")}} objects can be transferred. To learn more on how to achieve this see the section in this article titled <a href="#transferDataFromMainThreadToWorker">Transferring special data from main thread to worker</a>.</dd>
+</dl>
+
+<h5 id="Returns">Returns</h5>
+
+<p>A {{jsxref("Promise")}} object.</p>
+
+<h4 id="Transferring_special_data_from_main_thread_to_worker">Transferring special data from main thread to worker<a id="transferDataFromMainThreadToWorker" name="transferDataFromMainThreadToWorker"></a></h4>
+
+<p>The regular rules of workers apply; special data of {{domxref("MessagePort")}} and {{domxref("ArrayBuffer")}} objects can be transferred as of Firefox 40. There are two ways to transfer data. The first is with <code>aTransferList</code> argument and other with <code>BasePromiseWorker.Meta</code>. Both are done by the <code>post</code> function described above.</p>
+
+<h5 id="aTransferList">aTransferList</h5>
+
+<p>To transfer an <code>ArrayBuffer</code> object, pass an array containing it as <code>aTransferList</code> argument.</p>
+
+<pre class="brush: js">myWorker.post('func', [buffer], null, [buffer]);</pre>
+
+<p>This is simpler if the you know what to transfer at the callsite.</p>
+
+<h4 id="BasePromiseWorker.Meta">BasePromiseWorker.Meta</h4>
+
+<p>Above code can also be done with the Meta object. Each special data argument that you want to transfer, you can wrap in a <code>BasePromiseWorker.Meta</code> object. The above example can be rewritten like this:</p>
+
+<pre class="brush: js">myWorker.post('func', [new BasePromiseWorker.Meta(buffer, {transfers: [buffer]})]);</pre>
+
+<p>This is convenient if the function's arguments are generated by some other functions or passed from somewhere else.  <code>post</code> callsite doesn't have to know which object should be transferred. For example:</p>
+
+<pre class="brush: js">myWorker.post('func', [foo(), bar(), baz()])</pre>
+
+<p><code>foo</code> now has the power to determine if the argument should be transferred by returning a <code>Meta</code> instance. So it can transfer an object without modifying the caller.</p>
+
+<p>Here is a simple demo showing how to transfer the second argument to a worker: <a href="https://github.com/Noitidart/PromiseWorker/blob/demo-transfer-arraybuffer/bootstrap.js#L23">Github:: PromiseWorker Transfer Data Line 23</a>. The command outline below this shows how to do the same with Meta syntax.</p>
+
+<h3 id="Sending_a_message_from_worker">Sending a message from worker</h3>
+
+<p>With all other workers, to send a message to the main thread, <code>postMessage</code> is typically used. However with <code>PromiseWorker</code> objects this is no longer the case, simply return data or throw from your function depending if you want to resolve or reject the promise. In summary, from a worker file, data can <em>only</em> be sent back as a response to a request from the main thread, it is not possible for a worker to send data to the main thread otherwise, this is a key difference between <code>PromiseWorker</code> worker file and all other types of workers.</p>
+
+<h4 id="Resolving_the_Promise">Resolving the Promise</h4>
+
+<p>To resolve the promise from the worker, simply return anything from the worker scope, and the main thread promise will be resolved with the returned value.</p>
+
+<pre>function func(buffer) {
+  // do something with buffer...
+
+  return 1; // 1 is sent back to main thread, as a resolved promise.
+}
+</pre>
+
+<h4 id="Transferring_special_data_from_worker_to_main_thread">Transferring special data from worker to main thread</h4>
+
+<p>Just as it was possible to transfer special data from <a href="#transferDataFromMainThreadToWorker">main thread to worker</a>, it is possible to transfer data from the worker to the main thread. Transferring is possible only when resolving the promise from the worker. Unlike when sending/transferring from the main thread, transferring from worker does not require each piece of data that you want transferred to be wrapped in its own <code>Meta</code> object. Instead, the whole return should be wrapped. Also unlike sending/transferring from the main thread, when sending/transferring from worker there are no alternative syntaxes, it must be wrapped in a <code>Meta</code> object.</p>
+
+<p>This example shows how to transfer a single value, which is an ArrayBuffer.</p>
+
+<pre class="brush: js"><span class="pl-k">return</span> <span class="pl-k">new</span> <span class="pl-en">PromiseWorker.Meta</span>(aBuf, {transfers<span class="pl-k">:</span> [aBuf]});</pre>
+
+<p>If you want to return an object or an array and transfer only certain parts of this data, it would all have to be return wrapped in this Meta object like so:</p>
+
+<pre class="brush: js">return new PromiseWorker.Meta({
+    theBuf: aBuf,
+    otherNonTrans: 'this string is not transfered but copied'
+}, {transfers: [aBuf]});</pre>
+
+<p>A simple demo showing this in live action can be found here: <a href="https://github.com/Noitidart/PromiseWorker/blob/demo-transfer-arraybuffer/myWorker.js#L28">Github :: PromiseWorker Transfer ArrayBuffer - Worker Side</a></p>
+
+<h4 id="Rejecting_the_Promise">Rejecting the Promise</h4>
+
+<p>To reject the promise from the worker, simply <code>throw</code>. Various error objects are supported; each one has its specific meaning; they're described below.</p>
+
+<p>Supported built-in JavaScript Error are following:</p>
+
+<ul>
+ <li>{{jsxref("EvalError")}}</li>
+ <li>{{jsxref("InternalError")}}</li>
+ <li>{{jsxref("RangeError")}}</li>
+ <li>{{jsxref("ReferenceError")}}</li>
+ <li>{{jsxref("SyntaxError")}}</li>
+ <li>{{jsxref("TypeError")}}</li>
+ <li>{{jsxref("URIError")}}</li>
+</ul>
+
+<p>In addition to them, {{jsxref("StopIteration")}} is also supported (note that <code>StopIteration</code> is deprecated).</p>
+
+<p>You can also construct and throw your own custom error objects as needed.  When custom error is caught by <code>AbstractWorker</code>, <code>toMsg</code> method will be called to convert it into message. The <code>toMsg</code> function should return an object which has <code>exn</code> property, that is the property key for the <code>fromMsg</code> function in main thread side.</p>
+
+<pre class="brush: js">// Worker
+
+// Define a custom error prototype.
+function CustomError(message) {
+  this.message = message;
+}
+CustomError.prototype.toMsg = function() {
+  return {
+ <code id="line-160">   exn: <span class="str">'</span></code>CustomError<code><span class="str">'</span>,</code>
+    message: this.message,
+<code id="line-167">  };</code>
+};
+
+// A function called by message.
+function func() {
+  ...
+  // Throw a custom error.
+  throw new CustomError('meow');
+}
+</pre>
+
+<p>The converted message will be posted back to the main thread, and it will be converted again to error object, with <code>fromMsg</code> function specified for the error in <code>ExceptionHandlers</code> property. This is seen in a simple demo <a href="https://github.com/Noitidart/PromiseWorker/blob/demo-custom-error/bootstrap.js#L31-L40">GitHub :: PromiseWorker Custom Errors Demo - Main Thread Setup</a>.</p>
+
+<pre class="brush: js">// Main thread
+
+// Define a custom error prototype.
+function CustomError(message) {
+  this.message = message;
+}
+CustomError.fromMsg = function(msg) {
+<code id="line-174">  return <span class="k">new</span> </code>CustomError<code>(msg.message);</code>
+};
+
+// Register a constructor.
+myWorker.ExceptionHandlers['CustomError'] = CustomError.fromMsg;
+</pre>
+
+<p>This is seen in a simple demo at <a href="https://github.com/Noitidart/PromiseWorker/blob/demo-custom-error/myWorker.js#L20-L29">GitHub :: PromiseWorker Custom Errors Demo - Worker Side Setup</a>.</p>
+
+<p>The complete demo is found here: <a href="https://github.com/Noitidart/PromiseWorker/blob/demo-custom-error/bootstrap.js#L31-L40">GitHub :: PromiseWorker Custom Errors Demo</a></p>
+
+<h4 id="Catching_the_Promise">Catching the Promise</h4>
+
+<p>From the worker, it is not possible, as of Firefox 40, to cause the promise on the main thread catch. Any developer errors on the worker side, such as syntax errors, type errors, and so forth, will cause the promise to reject. A catch will trigger if there is a developer error in the main thread resolve or reject callbacks.</p>
+
+<h2 id="Complete_example">Complete example</h2>
+
+<p>Following example provides <code>resolveTest</code> function, which resolves the promise when <code>true</code> is passed as an argument, and rejects the promise when <code>false</code> is passed as an argument, and post messages to it from the main thread.</p>
+
+<h3 id="Worker_file_2">Worker file</h3>
+
+<h4 id="myWorker.js"><span class="pl-s">myWorker.js</span></h4>
+
+<pre><code id="line-8">importScripts(<span class="str">'resource://gre/modules/workers/require.js'</span>);</code>
+<code id="line-9"><span class="k">let</span> PromiseWorker = require(<span class="str">'resource://gre/modules/workers/PromiseWorker.js'</span>);</code>
+
+<code id="line-11"><span class="k">let</span> worker = <span class="k">new</span> PromiseWorker.AbstractWorker();</code>
+<code id="line-12">worker.dispatch = <span class="k">function</span>(method, args = []) {</code>
+<code id="line-13">  <span class="k">return</span> self[method](...args);</code>
+<code id="line-14">};</code>
+<code id="line-15">worker.postMessage = <span class="k">function</span>(...args) {</code>
+<code id="line-16">  self.postMessage(...args);</code>
+<code id="line-17">};</code>
+<code id="line-18">worker.close = <span class="k">function</span>() {</code>
+<code id="line-19">  self.close();</code>
+<code id="line-20">};</code>
+<code id="line-21">worker.log = <span class="k">function</span>(...args) {</code>
+<code id="line-22">  dump(<span class="str">'Worker: '</span> + args.join(<span class="str">' '</span>) + <span class="str">'\n'</span>);</code>
+<code id="line-23">};</code>
+<code id="line-24">self.addEventListener(<span class="str">'message'</span>, msg =&gt; worker.handleMessage(msg));</code>
+
+// start - my functionalities
+
+function resolveTest(shouldResolve) {
+  if (shouldResolve) {
+    return 'You sent to PromiseWorker argument of: `' + shouldResolve + '`';
+  } else {
+    throw new Error('You passed in a non-true value for shouldResolve argument and therefore this will reject the main thread promise');
+  }
+}
+</pre>
+
+<h3 id="Main_thread_file_2">Main thread file</h3>
+
+<h4 id="bootstrap.js">bootstrap.js</h4>
+
+<pre><code>const { utils: Cu } = Components;
+const { BasePromiseWorker } = Cu.import('resource://gre/modules/PromiseWorker.jsm', {});</code>
+
+var myWorker = <span class="pl-k">new</span> <code>BasePromiseWorker</code>('chrome://path/to/content/<span class="pl-s">myWorker.js<span class="pl-pds">'</span></span>);
+
+<span class="pl-k">var</span> promise_doMyFuncTrue <span class="pl-k">=</span> myWorker.post(<span class="pl-s"><span class="pl-pds">'</span></span>resolveTest<span class="pl-s"><span class="pl-pds">'</span></span>, [true]);
+promise_doMyFuncTrue.then(
+    function(aVal) {
+        console.log('Fullfilled - promise_doMyFuncTrue - ', aVal);
+    },
+    function(aReason) {
+        console.error('Rejected - promise_doMyFuncTrue - ', aReason);
+    }
+).catch(
+    function(aCaught) {
+        console.error('Caught - promise_doMyFuncTrue - ', aCaught);
+    }
+);
+
+<span class="pl-k">var</span> promise_doMyFuncFalse <span class="pl-k">=</span> myWorker.post(<span class="pl-s"><span class="pl-pds">'</span></span>resolveTest<span class="pl-s"><span class="pl-pds">'</span></span>, [false]);
+promise_doMyFuncFalse.then(
+    function(aVal) {
+        console.log('Fullfilled - promise_doMyFuncFalse - ', aVal);
+    },
+    function(aReason) {
+        console.error('Rejected - promise_doMyFuncFalse - ', aReason);
+    }
+).catch(
+    function(aCaught) {
+        console.error('Caught - promise_doMyFuncFalse - ', aCaught);
+    }
+);
+</pre>
+
+<h3 id="Result">Result</h3>
+
+<p>Running the code above will log the following information to the console:</p>
+
+<pre>"Fullfilled - promise_doMyFuncTrue - " "You sent to PromiseWorker argument of: `true`"                                                                      bootstrap.js Line 8
+"Rejected - promise_doMyFuncFalse - " "You passed in a non-true value for shouldResolve argument and therefore this will reject the main thread promise"    bootstrap.js Line 25</pre>
+
+<h2 id="Other_examples">Other examples</h2>
+
+<ul>
+ <li><a href="https://github.com/Noitidart/PromiseWorker/tree/demo-backward-compat">GitHub :: PromiseWorker with Backward Compatability </a>- This example is of a Firefox addon that copies and pastes in the contents of PromiseWorker.js and PromiseWorker.jsm so that it works all the way back till the Firefox version in which the Promise interface was frozen.</li>
+ <li><a href="https://github.com/Noitidart/PromiseWorker/tree/demo-transfer-arraybuffer">GitHub :: PromiseWorker Transfer Array Buffer </a>- This example is of a Firefox addon that shows how to transfer an ArrayBuffer between the main thread and worker.</li>
+ <li><a href="https://github.com/Noitidart/PromiseWorker/tree/demo-custom-error">GitHub :: PromiseWorker Custom Errors</a> - This is a simple fully working demo that shows how to reject promises with custom user-defined errors.</li>
+</ul>
+
+<h2 id="See_also">See also<a id="seealso" name="seealso"></a></h2>
+
+<ul>
+ <li><a class="internal" href="/en-US/docs/Web/API/ChromeWorker" title="en/Using DOM workers">ChromeWorker</a></li>
+ <li><a href="/en-US/docs/Web/API/AbstractWorker">AbstractWorker</a></li>
+</ul>

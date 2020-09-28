@@ -1,0 +1,69 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Using_Recursive_Templates" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/Special_Condition_Tests">Next  »</a></p>
+</div>
+<p>Menus may be generated using a template in the same manner as other elements. However, unlike with other elements, the content of a menu is only generated once the menu has been opened. This means that a menu created with a template will not have any of the generated items until the user opens the menu, or a script opens the menu. This applies to menus on menubars, submenus, as well as menu-type buttons such as those with a <code id="a-type"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/type">type</a></code> attribute set to <code>menu</code>. This allows for better performance as the entire content of a complex menu does not need to be created until the user needs to use the menu.</p>
+<p>It is very simple to create a menu using a template. Here is an example using an XML source:</p>
+<pre>&lt;button type="menu" datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="person"/&gt;
+    &lt;action&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="?" label="?name"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/action&gt;
+  &lt;/template&gt;
+&lt;/button&gt;
+&lt;button label="Children" oncommand="alert(this.previousSibling.childNodes.length);"/&gt;
+</pre>
+<p>In this example, the <code id="a-datasources"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/datasources">datasources</a></code> attribute has been placed on a menu-type button. The query generates a list of the <code>person</code> tags within the datasource and outputs the action body for each one. The <code>uri</code> attribute has not been placed on the <code><a href="/en-US/docs/Mozilla/Tech/XUL/menupopup" title="menupopup">menupopup</a></code> element which is the direct child of the <code><a href="/en-US/docs/Mozilla/Tech/XUL/action" title="action">action</a></code> element but has instead been placed on the <code><a href="/en-US/docs/Mozilla/Tech/XUL/menuitem" title="menuitem">menuitem</a></code> element. This causes the <code>menupopup</code> to only be created once. The <code>menuitem</code> elements however will be repeated for each result from the query. This makes sense, as we only want one <code>menupopup</code> to be created but multiple <code>menuitem</code> elements.</p>
+<p>The second button in the example displays an alert with the number of children the template-driven button has. If you press this button before opening the menu, there will be one child (the <code>template</code> itself). However, after the menu has been opened, there will be two children, one is the <code>template</code> and the other is the generated <code>menupopup</code>. Note that the generated content does not get removed again when the menu is closed again; this extra feature of menus is only intended to be a performance enhancement to speed up the time it takes to display a window by avoiding extra generation that can be put off until later.</p>
+<p>You might be wondering why we couldn't just put the <code>datasources</code> attribute on the <code>menupopup</code> instead and not have a <code>menupopup</code> inside the action body. You can actually do this, however, you no longer receive the performance benefit as the entire content will be generated right away. The special feature of menus to not generate content immediately applies only to the menu itself.</p>
+<h3 id="Generating_a_Recursive_Menu" name="Generating_a_Recursive_Menu">Generating a Recursive Menu</h3>
+<p>Menus are often generated from a template recursively. When creating recursive menus, you will need to use multiple rules, since leaf items will need to be created differently than non-leaf items. Leaf items will need to use a <code><a href="/en-US/docs/Mozilla/Tech/XUL/menuitem" title="menuitem">menuitem</a></code> element whereas non-leaf items will need to use a <code><a href="/en-US/docs/Mozilla/Tech/XUL/menu" title="menu">menu</a></code> element. This will involve at least two rules, although you might use other rules if you had other differences to handle. Here is an RDF example:</p>
+<pre>&lt;button label="Houses in my Neighbourhood" type="menu"
+        datasources="template-guide-streets.rdf"
+        ref="http://www.xulplanet.com/rdf/myneighbourhood"
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"&gt;
+  &lt;template&gt;
+    &lt;rule rdf:type="http://www.xulplanet.com/rdf/House"&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="rdf:*" label="rdf:http://www.xulplanet.com/rdf/address"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;menupopup&gt;
+        &lt;menu uri="rdf:*" label="rdf:http://purl.org/dc/elements/1.1/title"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/button&gt;
+</pre>
+<p>This example uses the simple RDF query syntax. The first rule matches all houses, while the second rule is used for streets. The content generated for each rule differs in only two ways. First, the <code>menu</code> tag is different (<code>menuitem</code> versus <code>menu</code>), and the label is taken from a different RDF predicate. At the outer level, the second rule matches the streets, so a <code>menupopup</code> and <code>menu</code> element are created. The uri attribute is on the <code>menu</code> element since we don't want to repeat the popup for every result. After the first level of the menu has been generated, the content will be equivalent to the following (ignoring the template related content):</p>
+<pre>&lt;button label="Houses in my Neighbourhood" type="menu"&gt;
+  &lt;menupopup&gt;
+    &lt;menu uri="http://www.xulplanet.com/rdf/marion" label="Marion Street"/&gt;
+    &lt;menu uri="http://www.xulplanet.com/rdf/garden" label="Garden Avenue"/&gt;
+  &lt;/menupopup&gt;
+&lt;/button&gt;
+</pre>
+<p>The inner pass through the data handles the houses. The houses match the first rule so a <code>menupopup</code> and <code>menuitem</code> element are generated and inserted inside the street content (the <code>menu</code> element). Again, the popup is only created once since the uri attribute is on the <code>menuitem</code> element. The effect is a menu with a submenu. There's nothing special about the way menus are handled -- the builder follows the same method for any type of content. However, the nature of menus can make this tricky to follow. Here is the result of the <a class="external" href="http://developer.mozilla.org/samples/xultemp/template-guide-ex26.xul">above example</a> after both levels have been handled.</p>
+<pre>&lt;button label="Houses in my Neighbourhood" type="menu"&gt;
+  &lt;menupopup&gt;
+    &lt;menu uri="http://www.xulplanet.com/rdf/marion" label="Marion Street"&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="http://www.xulplanet.com/rdf/garden/16" label="16"/&gt;
+        &lt;menuitem uri="http://www.xulplanet.com/rdf/garden/18" label="18"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/menu&gt;
+    &lt;menu uri="http://www.xulplanet.com/rdf/garden" label="Garden Avenue"&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="http://www.xulplanet.com/rdf/garden/25" label="25"/&gt;
+        &lt;menuitem uri="http://www.xulplanet.com/rdf/garden/37" label="37"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/menu&gt;
+  &lt;/menupopup&gt;
+&lt;/button&gt;
+</pre>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL/Template_Guide/Using_Recursive_Templates" style="float: left;">« Previous</a><a href="/en-US/docs/XUL/Template_Guide/Special_Condition_Tests">Next  »</a></p>
+</div>

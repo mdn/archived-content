@@ -1,0 +1,129 @@
+---
+title: View Controller
+slug: Mozilla/Tech/Places/View_Controller
+tags:
+  - Developing Mozilla
+  - Extensions
+  - Places
+---
+<p></p><div class="blockIndicator draft">
+    <p><strong>Draft</strong><br>
+    This page is not complete.</p>
+
+</div><p></p>
+
+<p>Controllers are one component of the Places <a class="external" href="http://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller" rel="external nofollow" title="http://en.wikipedia.org/wiki/Model–view–controller">model-view-controller</a> design.  They are responsible for enabling, disabling and performing commands based on the state of a <a href="/en/Displaying_Places_information_using_views" title="en/Displaying_Places_information_using_views">Places view</a>.</p>
+
+<p>Although Places provides its own built-in controller, controllers of different purposes are used throughout an application and are not specific to Places.  See the <a class="internal" href="../../../../en/XUL_Tutorial/Commands" rel="internal">Commands</a> and <a href="../../../../en/XUL_Tutorial/Updating_Commands" rel="internal">Updating Commands</a> pages in the XUL tutorial for general information about them.</p>
+
+<h2 id="The_built-in_controller">The built-in controller</h2>
+
+<p>Places provides a built-in controller, <code>PlacesController</code>, a prototype defined in <code><a href="https://dxr.mozilla.org/mozilla-central/source/browser/components/places/content/controller.js" rel="custom">browser/components/places/content/controller.js</a></code>.  The <a class="internal" href="/en/Displaying_Places_information_using_views" title="En/Displaying Places information using views">built-in Places views</a> automatically use <code>PlacesController</code>, so if you use a built-in view, you need not write your own controller, worry about hooking up your view to a controller, or really read the rest of this page.  You do, however, need to include <code>PlacesController</code>'s source in your XUL document.  The recommended way of doing so is by overlaying <code><a href="https://dxr.mozilla.org/mozilla-central/source/browser/components/places/content/placesOverlay.xul" rel="custom">browser/components/places/content/placesOverlay.xul</a></code>.  This file also contains the built-in Places context menu and XUL <code>commandset</code>.  See <a class="internal" href="/en/Displaying_Places_information_using_views#Instantiating" title="En/Displaying Places information using views#Instantiating">Displaying Places information using views</a> for more information.</p>
+
+<p>If you have a custom view that supports all the commands that <code>PlacesController</code> supports and only those commands, you can also use <code>PlacesController</code>.  If your view supports only a subset of those commands, you may still be able to take advantage of <code>PlacesController</code>; see <a href="#Creating_custom_controllers">Creating custom controllers</a> below.</p>
+
+<h2 id="Places_commands">Places commands</h2>
+
+<p>Listed below are the commands that <code>PlacesController</code> supports along with their descriptions.</p>
+
+<p>Many of the commands operate on the nodes that are currently selected in the controller's view.  Unless noted otherwise, the selected node is found by reading the <code>selectedNode</code> property of the view's <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPlacesView" title="">nsIPlacesView</a></code> interface.  Because the <code>selectedNode</code> property assumes that the view is single-selection, commands that rely on <code>selectedNode</code> also also assume that the view is single-selection and will not work if the view's selection contains multiple nodes.</p>
+
+<p>Some commands insert new nodes into the results of the controller's view.  The position in the results at which nodes are inserted is determined by reading the <code>insertionPoint</code> property of the view's <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPlacesView" title="">nsIPlacesView</a></code> interface. </p>
+
+<dl>
+ <dt>placesCmd_deleteDataHost </dt>
+ <dd>Removes all data stored for the selected node's domain by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPrivateBrowsingService#removeDataFromDomain()">nsIPrivateBrowsingService.removeDataFromDomain()</a></code>.</dd>
+ <dt>placesCmd_moveBookmarks</dt>
+ <dd>Shows the UI used to move the selected nodes to another folder.  The note above about single selection does not apply here; this command calls <span class="lang lang-en"><code><a href="../../../../en/nsIPlacesView#getSelectionNodes%28%29" rel="internal">nsIPlacesView.getSelectionNodes()</a></code> </span> on the view.</dd>
+ <dt>placesCmd_new:bookmark</dt>
+ <dd>Shows the UI used to add a new bookmark by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#showAddBookmarkUI.28.29" title="En/Places utilities for JavaScript#showAddBookmarkUI.28.29">PlacesUIUtils.showAddBookmarkUI()</a></code>.  The new bookmark is inserted at the view's insertion point.  If no insertion point exists, <code>NS_ERROR_NOT_AVAILABLE</code> is thrown.</dd>
+ <dt>placesCmd_new:folder</dt>
+ <dd>Shows the UI used to add a new folder by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#showAddFolderUI()" title="en/Places utilities for JavaScript#showAddFolderUI()">PlacesUIUtils.showAddFolderUI()</a></code>.  The new folder is inserted at the view's insertion point.  If no insertion point exists, <code>NS_ERROR_NOT_AVAILABLE</code> is thrown.</dd>
+ <dt>placesCmd_new:livemark</dt>
+ <dd>Shows the UI used to add a new livemark by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#showAddLivemarkUI()" title="en/Places utilities for JavaScript#showAddLivemarkUI()">PlacesUIUtils.showAddLivemarkUI()</a></code>.  The new livemark is inserted at the view's insertion point.  If no insertion point exists, <code>NS_ERROR_NOT_AVAILABLE</code> is thrown.</dd>
+ <dt>placesCmd_new:separator</dt>
+ <dd>Adds a new separator at the view's current insertion point.  If no insertion point exists, <code>NS_ERROR_NOT_AVAILABLE</code> is thrown.</dd>
+ <dt>placesCmd_open</dt>
+ <dd>Opens the view's selected node in the current tab by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#openNodeIn()" title="en/Places utilities for JavaScript#openNodeIn()">PlacesUIUtils.openNodeIn()</a></code>.</dd>
+ <dt>placesCmd_open:tab</dt>
+ <dd>Opens the view's selected node in a new tab by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#openNodeIn()" title="en/Places utilities for JavaScript#openNodeIn()">PlacesUIUtils.openNodeIn()</a></code>.</dd>
+ <dt>placesCmd_open:window</dt>
+ <dd>Opens the view's selected node in a new window by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#openNodeIn()" title="en/Places utilities for JavaScript#openNodeIn()">PlacesUIUtils.openNodeIn()</a></code>.</dd>
+ <dt>placesCmd_reload</dt>
+ <dd>Reloads the view's selected node if it is a livemark by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsILivemarkService#reloadLivemarkFolder()">nsILivemarkService.reloadLivemarkFolder()</a></code>.</dd>
+ <dt>placesCmd_reloadMicrosummary</dt>
+ <dd>Reloads the view's selected node if it has a microsummary by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIMicrosummaryService#refreshMicrosummary()">nsIMicrosummaryService.refreshMicrosummary()</a></code>.</dd>
+ <dt>placesCmd_show:info</dt>
+ <dd>Shows the UI used to edit the properties of the view's selected node by calling <code><a class="internal" href="/en/Places_utilities_for_JavaScript#showItemProperties()" title="en/Places utilities for JavaScript#showItemProperties()">PlacesUIUtils.showItemProperties()</a></code>.</dd>
+ <dt>placesCmd_sortBy:name</dt>
+ <dd>Sorts the contents of the view's selected node if it is a folder by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPlacesTransactionsService#sortFolderByName()">nsIPlacesTransactionsService.sortFolderByName()</a></code>.</dd>
+</dl>
+
+<p><code>PlacesController</code> also supports the standard Edit commands:</p>
+
+<dl>
+ <dt>cmd_copy</dt>
+ <dd>Copies the view's selected nodes to the clipboard.  The note above about single selection does not apply here; this command calls <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPlacesView#getSelectionNodes()">nsIPlacesView.getSelectionNodes()</a></code> on the view.</dd>
+ <dt>cmd_cut</dt>
+ <dd>Copies the view's selected nodes to the clipboard and removes them.  The implementation of this command is simply a copy followed by a delete.</dd>
+ <dt>cmd_delete</dt>
+ <dd>Removes the view's selected nodes.  The note above about single selection does not apply here; this command calls <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPlacesView#getRemovableSelectionNodes()">nsIPlacesView.getRemovableSelectionNodes()</a></code> on the view.</dd>
+ <dt>cmd_paste</dt>
+ <dd>Adds the nodes in the clipboard to the view's results at the current insertion point.  If no insertion point exists, <code>NS_ERROR_NOT_AVAILABLE</code> is thrown.</dd>
+ <dt>cmd_redo</dt>
+ <dd>Redoes the last Places transaction by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITransactionManager#redoTransaction()">nsITransactionManager.redoTransaction()</a></code> on the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPlacesTransactionsService" title="">nsIPlacesTransactionsService</a></code> instance kept by <code><a class="internal" href="/en/Places_utilities_for_JavaScript" title="en/Places utilities for JavaScript">PlacesUIUtils</a></code>.</dd>
+ <dt>cmd_selectAll</dt>
+ <dd>Selects all the nodes in the view by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIPlacesView#selectAll()">nsIPlacesView.selectAll()</a></code> on the view.</dd>
+ <dt>cmd_undo</dt>
+ <dd>Undoes the last Places transaction by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsITransactionManager#undoTransaction()">nsITransactionManager.undoTransaction()</a></code> on the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPlacesTransactionsService" title="">nsIPlacesTransactionsService</a></code> instance kept by <code><a class="internal" href="/en/Places_utilities_for_JavaScript" title="en/Places utilities for JavaScript">PlacesUIUtils</a></code>.</dd>
+ <br>
+ <br>
+
+</dl>
+
+<h2 id="Creating_custom_controllers">Creating custom controllers</h2>
+
+<p>You will need to write your own controller if you want to use commands that <code>PlacesController</code> does not support or if you want to handle commands in a way that <code>PlacesController</code> does not.  Otherwise, even if you are writing a custom view, you should save yourself the work and use <code>PlacesController</code> as is.  If you are not familiar with controllers, see the <a class="internal" href="/en/XUL_Tutorial/Commands" title="En/XUL Tutorial/Commands">Commands</a> and <a href="/en/XUL_Tutorial/Updating_Commands" title="en/XUL_Tutorial/Updating_Commands">Updating Commands</a> pages in the XUL tutorial.</p>
+
+<p>If you are writing a controller for a built-in view, you can take advantage of the fact that the view automatically hooks itself up to its own default controller, an instance of <code>PlacesController</code>.  Your custom view need only support the commands that <code>PlacesController</code> either does not support or supports in ways you wish to override.  All other commands will be passed to the view's default controller.  To ensure that your controller overrides the default, it must precede the default in the view's list of controllers.  (If you are not sure why, see the tutorial links given in the previous paragraph.)  The view simply appends its default controller to the end of the list, so you should insert yours by calling the <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIControllers#insertControllerAt()">nsIControllers.insertControllerAt()</a></code> method with index 0.</p>
+
+<p>The following example creates a controller that supports two commands: <code>placesCmd_open</code>, which will override the handling of that command by the view's default controller, and <code>aCommandOfMyOwn</code>, a custom command.  All other commands will be handled by the view's default controller:</p>
+
+<pre class="brush: js">var controller = {
+  doCommand: function (aCmd) {
+    switch (aCmd) {
+    case "placesCmd_open":
+      alert("No.");
+      break;
+    case "aCommandOfMyOwn":
+      alert("Shrimp and white wine.");
+      break;
+    }
+  },
+  isCommandEnabled: function (aCmd) {
+    return true;
+  },
+  onEvent: function (aEventName) {},
+  supportsCommand: function (aCmd) {
+    return ["placesCmd_open", "aCommandOfMyOwn"].indexOf(aCmd) &gt;= 0;
+  }
+};
+var treeView = document.getElementById("myTreeView");
+treeView.controllers.insertControllerAt(0, controller);
+</pre>
+
+<p>If your custom controller is for a custom view, your set of commands includes some of those supported by <code>PlacesController</code>, and you are happy with the way <code>PlacesController</code> handles those commands, then you can still rely on <code>PlacesController</code> to save yourself some work.  There are a couple of strategies.  You can attach two controllers, one a <code>PlacesController</code> instance and one a custom, in the way described in the previous paragraphs.  Or you can attach a single controller, either an instance of <code>PlacesController</code> modified to suit your needs or a completely custom controller that delegates to a <code>PlacesController</code> instance.</p>
+
+<p>The following example creates a <code>PlacesController</code> object, overrides its handling of the <code>placesCmd_open</code> command, and falls back on the default actions for all other commands.  In this case, because the our hypothetical view's only controller is the custom one we're creating here, it is not important that it precede anything; we therefore add the controller by calling <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIControllers#appendController()">nsIControllers.appendController()</a></code> instead of <code>insertControllerAt()</code>:</p>
+
+<pre class="brush: js">var treeView = document.getElementById("myCustomTreeView");
+var controller = new PlacesController(treeView);
+controller._doCommand = controller.doCommand;
+controller.doCommand = function (aCmd) {
+  if (aCmd === "placesCmd_open")
+    alert("No.");
+  else
+    this._doCommand(aCmd);
+};
+treeView.controllers.appendController(controller);
+</pre>

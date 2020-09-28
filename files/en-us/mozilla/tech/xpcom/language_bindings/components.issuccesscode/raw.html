@@ -1,0 +1,79 @@
+<h3 id="Summary" name="Summary">Summary</h3>
+
+<p>Determines whether a given XPCOM return code (that is, an <code>nsresult</code> value) indicates the success or failure of an operation, returning <code>true</code> or <code>false</code> respectively.</p>
+
+<h3 id="Syntax" name="Syntax">Syntax</h3>
+
+<pre class="eval">var succeeded = Components.isSuccessCode(<em>returnCode</em>);
+</pre>
+
+<h3 id="Parameters" name="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>returnCode</code></dt>
+ <dd>The return code (of type <code>nsresult</code>) to be checked.</dd>
+</dl>
+
+<h3 id="Description" name="Description">Description</h3>
+
+<p><code>Components.isSuccessCode()</code> may be used to determine whether an XPCOM return code (an <code>nsresult</code>) indicates success or failure. An XPCOM return code indicates success if its high-order bit is 0, and it indicates failure if its high-order bit is 1.</p>
+
+<div class="note"><strong>Note:</strong> A non-zero XPCOM return code (that is, not <code><a href="/en/NS_OK" title="en/NS_OK">NS_OK</a></code>) does <strong>not</strong> necessarily indicate failure.</div>
+
+<p><code>Components.isSuccessCode()</code> is functionally equivalent to the following JavaScript:</p>
+
+<pre class="brush: js">function isSuccessCode(returnCode) {
+  return (returnCode &amp; 0x80000000) === 0;
+}
+</pre>
+
+<p>Since failure error codes are turned into exceptions when encountered in JavaScript, this function usually is not necessary. However, if you are using asynchronous APIs, it may be essential. For example, if you ask a component or service to asynchronously perform some task, you must usually pass in an object which will be notified when the task is completed. If the task is sufficiently complex that it can fail, the notification will include a status code indicating the success or failure of the operation (see, for example, <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIRequestObserver#onStopRequest()">nsIRequestObserver.onStopRequest()</a></code>). To determine the success or failure of the complex task, you would call <code>Components.isSuccessCode()</code> upon the status code included in the notification.</p>
+
+<h3 id="Examples" name="Examples">Examples</h3>
+
+<h4 id="Checking_whether_copying_a_stream.27s_data_succeeded" name="Checking_whether_copying_a_stream.27s_data_succeeded">Checking whether copying a stream's data succeeded</h4>
+
+<p>The following example demonstrates copying data from a buffered <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIInputStream" title="">nsIInputStream</a></code> to an <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIOutputStream" title="">nsIOutputStream</a></code>, checking for whether the copy succeeded using <code>Components.isSuccessCode()</code>.</p>
+
+<div class="note"><strong>Note:</strong> <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIAsyncStreamCopier#init()">nsIAsyncStreamCopier.init()</a></code> has changed in <span title="(Firefox 3.6 / Thunderbird 3.1 / Fennec 1.0)">Gecko 1.9.2</span>, omit last 2 boolean parameters if you're using <span title="(Firefox 3.5 / Thunderbird 3.0 / SeaMonkey 2.0)">Gecko 1.9.1</span> and earlier.</div>
+
+<pre class="eval">const Cc = Components.classes;
+const Ci = Components.interfaces;
+const Cr = Components.results;
+
+// global flags polled externally
+var copyFailed = false;
+var copyInProgress = false;
+
+function copyBufferedStream(inStream, outStream)
+{
+  var copyObserver =
+    {
+      onStartRequest: function(request, context)
+      {
+        copyInProgress = true;
+      },
+      onStopRequest: function(request, context, statusCode)
+      {
+        copyInProgress = false;
+
+        // did the copy fail?
+        if (!Components.isSuccessCode(statusCode))
+          copyFailed = true;
+      },
+      QueryInterface: function(aIID)
+      {
+        if (aIID.equals(Ci.nsIRequestObserver) ||
+            aIID.equals(Ci.nsISupports))
+          return this;
+
+        throw Cr.NS_ERROR_NO_INTERFACE;
+      }
+    };
+
+  var copier = Cc["@mozilla.org/network/async-stream-copier;1"]
+                 .createInstance(Ci.nsIAsyncStreamCopier);
+  copier.init(inStream, outStream, null, true, false, 8192, true, true);
+  copier.asyncCopy(copyObserver, null);
+}
+</pre>

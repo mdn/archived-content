@@ -1,0 +1,167 @@
+---
+title: JavaScript Debugger Service
+slug: Archive/Add-ons/Code_snippets/JavaScript_Debugger_Service
+tags:
+  - Code snippets
+---
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<pre> </pre>
+
+<div class="overheadIndicator obsolete obsoleteHeader">
+<p><strong>Obsolete since Gecko 33 (Firefox 33 / Thunderbird 33 / SeaMonkey 2.30)</strong><br>
+ This feature is obsolete. Although it may still work in some browsers, its use is discouraged since it could be removed at any time. Try to avoid using it.</p>
+</div>
+
+<p>In Firefox versions prior to Gecko 33 (Firefox 33 / Thunderbird 33 / SeaMonkey 2.30), the JavaScript Debugger Service (or simply JSD) used to be an XPCOM component that allows the tracking of JavaScript while it was being executed in the browser. However, JSD has been removed in favor of the <a href="/en-US/docs/Tools/Debugger-API"><code>Debugger</code> API</a>. See the tracking bug <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=800200" title="FIXED: rm JSD">bug 800200</a> for more details.</p>
+
+<h2 id="Snippets">Snippets</h2>
+
+<h3 id="Acquiring_the_service">Acquiring the service</h3>
+
+<p>We acquire the service by calling the XPCOM object.</p>
+
+<pre class="brush: js">var jsd = Components.classes["@<a class="LinkyMobile-ext" href="http://mozilla.org/js/jsd/debugger-service;1" title="Linkification: http://mozilla.org/js/jsd/debugger-service;1">mozilla.org/js/jsd/debugger-service;1</a>"]
+          .getService(Components.interfaces.jsdIDebuggerService);
+
+ jsd.on(); // enables the service till firefox 3.6, for 4.x use asyncOn
+ if (jsd.isOn) jsd.off(); // disables the service
+</pre>
+
+<h3 id="Hooks">Hooks</h3>
+
+<p>JSD operates using the events hook mechanism. Next, we add code to the various hooks.</p>
+
+<pre class="brush: js">jsd.scriptHook = {
+	onScriptCreated: function(script) {
+		// your function here
+	},
+	onScriptDestroyed: function(script) {
+		// your function here
+	}
+};
+jsd.errorHook = {
+	onError: function(message, fileName, lineNo, colNo, flags, errnum, exc) {
+		// your function here
+	}
+};
+
+// triggered when jsd.errorHook[onError] returns false
+jsd.debugHook = {
+	onExecute: function(frame, type, rv) {
+		 // your function here
+	}
+};
+
+jsd.enumerateScripts({
+	// the enumerateScript method will be called once for every script JSD knows about
+	enumerateScript: function(script) {
+		// your function here
+	}
+});
+</pre>
+
+<h3 id="A_simple_stack_trace">A simple stack trace</h3>
+
+<p>Here, we will show how to implement a simple JavaScript stack trace using the JSD. Note that <code>onError</code> is called for every exception.</p>
+
+<pre class="brush: js">jsd.errorHook = {
+	onError: function(message, fileName, lineNo, colNo, flags, errnum, exc) {
+		dump(message + "@" + fileName + "@" + lineNo + "@" + colNo + "@" + errnum + "\n");
+
+		// check message type
+		var jsdIErrorHook = Components.interfaces.jsdIErrorHook;
+		var messageType;
+		if (flags &amp; jsdIErrorHook.REPORT_ERROR)
+			messageType = "Error";
+		if (flags &amp; jsdIErrorHook.REPORT_WARNING)
+			messageType = "Warning";
+		if (flags &amp; jsdIErrorHook.REPORT_EXCEPTION)
+			messageType = "Uncaught-Exception";
+		if (flags &amp; jsdIErrorHook.REPORT_STRICT)
+			messageType += "-Strict";
+
+		dump(messageType + "\n");
+
+		return false;	// trigger debugHook
+		// return true; if you do not wish to trigger debugHook
+	}
+};
+
+// note that debugHook does not _always_ trigger when jsd.errorHook[onError] returns false
+// it is not well-known why debugHook sometimes fails to trigger
+jsd.debugHook = {
+	onExecute: function(frame, type, rv) {
+		stackTrace = "";
+		for (var f = frame; f; f = f.callingFrame) {
+			stackTrace += f.script.fileName + "@" + f.line + "@" + f.functionName + "\n";
+		}
+		dump(stackTrace);
+
+		return Components.interfaces.jsdIExecutionHook.RETURN_CONTINUE;
+	}
+};
+</pre>
+
+<h3 id="Filters">Filters</h3>
+
+<p>JSD also allows the use of filters to track which scripts should trigger the hooks. Note that the <code>jsdIFilter</code> only applies to <code>jsdIExecutionHooks</code>, which are <code>breakpointHook</code>, <code>debugHook</code>, <code>debuggerHook</code>, <code>interruptHook</code> and <code>throwHook</code>.</p>
+
+<p>Note that Filters are matched in a first in, first compared fashion. The first filter to match determines whether or not the hook is called.</p>
+
+<p>We create a generic <code>createFilter</code> function that acts as a <code>jsdIFilter</code> factory.</p>
+
+<pre class="brush: js">function createFilter(pattern, pass) {
+	var jsdIFilter = Components.interfaces.jsdIFilter;
+
+	var filter = {
+		globalObject: null,
+		flags: pass ? (jsdIFilter.FLAG_ENABLED | jsdIFilter.FLAG_PASS) : jsdIFilter.FLAG_ENABLED,
+		urlPattern: pattern,
+		startLine: 0,
+		endLine: 0
+	};
+	return filter;
+},
+</pre>
+
+<p>We then add the filters we want.</p>
+
+<pre class="brush: js">jsd.clearFilters(); // clear the list of filters
+
+// we exclude the scripts with the following filenames from being tracked
+jsd.appendFilter(createFilter("*/firefox/components/*"));
+jsd.appendFilter(createFilter("*/firefox/modules/*"));
+jsd.appendFilter(createFilter("XStringBundle"));
+jsd.appendFilter(createFilter("chrome://*"));
+jsd.appendFilter(createFilter("x-jsd:ppbuffer*"));
+jsd.appendFilter(createFilter("XPCSafeJSObjectWrapper.cpp"));
+jsd.appendFilter(createFilter("<a class="LinkyMobile-ext" title="Linkification: file://*">file://*</a>"));
+</pre>
+
+<p>Note that <code>appendFilter</code> adds the filter to the end of the list. You can use <code>insertFilter (jsdIFilter filter, jsdIFilter after)</code> to insert the filter after a particular filter; you can pass null for <code>jsdIFilter after</code> to insert at the head of the list. You can also use <code>swapFilters (jsdIFilter filter_a, jsdIFilter filter_b)</code> to swap filters, and <code>removeFilter(jsdIFilter filter)</code> to remove a filter.</p>
+
+<h2 id="Learning_more">Learning more</h2>
+
+<ul>
+ <li><a class="external" href="http://www.hungryfools.com/2008/03/i-was-really-determined-to-figure-out.html" title="http://www.hungryfools.com/2008/03/i-was-really-determined-to-figure-out.html">A quick and dirty introduction by Lei</a></li>
+ <li><a class="external" href="http://mxr.mozilla.org/mozilla/source/extensions/venkman/resources/content/venkman-debugger.js" title="http://mxr.mozilla.org/mozilla/source/extensions/venkman/resources/content/venkman-debugger.js">Venkman JavaScript Debugger source code</a></li>
+ <li><a class="external" href="http://code.google.com/p/fbug/source/browse/branches/firebug1.5/components/firebug-service.js" title="http://code.google.com/p/fbug/source/browse/branches/firebug1.5/components/firebug-service.js">Firebug Service source code</a></li>
+ <li><a class="external" href="http://www.mozilla.org/js/jsd/arch/jsd_arch.html" title="http://www.mozilla.org/js/jsd/arch/jsd_arch.html">JSD Architecture (old)</a></li>
+</ul>

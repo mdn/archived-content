@@ -1,0 +1,59 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("js1.8.5") }}</p>
+<div class="blockIndicator warning">
+<p><strong>Warning!</strong> <code>JSObjectOps</code> is not a supported API. Details of the API may change from one release to the next. This documentation should be considered SpiderMonkey internals documentation, not API documentation. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=408416">bug 408416</a> for details.</p>
+</div>
+
+<div class="summary">
+<p>The <strong>{{jsapixref("JSObjectOps", "JSObjectOps.lookupProperty")}}</strong> callback is called for every property access (except when a higher-level callback, such as {{jsapixref("JSObjectOps.getProperty")}}, is overloaded in a way that does not call <code>lookupProperty</code>).</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">typedef JSBool (*JSLookupPropOp)(JSContext *cx, JSObject *obj, jsid id,
+    JSObject **objp, JSProperty **propp);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>Pointer to the JS context in which the property lookup is happening.</td>
+  </tr>
+  <tr>
+   <td><code>obj</code></td>
+   <td>{{jsapixref("JSObject", "JSObject *")}}</td>
+   <td>The object whose properties are being searched.</td>
+  </tr>
+  <tr>
+   <td><code>id</code></td>
+   <td>{{jsapixref("jsid")}}</td>
+   <td>The name or index of the property to look up.</td>
+  </tr>
+  <tr>
+   <td><code>objp</code></td>
+   <td>{{jsapixref("JSObject", "JSObject **")}}</td>
+   <td>Out parameter. If the property is found, the callback stores the object on which the property was found in <code>*objp</code>.</td>
+  </tr>
+  <tr>
+   <td><code>propp</code></td>
+   <td>{{jsapixref("JSProperty", "JSProperty **")}}</td>
+   <td>Out parameter. On success, the callback stores in <code>*propp</code> a pointer to the property, if it exists, or <code>NULL</code> if it doesn't.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>Look for <code>id</code> in <code>obj</code> and its prototype chain, returning <code>JS_FALSE</code> on error or exception, <code>JS_TRUE</code> on success. On success, return null in <code>*propp</code> if <code>id</code> was not found. If <code>id</code> was found, return the first object searching from <code>obj</code> along its prototype chain in which <code>id</code> names a direct property in <code>*objp</code>, and return a non-null, opaque property pointer in <code>*propp</code>.</p>
+
+<p>If <code>JSLookupPropOp</code> succeeds and returns with <code>*propp</code> non-null, that pointer may be passed as the <code>prop</code> parameter to a <code>JSAttributesOp</code>, as a short-cut that bypasses <code>id</code> re-lookup. In any case, a non-null <code>*propp</code> result after a successful lookup must be dropped via {{jsapixref("JSObjectOps.dropProperty")}}.</p>
+
+<p><strong>Note:</strong> A successful return with non-null <code>*propp</code> means the implementation may have locked <code>*objp</code> and added a reference count associated with <code>*propp</code>, so callers should not risk deadlock by nesting or interleaving other lookups or any obj-bearing ops before dropping <code>*propp</code>.</p>

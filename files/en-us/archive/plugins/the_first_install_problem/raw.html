@@ -1,0 +1,103 @@
+<div class="warning">
+  <p>This is an old working document; see <a class="redirect" href="/docs/en/Gecko_Plugin_API_Reference/Plug-in_Development_Overview">en/Gecko_Plugin_API_Reference/Plug-in_Development_Overview</a> for current information.</p>
+</div>
+<h3 id="Problem_Definition" name="Problem_Definition">Problem Definition</h3>
+<p><em><strong>The First Install Problem</strong></em> is the name given to the conditions arising when a plugin or embeddable software installs itself on a system <strong>first</strong>, before any other Gecko-based browser. If this happens, Gecko-based browsers often won't be able to discover the plugin, and will prompt the user to download the plugin again if the affiliated MIME type is encountered on the Web. Unless Gecko does a <a class="external" href="http://bugzilla.mozilla.org/show_bug.cgi?id=133282">pre-emptive scan</a> upon startup for desirable plugins that are not in the browser's plugins directory first, the best way to solve this problem is to encourage plugin vendors to leave DLLs (and XPT files, if applicable) in a location that Gecko can discover at runtime. This document presents a consistent way to do that.</p>
+<p> </p>
+<h3 id="Proposed_Solution" name="Proposed_Solution">Proposed Solution</h3>
+<p>On Mac OS X, the System's Plugins Folder will probably suffice as an install location in which browsers installed later can find their plugins. On Linux, a per-profile installation of plugins seems unavoidable. This document presents Windows solutions for plugin vendors. The solution suggests that plugin vendors ought to leave DLLs on a Windows desktop <strong>whether or not</strong> a Netscape Gecko browser is detected, and then write keys in the Windows registry giving future Netscape Gecko browsers the path where the plugin resides and meta-information about how to load the plugin. This document supplements <a class="external" href="http://www.mozilla.org/projects/plugins/install-scheme.html">the key parsing methodology</a> suggested for installers. The solution is to encourage plugin vendors to write registry keys to the Win32 System Registry, like the <a class="external" href="http://www.mozilla.org/projects/plugins/example-scobe.txt">example application</a>.</p>
+<p>This document proposes a meta-information model in the Win32 Registry similar to the one used by Microsoft's HKEY_CLASSES_ROOT\CLSID\ where a new ActiveX control (OCX) on the system presents its UUID as a registry key (identifying the ActiveX control) as well as information about where to find the OCX (e.g. under the InprocServer32 subkey). For Mozilla-based browsers, this system would be on a per-module basis, and instead of a UUID, we'll use a URI nomenclature that gives us the desired uniqueness. This URI nomenclature is called a Plugin Identifier (PLID) and is described <a href="/en/PLID" title="en/PLID">on a separate page</a>. The following write-up describes how a plugin installer can write keys to the Win32 System Registry to enable Gecko-based browsers to discover the plugin at runtime.</p>
+<ol>
+  <li>Write a key under HKEY_LOCAL_MACHINE\Software\MozillaPlugins\ which is a vendor-determined <a href="/en/PLID" title="en/PLID">PLID</a>. If the HKEY_LOCAL_MACHINE\Software\MozillaPlugins key doesn't exist, create it, and write the vendor-determined <a href="/en/PLID" title="en/PLID">PLID</a> for each module that the vendor wishes to install. Example: A piece of software called MyApplication might create HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.0.1/ where the <a href="/en/PLID" title="en/PLID">PLID</a> is something the corporation that makes MyApplication (MyCompany Inc.) determines. Note that MyApplication consists of one DLL (which is an <a href="/en/NPAPI" title="en/NPAPI">NPAPI</a> plugin handling a given mimetype -- say application/x-myapp) and one XPT file, for scriptable interfaces.</li>
+  <li><strong>Caveat Emptor:</strong> If the key cannot be created under HKEY_LOCAL_MACHINE, create it as HKEY_CURRENT_USER\Software\MozillaPlugins\ under HKEY_CURRENT_USER. On Windows XP and Windows 2000, in order to write to the registry, sometimes the software may need Administrator privileges. Thus, some installers may need to write to the HKEY_CURRENT_USER key; this doesn't require Administrator privileges. Traditionally, HKEY_CURRENT_USER is a copy of everything in HKEY_LOCAL_MACHINE. <em>At present plugins registered using the HKEY_CURRENT_USER\Software\MozillaPlugins\ tree are ignored by Firefox (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=293062" title="FIXED: Mozilla should read HKEY_CURRENT_USER\Software\MozillaPlugin">bug 293062</a>) but this is fixed in trunk builds (<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=293062" title="FIXED: Mozilla should read HKEY_CURRENT_USER\Software\MozillaPlugin">bug 293062</a>).</em></li>
+  <li>Add the following Values to the newly created key -- some are String Values (REG_SZ), and some are actually subkeys. String Values take the form StringValue=ValueData, and subkeys contain their own String Values and Value data.
+    <ul>
+      <li>"Path" -- String Value -- this would be the absolute path to the plugin module. This is the path to the actual DLL. (Note that the file name must still begin with "np", just as it must when the file is loaded from the .\plugins directory.)<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+Path=C:\MyCompany\MyApplication\Netscape\npmyapp.dll</pre>
+      </li>
+      <li>"XPTPath" -- String Value -- absolute path to xpt module required for scripting plug-in, <strong>if applicable</strong><br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+XPTPath=C:\MyCompany\MyApplication\Netscape\npmyapp.xpt</pre>
+      </li>
+      <li>"GeckoVersion" -- This is the optional mention of the minimal Gecko Version that the browser is compatible with.<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+GeckoVersion=0.9.4.2</pre>
+        suggesting compliance with CompuServe's deployment of a build of Gecko known as 0.9.4.2. Note that this means that at a minimum, the plugin vendor is ensuring compatibility with 0.9.4.2 browsers.</li>
+      <li>"ProductName" -- This is the String Value name of the actual product.<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+ProductName=MyApplication Player 5</pre>
+      </li>
+      <li>"Version" -- This is the versioning scheme of the above Product.<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+Version=5.01</pre>
+      </li>
+      <li>MimeTypes -- This is a subkey and contains individual mimetypes as further subkeys.<br>
+        <code>HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01/MimeTypes/<i>someMimeTypeSubkey</i>/</code>
+        <ul>
+          <li>The MimeTypes subkey contains further subkeys based on an application's actual mimetypes.<br>
+            Examples:
+            <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01\MimeTypes\application/x-myapp]</pre>
+            <p>There can be more than one such subkey, depending on how many mimetypes an application wishes to handle (or advertise that it handles).</p>
+          </li>
+          <li>The mimetypes subkeys contain the following string (REG_SZ) value:
+            <ul>
+              <li>"Description" -- This is the actual description of the mimetype, very much as it appears in the DLL (e.g. the same mimetype description that apears when you type "about:plugins" as a URL in Mozilla's location bar.<br>
+                Example:
+                <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\]\@mycompany.com/MyApplication,version=5.01\MimeTypes\application/x-myapp]
+Description=MyApplication   Plugin for App Files</pre>
+              </li>
+              <li>"Suffixes" -- This will be a semi-colon concatenated list of supported suffixes. This information is also stored under the Suffixes subkey (see below), but that key doesn't link suffixes to a particular mimetype.<br>
+                Example:
+                <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\]\@mycompany.com/MyApplication,version=5.01\MimeTypes\application/x-myapp]
+Suffixes=app</pre>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li>Suffixes -- a subkey containing string values (REG_SZ) representing all the suffixes (3 digit extensions) supported by this module.<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\]\@mycompany.com/MyApplication,version=5.01\Suffixes]</pre>
+        <p>Inside this subkey, string values might look like:<br>
+          <code>app<br>
+          typ<br>
+          avi</code><br>
+          <strong>Note</strong> that these string values (REG_SZ) don't actually have values affiliated with them.</p>
+      </li>
+      <li>"Description" -- string value describing the module (distinct from the "Description" in the MimeTypes subkey).<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+Description=Scriptable MyApplication Player Version 5</pre>
+      </li>
+      <li>"Vendor" -- string refering to company name<br>
+        Example:
+        <pre>[HKEY_LOCAL_MACHINE\Software\MozillaPlugins\@mycompany.com/MyApplication,version=5.01]
+Vendor=MyCompany   Inc.</pre>
+      </li>
+    </ul>
+  </li>
+</ol>
+<p>The <a class="external" href="http://www.mozilla.org/projects/plugins/example-scobe.txt">example registry key</a> shows the suggested "key creation" at work for an example application called Scobe Scrubobat (which doesn't really exist!).</p>
+<p> </p>
+<h3 id="Future_Directions:_Using_OBJECT_Tag_with_classid:_Incidental_Benefit" name="Future_Directions:_Using_OBJECT_Tag_with_classid:_Incidental_Benefit">Future Directions: Using OBJECT Tag with <em>classid:</em> Incidental Benefit</h3>
+<p>Embedders such as CompuServe (who now embed Gecko in lieu of IE as the default browser) can determine on their own the mechanisms to parse the Win32 registry for <a href="/en/PLID" title="en/PLID">PLIDs</a>. The Bugzilla bug open on Mozilla and Netscape 6.x is <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=44973" title="Need to support multiple plugins for a given content type (PLID)">bug 44973</a>.</p>
+<p>If every major plugin vendor complies with the writing of plugin directory information into the registry along with a <a href="/en/PLID" title="en/PLID">PLID</a>, we can then use the OBJECT tag to invoke plugins based on their "classid" (their respective PLID, which is a URI, which works well with the W3C spec). For example, in our case, a prospective invocation might look like:</p>
+<pre>  &lt;object classid="@mycompany.com/MyApplication,version=5.01"
+          data="myfile.typ" codebase="http://myurl.com/myplugin/myplugin.xpi"
+          type="application/x-myapp"&gt;&lt;/object&gt;
+</pre>
+<p>The use of both "type" <strong>and</strong> "classid" attributes here offers the following user benefit:</p>
+<ul>
+  <li>IF there is another mimetype handler for application/x-myapp, ONLY MyApplication gets invoked. The resolution of a mimetype handler is no longer arbitrary.</li>
+  <li>IF the "data" file myfile.typ doesn't contain enough resource information to load the correct mimetype handling component (DLL), specifying "type" is an additional mechanism.</li>
+  <li>Unlike UUIDs, <a href="/en/PLID" title="en/PLID">PLIDs</a> are human readable, and not lengthy "garbled" strings.</li>
+</ul>
+<p>(It should be noted that the "classid" attribute discussion here is a potential <em>future</em> direction; it doesn't yet work, at least as of Firefox 3.6.8. The recommended &lt;object&gt; attribute to set is still either "type" or "data".)</p>
+<p><strong>Advantage:</strong> We now no longer have ambiguity in determining which plugin handles what mimetype, because now the plugin has been invoked using the classid attribute of the OBJECT tag, which is <a class="external" href="http://www.w3.org/TR/REC-html40/struct/objects.html#edef-OBJECT">in compliance with the HTML 4.01 specification for use of the OBJECT tag</a>.</p>
+<p>(Original proposal by Arun K. Ranganathan &lt;<a class="link-mailto" href="mailto:aruner@netscape.com" rel="freelink">aruner@netscape.com</a>&gt;)</p>

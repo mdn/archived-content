@@ -1,0 +1,201 @@
+<div class="summary">
+<p><span class="seoSummary">Intermittent oranges are test failures which happen intermittently, in a seemingly random way.  Many of such failures could be avoided by good test writing principles.  This page tries to explain some of those principles for use by people who contribute tests, and also those who review them for inclusion into <a href="/en/mozilla-central" title="en/mozilla-central">mozilla-central</a>.</span></p>
+</div>
+
+<p>A list of patterns which have been known to cause intermittent failures comes next, with a description of why each one causes test failures, and how to avoid it.</p>
+
+<p>After writing a successful test case, make sure to run it locally, preferably in a debug build.  Maybe tests depend on the state of another test or some future test or browser operation to clean up what is left over.  This is a common problem in browser-chrome, here are things to try:</p>
+
+<ul>
+ <li>debug mode, run test standalone ./mach &lt;test&gt; &lt;path&gt;/&lt;to&gt;/&lt;test&gt;/test.html|js</li>
+ <li>debug mode, run test standalone directory ./mach &lt;test&gt; &lt;path&gt;/&lt;to&gt;/&lt;test&gt;</li>
+ <li>debug mode, run test standalone larger directory ./mach &lt;test&gt; &lt;path&gt;/&lt;to&gt;</li>
+</ul>
+
+<h2 id="Accessing_DOM_elements_too_soon">Accessing DOM elements too soon</h2>
+
+<p><code>data:</code> URLs load asynchronously. You should wait for the load event of an {{ HTMLElement("iframe") }} that is loading a <code>data:</code> URL before trying to access the DOM of the subdocument.</p>
+
+<p>For example, the following code pattern is bad:</p>
+
+<pre class="brush: html">&lt;html&gt;
+  &lt;body&gt;
+    &lt;iframe id="x" src="data:text/html,&lt;div id='y'&gt;"&gt;&lt;/iframe&gt;
+    &lt;script&gt;
+      var elem = document.getElementById("x").
+                          contentDocument.
+                          getElementById("y"); // might fail
+      // ...
+    &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</pre>
+
+<p>Instead, write the code like this:</p>
+
+<pre class="brush: html">&lt;html&gt;
+  &lt;body&gt;
+    &lt;script&gt;
+        function onLoad() {
+          var elem = this.contentDocument.
+                          getElementById("y");
+          // ...
+        };
+    &lt;/script&gt;
+   &lt;iframe src="data:text/html,&lt;div id='y'&gt;"
+           onload="onLoad()"&gt;&lt;/iframe&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</pre>
+
+<h2 id="Using_script_functions_before_theyre_defined">Using script functions before they're defined</h2>
+
+<p>This may be relevant to event handlers, more than anything else.  Let's say that you have an {{ HTMLElement("iframe") }} and you want to do something after it's been loaded, so you might write code like this:</p>
+
+<pre class="brush: html">&lt;iframe src="..." onload="onLoad()"&gt;&lt;/iframe&gt;
+&lt;script&gt;
+  function onLoad() { // oops, too late!
+    // ...
+  }
+&lt;/script&gt;
+</pre>
+
+<p>This is bad, because the {{ HTMLElement("iframe") }}'s load may be completed before the script gets parsed, and therefore before the <code>onLoad</code> function comes into existence.  This will cause you to miss the {{ HTMLElement("iframe") }} load, which may cause your test to time out, for example.  The best way to fix this is to move the function definition before where it's used in the DOM, like this:</p>
+
+<pre class="brush: html">&lt;script&gt;
+  function onLoad() {
+    // ...
+  }
+&lt;/script&gt;
+&lt;iframe src="..." onload="onLoad()"&gt;&lt;/iframe&gt;
+</pre>
+
+<h2 id="Relying_on_the_order_of_asynchronous_operations">Relying on the order of asynchronous operations</h2>
+
+<p>In general, when you have two asynchronous operations, you cannot assume any order between them.  For example, let's say you have two {{ HTMLElement("iframe") }}s like this:</p>
+
+<pre class="brush: html">&lt;script&gt;
+  var f1Doc;
+  function f1Loaded() {
+    f1Doc = document.getElementById("f1").contentDocument;
+  }
+  function f2Loaded() {
+    var elem = f1Doc.getElementById("foo"); // oops, f1Doc might not be set yet!
+  }
+&lt;/script&gt;
+&lt;iframe id="f1" src="..." onload="f1Loaded()"&gt;&lt;/iframe&gt;
+&lt;iframe id="f2" src="..." onload="f2Loaded()"&gt;&lt;/iframe&gt;
+</pre>
+
+<p>This code is implicitly assuming that <code>f1</code> will be loaded before <code>f2</code>, but this assumption is incorrect.  A simple fix is to just detect when all of the asynchronous operations have been finished, and then do what you need to do, like this:</p>
+
+<pre class="brush: html">&lt;script&gt;
+  var f1Doc, loadCounter = 0;
+  function process() {
+    var elem = f1Doc.getElementById("foo");
+  }
+  function f1Loaded() {
+    f1Doc = document.getElementById("f1").contentDocument;
+    if (++loadCounter == 2) process();
+  }
+  function f2Loaded() {
+    if (++loadCounter == 2) process();
+  }
+&lt;/script&gt;
+&lt;iframe id="f1" src="..." onload="f1Loaded()"&gt;&lt;/iframe&gt;
+&lt;iframe id="f2" src="..." onload="f2Loaded()"&gt;&lt;/iframe&gt;</pre>
+
+<h2 id="Using_magical_timeouts_to_cause_delays">Using magical timeouts to cause delays</h2>
+
+<p>Sometimes when there is an asynchronous operation going on, it may be tempting to use a timeout to wait a while, hoping that the operation has been finished by then and that it's then safe to continue.  Such code uses patterns like this:</p>
+
+<pre>setTimeout(handler, 500);
+</pre>
+
+<p>This should raise an alarm in your head.  As soon as you see such code, you should ask yourself: "Why 500, and not 100?  Why not 1000?  Why not 328, for that matter?"  You can never answer this question, so you should always avoid code like this!</p>
+
+<p>What's wrong with this code is that you're assuming that 500ms is enough for whatever operation you're waiting for.  This may stop being true depending on the platform, whether it's a debug or optimized build of Firefox running this code, machine load, whether the test is run on a VM, etc.  And it will start failing, sooner or later.</p>
+
+<p>Instead of code like this, you should wait for the operation to be completed explicitly.  Most of the time this can be done by listening for an event.  Some of the time there is no good event to listen for, in which case you can add one to the code responsible for the completion of the task at hand.</p>
+
+<p>Ideally magical timeouts are never necessary, but there are a couple cases, in particular when writing web-platform-tests, where you might need them. In such cases consider documenting why a timer was used so it can be removed if in the future it turns out to be no longer needed.</p>
+
+<h2 id="Using_objects_without_accounting_for_the_possibility_of_their_death">Using objects without accounting for the possibility of their death</h2>
+
+<p>This is a very common pattern in our test suite, which was recently discovered to be responsible for many intermittent failures:</p>
+
+<pre class="brush: js">function runLater(func) {
+  var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  timer.initWithCallback(func, 0, Ci.nsITimer.TYPE_ONE_SHOT);
+}
+</pre>
+
+<p>The problem with this code is that it assumes that the <code>timer</code> object will live long enough for the timer to fire.  That may not be the case if a garbage collection is performed before the timer needs to fire.  If that happens, the <code>timer</code> object will get garbage collected and will go away before the timer has had a chance to fire.  A simple way to fix this is to make the <code>timer</code> object global, so that an outstanding reference to the object would still exist by the time that the garbage collection code attempts to collect it.</p>
+
+<pre class="brush: js">var timer;
+function runLater(func) {
+  timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  timer.initWithCallback(func, 0, Ci.nsITimer.TYPE_ONE_SHOT);
+}</pre>
+
+<p>A similar problem may happen with {{ interface("nsIWebProgressListener") }} objects passed to the {{ ifmethod("nsIWebProgress", "addProgressListener") }} method, because the web progress object stores a weak reference to the {{ interface("nsIWebProgressListener") }} object, which does not prevent it from being garbage collected.</p>
+
+<h2 id="Tests_which_require_focus">Tests which require focus</h2>
+
+<p>Some tests require the application window to be focused in order to function properly.</p>
+
+<p>For example if you're writing a crashtest or reftest which tests an element which is focused, you need to specify it in the manifest file, like this:</p>
+
+<pre>needs-focus load my-crashtest.html
+needs-focus == my-reftest.html my-reftest-ref.html
+</pre>
+
+<p>Also, if you're writing a mochitest which synthesizes keyboard events using <code>synthesizeKey()</code>, the window needs to be focused, otherwise the test would fail intermittently on Linux.  You can ensure that by using <code>SimpleTest.waitForFocus()</code> and start what your test does from inside the callback for that function, as below:</p>
+
+<pre>SimpleTest.waitForFocus(function() {
+  synthesizeKey("x", {});
+  // ...
+});</pre>
+
+<p>Tests which require mouse interaction, open context menus, etc. may also require focus.  Note that waitForFocus implicitly waits for a load event as well, so it's safe to call it for a window which has not finished loading yet.</p>
+
+<h2 id="Tests_which_take_too_long">Tests which take too long</h2>
+
+<p>Sometimes what happens in a single unit test is just too much.  This will cause the test to time out in random places during its execution if the running machine is under a heavy load, which is a sign that the test needs to have more time to execute.  This could potentially happen only in debug builds, as they are slower in general.  There are two ways to solve this problem.  One of them is to split the test into multiple smaller tests (which might have other advantages as well, including better readability in the test), or to ask the test runner framework to give the test more time to finish correctly.  The latter can be done using the <code>requestLongerTimeout</code> function.</p>
+
+<h2 id="Tests_that_do_not_clean_up_properly">Tests that do not clean up properly</h2>
+
+<p>Sometimes, tests register event handlers for various events, but they don't clean up after themselves correctly.  Alternatively, sometimes tests do things which have persistent effects in the browser running the test suite.  Examples include opening a new window, adding a bookmark, changing the value of a preference, etc.</p>
+
+<p>In these situations, sometimes the problem is caught as soon as the test is checked into the tree.  But it's also possible for the thing which was not cleaned up properly to have an intermittent effect on future (and perhaps seemingly unrelated) tests.  These types of intermittent failures may be extremely hard to debug, and not obvious at first because most people only look at the test in which the failure happens instead of previous tests.  How the failure would look varies on a case by case basis, but one example is <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=612625" title="https://bugzilla.mozilla.org/show_bug.cgi?id=612625">bug 612625</a>.</p>
+
+<h2 id="Not_waiting_on_the_specific_event_that_you_need">Not waiting on the specific event that you need</h2>
+
+<p>Sometimes, instead of waiting for event A, tests wait on event B, implicitly hoping that B occurring means that A has occurred too.  <a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=626168" title="https://bugzilla.mozilla.org/show_bug.cgi?id=626168">Bug 626168</a> was an example of this.  The test really needed to wait for a paint in the middle of its execution, but instead it would wait for an event loop hit, hoping that by the time that we hit the event loop, a paint has also occurred.  While these types of assumptions may hold true when developing the test, they're not guaranteed to be true every time that the test is run.  When writing a test, if you have to wait for an event, you need to take note of why you're waiting for the event, and what exactly you're waiting on, and then make sure that you're really waiting on the correct event.</p>
+
+<h2 id="Tests_that_rely_on_external_sites">Tests that rely on external sites</h2>
+
+<p>Even if the external site is not actually down, variable performance of the external site, and external networks can add enough variation to test duration that it can easily cause a test to fail intermittently.</p>
+
+<p><a class="link-https" href="https://bugzilla.mozilla.org/show_bug.cgi?id=626999" title="https://bugzilla.mozilla.org/show_bug.cgi?id=626999">Bug 626999</a> is tracking work-in-progress to clean up existing tests that do this. When that is done, we're planning to block all connections from RelEng systems to the outside world to prevent new tests being able to connect out like this.</p>
+
+<h2 id="Tests_that_rely_on_Math.random_to_create_unique_values">Tests that rely on Math.random() to create unique values</h2>
+
+<p>Sometimes you need unique values in your test.  Using <code>Math.random()</code> to get unique values works most of the time, but this function actually doesn't guarantee that its return values are unique, so your test might get repeated values from this function, which means that it may fail intermittently.  You can use the following pattern instead of calling <code>Math.random()</code> if you need values that have to be unique for your test:</p>
+
+<pre>var gUniqueCounter = 0;
+function generateUniqueValues() {
+  return Date.now() + "-" + (++gUniqueCounter);
+} </pre>
+
+<h2 id="Tests_that_depend_on_the_current_time">Tests that depend on the current time</h2>
+
+<p>When writing a test which depends on the current time, extra attention should be paid to different types of behavior depending on when a test runs.  For example, how does your test handle the case where the daylight saving (DST) settings change while it's running?  If you're testing for a time concept relative to now (like today, yesterday, tomorrow, etc) does your test handle the case where these concepts change their meaning at the middle of the test (for example, what if your test starts at 23:59:36 on a given day and finishes at 00:01:13)?</p>
+
+<h2 id="Tests_that_depend_on_time_differences_or_comparison">Tests that depend on time differences or comparison</h2>
+
+<p>When doing time differences the operating system timers resolution should be taken into account. For example consecutive calls to <a href="/en/JavaScript/Reference/Global_Objects/Date" title="en/JavaScript/Reference/Global Objects/Date"><code>Date()</code></a> don't guarantee to get different values. Also when crossing XPCOM different time implementations can give surprising results. For example when comparing a timestamp got through <a href="/en/PR_Now" title="en/PR Now"><code>PR_Now()</code></a> with one got though a JavaScript date, the last call could result in the past of the first call! These differences are more pronounced on Windows, where the skew can be up to 16ms. Globally, the timers' resolutions are guesses that are not guaranteed (also due to bogus resolutions on virtual machines), so it's better to use larger brackets when the comparison is really needed.</p>
+
+<h2 id="Tests_that_destroy_the_original_tab">Tests that destroy the original tab</h2>
+
+<p>Tests that remove the original tab from the browser chrome test window can cause intermittent oranges or can, and of themselves, be intermittent oranges. Obviously, both of these outcomes are undesirable. You should neither write tests that do this, or r+ tests that do this. As a general rule, if you call <span id="m-addTab"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/addTab">addTab</a></code></span> or other tab-opening methods in your test cleanup code, you're probably doing something you shouldn't be.</p>

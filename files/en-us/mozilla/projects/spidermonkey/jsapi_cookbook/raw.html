@@ -1,0 +1,560 @@
+<div>{{SpiderMonkeySidebar("General")}}</div>
+
+<p>This article shows the JSAPI equivalent for a tiny handful of common JavaScript idioms.</p>
+
+<div class="note"><strong>Note:</strong> The <a class="internal" href="/En/SpiderMonkey/FOSS" title="En/SpiderMonkey/FOSS">FOSS</a> wiki page contains a few links to other libraries and programs that can make life easier when using SpiderMonkey and JSAPI.</div>
+
+<h2 id="Basics">Basics</h2>
+
+<h3 id="Working_with_values">Working with values</h3>
+
+<p>The basic, undifferentiated value type in the JSAPI is <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_Reference/JS::Value"><code>JS::Value</code></a>.  To query whether a value has a particular type, use a correspondingly named member testing function:</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var v = computeSomeValue();
+
+var isString = typeof v === "string";
+var isNumber = typeof v === "number";
+var isNull = v === null;
+var isBoolean = typeof v === "boolean";
+var isObject = typeof v === "object" &amp;&amp; v !== null;</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedValue v(cx, ComputeSomeValue());
+
+bool isString = v.isString();
+bool isNumber = v.isNumber();
+bool isInt32 = v.isInt32(); // NOTE: internal representation, not numeric value
+bool isNull = v.isNull();
+bool isBoolean = v.isBoolean();
+bool isObject = v.isObject(); // NOTE: not broken like typeof === "object" is :-)</pre>
+
+<p>To set a value use a correspondingly named member mutator function, or assign the result of the correspondingly named standalone function:</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var v;
+
+v = 0;
+v = 0.5;
+v = someString;
+v = null;
+v = undefined;
+v = false;</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedValue v(cx);
+JS::RootedString someString(cx, ...);
+
+v.setInt32(0);           // or: v = JS::Int32Value(0);
+v.setDouble(0.5);        // or: v = JS::DoubleValue(0.5);
+v.setString(someString); // or: v = JS::StringValue(someString);
+v.setNull();             // or: v = JS::NullValue();
+v.setUndefined();        // or: v = JS::UndefinedValue();
+v.setBoolean(false);     // or: v = JS::BooleanValue(false);</pre>
+
+<h3 id="Finding_the_global_object">Finding the global object</h3>
+
+<p>Many of these recipes require finding the current global object first.</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var global = this;
+</pre>
+
+<p>There is a function, <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalForScopeChain">JS_GetGlobalForScopeChain</a>(cx)</code>, that makes a best guess, and sometimes that is the best that can be done. But in a <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSNative">JSNative</a></code> the correct way to do this is:</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+bool myNative(JSContext *cx, unsigned argc, JS::Value *vp)
+{
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+    JSObject *global = <a href="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_GetGlobalForObject" title="/en-US/docs/SpiderMonkey/JSAPI_Reference/JS_GetGlobalForObject">JS_GetGlobalForObject</a>(cx, &amp;args.callee());
+    ...
+}
+</pre>
+
+<h3 id="Defining_a_function">Defining a function</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+function justForFun() {
+    return null;
+}
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+bool justForFun(JSContext *cx, unsigned argc, JS::Value *vp)
+{
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+    args.rval().setNull();
+    return true;
+}
+
+...
+
+/*
+ * Add this to your JSContext setup code.
+ * This makes your C function visible as a global function in JavaScript.
+ */
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineFunction" title="en/SpiderMonkey/JSAPI_Reference/JS_DefineFunction">JS_DefineFunction</a>(cx, global, "justForFun", &amp;justForFun, 0, 0))
+    return false;
+</pre>
+
+<p>To define many JSAPI functions at once, use <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineFunctions" title="en/SpiderMonkey/JSAPI_Reference/JS_DefineFunctions">JS_DefineFunctions</a></code>.</p>
+
+<h3 id="Creating_an_Array">Creating an Array</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var x = [];  // or "x = Array()", or "x = new Array"
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedObject x(cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewArrayObject" title="en/SpiderMonkey/JSAPI_Reference/JS_NewArrayObject">JS_NewArrayObject</a>(cx, 0));
+if (!x)
+    return false;
+</pre>
+
+<h3 id="Creating_an_Object">Creating an Object</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var x = {};  // or "x = Object()", or "x = new Object"
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedObject x(cx, <a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS_NewPlainObject">JS_NewPlainObject</a>(cx));
+// or <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewObject" title="en/SpiderMonkey/JSAPI_Reference/JS_NewObject">JS_NewObject</a>(cx, JS::NullPtr(), JS::NullPtr(), JS::NullPtr());
+if (!x)
+    return false;
+</pre>
+
+<h3 id="Constructing_an_object_with_new">Constructing an object with new</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var person = new Person("Dave", 24);
+</pre>
+
+<p>It looks so simple in JavaScript, but a JSAPI application has to do three things here:</p>
+
+<ul>
+ <li>look up the constructor, <code>Person</code></li>
+ <li>prepare the arguments <code>("Dave", 24)</code></li>
+ <li>call <a href="/en/SpiderMonkey/JSAPI_Reference/JS_New" title="en/SpiderMonkey/JSAPI_Reference/JS_New"><code>JS_New</code></a> to simulate the <code>new</code> keyword</li>
+</ul>
+
+<p>(If your constructor doesn't take any arguments, you can skip the second step and call <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_New" title="en/SpiderMonkey/JSAPI_Reference/JS_New">JS_New</a>(cx, constructor, 0, NULL)</code> in step 3.)</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+/* Step 1 - Get the value of |Person| and check that it is an object. */
+JS::RootedValue constructor_val(cx);
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_GetProperty">JS_GetProperty</a>(cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalObject" title="en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalObject">JS_GetGlobalObject</a>(cx), "Person", &amp;constructor_val))
+    return false;
+if (!constructor_val.isObject()) {
+    <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ReportError" title="en/SpiderMonkey/JSAPI_Reference/JS_ReportError">JS_ReportError</a>(cx, "Person is not a constructor");
+    return false;
+}
+JS::RootedObject constructor(cx, &amp;constructor_val.toObject());
+
+/* Step 2 - Set up the arguments. */
+JS::RootedString name_str(cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_NewStringCopyZ" title="en/SpiderMonkey/JSAPI_Reference/JS_NewStringCopyZ">JS_NewStringCopyZ</a>(cx, "Dave"));
+if (!name_str)
+    return false;
+
+JS::AutoValueArray&lt;2&gt; args(cx);
+args[0].setString(name_str);
+args[1].setInt32(24);
+
+/* Step 3 - Call |new Person(...args)|, passing the arguments. */
+JS::RootedObject obj(cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_New" title="en/SpiderMonkey/JSAPI_Reference/JS_New">JS_New</a>(cx, constructor, args));
+if (!obj)
+    return false;
+</pre>
+
+<h3 id="Calling_a_global_JS_function">Calling a global JS function</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var r = foo();  // where f is a global function
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong>
+ *
+ * Suppose the script defines a global JavaScript
+ * function foo() and we want to call it from C.
+ */
+JS::RootedValue r(cx);
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionName" title="en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionName">JS_CallFunctionName</a>(cx, <a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalObject" title="en/SpiderMonkey/JSAPI_Reference/JS_GetGlobalObject">JS_GetGlobalObject</a>(cx), "foo", 0, NULL, &amp;r))
+   return false;
+</pre>
+
+<h3 id="Calling_a_JS_function_via_a_local_variable">Calling a JS function via a local variable</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var r = f();  // where f is a local variable
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong>
+ *
+ * Suppose f is a local C variable of type JS::Value.
+ */
+JS::AutoValueVector args(cx);  // empty argument list
+JS::RootedValue r(cx);
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionValue" title="en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionValue">JS_CallFunctionValue</a>(cx, NULL, f, args, &amp;r)
+    return false;
+</pre>
+
+<h3 id="Returning_an_integer" name="Returning_an_integer">Returning an integer</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+return 23;
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong>
+ *
+ * Warning: This only works for integers that fit in 32 bits.
+ * Otherwise, convert the number to floating point (see the next example).
+ */
+JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+args.rval().setInt32(23);
+return true;
+</pre>
+
+<h3 id="Returning_a_floating-point_number" name="Returning_a_floating-point_number">Returning a floating-point number</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+return 3.14159;
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+args.rval().setDouble(3.14159);
+</pre>
+
+<h2 id="Exception_handling" name="Exception_handling">Exception handling</h2>
+
+<h3 id="throw" name="throw"><code>throw</code></h3>
+
+<p>The most common idiom is to create a new <code>Error</code> object and throw that. <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ReportError" title="en/SpiderMonkey/JSAPI_Reference/JS_ReportError"><code>JS_ReportError</code></a> does this. Note that JavaScript exceptions are not the same thing as C++ exceptions. The JSAPI code also has to return <code>false</code> to signal failure to the caller.</p>
+
+<pre>// <strong>JavaScript</strong>
+throw new Error("Failed to grow " + varietal + ": too many greenflies.");
+</pre>
+
+<pre>/* <strong>JSAPI</strong> */
+<a>JS_ReportError</a>(cx, "Failed to grow %s: too many greenflies.", varietal);
+return false;
+</pre>
+
+<p>To internationalize your error messages, and to throw other error types, such as <code>SyntaxError</code> or <code>TypeError</code>, use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ReportErrorNumber" title="en/SpiderMonkey/JSAPI_Reference/JS_ReportErrorNumber"><code>JS_ReportErrorNumber</code></a> instead.</p>
+
+<p>JavaScript also supports throwing any value at all, not just <code>Error</code> objects. Use <a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException" title="en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException"><code>JS_SetPendingException</code></a> to throw an arbitrary <code>JS::Value</code> from C/C++.</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+throw exc;
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+<a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException" title="en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException">JS_SetPendingException</a>(cx, exc);
+return false;
+</pre>
+
+<p>When <code>JS_ReportError</code> creates a new <code>Error</code> object, it sets the <code>fileName</code> and <code>lineNumber</code> properties to the line of JavaScript code currently at the top of the stack. This is usually the line of code that called your native function, so it's usually what you want. JSAPI code can override this by creating the <code>Error</code> object directly and passing additional arguments to the constructor:</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+throw new Error(message, filename, lineno);
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+bool ThrowError(JSContext *cx, JSObject *global,
+                const char *message, const char *filename, int32 lineno)
+{
+    JSString *messageStr;
+    JSString *filenameStr;
+    JS::Value args[3];
+    JS::Value exc;
+
+    messageStr = JS_NewStringCopyZ(cx, message);
+    if (!messageStr)
+        return false;
+    filenameStr = JS_NewStringCopyZ(cx, filename);
+    if (!filenameStr)
+        return false;
+
+    args[0] = STRING_TO_JSVAL(messageStr);
+    args[1] = STRING_TO_JSVAL(filenameStr);
+    args[2] = INT_TO_JSVAL(lineno);
+    if (<a href="/en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionName" title="en/SpiderMonkey/JSAPI_Reference/JS_CallFunctionName">JS_CallFunctionName</a>(cx, global, "Error", 3, args, &amp;exc))
+        <a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException" title="en/SpiderMonkey/JSAPI_Reference/JS_SetPendingException">JS_SetPendingException</a>(cx, exc);
+    return false;
+}
+
+...
+
+return ThrowError(cx, global, message, __FILE__, __LINE__);
+</pre>
+
+<p>The JSAPI code here is actually simulating <code>throw Error(message)</code> without the <code>new</code>, as <code>new</code> is a bit harder to simulate using the JSAPI. In this case, unless the script has redefined <code>Error</code>, it amounts to the same thing.</p>
+
+<h3 id="catch" name="catch"><code>catch</code></h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+try {
+    // try some stuff here; for example:
+    foo();
+    bar();
+} catch (exc) {
+    // do error-handling stuff here
+}
+</pre>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+    /* try some stuff here; for example: */
+    if (!JS_CallFunctionName(cx, global, "foo", 0, NULL, &amp;r))
+        goto catch_block;  /* instead of returning false */
+    if (!JS_CallFunctionName(cx, global, "bar", 0, NULL, &amp;r))
+        goto catch_block;  /* instead of returning false */
+    return true;
+
+catch_block:
+    js::RootedValue exc(cx);
+    if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetPendingException" title="en/SpiderMonkey/JSAPI_Reference/JS_GetPendingException">JS_GetPendingException</a>(cx, &amp;exc))
+        return false;
+    <a href="/en/SpiderMonkey/JSAPI_Reference/JS_ClearPendingException" title="en/SpiderMonkey/JSAPI_Reference/JS_ClearPendingException">JS_ClearPendingException</a>(cx);
+    /* do error-handling stuff here */
+    return true;
+</pre>
+
+<h3 id="finally" name="finally"><code>finally</code></h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+try {
+   foo();
+   bar();
+} finally {
+   cleanup();
+}
+</pre>
+
+<p>If your C/C++ cleanup code doesn't call back into the JSAPI, this is straightforward:</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+    bool success = false;
+
+    if (!JS_CallFunctionName(cx, global, "foo", 0, NULL, &amp;r))
+        goto finally_block;  /* instead of returning false immediately */
+    if (!JS_CallFunctionName(cx, global, "bar", 0, NULL, &amp;r))
+        goto finally_block;
+    success = true;
+    /* Intentionally fall through to the finally block. */
+
+finally_block:
+    cleanup();
+    return success;
+</pre>
+
+<p>However, if <code>cleanup()</code> is actually a JavaScript function, there's a catch. When an error occurs, the <code>JSContext</code>'s <em>pending exception</em> is set. If this happens in <code>foo()</code> or <code>bar()</code> in the above example, the pending exception will still be set when you call <code>cleanup()</code>, which would be bad. To avoid this, your JSAPI code implementing the <code>finally</code> block must:</p>
+
+<ul>
+ <li>save the old exception, if any</li>
+ <li>clear the pending exception so that your cleanup code can run</li>
+ <li>do your cleanup</li>
+ <li>restore the old exception, if any</li>
+ <li>return <code>false</code> if an exception occurred, so that the exception is propagated up.</li>
+</ul>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+    bool success = false;
+
+    if (!JS_CallFunctionName(cx, global, "foo", 0, NULL, &amp;r))
+        goto finally_block;  /* instead of returning false immediately */
+    if (!JS_CallFunctionName(cx, global, "bar", 0, NULL, &amp;r))
+        goto finally_block;
+    success = true;
+    /* Intentionally fall through to the finally block. */
+
+finally_block:
+    /*
+     * Temporarily set aside any exception currently pending.
+     * It will be automatically restored when we return, unless we call savedState.drop().
+     */
+    JS::AutoSaveExceptionState savedState(cx);
+
+    if (!JS_CallFunctionName(cx, global, "cleanup", 0, NULL, &amp;r)) {
+        /* The new error replaces the previous one, so discard the saved exception state. */
+        savedState.drop();
+        return false;
+    }
+    return success;
+</pre>
+
+<h2 id="Object_properties" name="Object_properties">Object properties</h2>
+
+<h3 id="Getting_a_property" name="Getting_a_property">Getting a property</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+var x = y.myprop;
+</pre>
+
+<p>The JSAPI function that does this is <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_GetProperty">JS_GetProperty</a></code>. It requires a <code>JSObject *</code> argument. Since JavaScript values are usually stored in <code>JS::Value</code> variables, a cast or conversion is usually needed.</p>
+
+<p>In cases where it is certain that <code>y</code> is an object (that is, not a boolean, number, string, <code>null</code>, or <code>undefined</code>), this is fairly straightforward. Use <code><a href="/en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_OBJECT" title="en/SpiderMonkey/JSAPI_Reference/JSVAL_TO_OBJECT">JSVAL_TO_OBJECT</a></code> to cast <code>y</code> to type <code>JSObject *</code>.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedValue x(cx);
+
+assert(y.isObject());
+JS::RootedObject yobj(cx, &amp;y.toObject());
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_GetProperty">JS_GetProperty</a>(cx, yobj, "myprop", &amp;x))
+    return false;
+</pre>
+
+<p>That code will crash if <code>y</code> is not an object. That's often unacceptable. An alternative would be to simulate the behavior of the JavaScript <code>.</code> notation exactly. It's a nice thought—JavaScript wouldn't crash, at least—but implementing its exact behavior turns out to be quite complicated, and most of the work is not particularly helpful.</p>
+
+<p>Usually it is best to check for <code>!y.isObject()</code> and throw an <code>Error</code> with a nice message.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JS::RootedValue x(cx);
+
+if (!y.isObject())
+    return ThrowError(cx, global, "Parameter y must be an object.", __FILE__, __LINE__);  /* see the <a href="#throw">#throw</a> example */
+JS::RootedObject yobj(cx, &amp;y.toObject());
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_GetProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_GetProperty">JS_GetProperty</a>(cx, yobj, "myprop", &amp;x))
+    return false;
+</pre>
+
+<h3 id="Setting_a_property" name="Setting_a_property">Setting a property</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+y.myprop = x;
+</pre>
+
+<p>See "Getting a property", above, concerning the case where <code>y</code> is not an object.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+assert(y.isObject());
+JS::RootedObject yobj(cx, &amp;y.toObject());
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_SetProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_SetProperty">JS_SetProperty</a>(cx, yobj, "myprop", &amp;x))
+    return false;
+</pre>
+
+<h3 id="Checking_for_a_property" name="Checking_for_a_property">Checking for a property</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+if ("myprop" in y) {
+    // then do something
+}
+</pre>
+
+<p>See "Getting a property", above, concerning the case where <code>y</code> is not an object.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+bool found;
+
+assert(y.isObject());
+JS::RootedObject yobj(cx, &amp;y.toObject());
+if (!<a href="/en/SpiderMonkey/JSAPI_Reference/JS_HasProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_HasProperty">JS_HasProperty</a>(cx, yobj, "myprop", &amp;found))
+    return false;
+if (found) {
+    // then do something
+}
+</pre>
+
+<h3 id="Defining_a_constant_property">Defining a constant property</h3>
+
+<p>This is the first of three examples involving the built-in function <code>Object.defineProperty()</code>, which gives JavaScript code fine-grained control over the behavior of individual properties of any object.</p>
+
+<p>You can use this function to create a constant property, one that can't be overwritten or deleted. Specify <code>writable: false</code> to make the property read-only and <code>configurable: false</code> to prevent it from being deleted or redefined. The flag <code>enumerable: true</code> causes this property to be seen by for-in loops.</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+Object.defineProperty(obj, "prop", {value: 123,
+                                    writable: false,
+                                    enumerable: true,
+                                    configurable: false});
+</pre>
+
+<p>The analogous JSAPI function is <code><a href="/en/SpiderMonkey/JSAPI_Reference/JS_DefineProperty" title="en/SpiderMonkey/JSAPI_Reference/JS_DefineProperty">JS_DefineProperty</a></code>. The property attribute <code>JSPROP_READONLY</code> corresponds to <code>writeable: false</code>, <code>JSPROP_ENUMERATE</code> to <code>enumerable: true</code>, and <code>JSPROP_PERMANENT</code> to <code>configurable: false</code>. To get the opposite behavior for any of these settings, simply omit the property attribute bits you don't want.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+if (!JS_DefineProperty(cx, obj, "prop", INT_TO_JSVAL(123),
+                       JS_PropertyStub, JS_StrictPropertyStub,
+                       JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT)) {
+   return false;
+}
+</pre>
+
+<h3 id="Defining_a_property_with_a_getter_and_setter">Defining a property with a getter and setter</h3>
+
+<p><code>Object.defineProperty()</code> can be used to define properties in terms of two accessor functions.</p>
+
+<pre class="eval">// <strong>JavaScript</strong>
+Object.defineProperty(obj, "prop", {get: GetPropFunc,
+                                    set: SetPropFunc,
+                                    enumerable: true});
+</pre>
+
+<p>In the JSAPI version, <code>GetPropFunc</code> and <code>SetPropFunc</code> are C/C++ functions of type <a href="/en/SpiderMonkey/JSAPI_Reference/JSNative" title="en/SpiderMonkey/JSAPI_Reference/JSNative"><code>JSNative</code></a>.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+if (!JS_DefineProperty(cx, obj, "prop", JS::UndefinedValue(),
+                       (JSPropertyOp) GetPropFunc, (JSStrictPropertyOp) SetPropFunc,
+                       JSPROP_SHARED | JSPROP_NATIVE_ACCESSORS | JSPROP_ENUMERATE)) {
+    return false;
+}
+</pre>
+
+<h3 id="Defining_a_read-only_property_with_only_a_getter">Defining a read-only property with only a getter</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+Object.defineProperty(obj, "prop", {get: GetPropFunc,
+                                    enumerable: true});
+</pre>
+
+<p>In the JSAPI version, to signify that the property is read-only, pass <code>NULL</code> for the setter.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+if (!JS_DefineProperty(cx, obj, "prop", JS::UndefinedValue(),
+                       GetPropFunc, NULL,
+                       JSPROP_SHARED | JSPROP_NATIVE_ACCESSORS | JSPROP_ENUMERATE)) {
+    return false;
+}
+</pre>
+
+<h2 id="Prototypes" name="Prototypes">Working with the prototype chain</h2>
+
+<h3 id="Defining_a_native_read-only_property_on_the_String.prototype">Defining a native read-only property on the String.prototype</h3>
+
+<pre class="eval">// <strong>JavaScript</strong>
+Object.defineProperty(String.prototype, "md5sum", {get: GetMD5Func,
+                                                   enumerable: true});
+</pre>
+
+<p>The following trick couldn't work if someone has replaced the global String object with something.</p>
+
+<pre class="eval">/* <strong>JSAPI</strong> */
+JSObject *string;
+JSObject *string_prototype;
+JS::Value val;
+
+// Get the String constructor from the global object.
+if (!JS_GetProperty(cx, global, "String", &amp;val))
+    return false;
+if (JSVAL_IS_PRIMITIVE(val))
+    return ThrowError(cx, global, "String is not an object", __FILE__, __LINE__);
+string = JSVAL_TO_OBJECT(val);
+
+// Get String.prototype.
+if (!JS_GetProperty(cx, string, "prototype", &amp;val))
+    return false;
+if (JSVAL_IS_PRIMITIVE(val))
+    return ThrowError(cx, global, "String.prototype is not an object", __FILE__, __LINE__);
+string_prototype = JSVAL_TO_OBJECT(val);
+
+// ...and now we can add some new functionality to all strings.
+if (!JS_DefineProperty(cx, string_prototype, "md5sum", JS::UndefinedValue(), GetMD5Func, NULL,
+                       JSPROP_SHARED | JSPROP_NATIVE_ACCESSORS | JSPROP_ENUMERATE))
+    return false;
+</pre>
+
+<h2 id="Wanted" name="Wanted">Wanted</h2>
+
+<ul>
+ <li>Simulating <code>for</code> and <code>for each</code>.</li>
+ <li>Actually outputting errors.</li>
+ <li>How to write your own JSClass with reserved slots.</li>
+ <li>Create global variable __dirname to retrieve the current JavaScript file name, like in NodeJS</li>
+</ul>

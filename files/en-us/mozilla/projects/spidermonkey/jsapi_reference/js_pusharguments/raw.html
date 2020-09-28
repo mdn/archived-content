@@ -1,0 +1,122 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+<p>{{ obsolete_header("js1.8.5") }}</p>
+<div class="summary">
+<p>Convert any number of arguments to <code>jsval</code>s and store the resulting <code>jsval</code>s in an array.</p>
+</div>
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+<pre class="brush: cpp">jsval *
+JS_PushArguments(JSContext *cx, void **markp, const char *format, ...);
+
+jsval *
+JS_PushArgumentsVA(JSContext *cx, void **markp, const char *format, va_list ap);
+</pre>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context in which to perform any necessary conversions.
+    <p><code>cx</code> also affects the interpretation of <code>format</code>, if {{jsapixref("JS_AddArgumentFormatter")}} has been called.</p>
+    {{ Jsapi-requires-request() }}</td>
+  </tr>
+  <tr>
+   <td><code>markp</code></td>
+   <td><code>void **</code></td>
+   <td>Out parameter. On success, <code>*markp</code> receives the internally allocated stack mark which should be passed to {{jsapixref("JS_PopArguments")}}.</td>
+  </tr>
+  <tr>
+   <td><code>format</code></td>
+   <td><code>const char *</code></td>
+   <td>Null-terminated string holding a list of format types to convert the following arguments to.</td>
+  </tr>
+  <tr>
+   <td><code>...</code></td>
+   <td>various</td>
+   <td><em>(in <code>JS_PushArguments</code>)</em> A variable number of arguments to be converted to <code>jsval</code>s. There must be one argument for each argument described in <code>format</code>.</td>
+  </tr>
+  <tr>
+   <td><code>ap</code></td>
+   <td><code>va_list</code></td>
+   <td><em>(in <code>JS_PushArgumentsVA</code>)</em> The list of arguments to be converted to <code>jsval</code>s. There must be one argument for each argument described in <code>format</code>. The type <code>va_list</code> is a standard feature of the C programming language. It is defined in <code>&lt;stdarg.h&gt;</code>.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Description" name="Description">Description</h2>
+<p><code>JS_PushArguments</code> provides a convenient way to translate a series of native C/C++ values to {{jsapixref("jsval")}}s with a single function call.</p>
+<p><code>cx</code> is the context for the call. <code>markp</code> points to a <code>void *</code> to hold the internally allocated stack frame pointer to pass back to {{jsapixref("JS_PopArguments")}}.</p>
+<p><code>format</code> is a sequential character array, where each element of the array indicates the JS type into which to convert the next C/C++ argument. <code>format</code> can contain one or more instances of the following characters, as appropriate:</p>
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Character</th>
+   <th>Argument type</th>
+  </tr>
+  <tr>
+   <td><code>b</code></td>
+   <td><code>JSBool</code></td>
+  </tr>
+  <tr>
+   <td><code>c</code></td>
+   <td><code>uint16</code> (16-bit, unsigned integer)</td>
+  </tr>
+  <tr>
+   <td><code>i</code></td>
+   <td><code>int32</code> (32-bit, ECMA-compliant signed integer)</td>
+  </tr>
+  <tr>
+   <td><code>u</code></td>
+   <td><code>uint32</code> (32-bit, ECMA-compliant, unsigned integer)</td>
+  </tr>
+  <tr>
+   <td><code>j</code></td>
+   <td><code>int32</code> (32-bit, signed integer)</td>
+  </tr>
+  <tr>
+   <td><code>d</code></td>
+   <td><code>jsdouble</code></td>
+  </tr>
+  <tr>
+   <td><code>I</code></td>
+   <td><code>jsdouble</code> (converted to an integer value)</td>
+  </tr>
+  <tr>
+   <td><code>s</code></td>
+   <td><code>char *</code> (C string)</td>
+  </tr>
+  <tr>
+   <td><code>S</code></td>
+   <td><code>JSString *</code> (Unicode string)</td>
+  </tr>
+  <tr>
+   <td><code>W</code></td>
+   <td><code>jschar *</code> (Unicode null-terminated string)</td>
+  </tr>
+  <tr>
+   <td><code>o</code></td>
+   <td><code>JSObject *</code></td>
+  </tr>
+  <tr>
+   <td><code>f</code></td>
+   <td><code>JSFunction *</code></td>
+  </tr>
+  <tr>
+   <td><code>*</code></td>
+   <td>None. Any asterisks (<code>*</code>) in <code>format</code> are ignored.</td>
+  </tr>
+ </tbody>
+</table>
+<p>This function also takes in consideration any additional custom types defined in <code>cx</code> using {{jsapixref("JS_AddArgumentFormatter")}}.</p>
+<p>For example, if <code>format</code> is <code>"bIob"</code>, then there must be four arguments after <code>format</code>. Their types must be <code>JSBool</code>, <code>jsdouble</code>, <code>JSObject *</code>, and <code>JSBool</code>. If successful, <code>JS_PushArguments</code> would return a pointer to the first element of an array of four <code>jsval</code>s: a boolean, a number, an object (or null), and a boolean.</p>
+<p>On success, <code>JS_PushArguments</code> fills in the supplied <code>markp</code> pointer and returns a pointer to the first element of an array of <code>jsval</code> which are automatically rooted as necessary (protected from the GC temporarily). The application must call {{jsapixref("JS_PopArguments")}} using the supplied <code>markp</code> stack pointer when done with this stack frame, to free the memory and unroot the <code>jsval</code>s.</p>
+<p>On error or exception, <code>JS_PushArguments</code> returns <code>NULL</code>.</p>
+<p>To perform the opposite conversion, converting an array of <code>jsval</code>s to various native C types, use {{jsapixref("JS_ConvertArguments")}}.</p>
+<h2 id="See_Also" name="See_Also">See Also</h2>
+<ul>
+<li>{{jsapixref("JS_PopArguments")}}</li>
+<li>{{bug(542091)}}</li>
+</ul>

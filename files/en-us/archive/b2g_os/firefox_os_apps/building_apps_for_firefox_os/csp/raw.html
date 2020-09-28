@@ -1,0 +1,109 @@
+<div class="summary">
+ <p>Unlike traditional web sites, <a href="/en-US/Apps/Packaged_apps">privileged and certified apps</a> enforce a <a href="/en-US/docs/Security/CSP/Introducing_Content_Security_Policy">CSP (content security policy)</a> by default. This may cause quite a bit of existing code to break while porting and cause a significant amount of confusion if developers are unaware that the CSP exists. This article explains what the CSP restrictions are for apps</p>
+</div>
+<p>If a CSP is specified in the <a href="/en-US/Apps/Manifest">App Manifest</a>, the specified CSP and the default CSP for the app's type will be merged. A specified CSP may not loosen restrictions of the default CSP. The Firefox Marketplace Validator detects violations of the CSP during the app submission process. This can be used to help find problems early in development.</p>
+<h2 id="How_to_apply_a_custom_CSP_to_your_app">How to apply a custom CSP to your app</h2>
+<p>See the <a href="/en-US/Apps/Build/Manifest#csp">App Manifest CSP section</a> for instructions, and read the <a href="/en-US/docs/Web/Security/CSP/CSP_policy_directives">CSP policy directives</a> page for a reference covering what can be included.</p>
+<h2 id="Applicable_CSP_Restrictions">Applicable CSP Restrictions</h2>
+<dl>
+ <dt>
+  Remote scripts are banned</dt>
+ <dd>
+  You cannot point a <code>&lt;script&gt;</code> at a remote JavaScript file. This means that all JS files that you reference must be included in your app's package.</dd>
+ <dt>
+  Inline scripts are banned</dt>
+ <dd>
+  You cannot include scripts inline in your HTML. All <code>&lt;script&gt;</code> tags must have an <code>src=""</code> attribute. You may not use script attributes like <code>onclick=""</code> or <code>onload=""</code>. You may not create <code>&lt;script&gt;</code> tags dynamically and assign content to their <code>innerHTML</code> property.</dd>
+ <dt>
+  <code>javascript:</code> URIs are banned</dt>
+ <dd>
+  URIs like <code>&lt;a href="javascript:alert('foo')"&gt;</code> will not execute.</dd>
+ <dt>
+  <code>eval</code> is disallowed</dt>
+ <dd>
+  You may not use the <code>eval()</code> function or the <code>eval</code> operator. Both will throw security errors.</dd>
+ <dt>
+  The function constructor is banned</dt>
+ <dd>
+  You may not use the <code>Function()</code> constructor. Using it will throw a security error.</dd>
+ <dt>
+  Dynamic code execution with <code>setTimeout</code> and <code>setInterval</code> is banned</dt>
+ <dd>
+  You MUST pass callable objects (i.e.: functions) to the <code>setTimeout</code> and <code>setInterval</code> functions. Passing strings will not create the timer and the function will return <code>0</code>.</dd>
+ <dt>
+  Remote Web Workers are disallowed</dt>
+ <dd>
+  If a <a href="/en-US/docs/Web/API/Worker" title="The Worker interface of the Web Workers API represents a background task that can be easily created and can send messages back to its creator. Creating a worker is as simple as calling the Worker() constructor and specifying a script to be run in the worker thread."><code>Worker</code></a> or <a href="/en-US/docs/Web/API/SharedWorker" title="The SharedWorker interface represents a specific kind of worker that can be accessed from several browsing contexts, such as several windows, iframes or even workers. They implement an interface different than dedicated workers and have a different global scope, SharedWorkerGlobalScope."><code>SharedWorker</code></a> is created with a remote URL, it will behave as though the remote server responded with a <code>400</code> error.</dd>
+ <dt>
+  Script tags may not be created with remote URLs</dt>
+ <dd>
+  If a <code>&lt;script&gt;</code> tag is created via <code>document.createElement()</code>, setting its <code>src</code> attribute to a remote URL will cause it to behave as though the remote server responded with a <code>400</code> error.</dd>
+ <dt>
+  Plugins are banned</dt>
+ <dd>
+  The use of the <code>&lt;object&gt;</code> and <code>&lt;embed&gt;</code> tags is disallowed. Java, Unity, Silverlight, Flash, or Shockwave may not be used.</dd>
+ <dt>
+  Remote styles are banned</dt>
+ <dd>
+  All <code>&lt;link rel="stylesheet" href="..."&gt;</code> tags must link to files in your app's package. Inline style tags and attributes (<code>&lt;style&gt;</code> and <code>style=""</code>) are allowed, however, for privileged apps.</dd>
+</dl>
+<h2 id="Certified_App_Restrictions">Certified App Restrictions</h2>
+<p>Certified apps are subject to additional restrictions.</p>
+<dl>
+ <dt>
+  Inline styles are banned</dt>
+ <dd>
+  <code>&lt;style&gt;</code> and <code>style=""</code> are both banned.</dd>
+</dl>
+<h2 id="Default_Policies">Default Policies</h2>
+<p>The default policies for apps are as follows:</p>
+<dl>
+ <dt>
+  Privileged CSP</dt>
+ <dd>
+  <pre>default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'</pre>
+ </dd>
+ <dt>
+  Certified CSP</dt>
+ <dd>
+  <pre>default-src *; script-src 'self'; object-src 'none'; style-src 'self'</pre>
+ </dd>
+</dl>
+<h2 id="Common_Problems_and_Frequently_Asked_Questions">Common Problems and Frequently Asked Questions</h2>
+<dl>
+ <dt>
+  My privileged app is raising errors when I try to use jQuery.</dt>
+ <dd>
+  If your app links to the jQuery CDN, your code violates the CSP. Make sure you include your copy of jQuery inside your package, and link to it with the <code>src=""</code> attribute on the script tag.</dd>
+ <dt>
+  My templates aren't being rendered in my privileged packaged app.</dt>
+ <dd>
+  If you're using a client-side templating library (such as Mustache or Nunjucks), you must ensure that you're precompiling your templates. This means that you must run a script to compile your templates from HTML to JavaScript before packaging your app. Privileged apps cannot use remote loaders that download and compile templates on the fly because the compiler uses <code>eval()</code> or <code>new Function()</code>.</dd>
+ <dt>
+  I set the CSP in my manifest to allow the use of [feature], but it still doesn't work.</dt>
+ <dd>
+  You cannot loosen the default restrictions on privileged or certified packaged apps. The <a href="/en-US/Apps/Developing/Manifest#csp">CSP field in the app manifest</a> can only be used to tighten the CSP, not loosen it.</dd>
+ <dt>
+  When I use certain jQuery methods, they don't work as expected. Why?</dt>
+ <dd>
+  Some jQuery methods--such as those that load JSON-P and remote HTML--can violate the CSP. Code loaded via JSON-P injects a script tag onto the current page, which violates the CSP. You should use <a href="/en-US/docs/HTTP/Access_control_CORS">CORS</a>-enabled APIs instead of JSON-P. jQuery will also try to download and execute remote scripts when using methods like <code>load()</code> and <code>html()</code>, which will also violate the CSP by creating <code>&lt;script&gt;</code> tags.</dd>
+ <dt>
+  I need to run code that is loaded from an external domain, but can't because it's blocked by the CSP.</dt>
+ <dd>
+  Try loading the code inside a remote or <code>data:</code>-URI <code>&lt;iframe&gt;</code> instead, and use <a href="/en-US/docs/Web/API/Window/postMessage" title="The window.postMessage() method safely enables cross-origin communication. Normally, scripts on different pages are allowed to access each other if and only if the pages that executed them are at locations with the same protocol (usually both https), port number (443 being the default for https), and host (modulo Document.domain being set by both pages to the same value). window.postMessage() provides a controlled mechanism to circumvent this restriction in a way which is secure when properly used."><code>postMessage()</code></a> to send and receive messages to the script. Iframes that do not share your app's origin are not subject to the CSP.</dd>
+ <dt>
+  Why don't my click or hover events fire?</dt>
+ <dd>
+  If you're setting click or mouse event handlers with <code>onclick=""</code> or <code>onmouseover=""</code>, your code violates the CSP. You cannot set event attributes in a privileged packaged app. You should use <a href="/en-US/docs/Web/API/EventTarget/addEventListener" title="The EventTarget.addEventListener() method adds the specified EventListener-compatible object to the list of event listeners for the specified event type on the EventTarget on which it is called. The event target may be an Element in a document, the Document itself, a Window, or any other object that supports events (such as XMLHttpRequest)."><code>addEventListener()</code></a> instead.</dd>
+ <dt>
+  When I submit my packaged app to the Marketplace, I get a lot of CSP warnings. Why?</dt>
+ <dd>
+  The Marketplace's validator tries to detect code which would otherwise violate the CSP. It produces these warnings whether your app is privileged or not. These are intended to help point out potential CSP violations to developers and Marketplace reviewers. In many cases, the CSP warnings are false positives, but can also provide useful feedback for improving your app's code. CSP violations sometimes indicate a lax coding style and can be used as a means of checking your work.<br>
+  <br>
+  CSP warnings in the validator will NOT impact whether your app is accepted into the Marketplace. If your app is privileged and it does violate the CSP, however, you will be asked to fix this issue before your app is accepted.</dd>
+</dl>
+<h2 id="Related_Links">Related Links</h2>
+<ul>
+ <li><a href="http://www.w3.org/TR/CSP/">CSP Syntax</a></li>
+ <li><a href="/en-US/Apps/Manifest">App Manifest</a></li>
+</ul>

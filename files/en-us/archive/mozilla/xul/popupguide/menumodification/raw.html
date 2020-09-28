@@ -1,0 +1,93 @@
+<h3 id="Modifying_a_Menu" name="Modifying_a_Menu">Modifying a Menu</h3>
+
+<p>Menus have a number of methods which may be used to add and remove items.</p>
+
+<h4 id="Adding_Items_to_a_Menu" name="Adding_Items_to_a_Menu">Adding Items to a Menu</h4>
+
+<p>The <span id="m-appendItem"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/appendItem">appendItem</a></code></span> method may be used to append a new item to the end of the popup associated with a menu. This method will create a new menuitem element and insert it into the popup. This method may only be used with the menu element.</p>
+
+<pre>&lt;script&gt;
+function addToMenu()
+{
+  var menu = document.getElementById("edit-menu");
+  menu.appendItem("Insert", "insert");
+}
+&lt;/script&gt;
+
+&lt;menu id="edit-menu"/&gt;
+&lt;button label="Add" oncommand="addToMenu()"/&gt;
+</pre>
+
+<p>In this example, the addToMenu function is called when the button is pressed. This function appends a new item to the menu's popup with the label Insert. The first argument to appendItem is the label of the menuitem, and the second argument is a value to associate with the item. This value be set as the menuitem's <code id="a-value"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/value">value</a></code> attribute and can be used for whatever purpose is desired. Note how in this example, the menu does not have a child menupopup. The <span id="m-appendItem"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/appendItem">appendItem</a></code></span> method will create a <code><a href="/en-US/docs/Mozilla/Tech/XUL/menupopup" title="menupopup">menupopup</a></code> element if it doesn't already exist. If the menu already has a menupopup, the new menuitem will be appended to this existing one.</p>
+
+<p>While the <code>appendItem</code> method always adds the new item to the end of the menu, the <span id="m-insertItemAt"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/insertItemAt">insertItemAt</a></code></span> method may be used in a similar fashion to insert an item into the menu elsewhere.</p>
+
+<pre>menu.insertItemAt(0, "Delete", "delete");
+</pre>
+
+<p>In this example, the <code>insertItemAt</code> method is used to insert a new 'Delete' item at the beginning of the menu's popup. The first argument is the index where the new item should be inserted. In this case, 0 is supplied as the index, which means before the first item. Indicies are counted starting at 0, so to insert an item before the fourth item pass 3 as the argument. The second and third arguments to insertItemAt are the label and value for the new item, as with appendItem.</p>
+
+<p>Both the <code>appendItem</code> and <code>insertItemAt</code> methods return the new menuitem, so you can further modify it, for instance to add an access key, as in the following example:</p>
+
+<pre>var item = menu.appendItem("Insert", "insert");
+item.accessKey = "I";
+</pre>
+
+<h4 id="Appending_Submenus" name="Appending_Submenus">Appending Submenus</h4>
+
+<p>There is no built-in method to append submenus to a menu. To do this, we instead need to use the inherited node modification methods available for all elements. First, we need to retrieve the menupopup for the menu, and then use the <a href="en/DOM/element.appendChild">appendChild</a> method to append a new item.</p>
+
+<pre>&lt;script&gt;
+function addSubMenu()
+{
+  var popup = document.getElementById("file-popup");
+  var newmenu = document.createElement("menu");
+  popup.appendChild(newmenu);
+  newmenu.label = "New";
+  newmenu.appendItem("Document", "doc");
+  newmenu.appendItem("Image", "image");
+}
+&lt;/script&gt;
+
+&lt;menu label="File" onpopupshowing="addSubMenu()"&gt;
+  &lt;menupopup id="file-popup"/&gt;
+&lt;/menu&gt;.
+</pre>
+
+<p>Comment: appendItem not working in TB 52.7.0. Workaround: add menupopup to menu. Then add menuitem to menupopup (all with appendChild to their parentelement). Also, need replace newmenu.label= "New" by  newmenu.setAttribute("label", "New"); (all when creating from bootstrap.js in a bootstrapped addon)</p>
+
+<p>The <code>addSubMenu</code> function is called during the popupshowing event, which will be fired when an attempt to open the menu is made. This function retrieves a reference to the popup with the id 'file-popup'. A new element is created using the createElement method. The <a href="en/DOM/document.createElement">createElement</a> method takes one argument, the tag of the element to create. This menu is created and appended to the popup. The label is set appropriately, and now, as we have a menu, we can use the <span id="m-appendItem"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/appendItem">appendItem</a></code></span> method to append two items to the submenu. The effect is that a submenu with two items is added dynamically to the menu.</p>
+
+<p>The <code>appendChild</code> method is available for all elements, and is used to add new nodes within another node. The <code>appendItem</code> method is specific to menus, as well as some other specific elements, and is simpler to use to append new <code><a href="/en-US/docs/Mozilla/Tech/XUL/menuitem" title="menuitem">menuitem</a></code> elements to a menu.</p>
+
+<p>If we were to use the example above, we would also want to make sure to remove the items again in a popuphiding event listener. Otherwise, a new submenu would be added every time the menu is opened, which is clearly not desirable. Another possibility is to ensure that the menu is only added once. The following shows how the <code>addSubMenu</code> function above might be rewritten to handle this case.</p>
+
+<pre>&lt;script&gt;
+function addSubMenu()
+{
+  var popup = document.getElementById("file-popup");
+  if (popup.hasChildNodes())
+    return;
+
+  var newmenu = document.createElement("menu");
+  popup.appendChild(newmenu);
+  newmenu.label = "New";
+  newmenu.appendItem("Document", "doc");
+  newmenu.appendItem("Image", "image");
+}
+&lt;/script&gt;
+</pre>
+
+<p>The <code>hasChildNodes</code> method may be used to check if a node has any children. The first time the function is called, the <a href="en/DOM/element.hasChildNodes">hasChildNodes</a> method will return false, however the second time, the method will return true as the items have already been added to the menu.</p>
+
+<h4 id="Removing_Items_from_a_Menu" name="Removing_Items_from_a_Menu">Removing Items from a Menu</h4>
+
+<p>To remove an item from the menu, use the <span id="m-removeItemAt"><code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Method/removeItemAt">removeItemAt</a></code></span> method. It takes a single argument, the index of the item to remove. In this example, an item is appended to a menu, and then immediately removed again.</p>
+
+<pre>menu.appendItem("Open", "");
+menu.removeItemAt(menu.itemCount - 1);
+</pre>
+
+<p>The <code><span><a href="https://developer.mozilla.org/en-US/docs/XUL/Property/itemCount">itemCount</a></span></code> property holds the number of items within the menu.</p>
+
+<p>To remove all of the items from a menu, you may wish to simply remove the <code><a href="/en-US/docs/Mozilla/Tech/XUL/menupopup" title="menupopup">menupopup</a></code> directly, instead of removing each item individually.</p>

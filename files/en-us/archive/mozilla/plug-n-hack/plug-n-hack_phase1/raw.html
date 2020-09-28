@@ -1,0 +1,55 @@
+<p>Plug-n-Hack (PnH) phase 1 allows easier integration and defines how security tools can advertise their capabilities to browsers.</p>
+<h2 id="Security_tool_manifest">Security tool manifest</h2>
+<p>To support PnH-1 security tools provide a manifest over HTTP(S) which defines the capabilities that the browser can make use of.<br>
+  It is up to the tool authors to decide how the URL of the manifest is published.<br>
+  <br>
+  The tool configures itself by serving an HTML document (we’ll call this the Configuration Document) to the browser. This can cause the browser to inspect the manifest and register the tool by firing a CustomEvent with the type ConfigureSecTool and a properties object which specifies the URL of the tool manifest. For example:</p>
+<pre>var manifest = {"detail":{"url":"http://localhost:8080/manifest"}};
+var evt = new CustomEvent('ConfigureSecTool', manifest);</pre>
+<p>It is suggested that browsers wishing to support PnH restrict handling of CustomEvents such that they’re ignored where the event happens outside of user initiated actions.<br>
+  <br>
+  The Configuration Document should then listen for a number of other events:</p>
+<ul>
+  <li><strong>ConfigureSecToolStarted</strong> - this notifies the document that the browser is processing the configuration; if this event is not received within a reasonable amount of time after the ConfigureSecTool event has been fired, you might want to warn the user that PnH does not seem to be supported by this browser (perhaps prompting them to install the appropriate addon).</li>
+  <li><strong>ConfigureSecToolFailed</strong> - this notifies the document that configuration has failed for some reason. The user should be notified that configuration has failed.</li>
+  <li><strong>ConfigureSecToolSucceeded</strong> - this notifies the document that configuration has succeeded. The user can be given a message to this effect.</li>
+  <li><strong>ConfigureSecToolActivated</strong> - this notifies the document that PnH support (perhaps previously unavailable, e.g. due to a missing addon) has been enabled.</li>
+</ul>
+<p>You can see an <a href="https://code.google.com/p/zap-extensions/source/browse/branches/beta/src/org/zaproxy/zap/extension/plugnhack/resource/welcome.html" title="https://code.google.com/p/zap-extensions/source/browse/branches/beta/src/org/zaproxy/zap/extension/plugnhack/resource/service.json">example of a configuration document</a> in the ZAP PnH addon. There’s another (possibly out of date) example <a href="https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2Fmozmark%2Fringleader%2Fblob%2Fmaster%2Fdoc%2Fprovider_sample.html&amp;sa=D&amp;sntz=1&amp;usg=AFQjCNEXjMFmiRdOMbldkgLUab3PJUdL4w" title="https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2Fmozmark%2Fringleader%2Fblob%2Fmaster%2Fdoc%2Fprovider_sample.html&amp;sa=D&amp;sntz=1&amp;usg=AFQjCNEXjMFmiRdOMbldkgLUab3PJUdL4w">here</a>.<br>
+   </p>
+<p>An example manifest (for OWASP ZAP) is:</p>
+<pre>{
+  "toolName":"OWASP ZAP",
+  "protocolVersion":"0.2",
+  "features":{
+    "proxy":{
+      "PAC":"http://localhost:8080/proxy.pac",
+      "CACert":"http://localhost:8080/OTHER/core/other/rootcert/"
+    },
+    "commands":{
+      "prefix":"zap",
+      "manifest":"http://localhost:8080/OTHER/mitm/other/service/"
+    }
+  }
+}</pre>
+<p>The top level manifest includes optional links to a proxy PAC and a root CA certificate.</p>
+<p>It also optionally links to another manifest which describes the commands the browser can invoke.</p>
+<h2 id="Serving_manifests_from_outside_of_your_tool">Serving manifests from outside of your tool</h2>
+<p>You may want to serve manifests from a separate webserver (e.g. for testing); Plug-n-hack requires tool and service manifests to be served from the same origin as the API endpoints but, for testing purposes, Ringleader (the Firefox addon implementation of the browser component) allows you to set a preference to relax or disable origin checks. The preference is</p>
+<pre><code>ringleader.check.origin</code></pre>
+<p>This can be set to 'off' to disble origin checks completely, or 'noport' to disable only port checks.</p>
+<h2 id="Security_tool_commands_manifest">Security tool commands manifest</h2>
+<p>An example commands manifest (for OWASP ZAP) is: <a href="https://code.google.com/p/zap-extensions/source/browse/branches/beta/src/org/zaproxy/zap/extension/plugnhack/resource/service.json" title="https://code.google.com/p/zap-extensions/source/browse/branches/beta/src/org/zaproxy/zap/extension/plugnhack/resource/service.json">https://code.google.com/p/zap-extensions/source/browse/branches/beta/src/org/zaproxy/zap/extension/plugnhack/resource/service.json</a></p>
+<h2 id="Firefox_UI">Firefox UI</h2>
+<p>In Firefox the tool commands will be made available via the Developer Toolbar (GCLI) <a href="https://developer.mozilla.org/en-US/docs/Tools/GCLI" rel="nofollow">https://developer.mozilla.org/en-US/docs/Tools/GCLI</a></p>
+<p>A example of how the ZAP commands are currently displayed is:</p>
+<p><img alt="" src="https://lh6.googleusercontent.com/Zfp0TAfswgxVDrm2Ex5i0tXmD3aPJW38WGZR-ViYHNd-UVmQ8no-hQlaSTSNXagMjQk_YFN0tEbPLf4tu2QS1KFrld89DiSjIRu7E9Y_3BTImlp05x-jVYPfgA"></p>
+<p>Note that user specified parameters can be specified for commands, which can either be free text, a static pull down list of options or a dynamic list of options obtained from the tool on demand.</p>
+<p>So if you select the “zap scan” command then you will be prompted to select a site from the list of sites currently known to ZAP.</p>
+<p>PnH does not specify how tool commands should be displayed, so other browsers are free to display them in different ways.</p>
+<dl>
+  <dt>
+    Related links</dt>
+  <dd>
+    <a href="https://developer.mozilla.org/en-US/docs/Plug-n-Hack" title="/en-US/docs/Zest">Plug-n-Hack Overview</a></dd>
+</dl>

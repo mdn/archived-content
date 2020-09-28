@@ -1,0 +1,118 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ obsolete_header("jsapi30") }}</p>
+
+<p>{{ jsapi_minversion_header("1.8.5") }}</p>
+
+<div class="summary">
+<p>Set a callback function that is automatically called periodically while JavaScript code runs. These methods/types are renamed to {{jsapixref("JS_SetInterruptCallback", "JS_SetInterruptCallback, JS_GetInterruptCallback, JS_RequestInterruptCallback and JSInterruptCallback")}} in SpiderMonkey 30.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">void
+JS_SetOperationCallback(JSContext *cx, JSOperationCallback callback);
+
+JSOperationCallback
+JS_GetOperationCallback(JSContext *cx);
+
+void
+JS_TriggerOperationCallback(JSRuntime *rt);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>A context.</td>
+  </tr>
+  <tr>
+   <td><code>rt</code></td>
+   <td>{{jsapixref("JSRuntime", "JSRuntime *")}}</td>
+   <td>The runtime.</td>
+  </tr>
+  <tr>
+   <td><code>callback</code></td>
+   <td>{{jsapixref("JSOperationCallback")}}</td>
+   <td><em>(only in <code>JS_SetOperationCallback</code></em><em>)</em> The callback function to install.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Callback_syntax" name="Callback_syntax">Callback syntax</h3>
+
+<pre class="brush: cpp">JSBool
+(*JSOperationCallback)(JSContext *cx);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>
+    <p>Pointer to a <code>JSContext</code> in which this callback was installed.  The callback may use this context to call JSAPI functions, but it should first use <code>JS_SetOperationCallback</code> to set the context's operation callback to NULL. Otherwise the engine may call the operation callback again, reentering it.</p>
+
+    <p>Provides request. <em>In <code><a href="/en-US/docs/JS_THREADSAFE#Requests">JS_THREADSAFE</a></code> builds, the JavaScript engine calls this callback only from within an active request on <code>cx</code>.  The callback does not need to call <code>JS_BeginRequest()</code>).</em></p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<div class="note">
+<p>Applications must not use both the operation callback API and the older {{jsapixref("JS_SetBranchCallback", "branch callback", "", 1)}} API.</p>
+</div>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p>These functions allow setting an operation callback that will be called from the JS thread some time after any thread triggered the callback using <code>JS_TriggerOperationCallback</code>.<br>
+ To schedule the GC and for other activities the engine internally triggers operation callbacks. The embedding should thus not rely on callbacks being triggered through the external API only.</p>
+
+<div class="note">
+<p>Important note: Additional callbacks can occur inside the callback handler if it re-enters the JS engine. The embedding must ensure that the callback is disconnected before attempting such re-entry.</p>
+</div>
+
+<p><strong><code>JS_SetOperationCallback</code></strong> sets a callback that can be called asynchronously. Some common uses for an operation callback are:</p>
+
+<ul>
+ <li>To run garbage collection periodically, by calling {{jsapixref("JS_MaybeGC")}};</li>
+ <li>To periodically take a break from script execution to update the UI (though note that Mozilla does not do this, by design);</li>
+ <li>To enforce application limits on the amount of time a script may run. (In this case, the callback may terminate the script by returning <code>JS_FALSE</code>.)</li>
+</ul>
+
+<p><strong><code>JS_GetOperationCallback</code></strong> returns the currently installed operation callback, or <code>NULL</code> if none is currently installed.</p>
+
+<p><strong>JS_TriggerOperationCallback </strong>triggers a callback set using <code>JS_SetOperationCallback</code><strong><code>.</code></strong></p>
+
+<p><strong><code>JS_ClearOperationCallback</code></strong> clears the current operation callback. {{ obsolete_inline("js1.9.1") }}</p>
+
+<p><code><strong>JS_SetOperationCallbackFunction</strong></code> sets the operation callback without changing the operation limit. {{ obsolete_inline("js1.9.1") }}</p>
+
+<p><strong><code>JS_GetOperationLimit</code></strong> returns the current operation limit, or <code>JS_MAX_OPERATION_LIMIT</code> if no operation callback is currently installed. {{ obsolete_inline("js1.9.1") }}</p>
+
+<p><strong><code>JS_SetOperationLimit</code></strong> sets the operation limit without changing the operation callback. It must be called only when an operation callback is installed. {{ obsolete_inline("js1.9.1") }}</p>
+
+<h2 id="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS_SetOperationCallback") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_GetOperationCallback") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS_TriggerOperationCallback") }}</li>
+ <li>{{jsapixref("JS_SetInterruptCallback")}}</li>
+ <li>{{jsapixref("JS_SetInterruptCallback", "JS_GetInterruptCallback")}}</li>
+ <li>{{jsapixref("JS_SetInterruptCallback", "JS_RequestInterruptCallback")}}</li>
+ <li>{{jsapixref("JS_SetInterruptCallback", "JSInterruptCallback")}}</li>
+ <li>{{bug(477187)}}</li>
+ <li>{{bug(977287)}}</li>
+</ul>

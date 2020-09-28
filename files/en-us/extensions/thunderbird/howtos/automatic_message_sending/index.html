@@ -1,0 +1,62 @@
+---
+title: >-
+  Automatic sending of a plaintext email message using default email account and
+  identity
+slug: Extensions/Thunderbird/HowTos/Automatic_message_sending
+---
+<p>This code allows the automatic sending of a plaintext email message using default email account and identity:</p>
+
+<pre class="brush: js">Components.utils.import("resource:///modules/mailServices.js");
+let am = MailServices.accounts;
+
+// Set the data of the message
+let compFields = Components.classes["@mozilla.org/messengercompose/composefields;1"].createInstance(Components.interfaces.nsIMsgCompFields);
+compFields.from = am.defaultAccount.defaultIdentity.email; // f.e. "name.surname@example.com" or .identityName f.e "Name Surname &lt;name.surname@example.com&gt;"
+compFields.to = "to@example.com";
+compFields.subject = "test";
+compFields.body = "message body";
+
+/* Warning about body content
+If there was NO attachment, the composeFields didn't know where the body terminated, so when asked to send the message Thunderbird
+didnt know where the message terminated and therefore received a timeout error from the smtp server, f.e.
+
+Send Message Error
+Sending of message failed.
+The message could not be sent because the connection to SMTP server smtp.googlemail.com timed out. Try again or contact your network
+administrator.
+
+So without attachment(s) body content need \r\n at the end, f.e. ".body = "message body\r\n"
+
+If there was an attachment being added, the composeFields instance properly terminates the body with a '\n', adds the attachment and
+therefore would properly send the message out, f.e. ".body = "message body".
+
+*/
+// trick: if there is no attachment(s)
+if(!compFields.attachments.hasMoreElements()){
+   // correct body to prevent throw SMTP error
+   compFields.body = compFields.body + "\r\n";
+}
+
+let msgComposeParams = Components.classes["@mozilla.org/messengercompose/composeparams;1"].createInstance(Components.interfaces.nsIMsgComposeParams);
+msgComposeParams.composeFields = compFields;
+
+let gMsgCompose = Components.classes["@mozilla.org/messengercompose/compose;1"].createInstance(Components.interfaces.nsIMsgCompose);
+let msgSend = Components.classes["@mozilla.org/messengercompose/send;1"].createInstance(Components.interfaces.nsIMsgSend);
+
+gMsgCompose.initialize(msgComposeParams);
+
+/* definiton at http://doxygen.db48x.net/mozilla-full/html/d6/d00/interfacensIMsgCompose.html#750ab96c55732a8e44d8fd2b61e28f6d
+void nsIMsgCompose::SendMsg(
+   in MSG_DeliverMode  deliverMode,
+   in nsIMsgIdentity     identity,
+   in string     accountKey,
+   in nsIMsgWindow   aMsgWindow,
+   in nsIMsgProgress     progress
+);
+*/
+gMsgCompose.SendMsg(msgSend.nsMsgDeliverNow, // send immediately
+                    am.defaultAccount.defaultIdentity, // identity
+                    am.defaultAccount.key, // account, f.e. account4
+                    null, // message window
+                    null); // nsIMsgProgress
+</pre>

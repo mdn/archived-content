@@ -1,0 +1,134 @@
+<div class="warning"><strong>Warning:</strong> Microsummary support was removed in Gecko 6.0 (Firefox 6.0 / Thunderbird 6.0 / SeaMonkey 2.3)</div>
+
+<p>A regular expression is a special kind of string (i.e. a sequence of characters) that matches patterns of characters in other strings. Microsummary generators use them to identify the pages that the generators know how to summarize by matching patterns in those pages' URLs.</p>
+
+<p>In this tutorial, we'll explain how to make regular expressions that match the URLs for eBay auction item pages. By the end of the tutorial, you should know some basics about regular expressions and understand how to create expressions that match URLs.</p>
+
+<p>For detailed documentation about regular expressions, see <a href="/en/JavaScript/Reference/Global_Objects/RegExp" title="en/JavaScript/Reference/Global_Objects/RegExp">Core_JavaScript_1.5_Reference:Global_Objects:RegExp</a>. To learn how to create a microsummary generator, see <a href="/en/Creating_a_Microsummary" title="en/Creating_a_Microsummary">Creating a Microsummary</a>.</p>
+
+<h2 id="URLs_101" name="URLs_101">URLs 101</h2>
+
+<p>URLs for auction item pages on eBay, like those on many other sites, usually start with the string "http://" and contain a domain name, a file path, and some query parameters. Here's a URL for an auction item page on eBay:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;item=280018439106</span>
+</pre>
+
+<p>In this URL, the domain name is "cgi.ebay.com", the file path is "/ws/eBayISAPI.dll", and the query parameters are "?ViewItem&amp;item=280018439106".</p>
+
+<h2 id="Matching_an_eBay_URL" name="Matching_an_eBay_URL">Matching an eBay URL</h2>
+
+<p>To match this URL with a regular expression, we need to put characters into the regular expression that match the characters in the URL. Most of the time, we can match a character in the URL by putting the same character into the regular expression. For example, the following regular expression matches--and looks exactly like--the beginning of the URL:</p>
+
+<pre class="eval"> http://
+</pre>
+
+<p>But some characters are special in regular expressions. For example, a period (.) matches any character, and a period followed by an asterisk (.*) matches any combination of characters. When such characters appear in a URL, and we want to match them in a regular expression, we have to escape them in the expression by prepending them with a backwards slash (\).</p>
+
+<p>Here's a regular expression that matches our example URL:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi\.ebay\.com/ws/eBayISAPI\.dll\?ViewItem&amp;item=280018439106</span>
+</pre>
+
+<p>It looks almost the same as the URL. The only difference is that the regular expression has backwards slashes before the periods and the question mark, since both of those characters have special meaning in regular expressions.</p>
+
+<h2 id="Matching_from_the_Start_of_the_URL" name="Matching_from_the_Start_of_the_URL">Matching from the Start of the URL</h2>
+
+<p>While this expression matches the URL, it also matches other URLs that contain this URL in their query parameters, for example:</p>
+
+<pre class="eval"> <span class="nowiki">http://www.example.com/redirect.php?url=http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;item=280018439106</span>
+</pre>
+
+<p>That's probably not what we want, since URLs that contain our example URL probably aren't auction item pages themselves. In order to restrict our regular expression to URLs that start with our example URL, we prepend a caret (^) to the regular expression:</p>
+
+<pre class="eval"> <span class="nowiki">^http://cgi\.ebay\.com/ws/eBayISAPI\.dll\?ViewItem&amp;item=280018439106</span>
+</pre>
+
+<p>When a caret is the first character of a regular expression, it signifies that the expression must be found at the beginning of the string being matched. Now that we've prepended a caret to our regular expression, it will only match URLs that look like the example URL right from the start.</p>
+
+<h2 id="Matching_Multiple_URLs" name="Matching_Multiple_URLs">Matching Multiple URLs</h2>
+
+<p>But this expression still only matches the URL for a single auction item page. It won't work with any other auction item. To make it match other items, we have to remove the unique parts of it that match the specific item, leaving behind only those parts which are common to all items.</p>
+
+<p>To identify which parts are unique and which are common, let's look at the URLs of several other auction item pages:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;item=130017517168</span>
+ <span class="nowiki">http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;item=290019763032</span>
+ <span class="nowiki">http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;item=170019463424</span>
+</pre>
+
+<p>Based on these examples, it looks like the unique part is the item number at the end of the URLs, and everything else is common to all URLs. So we remove the item number, leaving us with the following regular expression:</p>
+
+<pre class="eval"> <span class="nowiki">^http://cgi\.ebay\.com/ws/eBayISAPI\.dll\?ViewItem&amp;item=</span>
+</pre>
+
+<h2 id="Accommodating_Variations_in_Query_Parameters" name="Accommodating_Variations_in_Query_Parameters">Accommodating Variations in Query Parameters</h2>
+
+<p>We now have a regular expression that matches all four example URLs. It'll probably match the URLs for other auction item pages, too. But to make it more robust, we should accommodate the possibility of variation in the query parameters.</p>
+
+<p>A named query parameter is a string of the form &lt;name&gt;=&lt;value&gt;, where &lt;name&gt; and &lt;value&gt; are arbitrary strings. In our URL, "item=280018439106" is the only such parameter. But URLs can contain multiple named parameters separated by ampersands (&amp;), and the parameters can appear in any order, so even though the "item" parameter seems to be necessary, it might not appear right next to "ViewItem".</p>
+
+<p>For example, the following is an equally valid URL for the same auction item:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi.ebay.com/ws/eBayISAPI.dll?ViewItem&amp;foo=bar&amp;item=170019463424</span>
+</pre>
+
+<p>To accommodate these variations in query parameters, we can insert a period followed by an asterisk (.*) between "ViewItem&amp;" and "item=" to match any characters that might appear between those two strings:</p>
+
+<pre class="eval"> <span class="nowiki">^http://cgi\.ebay\.com/ws/eBayISAPI\.dll\?ViewItem&amp;.*item=</span>
+</pre>
+
+<p>The period followed by an asterisk matches any combination of characters, including no characters at all, so it works even if "ViewItem&amp;" and "item=" are right next to each other (as in our example URL) as well as when there are some characters between them.</p>
+
+<h2 id="Matching_another_eBay_URL" name="Matching_another_eBay_URL">Matching another eBay URL</h2>
+
+<p>We now have a regular expression that matches auction item URLs, including those with multiple query parameters in any order. But eBay uses a different style of URL in some cases (f.e. on its search results page). Here's a URL for the same item in that different style:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi.ebay.com/Mozilla-Firefox-logo-1-inch-pin-badge-button-browser_W0QQitemZ280018439106QQihZ018QQcategoryZ2036QQcmdZViewItem</span>
+</pre>
+
+<p>To accommodate these URLs, we can create a second regular expression that matches them. As before, we should distinguish the components of the URL which are unique to the item from those which are common to all auction item URLs of this style.</p>
+
+<p>Here are several other URLs of this style:</p>
+
+<pre class="eval"> <span class="nowiki">http://cgi.ebay.com/Firefox-2002-DVD_W0QQitemZ130017517168QQihZ003QQcategoryZ617QQcmdZViewItem</span>
+ <span class="nowiki">http://cgi.ebay.com/AHM-HO-SCALE-FIREFOX-TANK-CAR_W0QQitemZ290019763032QQihZ019QQcategoryZ19130QQcmdZViewItem</span>
+ <span class="nowiki">http://cgi.ebay.com/Inuyasha-anime-pin-of-Kirara-Kilala-firefox_W0QQitemZ170019463424QQihZ007QQcategoryZ39557QQcmdZViewItem</span>
+</pre>
+
+<p>Based on these examples, it looks like the URLs all start with "<a class="external" href="http://cgi.ebay.com/" rel="freelink">http://cgi.ebay.com/</a>", they all contain the string "QQitemZ" followed by the item number, and they all end with the string "QQcmdZViewItem". So we might construct the following regular expression to match these URLs:</p>
+
+<pre class="eval"> <span class="nowiki">^http://cgi\.ebay\.com/.*QQitemZ.*QQcmdZViewItem</span>
+</pre>
+
+<p>In this expression, we use .* twice, since there are two places where there may be some characters that vary between auction item URLs.</p>
+
+<h2 id="Handling_HTTPS_URLs" name="Handling_HTTPS_URLs">Handling HTTPS URLs</h2>
+
+<p>Note: although eBay doesn't do this, occasionally a site will make pages available at both insecure and secure URLs. For example, both of the following URLs might point to the same page:</p>
+
+<pre class="eval"> <span class="nowiki">http://www.example.com/index.html</span>
+ <span class="nowiki">https://www.example.com/index.html</span>
+</pre>
+
+<p>To make a regular expression that matches both pages, we just need to start the expression with "https" and then add a question mark (?) after that string, for example:</p>
+
+<pre class="eval"> <span class="nowiki">^https?://www\.example\.com/index\.html</span>
+</pre>
+
+<p>The question mark makes the previous character optional, so the regular expression matches strings that include the "s" in "https" as well as ones that don't.</p>
+
+<h2 id="Conclusion" name="Conclusion">Conclusion</h2>
+
+<p>If we include both of these regular expressions in a microsummary generator for eBay auction item pages, the generator will then apply to just about all eBay auction item pages (at least all the ones we've seen so far!).</p>
+
+<p>Note that since generators are XML, we have to escape the special characters less-than-sign (&lt;), greater-than-sign (&gt;), and ampersand (&amp;) by replacing them with their equivalent entity references (&amp;lt;, &amp;gt;, and &amp;amp;, respectively) in the regular expressions when we put them in generators.</p>
+
+<p>For the regular expressions we have created in this tutorial, the only XML special character we have to escape is the ampersand. Here is what the &lt;pages&gt; section might look like in a microsummary generator for eBay auction item pages:</p>
+
+<pre class="eval"> &lt;pages&gt;
+   &lt;include&gt;<span class="nowiki">^http://cgi\.ebay\.com/.*QQitemZ.*QQcmdZViewItem</span>&lt;/include&gt;
+   &lt;include&gt;<span class="nowiki">^http://cgi\.ebay\.com/ws/eBayISAPI\.dll\?ViewItem&amp;amp;.*item=</span>&lt;/include&gt;
+ &lt;/pages&gt;
+</pre>
+
+<p>To see these regular expressions in action, install the eBay auction item microsummary generator available from this <a class="external" href="http://people.mozilla.com/~myk/microsummaries/generators/">page of example generators</a>.</p>

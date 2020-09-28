@@ -1,0 +1,97 @@
+---
+title: Components.utils.import
+slug: Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.import
+tags:
+  - NeedsContent
+  - 'XPCOM:Language Bindings'
+  - XPConnect
+---
+<p></p>
+
+<p><code><a href="/en-US/docs/Components.utils">Components.utils</a>.import</code> was introduced in <a href="/en/Firefox_3_for_developers" title="en/Firefox_3_for_developers">Firefox 3</a> and is used for sharing code between different scopes easily. For example, you can import <a href="/en/JavaScript_code_modules/XPCOMUtils.jsm" title="en/XPCOMUtils.jsm">XPCOMUtils.jsm</a> to avoid copy/pasting long XPCOM component registration boilerplate in your component files.</p>
+
+<p>See <a href="/en/JavaScript_code_modules/Using" title="en/Using_JavaScript_code_modules">Using JavaScript code modules</a> for more details.</p>
+
+<div class="note">
+<p><strong>Note:</strong> Prior to <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span>, JavaScript code modules could only be loaded using <strong>file:</strong> or <strong>resource:</strong> URLs. <span title="(Firefox 4 / Thunderbird 3.3 / SeaMonkey 2.1)">Gecko 2.0</span> adds support for loading modules from <strong>chrome:</strong> URLs, even those inside JAR archives.</p>
+</div>
+
+<h3 id="Syntax" name="Syntax">Syntax</h3>
+
+<pre class="syntaxbox">Components.utils.import<em>(url</em> [, <em>scope</em>]);
+
+// Or, if you use a tool such as jslint which reports compiler errors for the above,
+
+Components.utils["import"](<em>url </em>[, <em>scope</em>]);</pre>
+
+<h3 id="Parameters" name="Parameters">Parameters</h3>
+
+<dl>
+ <dt><code>url</code></dt>
+ <dd>A string of the URL of the script to be loaded. The URL must point to a file on the disk, possibly in a JAR.</dd>
+ <dt><code>scope</code></dt>
+ <dd>An optional object to import onto; if omitted, the global object is used.</dd>
+</dl>
+
+<div class="warning">
+<p>Under Boot2Gecko, the scope is not optional. If your code is meant to work on all platforms, you should always provide a scope.</p>
+
+<p>In case of doubt, <code>this</code> is generally a good scope.</p>
+</div>
+
+<dl>
+ <dt>return value</dt>
+ <dd>the module's global object.<br>
+ use of the return value is discouraged since it grants access to the module's internal properties which are not part of its public API.</dd>
+</dl>
+
+<p>import throws if it encounters an error (like a syntax error) in the file it reads.</p>
+
+<h3 id="Example" name="Example">Example</h3>
+
+<pre class="brush: js">Components.utils.import("<a class="external" rel="freelink">resource://gre/modules/XPCOMUtils.jsm</a>", <strong>this</strong>);
+</pre>
+
+<h3 id="Difference_from_mozIJSSubScriptLoader" name="Difference_from_mozIJSSubScriptLoader">Difference from mozIJSSubScriptLoader</h3>
+
+<p>The differences from <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/mozIJSSubScriptLoader" title="">mozIJSSubScriptLoader</a></code>:</p>
+
+<p>The behavior when importing/loading the same code from different locations:</p>
+
+<ul>
+ <li>the subscript loader evaluates the specified code each time it is invoked, with the caller's global object.</li>
+ <li><code>Components.utils.import</code> evaluates the code of each module only once, in its own scope.</li>
+</ul>
+
+<p>For example:</p>
+
+<pre class="brush: js">var scope1 = {}, scope2 = {};
+Components.utils.import("<a class="external" rel="freelink">resource://gre/modules/JSON.jsm</a>", scope1);
+Components.utils.import("<a class="external" rel="freelink">resource://gre/modules/JSON.jsm</a>", scope2);
+assert(scope2.XPCOMUtils === scope1.XPCOMUtils);
+</pre>
+
+<p>...returns <code>true</code>, whereas:</p>
+
+<pre class="brush: js">var someURL = "<a class="external" rel="freelink">resource://gre/modules/JSON.jsm</a>";
+var obj1 = {}, obj2 = {};
+var loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
+                       .getService(Components.interfaces.mozIJSSubScriptLoader);
+loader.loadSubScript(someURL, obj1);
+loader.loadSubScript(someURL, obj2);
+assert(obj2 === obj1);
+</pre>
+
+<p>...returns <code>false</code>.</p>
+
+<p>This means <code>Components.utils.import</code> is better suited for efficient sharing of code (and data?) between JS scripts running in different scope.</p>
+
+<h3 id="Additional_Resources" name="Additional_Resources">Additional Resources</h3>
+
+<ul>
+ <li><a href="/en-US/docs/Components.utils">Components.utils</a></li>
+ <li><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=238324" title="FIXED: Implement JavaScript code-sharing module system">bug 238324</a></li>
+ <li>The documentation in <a href="https://dxr.mozilla.org/mozilla-central/source/js/xpconnect/idl/xpccomponents.idl" rel="custom">xpccomponents.idl</a></li>
+ <li>The tests in <code><a href="https://dxr.mozilla.org/mozilla-central/source/js/xpconnect/tests/unit/" rel="custom">js/xpconnect/tests/unit/</a></code></li>
+ <li><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Using#Importing_CommonJS_modules">Importing SDK/CommonJS modules into other code</a></li>
+</ul>

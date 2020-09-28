@@ -1,0 +1,36 @@
+<p></p>
+
+<p>Firefox 3 changed the behavior of right-click on form controls to no longer display a context menu by default.  This article describes how an extension can override this change in a particular window, enabling context menus to work on form controls.</p>
+
+<p>This article presents information based on Ehsan Akhgari's <a class="link-https" href="https://addons.mozilla.org/en-US/firefox/addon/10801" title="https://addons.mozilla.org/en-US/firefox/addon/10801">Form Control Context Menu extension</a>, which was created specifically to demonstrate how to do this.</p>
+
+<p>There is ongoing discussion about this topic; please see <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=433168" title="FIXED: Context menu is not shown for form buttons and select elements">bug 433168</a> for the latest information.</p>
+
+<h2 id="Overlay_the_content">Overlay the content</h2>
+
+<p>The first thing to do is to establish an overlay over the chrome for the window in which you want to allow context menus on form controls.</p>
+
+<pre class="brush: xml">&lt;overlay id="formcontrolcontextmenu-overlay"
+         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"&gt;
+  &lt;script type="application/javascript" src="chrome://formcontrolcontextmenu/content/overlay.js"/&gt;
+&lt;/overlay&gt;
+</pre>
+
+<h2 id="Change_the_right-click_behavior">Change the right-click behavior</h2>
+
+<p>The overlaid code is responsible for adjusting the behavior of right-clicking on form controls.</p>
+
+<pre class="brush: js">window.addEventListener("load", function() {
+    let setTargetOriginal = nsContextMenu.prototype.setTarget;
+    Components.utils.reportError(setTargetOriginal);
+    nsContextMenu.prototype.setTarget = function(aNode, aRangeParent, aRangeOffset) {
+      setTargetOriginal.apply(this, arguments);
+      if (this.isTargetAFormControl(aNode))
+        this.shouldDisplay = true;
+    };
+  }, false);
+</pre>
+
+<p>This code, which is run when the window is opened up, works by replacing the <code>setTarget()</code> routine for the prototype of <code>nsContextMenu</code> with one that forces the context menu to display if the target of the menu is a form control.</p>
+
+<p>As a result, all controls in the window will support a context menu when right-clicked, since we've changed the core behavior of context menus to override their default behavior of doing nothing on form controls.</p>

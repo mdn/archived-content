@@ -1,0 +1,111 @@
+<div><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Building_Menus_With_Templates" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Multiple_Queries">Next  »</a></p>
+</div></div>
+
+
+<p>There are several additional types of conditional tests that may be performed.</p>
+<h2 id="Parent_Tag_Tests" name="Parent_Tag_Tests">Parent Tag Tests</h2>
+<p>Sometimes you want to simply generate one block of content at the top level and different content at the recurisive level. For example, the bookmarks toolbar in a web browser might display buttons at the first level, but menus and submenus for content below that.</p>
+<p>Templates have a means of allowing a rule to match only if the generated content would be inserted inside an element with a particular tag name. For instance, if the container was a &lt;vbox&gt;, a rule could be created that would only match a &lt;vbox&gt; element. This is useful for recursive templates, since the inner iterations may use different content. It's most useful to distinguish between the outer and inner levels during template generation. For the bookmarks toolbar, the outer content is inserted into an &lt;hbox&gt;, but at lower levels, the content will be inserted into a &lt;menu&gt;</p>
+<p>In case you aren't clear, the tag that must match for the outer iteration is the root element, the one with the datasources attribute on it. For inner iterations, it will be the element with the uri attribute from the previous iteration.</p>
+<p>Here is a previous example, rewritten to use the parent matching syntax:</p>
+<pre class="brush:xml">&lt;vbox datasources="people.xml" ref="*" querytype="xml"&gt;
+  &lt;template&gt;
+    &lt;query expr="*"/&gt;
+    &lt;rule parent="vbox"&gt;
+      &lt;action&gt;
+        &lt;groupbox uri="?"&gt;
+          &lt;caption label="?name"/&gt;
+        &lt;/groupbox&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;action&gt;
+        &lt;label uri="?" value="?name"/&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p><a href="/en-US/docs/XUL/Template_Guide/Using_Recursive_Templates">Previously</a>, an <code><a href="/en-US/docs/Mozilla/Tech/XUL/assign" title="assign">assign</a></code> element was used to assign the tagname of the result to a variable, which was then compared in a rule condition. The code above accomplishes the same effect except that it using the parent matching mechanism. Note the <code id="a-parent"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/parent">parent</a></code> attribute on the <code><a href="/en-US/docs/Mozilla/Tech/XUL/rule" title="rule">rule</a></code> element, set to the value <code>vbox</code>. This causes the rule to match only content that would be inserted in a <code>vbox</code> element. As the outer element is a <code>vbox</code>, this will match for all results in the first iteration of the template. However, for the next iteration, that is, the next level of children, the content would instead be inserted into the <code><a href="/en-US/docs/Mozilla/Tech/XUL/groupbox" title="groupbox">groupbox</a></code> generated from the previous iteration. This does not match the first rule, so the content from the second rule is generated instead.</p>
+<p>The end effect is the same output, however, the source code is simpler. This technique is useful when you know that the content will be different at each level. If this is not the case, you will still need to use other types of conditions to handle this case.</p>
+<h2 id="RDF_Parent_Matching" name="RDF_Parent_Matching">RDF Parent Matching</h2>
+<p>For RDF sources, you can use the same technique. To do this kind of matching, you again place a parent attribute on the rule, set to the tag to match. For instance, we might use the following:</p>
+<pre class="brush:xml">&lt;vbox datasources="template-guide-streets.rdf"
+      ref="http://www.xulplanet.com/rdf/myneighbourhood"&gt;
+  &lt;template&gt;
+    &lt;rule parent="vbox"&gt;
+      &lt;groupbox uri="rdf:*"&gt;
+        &lt;caption label="rdf:http://purl.org/dc/elements/1.1/title"/&gt;
+      &lt;/groupbox&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;label uri="rdf:*" value="rdf:http://www.xulplanet.com/rdf/address"/&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<p>On the first pass, the container where generated content would be inserted is a &lt;vbox&gt;, so the first rule will match and a captioned &lt;groupbox&gt; will be created. On the next pass, the parent container will be the element with the uri attribute from the previous pass, in this case, the &lt;groupbox&gt; The first rule will not match in this case, but the second rule will match and a label will be created. The result can be seen if you try <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex28.xul">the example</a>.</p>
+<pre class="brush:xml">Here is the same example using the extended template syntax:
+
+&lt;vbox datasources="template-guide-streets.rdf"
+      ref="http://www.xulplanet.com/rdf/myneighbourhood"&gt;
+  &lt;template&gt;
+    &lt;query&gt;
+      &lt;content uri="?start"/&gt;
+      &lt;member container="?start" child="?item"/&gt;
+    &lt;/query&gt;
+    &lt;rule parent="vbox"&gt;
+      &lt;binding subject="?item" predicate="http://purl.org/dc/elements/1.1/title" object="?title"/&gt;
+      &lt;action&gt;
+        &lt;groupbox uri="?item"&gt;
+          &lt;caption label="?title"/&gt;
+        &lt;/groupbox&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;binding subject="?item" predicate="http://www.xulplanet.com/rdf/address" object="?address"/&gt;
+      &lt;action&gt;
+        &lt;label uri="?item" value="?address"/&gt;
+      &lt;/action&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/vbox&gt;
+</pre>
+<h2 id="Containment_Tests" name="Containment_Tests">Containment Tests</h2>
+<p>For RDF sources, the simple rule syntax supports two special conditional tests that are commonly used with multiple rules. The first of these tests can be used to test if an element is a container or not. To use this test, place an iscontainer attribute on a &lt;rule&gt;. The iscontainer attribute should be set to true if you only want to match containers, and false if you only want to match non-containers. A container is an RDF container such as a Seq.</p>
+<p>The iscontainer attribute makes it easier to handle recursive content since you can have one rule for all containers and another rule for all non-containers. You don't need to match by type or some other predicate. This allows you to recurse down to larger levels without needing additional rules. It is commonly used with menus, and we can rewrite the <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex26.xul">previous example</a> using the iscontainer attribute instead.</p>
+<pre class="brush:xml">&lt;button label="Houses in my Neighbourhood" type="menu"
+        datasources="template-guide-streets.rdf"
+        ref="http://www.xulplanet.com/rdf/myneighbourhood"&gt;
+  &lt;template&gt;
+    &lt;rule iscontainer="true"&gt;
+      &lt;menupopup&gt;
+        &lt;menu uri="rdf:*" label="rdf:http://purl.org/dc/elements/1.1/title"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/rule&gt;
+    &lt;rule&gt;
+      &lt;menupopup&gt;
+        &lt;menuitem uri="rdf:*" label="rdf:http://www.xulplanet.com/rdf/address"/&gt;
+      &lt;/menupopup&gt;
+    &lt;/rule&gt;
+  &lt;/template&gt;
+&lt;/button&gt;
+</pre>
+<p>The only difference in the code in <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex27.xul">this example</a> is that the order of the rules has been switched around, the condition check for house has been removed and the iscontainer attribute has been added. Since the iscontainer attribute is set to true, the rule will match as long as the member value or child of the starting node is an RDF container. We could also have left the rules in the original order and set the iscontainer on the first rule to false. The only thing we need to make sure is that the rules are in the proper order, so that the right data will be matched by the right rule. Remember, the more specific rules should go before less specific rules.</p>
+<p>Note that leaving out the iscontainer attribute is not the same as setting it to either true or false. If you don't use the iscontainer attribute, the rule will match regardless of whether the node is a container or not.</p>
+<p>The iscontainer attribute will also match containers appropriately if you have used the containment attribute in the template to change the predicates that indicate containership. If the node has one of the predicates listed in the containment attribute pointing out of it, it will also be considered to be a container. For instance, we might add the following to the previous example:</p>
+<pre class="brush:xml">&lt;button label="Houses in my Neighbourhood" type="menu"
+        datasources="template-guide-streets.rdf"
+        containment="http://www.xulplanet.com/rdf/address"
+        ref="http://www.xulplanet.com/rdf/myneighbourhood"&gt;
+</pre>
+<p>The houses do have a value for the '<span class="nowiki">http://www.xulplanet.com/rdf/address</span>' predicate, so they will also be considered to be containers as well, resulting in <a href="http://developer.mozilla.org/samples/xultemp/template-guide-ex27b.xul">another level of menus</a>. Of course, we will need to update the predicates and labels to retrieve the right data. But this example demonstrates that something different is indeed happening.</p>
+<h2 id="Emptiness_Tests" name="Emptiness_Tests">Emptiness Tests</h2>
+<p>The second special condition attribute tests for empty containers. This invloves setting the isempty attribute on a rule to either true or false. Setting it to true will match all empty containers, that is, containers with no children. Setting it to false will match all containers that have at least one child. Leaving out the isempty attribute will match anything. This condition test is commonly used to display the generated content differently for empty and non-empty containers.</p>
+<p>You will commonly use the two attributes iscontainer and isempty together in different combinations to create the effect you need. Typically, this will mean one rule for a container with children, a second rule for empty containers, and a third rule for non-containers. Considering the case of bookmarks, the first two rules would match folders, while the third rule would match bookmarks. Naturally, the emptiness test does not apply to nodes that are not containers.</p>
+<p>Note that both the iscontainer and isempty attributes are only available for RDF datasources and for rules that use the simple syntax.</p>
+
+<div><div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL:Template_Guide:Building_Menus_With_Templates" style="float: left;">« Previous</a><a href="/en-US/docs/XUL:Template_Guide:Multiple_Queries">Next  »</a></p>
+</div></div>

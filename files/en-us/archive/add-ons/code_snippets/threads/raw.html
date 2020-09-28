@@ -1,0 +1,68 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<h2 id="Queuing_a_task_in_the_main_event_loop">Queuing a task in the main event loop</h2>
+
+<p>When a task needs to be only briefly delayed, such that it runs after the current call chain returns, it can be added directly to the main thread's event queue rather than scheduled as a timeout:</p>
+
+<pre class="brush: js">function executeSoon(func) {
+  Services.tm.mainThread.dispatch(func, Ci.nsIThread.DISPATCH_NORMAL);
+}
+</pre>
+
+<h2 id="Using_nsITimers_to_schedule_tasks">Using <code>nsITimer</code>s to schedule tasks</h2>
+
+<p>In instances where <a href="/en-US/docs/Web/API/WindowTimers/setTimeout" title="Sets a timer which executes a function or specified piece of code once after the timer expires."><code>setTimeout()</code></a> and <a href="/en-US/docs/Web/API/WindowTimers/setInterval" title="The documentation about this has not yet been written; please consider contributing!"><code>setInterval()</code></a> are unavailable, or insufficient, tasks can be scheduled with delays using <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsITimer" title="The nsITimer interface offers a functionality to invoke a function after a specified delay.">nsITimer</a></code> instances.</p>
+
+<p><strong>Note:</strong> If an <code>nsITimer</code> is garbage collected, it will be deactivated and its callbacks will not fire. A reference to the timer objects must be explicitly kept alive until that point.</p>
+
+<p>Some example usages include:</p>
+
+<pre class="eval brush: js">  const Timer = Components.Constructor("@mozilla.org/timer;1", "nsITimer", "initWithCallback");
+
+  function delay(timeout, func) {
+    let timer = new Timer(function () {
+      // Remove the reference so that it can be reaped.
+      delete delay.timers[idx];
+
+      func();
+    }, timeout, Ci.nsITimer.TYPE_ONE_SHOT);
+
+    // Store a reference to the timer so that it's not reaped before it fires.
+    let idx = delay.timers.push(timer) - 1;
+    return idx;
+  }
+  delay.timers = [];
+
+  function repeat(timeout, func) {
+    let timer = new Timer(function () {
+      func();
+    }, timeout, Ci.nsITimer.TYPE_REPEATING_SLACK);
+
+    // Store a reference to the timer so that it's not reaped before it fires.
+    let idx = delay.timers.push(timer) - 1;
+    return idx;
+  }
+  repeat.timers = [];
+
+  // Repeat a task every 1200ms
+  repeat(1200, doAThing);
+
+  // Do something 320ms from now
+  delay(320, doSomething);
+</pre>

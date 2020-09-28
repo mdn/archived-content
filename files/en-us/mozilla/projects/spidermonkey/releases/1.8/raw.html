@@ -1,0 +1,77 @@
+<div>{{SpiderMonkeySidebar("Releases")}}</div>
+
+<div class="note" style="color: black;">
+<p>The Mozilla JavaScript team is pleased to announce the release of <strong>SpiderMonkey 1.8 Release Candidate 1</strong>. You can download full source code here: <a class="http://ftp.mozilla.org/pub/mozilla.org/js/js-1.8.0-rc1.tar.gz" href="external">http://ftp.mozilla.org/pub/mozilla.org/js/js-1.8.0-rc1.tar.gz</a> (MD5 checksum: <code>eaad8815dcc66a717ddb87e9724d964e</code>).</p>
+
+<p>SpiderMonkey 1.8 is the JavaScript engine that shipped in Firefox 3.0. It is much faster than SpiderMonkey 1.7 and contains a few new language features and API features, described in detail below.</p>
+
+<p>Please let us know about your experiences with this release by posting in the <a class="link-news" href="news://news.mozilla.org/mozilla.dev.tech.js-engine">mozilla.dev.tech.js-engine newsgroup</a>. Or, file bugs at <a class="link-https" href="https://bugzilla.mozilla.org/">bugzilla.mozilla.org</a> under Product: Core, Component: JavaScript engine.</p>
+
+<p>—9 March 2009</p>
+</div>
+
+<h2 id="Known_issues">Known issues</h2>
+
+<p>SpiderMonkey 1.8 has one known significant regression from 1.7.</p>
+
+<ul>
+ <li>In <code>JS_THREADSAFE</code> builds, <strong>some objects are not safe to be shared among threads</strong>. This includes iterators and generators ({{ bug(349263) }}) and arrays ({{ bug(417501) }}). In short, applications that share objects among threads in such a way that two threads could access an array, iterator, or generator object at the same time should not use SpiderMonkey 1.8.</li>
+</ul>
+
+<p>There is a minor known bug in the new JavaScript 1.8 functionality.  </p>
+
+<ul>
+ <li>When JavaScript 1.8 support is enabled, the parser accepts some incorrect programs by inserting a semicolon where it should instead throw a <code>SyntaxError</code> ({{ bug(384758) }}). This bug will be fixed in 1.8.1.</li>
+</ul>
+
+<h2 id="Migrating_to_SpiderMonkey_1.8">Migrating to SpiderMonkey 1.8</h2>
+
+<p>SpiderMonkey 1.8 is not binary-compatible with previous releases. It is source-compatible with SpiderMonkey 1.7 though, which means you can probably just recompile and relink your application. A handful of changes are not backwards-compatible:</p>
+
+<ul>
+ <li>The result of assigning to a property with a setter has changed ({{ bug(312354) }}). In JavaScript 1.7 and earlier, <code>x = [].length = "7";</code> would store the number <code>7</code> in <code>x</code>. Now this statement stores the string <code>"7"</code> in <code>x</code>. The new behavior conforms to the ECMAScript standard, <span class="pl-s1"><span class="pl-s">ECMA 262-3 §</span></span>11.13.1.</li>
+ <li>In certain cases, the JavaScript engine no longer calls <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSClass.resolve" title="En/SpiderMonkey/JSAPI Reference/JSClass.resolve"><code>JSClass.resolve</code></a> callbacks repeatedly, as it did in previous versions. Specifically, if a property lookup first calls a resolve hook which <em>does not</em> define the property, then finds the property on a prototype, that result can be cached. Future lookups for the same property on the same sort of object may bypass the resolve hook.</li>
+ <li><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDouble" title="En/SpiderMonkey/JSAPI Reference/JS NewDouble"><code>JS_NewDouble</code></a> is now deprecated. Use <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_NewDoubleValue" title="En/SpiderMonkey/JSAPI Reference/JS NewDoubleValue"><code>JS_NewDoubleValue</code></a>.</li>
+ <li>The security APIs <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetCheckObjectAccessCallback" title="en/SpiderMonkey/JSAPI Reference/JS SetCheckObjectAccessCallback"><code>JS_SetCheckObjectAccessCallback</code></a>, <code><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetPrincipalsTranscoder" title="en/SpiderMonkey/JSAPI Reference/JS SetPrincipalsTranscoder">JS_SetPrincipalsTranscoder</a></code>, and <code><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetObjectPrincipalsFinder" title="En/SpiderMonkey/JSAPI Reference/JS SetObjectPrincipalsFinder">JS_SetObjectPrincipalsFinder</a></code> are still present but are deprecated in this release. In SpiderMonkey 1.8.1 they will be removed and replaced with a new set of APIs (<a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_GetSecurityCallbacks" title="en/SpiderMonkey/JSAPI Reference/JS GetSecurityCallbacks"><code>JS_GetSecurityCallbacks</code></a> and friends, {{ bug(451729) }}).</li>
+ <li><code>js.mak</code>, an old Windows-specific <code>nmake</code> file, has been deleted. It hasn't worked for a long time. It is fairly easy to create a Microsoft Visual Studio project file for SpiderMonkey 1.8 from scratch. (If you would like to contribute and maintain a project file, please feel free to contact the SpiderMonkey team via email, bugzilla, or IRC.) Alternatively, you can install <a class="internal" href="/en/Windows_Build_Prerequisites" title="en/Windows Build Prerequisites">MozillaBuild</a> and run the command <code>make -f Makefile.ref</code> in the <code>js/src</code> directory.</li>
+</ul>
+
+<p>SpiderMonkey 1.8 does not include the new TraceMonkey JIT or the <code>configure</code>-based build system, both of which are (a) pretty darn awesome and (b) coming in SpiderMonkey 1.8.1.</p>
+
+<p>On to the fun stuff.</p>
+
+<h2 id="New_JavaScript_language_features">New JavaScript language features</h2>
+
+<p>JavaScript 1.8 adds <code>Array.reduce()</code> and <code>reduceRight()</code>, expression closures, and generator expressions. There is also one obscure non-backwards-compatible change. For details, see <a class="internal" href="/en/New_in_JavaScript_1.8" title="en/New in JavaScript 1.8">New in JavaScript 1.8</a>.</p>
+
+<h2 id="New_JSAPI_features">New JSAPI features</h2>
+
+<p>It has been a couple years since SpiderMonkey 1.7 was released, and many improvements have been made to the JSAPI. However, one of the most important advances for JSAPI application developers is that the documentation is much improved. See the <a class="internal" href="/En/SpiderMonkey/JSAPI_User_Guide" title="En/SpiderMonkey/JSAPI User Guide">JSAPI User Guide</a> and the <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference" title="En/SpiderMonkey/JSAPI Reference">JSAPI Reference</a>.</p>
+
+<ul>
+ <li>Native functions may implement the new callback signature <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSFastNative" title="En/SpiderMonkey/JSAPI Reference/JSFastNative"><code>JSFastNative</code></a> instead of <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSNative" title="En/SpiderMonkey/JSAPI Reference/JSNative"><code>JSNative</code></a>. <code>JSFastNative</code> can be significantly faster, but applications that use SpiderMonkey's fine-grained security features should heed the warning in its API documentation.</li>
+ <li>New macros <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_FS" title="en/SpiderMonkey/JSAPI Reference/JS FS"><code>JS_FS</code></a>, <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_FS" title="en/SpiderMonkey/JSAPI Reference/JS FS"><code>JS_FN</code></a>, and <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_FS" title="en/SpiderMonkey/JSAPI Reference/JS FS"><code>JS_FS_END</code></a> are recommended for populating <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JSFunctionSpec" title="En/SpiderMonkey/JSAPI Reference/JSFunctionSpec"><code>JSFunctionSpec</code></a> arrays.</li>
+ <li><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_NewObject" title="En/SpiderMonkey/JSAPI Reference/JS NewObject"><code>JS_NewObjectWithGivenProto</code></a> is exactly like <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_NewObject" title="En/SpiderMonkey/JSAPI Reference/JS NewObject"><code>JS_NewObject</code></a> except that it doesn't use a default prototype object if you pass <code>NULL</code>. Instead the object is created with no prototype.</li>
+ <li><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_AlreadyHasOwnProperty" title="En/SpiderMonkey/JSAPI Reference/JS AlreadyHasOwnProperty"><code>JS_AlreadyHasOwnProperty</code></a> and friends are new functions for examining an object without triggering resolve hooks.</li>
+ <li>It was possible to configure SpiderMonkey 1.7 to treat C/C++ <code>char</code> strings as UTF-8 by compiling with a non-default compiler option. In SpiderMonkey 1.8, it is no longer necessary to make a special build to get this behavior. Applications can turn on UTF-8 at run time by calling <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_CStringsAreUTF8" title="En/SpiderMonkey/JSAPI Reference/JS CStringsAreUTF8"><code>JS_SetCStringsAreUTF8</code></a>.</li>
+ <li><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="En/SpiderMonkey/JSAPI Reference/JS GetStringBytes"><code>JS_EncodeString</code></a> is a new variation on <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_GetStringBytes" title="En/SpiderMonkey/JSAPI Reference/JS GetStringBytes"><code>JS_GetStringBytes</code></a> that returns a newly allocated, writable buffer which the application must <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_malloc" title="En/SpiderMonkey/JSAPI Reference/JS malloc"><code>JS_free</code></a>.</li>
+ <li><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_ReportOutOfMemory" title="En/SpiderMonkey/JSAPI Reference/JS ReportOutOfMemory"><code>JS_ReportAllocationOverflow</code></a> can be used (instead of <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_ReportOutOfMemory" title="En/SpiderMonkey/JSAPI Reference/JS ReportOutOfMemory"><code>JS_ReportOutOfMemory</code></a>) to indicate that the script is trying to do something that would require more memory than the implementation is designed to handle. The main difference is that <code>JS_ReportAllocationOverflow</code> throws an exception which the application may catch.</li>
+ <li><a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_ThrowStopIteration" title="en/SpiderMonkey/JSAPI Reference/JS ThrowStopIteration"><code>JS_ThrowStopIteration</code></a> throws the appropriate <code>StopIteration</code> exception object for the given context.</li>
+ <li>Two new context options can be used with <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOptions" title="En/SpiderMonkey/JSAPI Reference/JS SetOptions"><code>JS_SetOptions</code></a>: <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOptions" title="En/SpiderMonkey/JSAPI Reference/JS SetOptions"><code>JSOPTION_RELIMIT</code></a>, which causes extremely long-running regular expression searches to fail with an error, and <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetOptions" title="En/SpiderMonkey/JSAPI Reference/JS SetOptions"><code>JSOPTION_ANONFUNFIX</code></a>, which bans anonymous functions from appearing anyplace where a statement could appear, such as in the argument to <code>eval()</code>.</li>
+ <li>Functions that were <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="En/SpiderMonkey/JSAPI Reference/JS THREADSAFE"><code>JS_THREADSAFE</code></a>-only in SpiderMonkey 1.7 (<a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_BeginRequest" title="En/SpiderMonkey/JSAPI Reference/JS BeginRequest"><code>JS_BeginRequest</code></a>, for example) are now present, but do nothing, in non-<code>JS_THREADSAFE</code> builds. This is to help applications share and reuse code regardless of whether they use threads.</li>
+ <li>There are two new <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSExtendedClass" title="En/SpiderMonkey/JSAPI Reference/JSExtendedClass"><code>JSExtendedClass</code></a> hooks, <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSExtendedClass.iteratorObject" title="En/SpiderMonkey/JSAPI Reference/JSExtendedClass.iteratorObject"><code>JSExtendedClass.iteratorObject</code></a> and <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JSExtendedClass.wrappedObject" title="En/JSExtendedClass.wrappedObject"><code>JSExtendedClass.wrappedObject</code></a>. Both are documented but obscure.</li>
+</ul>
+
+<p>Many new memory management features have been added as well.</p>
+
+<ul>
+ <li>The new function <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetScriptStackQuota" title="En/SpiderMonkey/JSAPI Reference/JS SetScriptStackQuota"><code>JS_SetScriptStackQuota</code></a> limits the size of the JavaScript stack.</li>
+ <li>Two new functions, <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetGCZeal" title="En/SpiderMonkey/JSAPI Reference/JS SetGCZeal"><code>JS_SetGCZeal</code></a> and <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_DumpHeap" title="En/SpiderMonkey/JSAPI Reference/JS DumpHeap"><code>JS_DumpHeap</code></a>, aim to help developers debug GC-related problems. These functions are only present in <code>DEBUG</code> builds. <code>JS_SetGCZeal</code> is especially helpful. When GC zeal is enabled, GC happens extremely frequently. This makes GC-related problems easier to reproduce, reveals GC problems that you may not have noticed before, and causes GC-safety bugs to surface much closer to their cause. <code>JS_DumpHeap</code> dumps parts of the GC heap and can help detect leaks.</li>
+ <li>A new <a class="internal" href="/En/SpiderMonkey/JSAPI_Reference/JS_GetGCParameter" title="En/SpiderMonkey/JSAPI Reference/JS GetGCParameter">GC parameter</a>, <code>JSGC_STACKPOOL_LIFESPAN</code>, controls how eagerly SpiderMonkey returns unused memory back to the system.</li>
+ <li>The new function <a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JS_SetExtraGCRoots" title="En/SpiderMonkey/JSAPI Reference/JS SetExtraGCRoots"><code>JS_SetExtraGCRoots</code></a> provides another way to protect values from garbage collection.</li>
+ <li>There is a new set of APIs for integrating SpiderMonkey's garbage collector with other memory management systems. These APIs are undocumented but fairly stable. The APIs include the new <code><a class="internal" href="/en/SpiderMonkey/JSAPI_Reference/JSTraceOp" title="en/SpiderMonkey/JSAPI Reference/JSTraceOp">JSTraceOp</a></code> callback.</li>
+</ul>
+
+<h2 id="New_JavaScript_shell_functions">New JavaScript shell functions</h2>
+
+<p>There are a few new <a class="internal" href="/En/SpiderMonkey/Introduction_to_the_JavaScript_shell#Built-in_functions" title="En/SpiderMonkey/Introduction_to_the_JavaScript_shell#Built-in_functions">built-in functions in the JavaScript shell</a>, mostly useful for testing.  <code>countHeap</code>, <code>dumpHeap</code>, <code>gcparam</code>, <code>gczeal</code>, and <code>stackQuota</code> are related to memory management.  <code>sleep</code> and <code>scatter</code>, defined in &lt;href="internal" a="" class="/en/SpiderMonkey/JSAPI_Reference/JS_THREADSAFE" title="en/SpiderMonkey/JSAPI Reference/JS THREADSAFE"&gt;<code>JS_THREADSAFE</code> builds only, are for testing thread-safety.&lt;/href="internal"&gt;</p>

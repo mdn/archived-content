@@ -1,0 +1,248 @@
+<div>{{SpiderMonkeySidebar("JSAPI")}}</div>
+
+<p>{{ jsapi_minversion_header("31") }}</p>
+
+<div class="summary">
+<p>A copyable, assignable global GC root type with arbitrary lifetime, an infallible constructor, and automatic unrooting on destruction.</p>
+</div>
+
+<h2 id="Syntax" name="Syntax">Syntax</h2>
+
+<pre class="brush: cpp">JS::PersistentRooted&lt;T&gt; var; // Added in SpiderMonkey 38
+
+JS::PersistentRooted&lt;T&gt; var(cx);
+JS::PersistentRooted&lt;T&gt; var(cx, initial);
+JS::PersistentRooted&lt;T&gt; var(rt);
+JS::PersistentRooted&lt;T&gt; var(rt, initial);
+</pre>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Name</th>
+   <th>Type</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>cx</code></td>
+   <td>{{jsapixref("JSRuntime", "JSContext *")}}</td>
+   <td>The context to get the runtime in which to add the root</td>
+  </tr>
+  <tr>
+   <td><code>rt</code></td>
+   <td>{{jsapixref("JSRuntime", "JSRuntime *")}}</td>
+   <td>The runtime in which to add the root.</td>
+  </tr>
+  <tr>
+   <td><code>initial</code></td>
+   <td><code>T</code></td>
+   <td>An initial value for the persistent rooted variable.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Methods">Methods</h2>
+
+<p>Here, <code>ptr</code> represents the private member of <code>JS::PersistentRooted&lt;T&gt;</code>, typed with <code>T</code>.</p>
+
+<table class="fullwidth-table">
+ <tbody>
+  <tr>
+   <th>Method</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>void init(JSContext* cx)</code></td>
+   <td rowspan="4">Initialize with optional initial value (if not provided, it will be initialized with the initial value of the type). {{ Jsapi_minversion_inline("38") }}</td>
+  </tr>
+  <tr>
+   <td><code>void init(JSContext* cx, T initial)</code></td>
+  </tr>
+  <tr>
+   <td><code>void init(JSRuntime* rt)</code></td>
+  </tr>
+  <tr>
+   <td><code>void init(JSRuntime* rt, T initial)</code></td>
+  </tr>
+  <tr>
+   <td><code>void reset()</code></td>
+   <td>Reset the value to initial value of the type. {{ Jsapi_minversion_inline("38") }}</td>
+  </tr>
+  <tr>
+   <td><code>T&amp; get()</code></td>
+   <td rowspan="4">Returns <code>ptr</code>.</td>
+  </tr>
+  <tr>
+   <td><code>const T&amp; get() const</code></td>
+  </tr>
+  <tr>
+   <td><code>operator const T&amp;() const</code></td>
+  </tr>
+  <tr>
+   <td><code>const T&amp; operator-&gt;() const</code></td>
+  </tr>
+  <tr>
+   <td><code>T* address()</code></td>
+   <td rowspan="2">Returns a pointer to <code>ptr</code>.</td>
+  </tr>
+  <tr>
+   <td><code>const T* address() const</code></td>
+  </tr>
+  <tr>
+   <td><code>PersistentRooted&lt;T&gt;&amp; operator=(const T&amp; p)</code></td>
+   <td rowspan="2">Sets the value of <code>ptr</code>.</td>
+  </tr>
+  <tr>
+   <td><code>PersistentRooted&lt;T&gt;&amp; operator=(const PersistentRooted&lt;T&gt;&amp; other)</code></td>
+  </tr>
+  <tr>
+   <td><code>bool operator!=(const T&amp; other) const</code></td>
+   <td rowspan="2">Compares <code>ptr</code> and <code>other</code>.</td>
+  </tr>
+  <tr>
+   <td><code>bool operator==(const T&amp; other) const</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="Description" name="Description">Description</h2>
+
+<p><code>JS::PersistentRooted&lt;T&gt;</code> declares a variable of type <code>T</code> whose value is always rooted. This is typically used for global variables.</p>
+
+<p><code>JS::PersistentRooted&lt;T&gt;</code> is a copyable, assignable global GC root type with arbitrary lifetime, an infallible constructor, and automatic unrooting on destruction.</p>
+
+<p>These roots can be used in heap-allocated data structures, so they are not associated with any particular {{jsapixref("JSRuntime", "JSContext")}} or stack. They are registered with the {{jsapixref("JSRuntime")}} itself, without locking, so they require a full {{jsapixref("JSRuntime", "JSContext")}} to be initialized, not one of its more restricted superclasses. Initialization may take place on construction, or in two phases if the no-argument constructor is called followed by <code>init()</code>.</p>
+
+<p>Note that you must not use an <code>PersistentRooted</code> in an object owned by a JS object:</p>
+
+<p>Whenever one object whose lifetime is decided by the GC refers to another such object, that edge must be traced only if the owning JS object is traced. This applies not only to JS objects (which obviously are managed by the GC) but also to C++ objects owned by JS objects.</p>
+
+<p>If you put a PersistentRooted in such a C++ object, that is almost certainly a leak. When a GC begins, the referent of the <code>PersistentRooted</code> is treated as live, unconditionally (because a <code>PersistentRooted</code> is a *root*), even if the JS object that owns it is unreachable. If there is any path from that referent back to the JS object, then the C++ object containing the PersistentRooted will not be destructed, and the whole blob of objects will not be freed, even if there are no references to them from the outside.</p>
+
+<p>In the context of Firefox, this is a severe restriction: almost everything in Firefox is owned by some JS object or another, so using PersistentRooted in such objects would introduce leaks. For these kinds of edges, <code>Heap&lt;T&gt;</code> or <code>TenuredHeap&lt;T&gt;</code> would be better types. It's up to the implementor of the type containing <code>Heap&lt;T&gt;</code> or <code>TenuredHeap&lt;T&gt;</code> members to make sure their referents get marked when the object itself is marked.</p>
+
+<p><code>JS::PersistentRooted&lt;T&gt;</code> may be automatically coerced to a {{jsapixref("JS::Handle", "JS::Handle&lt;T&gt;")}} and {{jsapixref("JS::MutableHandle", "JS::MutableHandle&lt;T&gt;")}}.</p>
+
+<p>Before SpiderMonkey 38, <code>PersistentRooted&lt;T&gt;</code> itself cannot be a global variable, but from SpiderMonkey38, it can be declared as a global variable, and initialized later with <code>init()</code> method ({{bug(1107639)}}).</p>
+
+<p>There are typedefs available for the main types:</p>
+
+<pre class="brush: cpp">namespace JS {
+typedef PersistentRooted&lt;JSFunction*&gt; PersistentRootedFunction;
+typedef PersistentRooted&lt;jsid&gt;        PersistentRootedId;
+typedef PersistentRooted&lt;JSObject*&gt;   PersistentRootedObject;
+typedef PersistentRooted&lt;JSScript*&gt;   PersistentRootedScript;
+typedef PersistentRooted&lt;JSString*&gt;   PersistentRootedString;
+typedef PersistentRooted&lt;JS::Symbol*&gt; PersistentRootedSymbol; // Added in SpiderMonkey 38
+typedef PersistentRooted&lt;Value&gt;       PersistentRootedValue;
+}
+</pre>
+
+<h2 id="Example">Example</h2>
+
+<p>Following example allocates PersistentRootedValue, and provides two functions for setting and getting it from JavaScript.</p>
+
+<pre class="brush: cpp">// To use Maybe.
+#include &lt;mozilla/Maybe.h&gt;
+
+// Declare global variable.
+// [SpiderMonkey 31] JS::PersistentRootedValue itself cannot be a global variable.
+mozilla::Maybe&lt;JS::PersistentRootedValue&gt; persistentVal;
+// You can also declare it just as a pointer, instead of using Maybe.
+//   JS::PersistentRootedValue* persistentVal;
+// [SpiderMonkey 38] JS::PersistentRootedValue itself can be a global variable.
+//   JS::PersistentRootedValue persistentVal;
+
+static bool
+SetPersistent(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Set persistent value.
+  persistentVal.ref() = args.get(0);
+  // or
+  //   *persistentVal = args.get(0);
+  // [SpiderMonkey 38]
+  //   persistentVal = args.get(0);
+
+  args.rval().setUndefined();
+  return true;
+}
+
+static bool
+GetPersistent(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Get persistent value.
+  JS::RootedValue val(cx, persistentVal.ref());
+  // or
+  //   JS::RootedValue val(cx, *persistentVal);
+  // [SpiderMonkey 38]
+  //   JS::RootedValue val(cx, persistentVal);
+
+  args.rval().set(val);
+  return true;
+}
+
+static const JSFunctionSpec functions[] = {
+  JS_FN("getPersistent", GetPersistent, 1, 0),
+  JS_FN("setPersistent", SetPersistent, 0, 0),
+  JS_FS_END
+};
+
+int main(int argc, const char* argv[])
+{
+  // Initialize runtime
+  // ...
+
+  // Initialize here
+  persistentVal.construct(rt, JS::NullValue());
+  // or
+  //   persistentVal = new JS::PersistentRootedValue(rt, JS::NullValue());
+  // [SpiderMonkey 38]
+  //   persistentVal.init(rt, JS::NullValue());
+
+  // Initialize context and global
+  // ...
+
+  if (!JS_DefineFunctions(cx, glob, functions))
+    return 1;
+
+  // Use those function in JavaScript.
+
+  // Destroy context.
+  // ...
+
+  // Destroy here
+  //   Required because of Maybe or pointer.
+  //   PersistentRooted itself doesn't require explicit destruction.
+  persistentVal.destroy();
+  // or
+  //   delete persistentVal;
+  // [SpiderMonkey 38]
+  //   destruction is not required.
+
+  // Destroy runtime.
+  // ...
+}
+</pre>
+
+<h2 id="See_Also" name="See_Also">See Also</h2>
+
+<ul>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRooted") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedFunction") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedId") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedObject") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedScript") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedString") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedSymbol") }}</li>
+ <li>{{ LXRSearch("ident", "i", "JS::PersistentRootedValue") }}</li>
+ <li>{{jsapixref("JS::Rooted")}}</li>
+ <li>{{jsapixref("JS::Handle")}}</li>
+ <li>{{jsapixref("JS::MutableHandle")}}</li>
+ <li><a href="/en-US/docs/Mozilla/Projects/SpiderMonkey/GC_Rooting_Guide" title="GC Rooting Guide">GC Rooting Guide</a></li>
+ <li>{{bug(892643)}}</li>
+ <li>{{bug(1107639)}} -- Added two phase construction.</li>
+</ul>

@@ -1,0 +1,54 @@
+<p>While filing a bug for a crash you have encountered or found using <a href="https://crash-stats.mozilla.com/">crash stats</a>, there are a few rules you can follow which will help developers to efficiently debug the problem and find a fix. If you're unfamiliar with how to use Bugzilla in general, you can watch this <a href="https://gerv.makes.org/popcorn/1bn6">helpful video</a>.</p>
+
+<ul>
+ <li>Use the "Bugzilla - Report this bug in ..." links in a representative crash report on crash-stats (under the table of crash information on the "Details" tab). If you are looking at a list of crashes, e.g., a Signature Summary, you should ideally look through a few reports to select a representative that has a good stack with few extensions installed.
+  <ul>
+   <li>The best way to detect whether a stack is "good" or not, is to have a look at a few of them. Those which have random hexadecimal addresses in them or that end after just a few lines (frames) are somewhat "bad." If you have multiple crash reports available, try to find one in which the stack seems to have valid addresses and is at least 10-15 frames long, if possible. That helps developers find the whole trace of functions that have been called to get to the place that finally crashed.</li>
+  </ul>
+ </li>
+ <li>Select the right product and component for what you think is the cause of the crash.
+  <ul>
+   <li>If you do not have good knowledge about the code and Bugzilla hierarchies, look at bugs connected with recent changes to the files linked in the significant top frames of the stack. Clicking those links on the right-side column of the stack and then clicking "revisions" at the top of the resulting page (on <code>hg.mozilla.org</code>) will help you to see the bugs that have changed this code recently. Using the products/components mentioned in those bugs for recent entries is usually a good start.</li>
+   <li>Use your judgement to determine which frames are significant. Ignore generic frames like "abort", "alloc(ate)" or "processNextEvent". Look for frames whose function names sound like they can perform some decisive action.</li>
+   <li>The less experience you have, more guesswork there is to do. Don't worry about making mistakes. Guessing is a learning experience. You'll get better with practice, and imagine how proud you'll be once you've guessed right a few times!</li>
+   <li>Include a link to the representative crash in the initial comment. Fill out the Crash Signature field. Use the "crash" keyword, and set severity to "critical". If you use the "Report this bug" links, then this will be done correctly for you.</li>
+  </ul>
+ </li>
+ <li>Include the top few stack frames in the bug; you can cut the list off at a point where the frames seem generic and unrelated to the issue. However, if you are not sure, it is better to include them all.
+  <ul>
+   <li>This is another step that involves guessing. It is advisable not to go beyond 10-15 frames. Often, you have something generic like <code>nsThread::ProcessNextEvent</code> in there, which usually is a good point to cut off and add a "[...]" at the end. For example, see how this was done in {{bug(1074196)}}.</li>
+   <li>"Generic" in this context means something which doesn't likely pertain to the problem, such as a support functions. If the code in question is part of an event loop, for example (stuff like "ProcessNextEvent" or would suggest this), frames like that would be considered generic. Also, functions that only handle the error but didn't produce it themselves, like "malloc_abort" are also pretty generic.</li>
+  </ul>
+ </li>
+ <li>While raising a bug aboout a crash you have encountered, you should also mention what were you doing when that crash occured.</li>
+ <li>If you file the bug based on data, please include data about when it appeared, how high it is in overall volume (and top crash reports). Describe any unusual characteristics, such as "Only happening on specific OSes, specific Firefox versions, specific Graphics cards, or significant correlations with any modules or add-ons". Also, if comments tell anything about commonalities of actions and possible steps to reproduce, please include that. See the walkthrough below for some tips on how to get that.</li>
+ <li>Include any clues you have about how to reproduce this crash. When a developer can reproduce the crash, it is very likely they can find a fix as well. When reproducible, please add the REPRODUCIBLE keyword in Bugzilla.</li>
+ <li>Examples of good crash bug reports: {{bug(1035168)}}.</li>
+</ul>
+
+<h2 id="Example_walkthrough">Example walkthrough</h2>
+
+<p>Let's use {{bug(1074196)}} as an example again. As mentioned at the start of the first comment on the bug, it was filed from <a href="https://crash-stats.mozilla.com/report/index/fd16294d-0bbf-4530-b2d4-65c2d2140929">this crash report</a>. This crash report expires six months after it was submitted and some info is only shown for a shorter time, so you might not see the same information.</p>
+
+<p>The lower section of the report has the crash stack with a header of "Crashing Thread". The right-hand column of this table has the file names that link to the actual code. For example clicking the first one there goes to line 228 of nsUrlClassifierPrefixSet.cpp, I click the "gpascutto@197683" link on the left next to the code line 228, which links to the actual code changes that a person with the (nick) name of gpascutto did in the changeset no. 197683 of our code. From there, I click again on the link "9d24ecc84a50" (that is a random identifier for this changeset) next to "changeset 197683". That makes me see the actual comment that gpascutto made for this changeset, in this case, "Bug 1046038 - Replace linear prefix array by array of arrays. r=mmc". Finally, I can click on the bug linked there and look at their data, like product and component.</p>
+
+<p>This action takes multiple clicks.  There are ideas on how to improve it, but for now, this series of clicks is necessary.</p>
+
+<p>After following those steps, I find the product "Toolkit", component "Phishing Protection", so in the crash report, I clicked the "Toolkit" link next to "Report this bug in" within the Bugzilla section in about the middle of the page when scrolling down. Back on the crash report, I go to the top and click the "More Reports" link to get to a signature summary page to get more info about those crashes.</p>
+
+<p>Looking through those, I try to find properties that are out of the ordinary. For example, only a few Product versions being listed in the "Products" section, only very specific OSs listed, or specific graphics adapters, or much fewer installations than crashes listed in "Crashes per Install"). Looking at the list in the "Reports" tab, some things like the same address on all reports are interesting as well. List all of those things in a comment on the bug report. Posting a link to the "More Reports" page is usually an excellent idea as well.</p>
+
+<p>Explaining the entire hierarchy is not possible.  It changes all the time because components are added and retired all the time. However, I can give you a few pointers. All of this has grown organically over the 15+ years that the Mozilla project and Bugzilla have existed. Things would be different if we were designing it from scratch.</p>
+
+<h2 id="Understanding_the_Bugzilla_hierarchy">Understanding the Bugzilla hierarchy</h2>
+
+<p>The most important pieces:</p>
+
+<ol>
+ <li>There are Bugzilla "products" for the major Mozilla products such as Firefox, Firefox for Android, Firefox OS, Thunderbird, SeaMonkey. Those "products" *only* cover code that is unique to each product. They do not cover shared code that is present in multiple products.</li>
+ <li>For shared code, there's the "Core" product and the "Toolkit".  The "Core" has all the underpinnings of Gecko and "the Mozilla platform", like Graphics, JavaScript Engine, and networking. The "Toolkit" for some other common code that is closer to or including user interface pieces, like Add-ons Manager, and some other pieces. The difference between those parts is fluid, and many of us often do not know which is which; you have to search and learn here.</li>
+ <li>There are many supporting "products" like for websites and server software, legal issues, localizations, IT operations, and third-party plugins. You can ignore them most of the time, but sometimes you might get directed to one for something. Best is not to try to understand more of those than what you run across and need for a certain task.</li>
+ <li>All those "products" in Bugzilla have "components" underneath them. While filing a bug in Bugzilla, once you have selected a product, a description of the component is displayed when you choose one from the list. Try to use your best guess from those descriptions of where your bugs fit. It is easy to change afterwards, and we put bugs into "wrong" components all the time as well as for some things that are just hard to figure out or whose lines are blurry. Don't shy away from setting one; it is easy to move to a different one afterwards if you guess wrong.</li>
+</ol>
+
+<p>The general rule here like with many other things in our community is: guess and try to do what makes the most sense for you, nobody will think less of you if you guess wrong. Be bold and try what sounds right, and learn as you go. It is better to try and learn than not to try in the first place.</p>

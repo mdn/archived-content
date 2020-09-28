@@ -1,0 +1,43 @@
+<p></p><div style="border: solid #ddd 2px; margin-bottom: 12px;">
+<div style="background: #eee; padding: 2px;"><code><a href="https://dxr.mozilla.org/mozilla-central/source/xpcom/io/nsIAsyncOutputStream.idl" rel="custom">xpcom/io/nsIAsyncOutputStream.idl</a></code><span style="text-align: right; float: right;"><a href="/en-US/docs/Interfaces/About_Scriptable_Interfaces" style="color: #00cc00; font-weight: 700;">Scriptable</a></span></div>
+<span style="padding: 4px 2px;">
+
+<i>Please add a summary to this article.</i>
+</span>
+
+<div style="background: #eee; padding: 2px;">
+Inherits from: <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIOutputStream" title="">nsIOutputStream</a></code>
+<span style="text-align: right; float: right;">Last changed in Gecko 1.7 </span></div>
+</div><p></p>
+<p>If an output stream is non-blocking, it may return <code>NS_BASE_STREAM_WOULD_BLOCK</code> when written to. The caller must then wait for the stream to become writable. If the stream implements <code>nsIAsyncOutputStream</code>, then the caller can use this interface to request an asynchronous notification when the stream becomes writable or closed (via the <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAsyncOutputStream#AsyncWait()">AsyncWait()</a></code> method).</p>
+<p>While this interface is almost exclusively used with non-blocking streams, it is not necessary that <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIOutputStream#isNonBlocking()">nsIOutputStream.isNonBlocking()</a></code> return <code>true</code>. Nor is it necessary that a non-blocking <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIOutputStream" title="">nsIOutputStream</a></code> implementation also implement <code>nsIAsyncOutputStream</code>.</p>
+<h2 id="Method_overview" name="Method_overview">Method overview</h2>
+<table class="standard-table"> <tbody> <tr> <td><code>void <a href="#asyncWait()">asyncWait</a>(in nsIOutputStreamCallback aCallback, in unsigned long aFlags, in unsigned long aRequestedCount, in nsIEventTarget aEventTarget);</code></td> </tr> <tr> <td><code>void <a href="#closeWithStatus()">closeWithStatus</a>(in nsresult reason);</code></td> </tr> </tbody>
+</table>
+<h2 id="Constants" name="Constants">Constants</h2>
+<table class="standard-table"> <tbody> <tr> <td class="header">Constant</td> <td class="header">Value</td> <td class="header">Description</td> </tr> <tr> <td><code>WAIT_CLOSURE_ONLY</code></td> <td><code>(1&lt;&lt;0)</code></td> <td>If passed to <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAsyncOutputStream#asyncWait()">asyncWait()</a></code>, this flag overrides the default behavior, causing the OnOutputStreamReady notification to be suppressed until the stream becomes closed (either as a result of <code><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIAsyncOutputStream#closeWithStatus()">closeWithStatus()</a></code>/close being called on the stream or possibly due to some error in the underlying stream).</td> </tr> </tbody>
+</table>
+<h2 id="Methods" name="Methods">Methods</h2>
+<h3 id="asyncWait()" name="asyncWait()">asyncWait()</h3>
+<p>Asynchronously wait for the stream to be writable or closed. The notification is one-shot, meaning that each <code>asyncWait</code> call will result in exactly one notification callback. After the <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIOutputStreamCallback#onOutputStreamReady()">nsIOutputStreamCallback.onOutputStreamReady()</a></code> event is dispatched, the stream releases its reference to the <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIOutputStreamCallback" title="">nsIOutputStreamCallback</a></code> object. It is safe to call <code>asyncWait</code> again from the notification handler.</p>
+<p>This method may be called at any time (even if write has not been called). In other words, this method may be called when the stream already has room for more data. It may also be called when the stream is closed. If the stream is already writable or closed when <code>asyncWait</code> is called, then the <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIOutputStreamCallback#onOutputStreamReady()">nsIOutputStreamCallback.onOutputStreamReady()</a></code> event will be dispatched immediately. Otherwise, the event will be dispatched when the stream becomes writable or closed.</p>
+<pre class="eval">void asyncWait(
+  in nsIOutputStreamCallback aCallback,
+  in unsigned long aFlags,
+  in unsigned long aRequestedCount,
+  in nsIEventTarget aEventTarget
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>aCallback</code></dt> <dd>This object is notified when the stream becomes ready. This parameter may be <code>null</code> to clear an existing callback.</dd> <dt><code>aFlags</code></dt> <dd>This parameter specifies optional flags passed in to configure the behavior of this method. Pass zero to specify no flags.</dd> <dt><code>aRequestedCount</code></dt> <dd>Wait until at least this many bytes can be written. This is only a suggestion to the underlying stream; it may be ignored. The caller may pass zero to indicate no preference.</dd> <dt><code>aEventTarget</code></dt> <dd>Specify <code>null</code> to receive notification on ANY thread (possibly even recursively on the calling thread, that is synchronously), or specify that the notification be delivered to a specific event target.</dd>
+</dl>
+<h3 id="closeWithStatus()" name="closeWithStatus()">closeWithStatus()</h3>
+<p>This method closes the stream and sets its internal status. If the stream is already closed, then this method is ignored. Once the stream is closed, the stream's status cannot be changed. Any successful status code passed to this method is treated as <code>NS_BASE_STREAM_CLOSED</code>, which has an effect equivalent to <code><a href="https://developer.mozilla.org/en-US/docs/XPCOM_Interface_Reference/nsIInputStream#close()">nsIInputStream.close()</a></code>.</p>
+<p></p><div class="blockIndicator note"><strong>Note:</strong> This method exists in part to support pipes, which have both an input end and an output end. If the output end of a pipe is closed, then reads from the input end of the pipe will fail. The error code returned when an attempt is made to read to a "closed" pipe corresponds to the status code passed in when the output end of the pipe was closed, which greatly simplifies working with pipes in some cases.</div><p></p>
+<pre class="eval">void closeWithStatus(
+  in nsresult reason
+);
+</pre>
+<h6 id="Parameters" name="Parameters">Parameters</h6>
+<dl> <dt><code>reason</code></dt> <dd>The error that will be reported if this stream is accessed after it has been closed.</dd>
+</dl>

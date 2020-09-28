@@ -1,0 +1,42 @@
+<p>
+This page contains some notes on how plugins work internally in Gecko. It is mainly of interest to Gecko developers.
+</p><p><b>Note</b>: This document documents how trunk works, i.e. Gecko 1.9. No released product uses this specific architecture.
+</p><p><b>Note</b>: This document describes how things are, not necessarily how things should be. It is not set in stone. Do not use this document for deciding what plugins can rely on. The described sequences are subject to change at any time.
+</p>
+<h2 id="Classes"> Classes </h2>
+<p>There are some classes involved in plugins:
+</p>
+<ul><li> nsObjectLoadingContent
+<ul><li> embed, object and applet nodes inherit from that class, which provides services for loading various kinds of objects. It takes care of most of the work involved in loading the data and instantiating plugins.
+</li></ul>
+</li><li> nsObjectFrame
+<ul><li> The frame responsible for displaying plugins
+</li></ul>
+</li><li> nsPluginInstanceOwner
+<ul><li> Glue between plugin code (modules/plugin) and layout code (layout/generic). A refcounted object, contrary to nsObjectFrame.
+</li></ul>
+</li></ul>
+<p>Note that while nsObjectLoadingContent also deals with images and documents, this document concentrates on plugins.
+</p>
+<h2 id="Sequence_of_events"> Sequence of events </h2>
+<h3 id="In_content"> In content </h3>
+<ul><li> A content node for a plugin DOM element gets created
+</li><li> In BindToTree (usually) or another function, it calls LoadObject
+</li><li> LoadObject either notices directly that it is dealing with a plugin, or it starts a network request and notices this in OnStartRequest
+</li><li> When it realizes that, it tries to create a frame, if aNotify is true and no frame exists yet
+</li><li> If a frame exists now, it is asked to instantiate the plugin
+</li></ul>
+<p>That was the normal case. If a frame comes into existance independent of that, it tells the content node that it exists now (nsIObjectLoadingContent::hasNewFrame). That function will post an event and when that fires, asks the frame to instantiate the plugin. (The event is necessary because by the time HasNewFrame is called, the frame isn't fully set up yet)
+</p><p><br>
+</p>
+<h3 id="In_layout"> In layout </h3>
+<p>Note: Some of this should move to content
+</p>
+<ul><li> An instance owner is created
+</li><li> The window passed to the plugin is adjusted (The NPWindow, <a class=" external" href="http://devedge-temp.mozilla.org/library/manuals/2002/plugin/1.0/drawevent.html#999221">http://devedge-temp.mozilla.org/libr...nt.html#999221</a>)
+</li><li> The plugin host is asked to instantiate the plugin
+</li><li> This will call back to the instance owner / the object frame in order to create a widget to draw to (if the plugin is not windowless)
+<ul><li> nsPluginInstanceOwner::SetWindow
+</li></ul>
+</li><li> SetWindow is called on the plugin
+</li></ul>

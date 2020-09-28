@@ -1,0 +1,262 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>By default, the only possible standardized scripting language for HTML is <strong>ECMAScript</strong>. Hence, if you are going to use another scripting language you might expect that most of the browsers will not recognize it. Also, regarding some languages (like C), it is even not well defined the meaning of part of their semantics in respect to a scope that is more restricted than the full access to the resources they usually deal with – imagine, for example, the meaning of a <em>C</em> <em>pointer</em> within a HTML page! Nevertheless, the increasing computational power of modern browsers together with the introduction of <a href="/en-US/docs/Web/JavaScript/Typed_arrays">typed arrays</a> in ECMAScript allow us, in theory, to build full <a href="http://en.wikipedia.org/wiki/Virtual_machine">virtual machines</a> in pure ECMAScript. Therefore, it is also possible, in theory, to use ECMAScript for a smaller task: parsing exotic programming languages (i.e., creating compilers).</p>
+
+<h2 id="Beyond_ECMAScript">Beyond ECMAScript</h2>
+
+<p>This is not the place for showing a full compiler written in ECMAScript. We can show, however, a possible way to start from. The following code is nothing but the base for an extensible collection of compilers. But by default, no compilers are loaded. It relies on the fact that unrecognized MIME types will be simply ignored: this allows us to manually parse them.</p>
+
+<p>For a fast overview on the code proposed here you can git clone <a href="https://github.com/madmurphy/rosetta.js">https://github.com/madmurphy/rosetta.js</a>, or, at your choice, directly download <a href="https://codeload.github.com/madmurphy/rosetta.js/zip/master">this <em>.zip</em> file</a>.</p>
+
+<p><strong>rosetta.js</strong>:</p>
+
+<h5 id="Library">Library</h5>
+
+<div style="height: 400px; margin-bottom: 12px; overflow: auto;">
+<pre class="brush: js">"use strict";
+
+/*\
+|*|
+|*|  :: rosetta.js ::
+|*|
+|*|  A possible, extensible collection of compilers to native ECMAScript.
+|*|
+|*|  November 12, 2014
+|*|
+|*|  https://developer.mozilla.org/en-US/Add-ons/Code_snippets/Rosetta
+|*|  https://developer.mozilla.org/User:fusionchess
+|*|
+|*|  This framework is released under the GNU Public License, version 3 or later.
+|*|  http://www.gnu.org/licenses/gpl-3.0.html
+|*|
+|*|  Syntax:
+|*|
+|*|    rosetta.appendCompiler([ "text/x-csrc", "text/x-c" ], yourCompiler);
+|*|
+\*/
+
+var rosetta = new (function () {
+
+  function createScript (oScript, oXHR200) {
+
+    var
+      sMimeType = oScript.getAttribute("type").toLowerCase(),
+      oBaton = document.createComment(" The previous code has been automatically translated from \"" + sMimeType + "\" to \"text/ecmascript\". ");
+
+    if (!oDicts.hasOwnProperty(sMimeType)) {
+      alert("rosetta.translateScript() \u2013 Unknown mime-type \"" + sMimeType + "\": script ignored.");
+      return;
+    }
+
+    var oCompiled = document.createElement("script");
+    oScript.parentNode.insertBefore(oBaton, oScript);
+    oScript.parentNode.removeChild(oScript);
+
+    for (var aAttrs = oScript.attributes, nAttr = 0; nAttr &lt; aAttrs.length; nAttr++) {
+      oCompiled.setAttribute(aAttrs[nAttr].name, aAttrs[nAttr].value);
+    }
+
+    oCompiled.type = "text\/ecmascript";
+    if (oXHR200) { oCompiled.src = "data:text\/javascript," + encodeURIComponent(oDicts[sMimeType](oXHR200.responseText)); }
+    oCompiled.text = oXHR200 ? "" : oDicts[sMimeType](oScript.text);
+    oBaton.parentNode.insertBefore(oCompiled, oBaton);
+
+  }
+
+  function reqError (oError) {
+    throw new URIError("The script " + oError.target.src + " is not accessible.");
+  }
+
+  function reqSuccess () {
+    createScript(this.refScript, this);
+  }
+
+  function getSource (oScript) {
+    var oReq = new XMLHttpRequest();
+    oReq.onload = reqSuccess;
+    oReq.onerror = reqError;
+    oReq.refScript = oScript;
+    oReq.open("GET", oScript.src, true);
+    oReq.send(null);
+  }
+
+  function parseScript (oScript) {
+    if (oScript.hasAttribute("type") &amp;&amp; !rIgnoreMimes.test(oScript.getAttribute("type").toLowerCase())) {
+      oScript.hasAttribute("src") ? getSource(oScript) : createScript(oScript);
+    }
+  }
+
+  function parseDocument () {
+    for (
+      var
+        aScripts = document.getElementsByTagName("script"),
+        nIdx = 0;
+      nIdx &lt; aScripts.length;
+      parseScript(aScripts[nIdx++])
+    );
+  }
+
+  var
+    oDicts = {},
+    rIgnoreMimes = /^\s*(?:text\/javascript|text\/ecmascript)\s*$/;
+
+  this.translateScript = parseScript;
+
+  this.translateAll = parseDocument;
+
+  this.appendCompiler = function (vMimeTypes, fCompiler) {
+
+    if (arguments.length &lt; 2) {
+      throw new TypeError("rosetta.appendCompiler() \u2013 not enough arguments");
+    }
+
+    if (typeof fCompiler !== "function") {
+      throw new TypeError("rosetta.appendCompiler() \u2013 second argument must be a function");
+    }
+
+    if (!Array.isArray(vMimeTypes)) {
+      oDicts[(vMimeTypes).toString()] = fCompiler;
+      return true;
+    }
+
+    for (var nIdx = 0; nIdx &lt; vMimeTypes.length; nIdx++) {
+      oDicts[(vMimeTypes[nIdx]).toString()] = fCompiler;
+    }
+
+    return true;
+  };
+
+})();</pre>
+</div>
+
+<p>Now, imagine you need a compiler for scripts written in <a href="http://en.wikipedia.org/wiki/C_%28programming_language%29" title="C (programming language) – Wikipedia, the free encyclopedia"><em>C</em></a> (MIME type: <code>text/x-c</code>). First, you should declare a function which will translate an input plain-text written in C to an output plain-text written in ECMAScript. Let us call this function <code>createECMASrc()</code> and let us associate it with the <em>C</em> MIME types:</p>
+
+<p><strong>rosetta_c.js</strong>:</p>
+
+<h5 id="A_C_compiler">A <em>C</em> compiler</h5>
+
+<pre class="brush: js">/* C Compiler for Rosetta */
+
+(function () {
+
+  if (!window.rosetta) { return; }
+
+  /* This function takes as argument a plain text (in this case, a code written in C) and returns another plain text written in ECMAScript */
+  function createECMASrc (sCSrc) {
+    /* This is just an empty example... Enjoy in creating your C compiler! */
+    return "alert(\"Here you have the C code to be compiled to ECMAScript:\\n\\n\" + " + JSON.stringify(sCSrc) + ");";
+  }
+
+  rosetta.appendCompiler([ "text/x-csrc", "text/x-c" ], createECMASrc);
+
+})();</pre>
+
+<div class="note"><strong>Note</strong>: Creating a compiler from scratch can be a very difficult task. However, if you are able, feel free to <a href="https://github.com/madmurphy/rosetta.js">public it</a> for our <em>Rosetta</em> script !</div>
+
+<p>Now, all you need is to include <em>rosetta.js</em> and your compiler within your HTML page and you will be able to execute scripts written in C together with scripts written in ECMAScript:</p>
+
+<p><strong>example.html</strong>:</p>
+
+<h5 id="HTML_Example">HTML Example</h5>
+
+<pre class="brush: html">&lt;!doctype html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /&gt;
+&lt;title&gt;Rosetta C Example&lt;/title&gt;
+&lt;script type="text/javascript" src="rosetta.js"&gt;&lt;/script&gt;
+&lt;script type="text/javascript" src="rosetta_c.js"&gt;&lt;/script&gt;
+&lt;script type="text/x-csrc"&gt;
+#include &lt;stdio.h&gt;
+
+int main () {
+  printf("Hello world number 1!\n");
+  return 0;
+}
+&lt;/script&gt;
+&lt;script type="text/x-c" src="example.c"&gt;&lt;/script&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;p&gt;Lorem ipsum&lt;/p&gt;
+
+&lt;script type="text/javascript"&gt;
+rosetta.translateAll();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+
+<p><strong>example.c</strong>:</p>
+
+<h5 id="C_Example">C Example</h5>
+
+<pre class="brush: c">#include &lt;stdio.h&gt;
+
+int main () {
+  printf("Hello world number 2!\n");
+  return 0;
+}</pre>
+
+<p>If creating a compiler for the C programming language, as in the example above, can really look a huge task, there are <a href="http://en.wikipedia.org/wiki/Category:JavaScript_programming_language_family">many dialects of ECMAScript</a> which could be easily translated to standard ECMAScript. The previous example shows a possible solution for all these cases, from the simplest to the hardest one.</p>
+
+<h3 id="MIME_types">MIME types</h3>
+
+<p>Here is a short list of the MIME types associated to some programming languages:</p>
+
+<table>
+ <thead>
+  <tr>
+   <th>Language</th>
+   <th>MIME type</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>Bash</td>
+   <td><code>text/x-shellscript</code></td>
+  </tr>
+  <tr>
+   <td>Java</td>
+   <td><code>text/x-java-source</code></td>
+  </tr>
+  <tr>
+   <td>C</td>
+   <td><code>text/x-c, text/x-csrc</code></td>
+  </tr>
+  <tr>
+   <td>C++</td>
+   <td><code>text/x-c++, text/x-c++src</code></td>
+  </tr>
+  <tr>
+   <td>Python</td>
+   <td><code>text/x-python</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<p>There are no limitations to the MIME types that can be used for the <code>type</code> attribute of the <a href="/en-US/docs/Web/HTML/Element/script" title="The HTML &lt;script> element is used to embed or reference an executable script."><code>&lt;script&gt;</code></a> element.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+ <li><a href="/en-US/docs/Web/API/HTMLScriptElement"><code>HTMLScriptElement</code> interface</a></li>
+ <li><a href="/en-US/docs/Web/HTML/Element/script" title="The HTML &lt;script> element is used to embed or reference an executable script."><code>&lt;script&gt;</code></a></li>
+</ul>

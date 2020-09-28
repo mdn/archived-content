@@ -1,0 +1,244 @@
+<p></p><section class="Quick_links" id="Quick_Links"><ol><li><strong><a href="/en-US/docs/Web/API/Audio_Channels_API">Audio Channels API</a></strong></li><li data-default-state="open"><a href="#"><strong>Interfaces</strong></a><ol><li><a href="/en-US/docs/Web/API/MozAudioChannelManager"><code>MozAudioChannelManager</code></a></li><li><a href="/en-US/docs/Web/API/BrowserElementAudioChannel"><code>BrowserElementAudioChannel</code></a></li></ol></li><li data-default-state="open"><a href="#"><strong>Properties</strong></a><ol><li><a href="/en-US/docs/Web/API/Navigator/mozAudioChannelManager"><code>Navigator.mozAudioChannelManager</code></a></li><li><a href="/en-US/docs/Web/API/HTMLMediaElement/mozAudioChannelType"><code>HTMLMediaElement.mozAudioChannelType</code></a></li><li><a href="/en-US/docs/Web/API/HTMLMediaElement/mozchannelpaused"><code>HTMLMediaElement.mozchannelpaused</code></a></li><li><a href="/en-US/docs/Web/API/HTMLMediaElement/onmozinterrupbegin"><code>HTMLMediaElement.onmozinterrupbegin</code></a></li><li><a href="/en-US/docs/Web/API/HTMLMediaElement/onmozinterruptend"><code>HTMLMediaElement.onmozinterruptend</code></a></li></ol></li><li data-default-state="open"><a href="#"><strong>Events</strong></a><ol><li><a href="/en-US/docs/Web/Events/headphoneschange"><code>headphoneschange</code></a></li><li><a href="/en-US/docs/Web/Events/mozinterruptbegin"><code>mozinterruptbegin</code></a></li><li><a href="/en-US/docs/Web/Events/mozinterruptend"><code>mozinterruptend</code></a></li></ol></li></ol></section><div class="overheadIndicator nonStandard nonStandardHeader">
+      <p><strong><span title="This API has not been standardized."><i class="icon-warning-sign"> </i></span> Non-standard</strong><br>
+      This feature is not on a current W3C standards track, but it is supported on the Firefox OS platform. Although implementations may change in the future and it is not supported widely across browsers, it is suitable for use in code dedicated to Firefox OS apps.</p>
+      </div><p></p>
+
+<div class="summary">
+<p>The <a href="/en-US/docs/Web/API/Audio_Channels_API">Audio Channels API</a> is a currently-Firefox OS-only feature allowing you to place your app's audio content into a hierarchy of importance, which dictates when the audio will be paused and resumed in response to other audio playing and actions occurring and allows you to control the volume of different types of audio independently from one another. This guide will show you how to make basic use of audio channels.</p>
+</div>
+
+<p>The different audio channels are as follows:</p>
+
+<table class="standard-table">
+	<thead>
+		<tr>
+			<th scope="col">Channel name</th>
+			<th scope="col">importance</th>
+			<th scope="col">Used for</th>
+			<th scope="col">App permission level</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td>normal</td>
+			<td>1</td>
+			<td>UI sounds, app and web content</td>
+			<td>Normal</td>
+		</tr>
+		<tr>
+			<td>content</td>
+			<td>2</td>
+			<td>Music, radio, video</td>
+			<td>Normal</td>
+		</tr>
+		<tr>
+			<td>notification</td>
+			<td>3</td>
+			<td>New email, incoming SMS</td>
+			<td>Privileged</td>
+		</tr>
+		<tr>
+			<td>alarm</td>
+			<td>4</td>
+			<td>Alarm clock, calendar alarms</td>
+			<td>Privileged</td>
+		</tr>
+		<tr>
+			<td>ringer</td>
+			<td>5</td>
+			<td>Incoming phone calls</td>
+			<td>Internal</td>
+		</tr>
+		<tr>
+			<td>telephony</td>
+			<td>6</td>
+			<td>Ongoing phone calls, VOIP calls</td>
+			<td>Internal</td>
+		</tr>
+		<tr>
+			<td>publicnotification</td>
+			<td>7</td>
+			<td>Forced camera shutter sounds</td>
+			<td>Internal</td>
+		</tr>
+	</tbody>
+</table>
+
+<p>Whenever an audio channel is used, lower priority channels are automatically paused. The only exception to this is that the "normal" and "content" channels have the same priority, which means that if the "content" channel is used it's simply mixed with audio from the "normal" channel. If two apps try to use the "content" channel at the same time, the foreground app wins. If both of the apps are background apps, then the last app to try to use the channel wins.</p>
+
+<div class="note">
+<p><strong>Note</strong>: Each channel has a separate mute and volume setting.</p>
+</div>
+
+<div class="note">
+<p><strong>Note</strong>: Only the "telephony" channel uses the built-in earpiece; all others use the speaker or headphones/headset.</p>
+</div>
+
+<h2 id="Use_cases">Use cases</h2>
+
+<p>As obvious user-centric uses cases, audio channels allow users to play music from audio player apps even when they are running in the background, so they can do other things as it plays. However, they probably want the music to pause when someone rings the phone. As another example, when users mute their phone, they probably don't want to also mute their wake up alarm for the next morning.</p>
+
+<p>Other use cases:</p>
+
+<ul>
+	<li>When the user leaves an app, under normal circumstances the app should be muted.</li>
+	<li>When the volume keys are used it should change the volume for different audio types depending on context. For example while in the alarm app, the volume keys should adjust the alarm volume and not the "normal" volume.</li>
+	<li>When a video app starts playing audio, background music should be muted while the video is playing.</li>
+	<li>Turn down the volume of background audio rather than completely silence it when the "notification" channel is used.</li>
+	<li>Show which applications/tabs are currently playing audio.</li>
+	<li>Show UI to mute a specific app/tag.</li>
+	<li>Control which application/tab gets to play audio if there are several background applications that all are attempting to use the "content" channel, but no visible apps using the "content" channel.</li>
+</ul>
+
+<h2 id="Sample_app">Sample app</h2>
+
+<p>To explain audio channel functionality, we have built a sample app, imaginitively called <a href="https://github.com/mdn/audio-channels-demo">audio-channels-demo</a> (you can <a href="http://mdn.github.io/audio-channels-demo/">see it running live here</a>.) The following shows what it looks like on Firefox OS.</p>
+
+<p><img alt="A demo showing a title of AudioChannels demo, with an audio player and a select box to choose an audio channel to play the audio in." src="https://mdn.mozillademos.org/files/8801/demo-screen.png" style="display: block; height: 356px; margin: 0px auto; width: 200px;"></p>
+
+<p>The demo provides an audio player, and a <a href="/en-US/docs/Web/HTML/Element/select" title="The HTML &lt;select> element represents a control that provides a menu of options:"><code>&lt;select&gt;</code></a> box for choosing what audio channel to play the audio in (only "Normal" and "Content" are provided.) When the content audio channel is selected, you will be able to go to the homescreen and put the app in the background but still have the music keep playing. This is not the case with the normal channel — "normal" audio content is stopped when an app goes into the background.</p>
+
+<p>To interrupt the playing of "content" audio content, you could try phoning the phone that the app is running on, or setting off an alarm. As you can see from the table above, these are both in higher priority audio channels.</p>
+
+<p>The app also fires notifications when audio is interrupted or play resumes, and when the headphones are unplugged or plugged in again. Let's explore how this functionality is implemented.</p>
+
+<h2 id="Required_manifest_permissions">Required manifest permissions</h2>
+
+<p>As explained in the table near the top, the different audio channels require a range of <a href="/en-US/Apps/Build/App_permissions">different permission levels</a> for their use in apps, ranging from normal (hosted apps) to internal (also known as certified.) In any case, you do need to declare the <code>permissions</code> field in your <code>manifest.webapp</code> file to use AudioChannels, once per channel (note that we also declared permission to use system notifications, as they are used in our demo app also.)</p>
+
+<pre class="brush: json">"permissions": {
+  "audio-channel-normal" : {
+    "description" : "Needed to play this app's audio content on the normal channel"
+  },
+  "audio-channel-content" : {
+    "description" : "Needed to play this app's audio content on the content channel"
+  },
+  "desktop-notification" : {
+    "description" : "Needed to fire system notifications"
+  }
+}</pre>
+
+<h2 id="Selecting_the_audio_channel">Selecting the audio channel</h2>
+
+<p>Changing the audio channel to play the audio through in the app is a slightly more complex matter than you might think. Declaring the channel type statically in your HTML might look like this:</p>
+
+<pre class="brush: html">&lt;audio mozaudiochannel="content" autoplay src="myAudio.ogg"&gt;&lt;/audio&gt;</pre>
+
+<p>Declaring it dynamically in your JavaScript might look like this:</p>
+
+<pre class="brush: js">var player = new Video();
+player.mozAudioChannelType = 'content';
+player.src = '../video-clips/myVideo.ogv';</pre>
+
+<p>However you do it, you need to declare the channel before you declare the <code>src</code> of the media you want to play, so it can be loaded and placed into the right channel. For this reason, our demo app does it in a slightly convoluted way, deleting and then recreating the audio player each time the audio channel is changed:</p>
+
+<pre class="brush: js">function createAudio(channelValue) {
+
+  ...
+
+  audioContainer.innerHTML = '';
+  var player = document.createElement('audio');
+  var source1 = document.createElement('source');
+  var source2 = document.createElement('source');
+
+  player.controls = true;
+  player.mozAudioChannelType = channelValue;
+  source1.src = 'audio/dragon.ogg';
+  source1.type = 'audio/ogg';
+  source2.src = 'audio/dragon.mp3';
+  source2.type = 'audio/mpeg';
+
+  player.appendChild(source1);
+  player.appendChild(source2);
+  audioContainer.appendChild(player);
+
+  ...
+
+}
+
+channelSelect.addEventListener('change', function() {
+  createAudio(channelSelect.value);
+});</pre>
+
+<p>So the <code>createAudio()</code> function is run when the <a href="/en-US/docs/Web/HTML/Element/select" title="The HTML &lt;select> element represents a control that provides a menu of options:"><code>&lt;select&gt;</code></a> box (referenced in the JS as <code>channelSelect</code>) has its value changed, with the <code>channelSelect</code> value as a parameter. In this function, the <code>audioContainer</code> (a simple <a href="/en-US/docs/Web/HTML/Element/div" title="The HTML Content Division element (&lt;div>) is the generic container for flow content. It has no effect on the content or layout until styled using CSS."><code>&lt;div&gt;</code></a> that wraps the audio player) has its contents deleted. Next, a new audio player and <a href="/en-US/docs/Web/HTML/Element/source" title="The HTML &lt;source> element specifies multiple media resources for the &lt;picture>, the &lt;audio> element, or the &lt;video> element. It is an empty element. It is commonly used to serve the same media content in multiple formats supported by different browsers."><code>&lt;source&gt;</code></a> elements are created, have their necessary attributes filled in, and are added back into the <code>audioContainer</code>. Note that <code>player.mozAudioChannelType = channelValue;</code> is included before the audio source is set.</p>
+
+<p>So with the audio channel set to "content", you can now keep the audio playing even when the app is in the background.</p>
+
+<h2 id="Setting_which_channel's_volume_to_control">Setting which channel's volume to control</h2>
+
+<p>As well as setting what audio channel your audio is going to play in, you can also separately set what channel will have its volume adjusted when the user presses the device's volume keys. This for example allows us to adjust our standard content's volume without affect ringer or alarm volume. It is controlled using the <a href="/en-US/docs/Web/API/AudioChannelManager/volumeControlChannel" title="The documentation about this has not yet been written; please consider contributing!"><code>AudioChannelManager.volumeControlChannel</code></a> property. So at the top of the <code>createAudio()</code> function, we include this block:</p>
+
+<pre class="brush: js">function createAudio(channelValue) {
+  if (navigator.mozAudioChannelManager) {
+    if(channelValue == 'normal') {
+      navigator.mozAudioChannelManager.volumeControlChannel = 'normal';
+    } else if(channelValue == 'content') {
+      navigator.mozAudioChannelManager.volumeControlChannel = 'content';
+    }
+    console.log(navigator.mozAudioChannelManager.volumeControlChannel);
+  }
+
+  ...
+
+}
+</pre>
+
+<p>The <a href="/en-US/docs/Web/API/AudioChannelManager" title="The documentation about this has not yet been written; please consider contributing!"><code>AudioChannelManager</code></a> object is accessed by a call to the <a href="/en-US/docs/Web/API/Navigator/mozAudioChannelManager" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozAudioChannelManager</code></a> property — note the <code>moz</code> prefix. This is first done to provide some rudimentary feature detection, so trying to access this feature won't break the app on platforms that don't support it. Next, we include an <code>if ... else if</code> block to check what channel value was passed into the function from the <a href="/en-US/docs/Web/HTML/Element/select" title="The HTML &lt;select> element represents a control that provides a menu of options:"><code>&lt;select&gt;</code></a> element, and then set the <code>volumeControlChannel</code> value accordingly.</p>
+
+<h2 id="Firing_notifications_when_the_audio_is_interrupted">Firing notifications when the audio is interrupted</h2>
+
+<p>Now we have audio playing in an audio channel, it will be interrupted either when a more important audio channel starts being played (for example when a telephone call is received), or when the app is moved into the background in the case of the lowest priority "normal" channel. When this condition ends, our channel will resume playing. We can respond to these events using the <code>mozinterruptbegin</code> and <code>mozinterruptend</code> event handlers, which can be attached to the video or audio player playing the audio. You can see these handlers being used at the bottom of the <code>createAudio()</code> function:</p>
+
+<pre class="brush: js">function createAudio(channelValue) {
+
+  ...
+
+  player.addEventListener('mozinterruptbegin', function() {
+    var notification = new Notification('Metal interrupted!', { body: "Something more important?" });
+  });
+
+  player.addEventListener('mozinterruptend', function() {
+    var notification = new Notification('Metal resumed!', { body: "Important thing finished." });
+  });
+}</pre>
+
+<p>Here we attach both relevant event listeners to the audio <code>player</code>; when the events occur, we run simple functions that fire system notifications to tell the user what has happened. See the following screenshots for what it will look like:</p>
+
+<div style="width: 410px; margin: 0 auto;"><img alt="A notification at the top of the Firefox OS interface saying Metal interrupted: something more important?" src="https://mdn.mozillademos.org/files/8803/interrupt-notification.png" style="height: 356px; margin: 0; padding: 0; width: 200px;"> <img alt="A notification at the top of the Firefox OS interface saying Metal resumed: important thing finished?" src="https://mdn.mozillademos.org/files/8805/resume-notification.png" style="height: 356px; margin: 0; padding: 0; width: 200px;"></div>
+
+<h2 id="Firing_notifications_when_the_headphones_are_(un)plugged">Firing notifications when the headphones are (un)plugged</h2>
+
+<p>The <a href="/en-US/docs/Web/API/AudioChannelManager" title="The documentation about this has not yet been written; please consider contributing!"><code>AudioChannelManager</code></a> object includes a <a href="/en-US/docs/Web/API/AudioChannelManager/headphones" title="The documentation about this has not yet been written; please consider contributing!"><code>headphones</code></a> property that returns <code>true</code> if headphones are plugged into the device and false if not, and an event handler — <a href="/en-US/docs/Web/API/AudioChannelManager/onheadphoneschange" title="The documentation about this has not yet been written; please consider contributing!"><code>onheadphoneschange</code></a> — which fires whenever headphones are plugged in to or unplugged from the device. We decided to use these together to create a headphone status notification system:</p>
+
+<pre class="brush: js">if (navigator.mozAudioChannelManager) {
+  navigator.mozAudioChannelManager.onheadphoneschange = function() {
+    if(navigator.mozAudioChannelManager.headphones == true) {
+      var notification = new Notification('Headphones plugged in!');
+    } else {
+      var notification = new Notification('Headphones unplugged!');
+    }
+  }
+}</pre>
+
+<p>Let's go through this and explain what's happening. Again, multiple calls are made to <a href="/en-US/docs/Web/API/Navigator/mozAudioChannelManager" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozAudioChannelManager</code></a>, first for feature detection, then to set up a function that runs when the onheadphoneschange handler fires. Inside this function, we check whether the headphones property returns true — if so, the headphones are plugged in, so we tell the user that with a notification. If not, they must be unplugged, so we return a suitable notification for that case too. The notifications will look something like this:</p>
+
+<p><img alt="A notification at the top of the Firefox OS interface saying Headphones plugged in!" src="https://mdn.mozillademos.org/files/8807/headphones-notification.png" style="display: block; height: 356px; margin: 0px auto; width: 200px;"></p>
+
+<h2 id="Specifications">Specifications</h2>
+
+<p>The AudioChannels API has no official spec at the moment; see <a href="https://wiki.mozilla.org/WebAPI/AudioChannels">https://wiki.mozilla.org/WebAPI/AudioChannels</a> for implementation details, WebIDL, etc.</p>
+
+<h2 id="Browser_compatibility">Browser compatibility</h2>
+
+<p>Supported in Firefox OS 1.0.1.<br>
+<code>publicnotification</code> support in Firefox OS 1.2.</p>
+
+<h2 id="See_also">See also</h2>
+
+<ul>
+	<li><a href="/en-US/Apps/Build/App_permissions">App permissions for Firefox OS</a></li>
+	<li><a href="/en-US/docs/Web/API/AudioChannels_API/Using_the_AudioChannels_API">Using the AudioChannels API</a></li>
+	<li><a href="/en-US/docs/Web/API/Navigator/mozAudioChannelManager" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.mozAudioChannelManager</code></a></li>
+	<li><a href="/en-US/docs/Web/API/HTMLMediaElement" title="The HTMLMediaElement interface adds to HTMLElement the properties and methods needed to support basic media-related capabilities that are common to audio and video."><code>HTMLMediaElement</code></a></li>
+	<li><a href="/en-US/Apps/Build/User_notifications">Notifications</a></li>
+</ul>

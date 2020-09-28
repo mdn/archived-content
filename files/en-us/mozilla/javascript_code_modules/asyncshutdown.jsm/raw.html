@@ -1,0 +1,159 @@
+<h2 id="Managing_safe_shutdown_of_asynchronous_services.">Managing safe shutdown of asynchronous services.</h2>
+
+<p>Firefox shutdown is composed of phases that take place sequentially. Typically, each shutdown phase removes some capabilities from the application. For instance, at the end of phase profileBeforeChange, no service is permitted to write to the profile directory (with the exception of Telemetry). Consequently, if any service has requested I/O to the profile directory before or during phase profileBeforeChange, the system must be informed that these requests need to be completed before the end of phase profileBeforeChange. Failing to inform the system of this requirement can (and has been known to) cause data loss.</p>
+
+<h2 id="Example">Example</h2>
+
+<p>At some point during shutdown, the Add-On Manager needs to ensure that all add-ons have safely written their data to disk, before writing its own data. Since the data is saved to the profile, this must be completed during phase profileBeforeChange.</p>
+
+<pre class="brush: js">AsyncShutdown.profileBeforeChange.addBlocker(
+  "Add-on manager: shutting down",
+  function condition() {
+    let promise = ... // Do whatever must be done before the end of phase profileBeforeChange
+    return promise;
+  },
+  function info() {
+    let status = ... // Collect any information that may be useful for debugging shutdown issues with this blocker
+    return status;
+  }
+});</pre>
+
+<p> <br>
+ In this example,  at some point during phase <code>profileBeforeChange</code>, function <code>condition</code> will be called. Phase <code>profileBeforeChange</code> is guaranteed to not terminate until <code>promise</code> is either resolved or rejected. If, for some reason, <code>promise</code> is never resolved/rejected, Firefox will crash during shutdown to avoid blocking system shutdown, preventing the user from restarting Firefox or burning through a battery. In this case, a crash report is produced, with information on all the shutdown blockers that have not been resolved, and all the additional debug information returned by calls to <code>info()</code>.<br>
+  </p>
+
+<h2 id="Instances_of_Phase">Instances of Phase</h2>
+
+<p>Note that you cannot create an instance of Phase yourself. See <a href="#Attributes">Attributes</a> for the instances of Phase. If you need a new Phase added to AsyncShutdown, please <a href="https://bugzilla.mozilla.org/enter_bug.cgi?product=Toolkit&amp;component=Async%20Tooling">file a bug</a>.</p>
+
+<h3 id="Methods_overview">Methods overview</h3>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td>void <a href="#addBlocker">addBlocker</a>(string name, function|promise condition, optional function info)</td>
+  </tr>
+  <tr>
+   <td>boolean <a href="#removeBlocker">removeBlocker</a>(function|promise condition)</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods">Methods</h3>
+
+<h4 id="addBlocker_()"><a name="addBlocker"></a>addBlocker ()</h4>
+
+<p>Register a blocker for the completion of a phase.</p>
+
+<pre class="brush: js">void addBlocker(
+  in string name,
+  in function|promise|* condition,
+  optional in function info
+)
+
+</pre>
+
+<h5 id="Arguments">Arguments</h5>
+
+<dl>
+ <dt>name</dt>
+ <dd>The human-readable name of the blocker. Used for debugging/error reporting. Please make sure that the name respects the following model: "Some Service: some action in progress" - for instance "OS.File: flushing all pending I/O".</dd>
+ <dt>condition</dt>
+ <dd>A condition blocking the completion of the phase. Generally, this is a function returning a promise. This function is evaluated during the phase and the phase is guaranteed to not terminate until the resulting promise is either resolved or rejected. If <code>condition</code> is not a function but another value <code>v</code>, it behaves as if it were a function returning <code>v</code>.</dd>
+ <dt>info</dt>
+ <dd>Optionally, a function returning information about the current state of the blocker as an object. Used for providing more details when logging errors or crashing.</dd>
+</dl>
+
+<h4 id="removeBlocker_()"><a name="removeBlocker"></a>removeBlocker ()</h4>
+
+<p>Remove the blocker for a condition.</p>
+<p>If several blockers have been registered for the same condition, remove all these blockers. If no blocker has been registered for this condition, this is a noop.</p>
+
+<pre class="brush: js">boolean removeBlocker(
+  in function|promise|* condition
+)
+</pre>
+
+<h5 id="Arguments_2">Arguments</h5>
+
+<dl>
+ <dt>condition</dt>
+ <dd>A condition blocking the completion of the phase. This must be the same condition as was passed to <a href="#addBlocker">addBlocker</a> prior.</dd>
+</dl>
+
+<h5 id="Return_Value">Return Value</h5>
+<p>Returns <code>true</code> if a blocker has been removed, or <code>false</code> otherwise. Note that a result of <code>false</code> may mean either that the blocker has never been installed or that the phase has completed and the blocker has already been resolved.</p>
+
+
+<h3 id="Examples">Examples</h3>
+
+<pre class="brush: js">AsyncShutdown.profileBeforeChange.addBlocker("Module: just a promise",
+     promise); // profileBeforeChange will not complete until
+               // promise is resolved or rejected
+
+AsyncShutdown.profileBeforeChange.addBlocker("Module: a callback",
+    function condition() {
+      // ...
+      // Execute this code during profileBeforeChange
+      return promise;
+      // profileBeforeChange will not complete until promise
+      // is resolved or rejected
+});
+
+AsyncShutdown.profileBeforeChange.addBlocker("Module: trivial callback",
+    function condition() {
+      // ...
+      // Execute this code during profileBeforeChange
+      // No specific guarantee about completion of profileBeforeChange
+});
+</pre>
+
+<div class="warning">
+<p>If the promise returned by <code>condition</code> is not resolved/rejected within <strong>one minute</strong>, the process will crash to avoid blocking system shutdown, preventing the user from restarting Firefox or burning through battery. This is by design. It is the caller's responsibility to ensure that the promise is eventually resolved/rejected.</p>
+</div>
+
+<h2 id="Properties"><a name="Attributes"></a>Properties</h2>
+
+<table class="standard-table">
+ <tbody>
+  <tr>
+   <td>Attribute</td>
+   <td>Type</td>
+   <td>Description</td>
+  </tr>
+  <tr>
+   <td>
+    <p><code>profileBeforeChange</code> {{ReadOnlyInline()}}</p>
+   </td>
+   <td><code>Phase</code></td>
+   <td>
+    <p>The profile is about to be unmounted. This phase represents the last chance to write data to the profile directory.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>sendTelemetry</code> {{ReadOnlyInline()}}</td>
+   <td><code>Phase</code></td>
+   <td>
+    <p>Telemetry is being sent. This phase represents the last chance for Telemetry to write data.</p>
+   </td>
+  </tr>
+  <tr>
+   <td><code>webWorkersShutdown</code> {{ReadOnlyInline()}}</td>
+   <td><code>Phase</code></td>
+   <td>
+    <p>JavaScript threads are about to be killed. This phase represents the last chance to communicate with a JavaScript worker, in particular with OS.File.</p>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p> </p>
+
+<p> </p>
+
+<dl><br>
+ <br>
+ <br>
+
+ <dd> </dd>
+</dl>

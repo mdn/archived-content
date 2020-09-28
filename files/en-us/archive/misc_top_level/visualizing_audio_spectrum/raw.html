@@ -1,0 +1,161 @@
+<p>This example calculates and displays <span style="line-height: 1.572;">Fast Fourier Transform (</span>FFT) spectrum data for the playing audio. The function handling the <strong>loadedMetaData</strong> event stores the metadata of the audio element in global variables; the function for the <strong>MozAudioAvailable</strong> event does an FFT of the samples and displays them in a canvas.</p>
+<div class="note">
+  <p><strong>NOTE:</strong> You can use the <a href="/en-US/docs/Web/API/AudioNode" title="The AudioNode interface is a generic interface for representing an audio processing module like an audio source (e.g. an HTML &lt;audio> or &lt;video> element, an OscillatorNode, etc.), the audio destination, intermediate processing module (e.g. a filter like BiquadFilterNode or ConvolverNode), or volume control (like GainNode)."><code>AudioNode</code></a> called <span style="line-height: 1.5em;"><a href="/en-US/docs/Web/API/AnalyserNode" title="The AnalyserNode interface represents a node able to provide real-time frequency and time-domain analysis information. It is an AudioNode that passes the audio stream unchanged from the input to the output, but allows you to take the generated data, process it, and create audio visualizations."><code>AnalyserNode</code></a></span><span style="line-height: 1.572;"> to perform real-time </span><span style="line-height: 1.572;">FFT analysis on an audio stream, rather than the code shown below.</span></p>
+</div>
+<p><img alt="Fft.png" class="internal default" src="/@api/deki/files/4723/=Fft.png"></p>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;JavaScript Spectrum Example&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;audio id="audio-element"
+           src="song.ogg"
+           controls="true"
+           style="width: 512px;"&gt;
+    &lt;/audio&gt;
+    &lt;div&gt;&lt;canvas id="fft" width="512" height="200"&gt;&lt;/canvas&gt;&lt;/div&gt;
+
+    &lt;script&gt;
+      var canvas = document.getElementById('fft'),
+          ctx = canvas.getContext('2d'),
+          channels,
+          rate,
+          frameBufferLength,
+          fft;
+
+      function loadedMetadata() {
+        channels          = audio.mozChannels;
+        rate              = audio.mozSampleRate;
+        frameBufferLength = audio.mozFrameBufferLength;
+
+        fft = new FFT(frameBufferLength / channels, rate);
+      }
+
+      function audioAvailable(event) {
+        var fb = event.frameBuffer,
+            t  = event.time, /* unused, but it's there */
+            signal = new Float32Array(fb.length / channels),
+            magnitude;
+
+        for (var i = 0, fbl = frameBufferLength / 2; i &lt; fbl; i++ ) {
+          // Assuming interlaced stereo channels,
+          // need to split and merge into a stero-mix mono signal
+          signal[i] = (fb[2*i] + fb[2*i+1]) / 2;
+        }
+
+        fft.forward(signal);
+
+        // Clear the canvas before drawing spectrum
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+
+        for (var i = 0; i &lt; fft.spectrum.length; i++ ) {
+          // multiply spectrum by a zoom value
+          magnitude = fft.spectrum[i] * 4000;
+
+          // Draw rectangle bars for each frequency bin
+          ctx.fillRect(i * 4, canvas.height, 3, -magnitude);
+        }
+      }
+
+      var audio = document.getElementById('audio-element');
+      audio.addEventListener('MozAudioAvailable', audioAvailable, false);
+      audio.addEventListener('loadedmetadata', loadedMetadata, false);
+
+      // FFT from dsp.js, see below
+      var FFT = function(bufferSize, sampleRate) {
+        this.bufferSize   = bufferSize;
+        this.sampleRate   = sampleRate;
+        this.spectrum     = new Float32Array(bufferSize/2);
+        this.real         = new Float32Array(bufferSize);
+        this.imag         = new Float32Array(bufferSize);
+        this.reverseTable = new Uint32Array(bufferSize);
+        this.sinTable     = new Float32Array(bufferSize);
+        this.cosTable     = new Float32Array(bufferSize);
+
+        var limit = 1,
+            bit = bufferSize &gt;&gt; 1;
+
+        while ( limit &lt; bufferSize ) {
+          for ( var i = 0; i &lt; limit; i++ ) {
+            this.reverseTable[i + limit] = this.reverseTable[i] + bit;
+          }
+
+          limit = limit &lt;&lt; 1;
+          bit = bit &gt;&gt; 1;
+        }
+
+        for ( var i = 0; i &lt; bufferSize; i++ ) {
+          this.sinTable[i] = Math.sin(-Math.PI/i);
+          this.cosTable[i] = Math.cos(-Math.PI/i);
+        }
+      };
+
+      FFT.prototype.forward = function(buffer) {
+        var bufferSize   = this.bufferSize,
+            cosTable     = this.cosTable,
+            sinTable     = this.sinTable,
+            reverseTable = this.reverseTable,
+            real         = this.real,
+            imag         = this.imag,
+            spectrum     = this.spectrum;
+
+        if ( bufferSize !== buffer.length ) {
+          throw "Supplied buffer is not the same size as defined FFT. FFT Size: " + bufferSize + " Buffer Size: " + buffer.length;
+        }
+
+        for ( var i = 0; i &lt; bufferSize; i++ ) {
+          real[i] = buffer[reverseTable[i]];
+          imag[i] = 0;
+        }
+
+        var halfSize = 1,
+            phaseShiftStepReal,
+            phaseShiftStepImag,
+            currentPhaseShiftReal,
+            currentPhaseShiftImag,
+            off,
+            tr,
+            ti,
+            tmpReal,
+            i;
+
+        while ( halfSize &lt; bufferSize ) {
+          phaseShiftStepReal = cosTable[halfSize];
+          phaseShiftStepImag = sinTable[halfSize];
+          currentPhaseShiftReal = 1.0;
+          currentPhaseShiftImag = 0.0;
+
+          for ( var fftStep = 0; fftStep &lt; halfSize; fftStep++ ) {
+            i = fftStep;
+
+            while ( i &lt; bufferSize ) {
+              off = i + halfSize;
+              tr = (currentPhaseShiftReal * real[off]) - (currentPhaseShiftImag * imag[off]);
+              ti = (currentPhaseShiftReal * imag[off]) + (currentPhaseShiftImag * real[off]);
+
+              real[off] = real[i] - tr;
+              imag[off] = imag[i] - ti;
+              real[i] += tr;
+              imag[i] += ti;
+
+              i += halfSize &lt;&lt; 1;
+            }
+
+            tmpReal = currentPhaseShiftReal;
+            currentPhaseShiftReal = (tmpReal * phaseShiftStepReal) - (currentPhaseShiftImag * phaseShiftStepImag);
+            currentPhaseShiftImag = (tmpReal * phaseShiftStepImag) + (currentPhaseShiftImag * phaseShiftStepReal);
+          }
+
+          halfSize = halfSize &lt;&lt; 1;
+	}
+
+        i = bufferSize/2;
+        while(i--) {
+          spectrum[i] = 2 * Math.sqrt(real[i] * real[i] + imag[i] * imag[i]) / bufferSize;
+	}
+      };
+    &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</pre>

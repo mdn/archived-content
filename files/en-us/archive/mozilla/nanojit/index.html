@@ -1,0 +1,178 @@
+---
+title: Nanojit
+slug: Archive/Mozilla/Nanojit
+tags:
+  - Developing Mozilla
+  - SpiderMonkey
+---
+<h3 id="Overview">Overview</h3>
+
+<p>Nanojit is a small, cross-platform C++ library that emits machine code. Both the Tamarin JIT and the SpiderMonkey JIT (a.k.a. TraceMonkey) use Nanojit as their back end.</p>
+
+<p>You can get Nanojit by cloning the <code>tamarin-redux</code> <a class="internal" href="/en/Mercurial" title="En/Mercurial">Mercurial</a> repository at <a class="external" href="http://hg.mozilla.org/tamarin-redux">http://hg.mozilla.org/tamarin-redux</a>. It's in the <code>nanojit</code> directory.</p>
+
+<p>The input for Nanojit is a stream of <a class="internal" href="/En/Nanojit/LIR" title="en/Nanojit/LIR">Nanojit LIR instructions</a>. The term <em>LIR</em> is compiler jargon for a language used internally in a compiler that is usually cross-platform but very close to machine language. It is an acronym for "low-level intermediate representation". A compiler's LIR is typically one of several partly-compiled representations of a program that a compiler produces on the way from raw source code to machine code.</p>
+
+<p>An application using Nanojit creates a <code>nanojit::LirBuffer</code> object to hold LIR instructions.  It creates a <code>nanojit::LirBufWriter</code> object to write instructions to the buffer.  Then it wraps the <code>LirBufWriter</code> in zero or more other <code>LirWriter</code> objects, all of which implement the same interface as <code>LirBufWriter</code>. This chain of <code>LirWriter</code> objects forms a pipeline for the instructions to pass through.  Each <code>LirWriter</code> can perform an optimization or other task on the program as it passes through the system and into the <code>LirBuffer</code>.</p>
+
+<p>Once the instructions are in the <code>LirBuffer</code>, the application calls <code>nanojit::compile()</code> to produce machine code, which is stored in a <code>nanojit::Fragment</code>. Internally to Nanojit, another set of filters operates on the LIR as it passes from the <code>LirBuffer</code> toward the assembler. The result of compilation is a function that the application can call from C via a pointer to the first instruction.</p>
+
+<h3 id="Example">Example</h3>
+
+<p>The following code works with SpiderMonkey's hacked version of Nanojit.  Figuring out how to compile it is left as an exercise for the reader; the following works when run in the object directory of an <code>--enable-debug</code> SpiderMonkey shell:</p>
+
+<pre>g++ -DDEBUG -g3 -Wno-invalid-offsetof -fno-rtti -include js-confdefs.h -I dist/include/ -I.. -I ../nanojit -o jittest ../jittest.cpp libjs_static.a
+</pre>
+
+<div class="note"><strong>Note:</strong> Remove the <code>-DDEBUG</code> if you have not compiled SpiderMonkey with <code>--enable-debug</code>, and use whatever you called the sample source file in place of <em><code>jittest.cpp</code></em>.</div>
+
+<pre class="brush: cpp">#include &lt;stdio.h&gt;
+#include &lt;stdint.h&gt;
+#include "jsapi.h"
+#include "jstracer.h"
+#include "nanojit.h"
+
+using namespace nanojit;
+
+const uint32_t CACHE_SIZE_LOG2 = 20;
+
+static avmplus::GC gc = avmplus::GC();
+static avmplus::AvmCore core = avmplus::AvmCore();
+
+int main()
+{
+	LogControl lc;
+#ifdef DEBUG
+	lc.lcbits = LC_ReadLIR | LC_Assembly;
+#else
+	lc.lcbits = 0;
+#endif
+
+	// Set up the basic Nanojit objects.
+	Allocator *alloc = new VMAllocator();
+	CodeAlloc *codeAlloc = new CodeAlloc();
+	Assembler *assm = new (&amp;gc) Assembler(*codeAlloc, *alloc, &amp;core, &amp;lc);
+	Fragmento *fragmento =
+		new (&amp;gc) Fragmento(&amp;core, &amp;lc, CACHE_SIZE_LOG2, codeAlloc);
+	LirBuffer *buf = new (*alloc) LirBuffer(*alloc);
+
+	#ifdef DEBUG
+	fragmento-&gt;labels = new (*alloc) LabelMap(*alloc, &amp;lc);
+	buf-&gt;names = new (*alloc) LirNameMap(*alloc, fragmento-&gt;labels);
+	#endif
+
+	// Create a Fragment to hold some native code.
+	Fragment *f = fragmento-&gt;getAnchor((void *)0xdeadbeef);
+	f-&gt;lirbuf = buf;
+	f-&gt;root = f;
+
+	// Create a LIR writer
+	LirBufWriter out(buf);
+
+	// Write a few LIR instructions to the buffer: add the first parameter
+	// to the constant 2.
+	out.ins0(LIR_start);
+	LIns *two = out.insImm(2);
+	LIns *firstParam = out.insParam(0, 0);
+	LIns *result = out.ins2(LIR_add, firstParam, two);
+	out.ins1(LIR_ret, result);
+
+	// Emit a LIR_loop instruction.  It won't be reached, but there's
+	// an assertion in Nanojit that trips if a fragment doesn't end with
+	// a guard (a bug in Nanojit).
+	LIns *rec_ins = out.insSkip(sizeof(GuardRecord) + sizeof(SideExit));
+	GuardRecord *guard = (GuardRecord *) rec_ins-&gt;payload();
+	memset(guard, 0, sizeof(*guard));
+	SideExit *exit = (SideExit *)(guard + 1);
+	guard-&gt;exit = exit;
+	guard-&gt;exit-&gt;target = f;
+	f-&gt;lastIns = out.insGuard(LIR_loop, out.insImm(1), rec_ins);
+
+	// Compile the fragment.
+	compile(assm, f, *alloc verbose_only(, fragmento-&gt;labels));
+	if (assm-&gt;error() != None) {
+		fprintf(stderr, "error compiling fragment\n");
+		return 1;
+	}
+	printf("Compilation successful.\n");
+
+	// Call the compiled function.
+	typedef JS_FASTCALL int32_t (*AddTwoFn)(int32_t);
+	AddTwoFn fn = reinterpret_cast&lt;AddTwoFn&gt;(f-&gt;code());
+	printf("2 + 5 = %d\n", fn(5));
+	return 0;
+}
+</pre>
+
+<h3 id="Code_Explanation">Code Explanation</h3>
+
+<p>Interesting part are the lines 46-50:</p>
+
+<pre class="brush: cpp">// Write a few LIR instructions to the buffer: add the first parameter
+// to the constant 2.
+
+out.ins0(LIR_start);
+
+LIns *two = out.insImm(2);
+
+LIns *firstParam = out.insParam(0, 0);
+
+LIns *result = out.ins2(LIR_add, firstParam, two);
+
+out.ins1(LIR_ret, result);</pre>
+
+<p>Basically, what the code provided above is doing is feeding raw LIR into the LIR Buffer, using the LIRWriter's writer object. From an operational point of view, it is creating a function, which takes an integer input, and adds it to two, and outputs the result. The function is created here on lines 57-69:</p>
+
+<pre class="brush: cpp">// Compile the fragment.
+
+compile(assm, f, *alloc verbose_only(, fragmento-&gt;labels));
+
+if (assm-&gt;error() != None) {
+    fprintf(stderr, "error compiling fragment\n");
+
+    return 1;
+}
+
+printf("Compilation successful.\n");
+
+// Call the compiled function.
+
+typedef JS_FASTCALL int32_t (*AddTwoFn)(int32_t);
+
+AddTwoFn fn = reinterpret_cast&lt;addtwofn&gt;(f-&gt;code());
+
+printf("2 + 5 = %d\n", fn(5));
+
+return 0;&lt;/addtwofn&gt;</pre>
+
+<p style="text-align: left;">This upper half of this snippet includes code where the raw LIR is first converted into machine code.(where compile(fragmento-&gt;assm(), f); is called basically).<br>
+ Then a pointer to a function is used, which takes an int as input and returns the sum of that parameter with two. (<span>typedef</span> JS_FASTCALL int32_t (*AddTwoFn)(int32_t); )<br>
+ Then, printf is hardcoded to call it with a parameter 5, and on linking with nanojit library, the following program will display</p>
+
+<pre class="brush: cpp">2+5=7</pre>
+
+<p style="text-align: left;">Now, what I need to do is generate output for this:</p>
+
+<pre class="brush: cpp">start
+two = int 2
+
+twoPlusTwo = add two, two
+
+ret twoPlusTwo
+</pre>
+
+<p>This adds two and two in the most hardcoded way possible. The conversion from LIR to a program like one shown above is the task of the parser.</p>
+
+<h2 id="Guards">Guards</h2>
+
+<p>Guards are special LIR instructions, similar to conditional branches, with the difference that when they are called, instead of going to a particular address, they leave the JIT code entirely, and stop the trace.</p>
+
+<h3 id="Need">Need</h3>
+
+<p>Guards are required in a cross platform dynamic language like JavaScript. Certain assumptions are made when a particular JIT code is generated.</p>
+
+<p>For example, in an instruction INR x, a guard would check that x doesn't overflow the range for a 32 bit integer. The JIT code would have a guard checking this condition(an xt guard), and would return to the interpreter if the condition turns out to be true. The interpreter is then equipped to handle the overflow.</p>
+
+<p style="text-align: left;">Hence, guards are needed to prevent certain erroneous behaviour that might result from the assumptions that are generally made while JIT is generated.</p>
+
+<p style="text-align: left;"><strong>TODO</strong>: Explain guards, guard records, <code>VMSideExit</code>, <code>Fragmento</code>, <code>VerboseWriter::formatGuard</code>...</p>

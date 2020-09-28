@@ -1,0 +1,121 @@
+<p> </p>
+
+<div class="warning">
+<p>Support for extensions using XUL/XPCOM or the Add-on SDK was removed in Firefox 57, released November 2017. As there is no supported version of Firefox enabling these technologies, this page will be removed by December 2020.</p>
+
+<p>Add-ons using the techniques described in this document are considered a legacy technology in Firefox. Don't use these techniques to develop new add-ons. Use <a href="/en-US/Add-ons/WebExtensions">WebExtensions</a> instead. If you maintain an add-on which uses the techniques described here, consider migrating it to use WebExtensions.</p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 53</a>, no new legacy add-ons will be accepted on addons.mozilla.org (AMO) for desktop Firefox and Firefox for Android.</strong></p>
+
+<p><strong>Starting from <a href="https://wiki.mozilla.org/RapidRelease/Calendar">Firefox 57</a>, only extensions developed using WebExtensions APIs will be supported on Desktop Firefox and Firefox for Android. </strong></p>
+
+<p>Even before Firefox 57, changes coming up in the Firefox platform will break many legacy extensions. These changes include multiprocess Firefox (e10s), sandboxing, and multiple content processes. Legacy extensions that are affected by these changes should migrate to use WebExtensions APIs if they can. See the <a href="https://blog.mozilla.org/addons/2017/02/16/the-road-to-firefox-57-compatibility-milestones/">"Compatibility Milestones" document</a> for more information.</p>
+
+<p>A wiki page containing <a href="https://wiki.mozilla.org/Add-ons/developer/communication">resources, migration paths, office hours, and more</a>, is available to help developers transition to the new technologies.</p>
+</div>
+
+<p> </p>
+
+<p>This example demonstrates the dynamic injection of HTML into a XUL element. Specifically, we create a rich tooltip that uses HTML instead of plain text.</p>
+
+<h2 id="Dynamic_HTML_in_XUL_Tooltip">Dynamic HTML in XUL Tooltip</h2>
+
+<p>Insert the appropriate code from below into your XUL overlay. This example is what the final XUL overlay could look like, assuming a JavaScript overlay titled overlay.js:</p>
+
+<pre>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;overlay id="htmltip-overlay"
+    xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+    xmlns:html="http://www.w3.org/1999/xhtml"&gt;
+  &lt;script type="application/x-javascript" src="overlay.js"/&gt;
+
+  &lt;popup id="contentAreaContextMenu"&gt;
+    &lt;menuitem id="htmltip1" label="foo1"
+        onmouseover="htmltip.onMouseTooltip(event)"
+        tooltip="myHTMLTip"
+        /&gt;
+    &lt;menuitem id="htmltip2" label="foo2"
+        onmouseover="htmltip.onMouseTooltip(event)"
+        tooltip="myHTMLTip"
+        /&gt;
+  &lt;/popup&gt;
+
+  &lt;popupset id="mainPopupSet"&gt;
+        &lt;tooltip id="myHTMLTip"&gt;
+            &lt;html:div id="myHTMLTipDiv" type="content"/&gt;
+        &lt;/tooltip&gt;
+  &lt;/popupset&gt;
+
+
+
+&lt;/overlay&gt;
+
+</pre>
+
+<p>Insert your version of the following into the JavaScript overlay. Our customized tooltipHTML attribute for each element can be set at any time.</p>
+
+<pre>var htmltip = {
+
+onLoad: function() {
+	//at any point you can save an HTML string to a XUL attribute for later injection into the tooltip
+	document.getElementById("htmltip1").setAttribute("tooltipHTML", "&lt;font color='red'&gt;red foo&lt;/font&gt;")
+	document.getElementById("htmltip2").setAttribute("tooltipHTML", "&lt;font color='green'&gt;green foo&lt;/font&gt;")
+
+},
+
+onMouseTooltip: function(event) {
+
+//get the HTML tooltip string assigned to the element that the mouse is over (which will soon launch the tooltip)
+var txt = event.target.getAttribute("tooltipHTML");
+
+// get the HTML div element that is inside the custom XUL tooltip
+var div = document.getElementById("myHTMLTipDiv");
+
+//clear the HTML div element of any prior shown custom HTML
+while(div.firstChild)
+	div.removeChild(div.firstChild);
+
+//safely convert HTML string to a simple DOM object, stripping it of JavaScript and more complex tags
+var injectHTML = Components.classes["@mozilla.org/feed-unescapehtml;1"]
+.getService(Components.interfaces.nsIScriptableUnescapeHTML)
+.parseFragment(txt, false, null, div);
+
+//attach the DOM object to the HTML div element
+div.appendChild(injectHTML);
+
+}
+
+}
+
+window.addEventListener('load', htmltip.onLoad, false);
+</pre>
+
+<p>In the XUL overlay, xmlns:html is used to enable HTML tags to be used inside the XUL. Our enhanced XUL tooltip is an element that is written ahead of time, and it contains an HTML div element whose type attribute lowers its privileges to being that content element, although it is an element of chrome. This is recommended for security reasons, especially if remote HTML is to be inserted.</p>
+
+<p>A number of menuitems have a tooltip attribute pointing to the same tooltip. That tooltip is empty now, but we will use the mouseover event to dynamically populate the tooltip (which is about to be shown) with a different message for each menuitem. This is done by calling the onMouseTooltip function, which will take the tooltipHTML attribute of the element that is being hovered over and safely convert that into DOM and inject it into the tooltip that will soon be shown. The tooltipHTML attribute is an HTML string which is set sometime beforehand for each element. For security reasons, the conversion will strip out some of the more dangerous elements in the HTML string, like JavaScript and iframes.</p>
+
+<h2 id="Non-dynamic_HTML_in_XUL_tooltip">Non-dynamic HTML in XUL tooltip</h2>
+
+<p>It is also possible to avoid using dynamic HTML to accomplish this. You would have to have a separate XUL tooltip element assigned to each element that you wish to have a rich tooltip with. You should write the HTML straight into the XUL.</p>
+
+<pre>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;overlay id="htmltip-overlay"
+    xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+    xmlns:html="http://www.w3.org/1999/xhtml"&gt;
+  &lt;script type="application/x-javascript" src="overlay.js"/&gt;
+
+  &lt;popup id="contentAreaContextMenu"&gt;
+    &lt;menuitem id="htmltip3" label="foo3"
+        tooltip="mytip3html"
+        /&gt;
+  &lt;/popup&gt;
+
+  &lt;popupset id="mainPopupSet"&gt;
+        &lt;tooltip id="mytip3html"&gt;
+            &lt;html:div type="content"&gt;
+                &lt;html:b&gt;bold foo&lt;/html:b&gt;
+            &lt;/html:div&gt;
+        &lt;/tooltip&gt;
+  &lt;/popupset&gt;
+&lt;/overlay&gt;
+
+</pre>

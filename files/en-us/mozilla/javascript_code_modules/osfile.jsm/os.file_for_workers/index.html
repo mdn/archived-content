@@ -1,0 +1,910 @@
+---
+title: OS.File for Workers
+slug: Mozilla/JavaScript_code_modules/OSFile.jsm/OS.File_for_workers
+---
+<p>This page details how to use File I/O from a privileged JavaScript worker thread. For other uses of OS.File, please see <a href="/en-US/docs/JavaScript_OS.File" title="/en-US/docs/JavaScript_OS.File">the corresponding page</a>.</p>
+
+<h2 id="Using_OS.File_for_Workers">Using OS.File for Workers</h2>
+
+<p>To import OS.File in a chrome worker thread, add the following line at the start of your script:</p>
+
+<pre><code class="brush: js">importScripts("<a rel="freelink">resource://gre/modules/osfile.jsm"</a>)</code></pre>
+
+<h3 id="Example_Reading_the_contents_of_a_file_as_text">Example: Reading the contents of a file as text</h3>
+
+<p>The following snippet opens a file "file.txt" and read its contents as a string, using the default encoding (utf-8).</p>
+
+<pre class="brush: js">let decoder = new TextDecoder();      // This decoder can be reused for several reads
+let array = OS.File.read("file.txt"); // Read the complete file as an array
+let text = decoder.decode(array);     // Convert this array to a text
+</pre>
+
+<div class="note">This example requires Firefox 19 or a more recent version.</div>
+
+<h3 id="Example_Write_a_string_to_a_file">Example: Write a string to a file</h3>
+
+<p>The following snippet writes a text "This is some text" to a string "file.txt", using the default encoding (utf-8). It uses an atomic write to ensure that the file is not modified if, for some reason, the write cannot complete (typically because the computer is turned off, the battery runs out or the application is stopped).</p>
+
+<pre class="brush: js">let encoder = new TextEncoder();                                   // This encoder can be reused for several writes
+let array = encoder.encode("This is some text");                   // Convert the text to an array
+OS.File.writeAtomic("file.txt", array, {tmpPath: "file.txt.tmp"}); // Write the array atomically to "file.txt", using as temporary
+                                                                   // buffer "file.txt.tmp".
+</pre>
+
+<p>The following variant does the same thing but will fail if "file.txt" already exists (notice that noOverwrite is set to true):</p>
+
+<pre class="brush: js">let encoder = new TextEncoder();                                   // This encoder can be reused for several writes
+let array = encoder.encode("This is some text");                   // Convert the text to an array
+OS.File.writeAtomic("file.txt", array, {tmpPath: "file.txt.tmp",   // Write the array atomically to "file.txt", using as temporary
+                                        noOverwrite: true});       // buffer "file.txt.tmp".
+</pre>
+
+<div class="note">This examples require Firefox 19 or a more recent version.</div>
+
+<h3 id="Example_Rename_a_file">Example: Rename a file</h3>
+
+<p>The following snippet renames file "oldname.txt" to "newname.txt". Note that this is generally much faster than copying "oldname.txt" to "newname.txt" and then removing "oldname.txt".</p>
+
+<pre class="brush: js">OS.File.rename("oldname.txt", "newname.txt");</pre>
+
+<div class="note">This example requires Firefox 16 or a more recent version.</div>
+
+<h3 id="Example_Copy_a_file">Example: Copy a file</h3>
+
+<p>The following snippet copies file "oldname.txt" to "newname.txt". On most operating systems, this operation is handled directly by the operating system itself, which makes it as fast as possible.</p>
+
+<pre class="brush: js">OS.File.copy("oldname.txt", "newname.txt");</pre>
+
+<div class="note">This example requires Firefox 16 or a more recent version.</div>
+
+<h3 id="Example_Path_manipulation">Example: Path manipulation</h3>
+
+<p>The following snippet obtains the path to file "sessionstore.js", contained in the user's profile directory.</p>
+
+<pre class="brush: js">let sessionstore = OS.Path.join(OS.Constants.Path.profileDir, "sessionstore.js");
+   // Under Linux, this is generally "$HOME/.firefox/Profiles/$PROFILENAME/sessionstore.js"
+   // Under MacOS, this is generally "$HOME/Library/Application Support/Firefox/$PROFILENAME/sessionstore.js"
+   // Under Windows Vista and later, this is generally "C:\Users\%USERNAME%\AppData\Roaming\Mozilla\Firefox\Profiles\%PROFILENAME%"
+   // etc.
+
+</pre>
+
+<h3 id="Example_Determine_if_a_file_is_a_directory">Example: Determine if a file is a directory</h3>
+
+<p>The following snippet determines if some path represents a file or a directory. The variable "somePath" holds the path of the file. The code checks if it's a directory or not using "isDir". It also fails safely in case the file doesn't exist:</p>
+
+<pre class="brush: js">try {
+   let stat = OS.File.stat(somePath);
+   if (stat.isDir) {
+      // The path represents a directory
+   } else {
+      // The path represents a file, not a directory
+   }
+} catch (ex) {
+   if (ex instanceof OS.File.Error &amp;&amp; ex.becauseNoSuchFile) {
+      // The file does not exist
+   } else {
+     throw ex; // Other error
+   }
+}
+</pre>
+
+<h2 id="Global_object_OS.File">Global object OS.File</h2>
+
+<h3 id="Method_overview">Method overview</h3>
+
+<table>
+ <tbody>
+  <tr>
+   <td><code>File <a href="#OS.File.open" title="#OS.File.open">open</a>(in string path, [optional] in object mode, [optional] in object options);</code></td>
+  </tr>
+  <tr>
+   <td><code>object <a href="#OS.File.openUnique" title="#OS.File.openUnique">openUnique</a>(in string path, [optional] in object options);</code> </td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.copy" title="#OS.File.copy">copy</a>(in string sourcePath, in string destPath, [optional] in object options);</code></td>
+  </tr>
+  <tr>
+   <td><code>bool <a href="#OS.File.exists" title="#OS.File.exists">exists</a>(in string path);</code></td>
+  </tr>
+  <tr>
+   <td><code>string <a href="#OS.File.getCurrentDirectory" title="#OS.File.getCurrentDirectory">getCurrentDirectory</a>();</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.makeDir" title="#OS.File.makeDir">makeDir</a>(in string path, [optional] in object options);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.move" title="#OS.File.move">move</a>(in string sourcePath, in string destPath);</code></td>
+  </tr>
+  <tr>
+   <td><code>Uint8Array <a href="#OS.File.read" title="#OS.File.read">read</a>(in string path, [optional] in object options);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.remove" title="#OS.File.remove">remove</a>(in string path);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.removeEmptyDir" title="#OS.File.removeEmptyDir">removeEmptyDir</a>(in string path);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.removeDir" title="#OS.File.removeEmptyDir">removeDir</a>(in string path, [optional] in object options);</code> </td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.setCurrentDirectory" title="#OS.File.setCurrentDirectory">setCurrentDirectory</a>(in string path);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.setDates">setDates</a>(in string path, in Date|number accessDate, in Date|number modificationDate);</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> <a href="#OS.File.stat" title="#OS.File.stat">stat</a>(in string path, [optional] in object options);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.writeAtomic" title="#OS.File.writeAtomic">writeAtomic</a>(in string path, in ArrayView data, in object options);</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods">Methods</h3>
+
+<h4 id="OS.File.open_2">OS.File.open()<a name="OS.File.open"></a></h4>
+
+<p>Use method <code>OS.File.open()</code> to open a file.</p>
+
+<pre class="brush:js;">File open(
+  in string path,
+  [optional] in object mode,
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full native name of the file to open.</dd>
+ <dt><code>mode</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The opening mode for the file, as an object that may contain a subset of the following fields:
+ <dl>
+  <dt><code>read</code></dt>
+  <dd>If <code>true</code>, the file will be opened for reading. Depending on other fields, it may also be opened for writing.</dd>
+  <dt><code>write</code></dt>
+  <dd>If <code>true</code>, the file will be opened for writing. Depending on other fields, it may also be opened for reading.
+  <div class="note">Prior to Gecko 27, unless <code>create</code> or <code>truncate</code> are set or explicit <code>unixFlags</code> are given, the file will be opened for appending on Unix/Linux. However, the file is not opened for appending on Windows at the time of writing. See <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=924858">bug 924858</a>. Starting with Gecko 27, you may use the <code>append</code> flag instead.</div>
+  </dd>
+  <dt><code>trunc | truncate</code></dt>
+  <dd>If <code>true</code>, the file will be opened for writing. If the file does not exist, it will be created. If the file exists, its contents will be removed. Cannot be used with <code>create</code>.</dd>
+  <dt><code>create</code></dt>
+  <dd>If <code>true</code>, file will be opened for writing. The file must not exist. If the file already exists, an error is thrown. Cannot be used with <code>truncate</code> or <code>existing</code>.</dd>
+  <dt><code>existing</code></dt>
+  <dd>If <code>true</code>, the file must already exist. If the file does not exist, an error is thrown. Cannot be used with <code>create</code>.</dd>
+  <dt><code>append</code> </dt>
+  <dd>If<code> true</code>, the file will be opened for appending, meaning the equivalent of <code>.setPosition(0, POS_END)</code> is executed before each write. The default is <code>true</code>, i.e. opening a file for appending. Specify <code>append: false</code> to open the file in regular mode.</dd>
+ </dl>
+ </dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>Platform-specific options for opening the file. <strong>For advanced users only. Most users will never have need for these options.</strong> To specify options, pass an object that may contain some of the following flags:
+ <dl>
+  <dt><code>unixFlags</code></dt>
+  <dd>(ignored under non-Unix platforms) If specified, file opening flags, as per libc function <code>open</code>. If unspecified, build these flags from the contents of <code>mode</code>. You can build these flags from values <a href="/en/JavaScript_OS.Constants#libc_opening_files" title="en/JavaScript_OS.Constants#libc_opening_files">OS.Constants.libc.O_*</a>.</dd>
+  <dt><code>unixMode</code></dt>
+  <dd>(ignored under non-Unix platforms) If specified, file creation mode, as per libc function <code>open</code>. If unspecified, files are created with a default mode of 0600 (file is private to the user, the user can read and write). You can build this mode from values <a href="/en/JavaScript_OS.Constants#libc_opening_files" title="en/JavaScript_OS.Constants#libc_opening_files"><code>OS.Constants.libc.S_I*</code></a>.</dd>
+  <dt><code>winShare</code></dt>
+  <dd>(ignored under non-Windows platforms) If specified, a sharing policy (how access to file is shared among different processes), as per Windows function <code>CreateFile</code>. If unspecified, files are opened with a default sharing policy (file is not protected against being read/written/removed by another process or another use in the same process). You can build this policy from constants OS.Constants.Win.FILE_SHARE_*.</dd>
+  <dt><code>winSecurity</code></dt>
+  <dd>(ignored under non-Windows platforms) If specified, a security policy, as per Windows function <code>CreateFile</code>. If unspecified, no security attributes.</dd>
+  <dt><code>winAccess</code></dt>
+  <dd>(ignored under non-Windows platforms) If specified, access mode (read, write, both or neither), as per Windows function <code>CreateFile</code>. This also requires option <code>winDisposition</code> and this replaces argument <code>mode</code>. If unspecified, value is built from <code>mode</code>.</dd>
+  <dt><code>winDisposition</code></dt>
+  <dd>(ignored under non-Windows platforms) If specified, disposition mode, as per Windows function <code>CreateFile</code>. This also requires option <code>winAccess</code> and this replaces argument <code>mode</code>. If unspecified, value is built from <code>mode</code>.</dd>
+ </dl>
+ </dd>
+</dl>
+
+<h5 id="Returns">Returns</h5>
+
+<p>An instance of <code>OS.File</code> representing the expected file.</p>
+
+<div class="warning">Note that the operating system limits the number of files that can be opened simultaneously by one process, so do not forget to <a href="/OS.File.prototype.close" title="OS.File.prototype.close"><code>close</code></a> that file once you have finished it, to ensure that you are not blocking the rest of the process.</div>
+
+<p>The runtime will also do its best to eventually close files that are not used, but you should not rely upon this, as it can depend on many factors that you cannot control.</p>
+
+<p>When opening files for writing, they will be opened for appending unless you specify <code>append: false</code> in Gecko 27 and later. In Gecko 26 and ealier, on platforms other than Windows, the files will be opened for appending unless you specify explicit <code>unixFlags</code> or open the file with either <code>create</code> or <code>truncate</code> flags. In Gecko 26 and ealier on Windows, files will never be opened for appending.</p>
+
+<p>To open an existing file for writing <em>without</em> appending in a compatible way on all platforms in both, Gecko 27 and later and Gecko 26 and earlier, you should specify both, the <code>append</code> flag and <code>unixFlags</code>.</p>
+
+<pre class="brush:js;">// Open a file for writing without appending to it.
+
+// Under Unix, you'll have to specify your own unixFlags for Gecko &lt; 27 to avoid append mode.
+var options = {};
+if (OS.Constants.libc) {
+  // Own flags omitting O_APPEND, e.g.
+  options.unixFlags = OS.Constants.libc.O_CREAT | OS.Constants.libc.O_WRONLY;
+}
+// For Gecko &gt;= 27, it is enough, but crucial, to set the correct append flag.
+var outfile = OS.File.open("file.tmp", {write: true, append: false}, options);
+try {
+  // ... do something with that file
+} finally {
+  outfile.close();
+}</pre>
+
+<h5 id="Examples">Examples</h5>
+
+<h6 id="Open_a_file_for_reading">Open a file for reading</h6>
+
+<pre class="brush:js;">var file = OS.File.open("/etc/password"); // Open a file for reading
+try {
+   // ... do something with that file
+} finally {
+   file.close();
+}
+</pre>
+
+<h6 id="Open_a_file_with_Unix-specific_options">Open a file with Unix-specific options</h6>
+
+<pre class="brush:js;">// Prepare opening options: under Unix, the user can only read and modify the file.
+var options = {
+  unixMode: OS.Constants.S_IRUSR | OS.Constants.S_IWUSR
+};
+var outfile = OS.File.open("file.tmp", {create: true}, options); // Open a file for writing. If the file already exists, fail.
+try {
+  // ... do something with that file
+} finally {
+  outfile.close();
+}
+</pre>
+
+<h4 id="OS.File.openUnique_2">OS.File.openUnique()<a name="OS.File.openUnique"></a></h4>
+
+
+
+<p>Creates and opens a file with a unique name. By default, generate a random HEX number and use it to create a unique new file name.</p>
+
+<pre class="brush:js;">object openUnique(
+  in string path,
+  [optional] in object options
+) throws OS.File.Error</pre>
+
+<h5 id="Arguments_2">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full native name of the file to open.</dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>Additional options for file opening. This implementation interprets the following fields:
+ <dl>
+  <dt><code>humanReadable</code></dt>
+  <dd>If <code>true</code>, create a new filename appending a decimal number. ie: filename-1.ext, filename-2.ext. If <code>false</code> use HEX numbers ie: filename-A65BC0.ext</dd>
+  <dt><code>maxAttempts</code></dt>
+  <dd>Used to limit the amount of tries after a failed file creation. Default is 99.</dd>
+ </dl>
+ </dd>
+</dl>
+
+<h5 id="Returns_2">Returns</h5>
+
+<p>An object contains A file object{file} and the path{path}.</p>
+
+<h5 id="Throws">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>If the file could not be opened.</dd>
+</dl>
+
+<h4 id="OS.File.copy_2">OS.File.copy()<a name="OS.File.copy"></a></h4>
+
+<p>Copy a file.</p>
+
+<pre>void copy(
+  in string sourcePath,
+  in string destPath
+  [optional] in object options)
+throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_3">Arguments</h5>
+
+<dl>
+ <dt><code>sourcePath</code></dt>
+ <dd>The full path of the file to copy. At the time of this writing, this function does <strong>not</strong> copy directories.</dd>
+ <dt><code>destPath</code></dt>
+ <dd>The full path of the destination. Note that this is not a directory but a file.</dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>An optional object used to control the behavior of this function. You may pass an object with a subset of the following fields:</dd>
+ <dt style="margin-left: 40px;"><code>noOverwrite</code></dt>
+ <dd style="margin-left: 40px;">If <code>destPath</code> already exists, do not overwrite it, but rather throw an exception.</dd>
+</dl>
+
+<h5 id="Throws_2">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the file does not exist.</dd>
+</dl>
+
+<div class="note"><strong>Performance notes</strong>
+
+<ul>
+ <li>To avoid erasing the destination file, it is much faster to use option <code>noOverwrite</code> than to check manually whether the file exists.</li>
+ <li>This operation is OS-optimized under MacOS X (native operation <code>copyfile</code>), Linux/Android (native operation <code>splice</code>) and Windows (native operation <code>CopyFile</code>).</li>
+</ul>
+</div>
+
+<h4 id="OS.File.exists_2">OS.File.exists()<a name="OS.File.exists"></a></h4>
+
+<p>Determine whether a file exists.</p>
+
+<pre class="brush: js">bool exists(
+  in string path
+)
+</pre>
+
+<h5 id="Arguments_4">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The name of the file.</dd>
+</dl>
+
+<h5 id="Returns_3">Returns</h5>
+
+<p><code>true</code> if the file exists, false otherwise.</p>
+
+<div class="note"><strong>Performance note</strong>: For the sake of performance, you should avoid this function whenever possible. For instance, rather than calling exists() to determine if a directory should be created with makeDir, you should rather create the directory with makeDir and catch the error if the directory exists. This will ensure that you only need to perform one I/O operation rather than two.</div>
+
+<h4 id="OS.File.getCurrentDirectory_2">OS.File.getCurrentDirectory()<a name="OS.File.getCurrentDirectory"></a></h4>
+
+<p>Return the current directory.</p>
+
+<pre class="brush: js">string getCurrentDirectory()</pre>
+
+<h5 id="Returns_4">Returns</h5>
+
+<p>The path to the current directory.</p>
+
+<h4 id="OS.File.makeDir_2">OS.File.makeDir()<a name="OS.File.makeDir"></a></h4>
+
+<p>Create a new directory</p>
+
+<pre class="brush: js">void makeDir(
+  in string path,
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_5">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full name of the directory to create.</dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>Platform-specific options for creating the directory. <strong>For advanced users only. Most users will never have need for these options.</strong> To specify options, pass an object that may contain some of the following flags:</dd>
+ <dt style="margin-left: 40px;"><code>unixMode</code></dt>
+ <dd style="margin-left: 40px;">(ignored under non-Unix platforms) If specified, file creation mode, as per libc function mkdir. If unspecified, directories are created with a default mode of 0600 (file is private to the user, the user can read and write). You can build this mode from values <a href="/en/JavaScript_OS.Constants#libc_opening_files" title="en/JavaScript_OS.Constants#libc_opening_files"><code>OS.Constants.libc.S_I*</code></a>.</dd>
+ <dt style="margin-left: 40px;"><code>winSecurity</code></dt>
+ <dd style="margin-left: 40px;">(ignored under non-Windows platforms) If specified, a security policy, as per Windows function <code>CreateDirectory</code>. If unspecified, no security attributes.</dd>
+</dl>
+
+<h4 id="OS.File.move_2">OS.File.move()<a name="OS.File.move"></a></h4>
+
+<p>Move a file.</p>
+
+<pre>move(
+  in string sourcePath,
+  in string destPath
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_6"><span>Arguments</span></h5>
+
+<dl>
+ <dt><code>sourcePath</code></dt>
+ <dd>The full path of the file to move. At the time of this writing, the behavior of this function is unspecified if <code>sourcePath</code> is a directory.</dd>
+ <dt><code>destPath</code></dt>
+ <dd>The full path of the destination. At the time of this writing, the behavior of this function is unspecified if <code>destPath</code> is a directory.</dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>An optional object used to control the behavior of this function. You may pass an object with a subset of the following fields:
+ <dl>
+  <dt><code>noOverwrite</code></dt>
+  <dd>If <code>destPath</code> already exists, do not overwrite it, but rather throw an exception.</dd>
+ </dl>
+ </dd>
+</dl>
+
+<h5 id="Throws_3">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the file does not exist.</dd>
+</dl>
+
+<div class="note"><strong>Performance note</strong>: This operation is OS-optimized under MacOS X, Linux/Android and Windows.</div>
+
+<h4 id="OS.File.read_2">OS.File.read()<a name="OS.File.read"></a></h4>
+
+<p>Read the contents of a file</p>
+
+<pre class="brush: js">Uint8Array read(
+  in string path,
+  [optional] in number bytes
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_7">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full path to the file to read.</dd>
+ <dt><code>bytes</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>The number of bytes to read. If unspecified, read the file to the end.</dd>
+</dl>
+
+<h5 id="Returns_5">Returns</h5>
+
+<p>An array holding the <code>bytes</code> bytes (or less if the file did not contain as many bytes).</p>
+
+<h5 id="Throws_4">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the file does not exist or if the process does not have the authorization to read it.</dd>
+</dl>
+
+<h4 id="OS.File.remove_2">OS.File.remove()<a name="OS.File.remove"></a></h4>
+
+<p>Remove an existing file.</p>
+
+<pre>void remove(
+  in string path
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_8">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full name of the file to remove. At the time of this writing, this function does <strong>not</strong> remove directories.</dd>
+ <dt><code>options</code></dt>
+ <dd>Ignored for the moment.</dd>
+</dl>
+
+<h5 id="Throws_5">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the file does not exist.</dd>
+</dl>
+
+<h4 id="OS.File.removeEmptyDir_2">OS.File.removeEmptyDir()<a name="OS.File.removeEmptyDir"></a></h4>
+
+<p>Remove an empty directory.</p>
+
+<pre class="brush: js">void removeEmptyDir(
+  in string path
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_9">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full path to the empty directory.</dd>
+</dl>
+
+<h5 id="Throws_6">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the directory does not exist.</dd>
+</dl>
+
+<h4 id="OS.File.removeDir_2">OS.File.removeDir()<a name="OS.File.removeDir"></a></h4>
+
+
+
+<p>Remove an existing directory and its contents.</p>
+
+<pre>void removeDir(
+  in string path
+  [optional] in object options
+) throws OS.File.Error
+</pre>
+
+<h5 id="Arguments_10">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>A string representing the name of the file to remove. At the time of this writing, this function does <strong>not</strong> remove directories.</dd>
+ <dt><code>options</code></dt>
+ <dd>An object that may contain the following fields</dd>
+ <dt style="margin-left: 40px;"><code>ignoreAbsent</code></dt>
+ <dd style="margin-left: 40px;">If false, this function will throw an error if the directory doesn't exist.</dd>
+ <dt style="margin-left: 40px;"><code>ignorePermissions</code></dt>
+ <dd style="margin-left: 40px;">If true, this function will remove the directory even when lacking write permissions.</dd>
+</dl>
+
+<h5 id="Throws_7">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if path isn't a directory.</dd>
+</dl>
+
+<h4 id="OS.File.setCurrentDirectory_2">OS.File.setCurrentDirectory()<a name="OS.File.setCurrentDirectory"></a></h4>
+
+<p>Change the current directory of the process.</p>
+
+<div class="warning"><strong>Use with extreme caution:</strong> This API may be useful for application developers but should be avoided by add-ons, as it changes the state of the complete application.</div>
+
+<pre class="brush: js">void setCurrentDirectory(
+  in string path
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_11">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full path to use as current directory.</dd>
+</dl>
+
+<h5 id="Throws_8">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the path to the directory does not exist.</dd>
+</dl>
+
+<h4 id="OS.File.setDates_2">OS.File.setDates()<a name="OS.File.setDates"></a></h4>
+
+<p>Set the last access and modification date of the file.</p>
+
+<p>The time stamp resolution is 1 second at best, but might be worse depending on the platform, file system, etc.</p>
+
+<pre class="brush: js">void setDates(
+  in string path,
+  in Date|number accessDate,
+  in Date|number modificationDate
+)</pre>
+
+<h5 id="Arguments_12">Arguments</h5>
+
+<dl>
+ <dt>path</dt>
+ <dd>The complete path to the file.</dd>
+ <dt>accessDate</dt>
+ <dd>The last access date. If numeric, milliseconds since epoch. If omitted or null, the current date will be used.</dd>
+ <dt>modificationDate</dt>
+ <dd>The last modification date. If numeric, milliseconds since epoch. If omitted or null, the current date will be used.</dd>
+</dl>
+
+<h5 id="Throws_9">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the path does not represent an existing file.</dd>
+</dl>
+
+<h4 id="OS.File.stat_2">OS.File.stat()<a name="OS.File.stat"></a></h4>
+
+<p>Obtain information about a file, such as size, creation date, etc.</p>
+
+<pre class="brush: js"><a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> stat(
+  in string path
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_13">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full path to the file.</dd>
+</dl>
+
+<h5 id="Returns_6">Returns</h5>
+
+<p class="brush: js">An instance of <a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> holding information about a file.</p>
+
+<h5 id="Throws_10">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the path to the file does not exist.</dd>
+</dl>
+
+<div class="note"><strong>Performance note: </strong>If the file is already opened, calling <em>method</em> <a href="#OS.File.prototype.stat" title="#OS.File.prototype.stat"><code>stat()</code></a> is much faster than calling <em>function</em> <a href="#OS.File.stat" title="#OS.File.stat">OS.File.stat()</a>.</div>
+
+
+
+<h4 id="OS.File.writeAtomic_2">OS.File.writeAtomic()<a name="OS.File.writeAtomic"></a></h4>
+
+<p>Write data to a file. Data is first written to a temporary file, then flushed, then the temporary file is used to overwrite the destination file. This makes it <em>extremely unlikely</em> that the destination file can be corrupted during the call to this function by battery failure, the process being stopped or any other such incident. Note that it is generally not possible to provide a 100% guarantee of such properties.</p>
+
+<pre class="brush: js">void writeAtomic(
+  in string path,
+  in <a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a> data,
+  in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_14">Arguments</h5>
+
+<dl>
+ <dt><code>path</code></dt>
+ <dd>The full path to the destination file.</dd>
+ <dt><code>data</code></dt>
+ <dd>An <code><a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a></code> holding the data to write.</dd>
+ <dt><code>options</code></dt>
+ <dd>An object that may contain the following fields:</dd>
+ <dt style="margin-left: 40px;"><code>tmpPath</code></dt>
+ <dd style="margin-left: 40px;">The full path to a file that may be used as a temporary buffer. This file must be on the same device as path. In case of doubt, <code>path + ".tmp"</code> is generally a good value for <code>tmpPath</code>.</dd>
+ <dt style="margin-left: 40px;"><code>noOverwrite</code></dt>
+ <dd style="margin-left: 40px;">If specified and true, and if <code>path</code> already exists, this function will throw an error without overwriting <code>path</code>.</dd>
+</dl>
+
+<div class="warning">At the time of this writing, option tmpPath is required. Future versions will ensure that the function may work even without this argument.</div>
+
+<h5 id="Throws_11">Throws</h5>
+
+<dl>
+ <dt><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></dt>
+ <dd>In case of any error, in particular if the destination file cannot be overwritten, or if <code>tmpPath</code> is not on the same device as <code>path</code>.</dd>
+</dl>
+
+<h2 id="Instances_of_OS.File">Instances of OS.File</h2>
+
+<p>To obtain an instance of OS.File, use function <code><a href="#OS.File.open" title="#OS.File.open">OS.File.open</a></code>.</p>
+
+<h3 id="Methods_overview">Methods overview</h3>
+
+<table>
+ <tbody>
+  <tr>
+   <td><code>void <a href="#OS.File.prototype.close" title="#OS.File.prototype.close">close</a>()</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.prototype.flush" title="#OS.File.prototype.flush">flush</a>()</code></td>
+  </tr>
+  <tr>
+   <td><code>number <a href="#OS.File.prototype.getPosition" title="#OS.File.prototype.getPosition">getPosition</a>()</code></td>
+  </tr>
+  <tr>
+   <td><code>Uint8Array <a href="#OS.File.prototype.read" title="#OS.File.prototype.read">read</a>([optional] in number bytes)</code></td>
+  </tr>
+  <tr>
+   <td><code>Uint8Array <a href="#OS.File.prototype.readTo" title="#OS.File.prototype.readTo">readTo</a>(out <a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a> dest, [optional] in object options)</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.prototype.setDates">setDates</a>(in Date|number accessDate, in Date|number modificationDate);</code></td>
+  </tr>
+  <tr>
+   <td><code>void <a href="#OS.File.prototype.setPosition" title="#OS.File.prototype.setPosition">setPosition</a>(in number bytes)</code></td>
+  </tr>
+  <tr>
+   <td><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> <a href="#OS.File.prototype.stat" title="#OS.File.prototype.stat">stat</a>()</code></td>
+  </tr>
+  <tr>
+   <td><code>number <a href="#OS.File.prototype.write" title="#OS.File.prototype.write">write</a>(in <a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a> source, [optional] in object options)</code></td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Attributes">Attributes</h3>
+
+<table>
+ <tbody>
+  <tr>
+   <td><code>fd</code></td>
+   <td>(platform-specific)</td>
+   <td>(read-only) <strong>For advanced users only.</strong> A low-level opaque data structure holding the system handle for the file. Under Windows, this is a file <code>HANDLE</code> and under Unix, this is a file descriptor. Use this with the Platform-Specific Low-Level API.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h3 id="Methods_2">Methods</h3>
+
+<h4 id="close">close()<a name="OS.File.prototype.close"></a></h4>
+
+<p>Close a file and release any associated resource.</p>
+
+<p>Once the file is closed, any attempt to call methods of the file object will raise an error.</p>
+
+<div class="warning">Note that the operating system limits the number of files that can be opened simultaneously by one process, so do not forget to <a href="/#OS.File.prototype.close" title="#OS.File.prototype.close"><code>close</code></a> that file once you have finished it to make sure that you are not blocking the rest of the process.</div>
+
+<pre class="brush: js">void close() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h4 id="flush">flush()<a name="OS.File.prototype.flush"></a></h4>
+
+<p>Flushes the file's internal buffers, ensuring that all data still in these buffers is now written to disk.</p>
+
+<p>Disk flushes are very expensive and therefore should be used carefully, sparingly and only in scenarios where it is vital that data survives<span class="difflineplus"> system crashes. Even though the function will be executed off the main-thread, it might still affect the overall performance of any running application.</span></p>
+
+<pre class="brush: js">void flush() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h4 id="getPosition"><a name="OS.File.prototype.getPosition">getPosition</a>()</h4>
+
+<p>Return the current position in the file.</p>
+
+<pre>number getPosition() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Returns_7">Returns</h5>
+
+<p>The current position in the file, as a number of bytes from the start.</p>
+
+<h5 id="Throws_12">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>If the file is closed.</dd>
+</dl>
+
+<h4 id="read">read()<a name="OS.File.prototype.read"></a></h4>
+
+<p>Read bytes from this file to a new buffer. Bytes are read from the current position in the file and the position is advanced accordingly.</p>
+
+<pre>UInt8Array read(
+  [optional] in number bytes
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_15">Arguments</h5>
+
+<dl>
+ <dt><code>bytes</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>If specified, read <code>bytes</code> bytes, or less if the file does not contain that many bytes. If unspecified, read all the remaining bytes from this file.</dd>
+</dl>
+
+<h5 id="Returns_8">Returns</h5>
+
+<p>An array containing the bytes read.</p>
+
+<div class="note">If you need to convert the result of this function to a string, you may do so through by using the <a href="http://wiki.whatwg.org/wiki/StringEncoding" title="http://wiki.whatwg.org/wiki/StringEncoding">StringEncoding API</a>.</div>
+
+<h5 id="Throws_13">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of I/O error.</dd>
+</dl>
+
+<h4 id="readTo">readTo()<a name="OS.File.prototype.readTo"></a></h4>
+
+<p>Read bytes from the file to an existing array. Bytes are read from the current position in the file and the position is advanced accordingly.</p>
+
+<pre class="brush: js">number <a href="#OS.File.prototype.readTo" title="#OS.File.prototype.readTo">readTo</a>(
+  out <a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a> dest,
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_16">Arguments</h5>
+
+<dl>
+ <dt><code>dest</code></dt>
+ <dd>The buffer in which to store the bytes.</dd>
+ <dt><code>options</code> <span class="inlineIndicator optional optionalInline">Optional</span></dt>
+ <dd>An object that may contain some of the following fields:</dd>
+ <dt style="margin-left: 40px;"><code>bytes</code></dt>
+ <dd style="margin-left: 40px;">An upper bound to the number of bytes to read from the file. If unspecified, read up to <code>dest.byteLength</code> bytes. If specified, this must be less than <code>dest.byteLength</code>.</dd>
+</dl>
+
+<h5 id="Returns_9">Returns</h5>
+
+<p>The number of bytes effectively read from the file.</p>
+
+<h5 id="Throws_14">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any I/O error.</dd>
+ <dt><code>TypeError</code></dt>
+ <dd>If <code>options.bytes</code> is specified and is larger than <code>dest.byteLength</code>.</dd>
+</dl>
+
+<h4 id="setDates">setDates()<a name="OS.File.prototype.setDates"></a></h4>
+
+<p>Set the last access and modification date of the file.</p>
+
+<p>The time stamp resolution is 1 second at best, but might be worse depending on the platform, file system, etc.</p>
+
+<pre class="brush: js">void setDates(
+  in Date|number accessDate,
+  in Date|number modificationDate
+)</pre>
+
+<h5 id="Arguments_17">Arguments</h5>
+
+<dl>
+ <dt>accessDate</dt>
+ <dd>The last access date. If numeric, milliseconds since epoch. If omitted or null, the current date will be used.</dd>
+ <dt>modificationDate</dt>
+ <dd>The last modification date. If numeric, milliseconds since epoch. If omitted or null, the current date will be used.</dd>
+</dl>
+
+<h5 id="Throws_15">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the path does not represent an existing file.</dd>
+</dl>
+
+<h4 id="setPosition">setPosition()<a name="OS.File.prototype.setPosition"></a></h4>
+
+<p>Change the current position in the file.</p>
+
+<pre>void setPosition(
+  in number offset,
+  in object origin
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a>
+</pre>
+
+<h5 id="Arguments_18">Arguments</h5>
+
+<dl>
+ <dt><code>offset</code></dt>
+ <dd>The new position, as a number of bytes from the origin.</dd>
+ <dt><code>origin</code></dt>
+ <dd>One of the following:
+ <ul style="margin-left: 40px;">
+  <li><code>OS.File.POS_START</code> (bytes are counted from the start of the file);</li>
+  <li><code>OS.File.POS_CUR</code> (bytes are counted from the current position in the file);</li>
+  <li><code>OS.File.POS_END</code> (bytes are counted from the end of the file).</li>
+ </ul>
+ </dd>
+</dl>
+
+<h5 id="Throws_16">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the new position is before the start of the file, or if the file is closed.</dd>
+</dl>
+
+<h4 id="stat">stat()<a name="OS.File.prototype.stat"></a></h4>
+
+<p>Obtain information about the file, such as size, creation date, etc.</p>
+
+<pre class="brush: js"><a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> stat() throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Returns_10">Returns</h5>
+
+<p class="brush: js">An instance of <a href="/en-US/docs/JavaScript_OS.File/OS.File.Info" title="/en-US/docs/JavaScript_OS.File/OS.File.Info">File.Info</a> holding information about the file.</p>
+
+<h5 id="Throws_17">Throws</h5>
+
+<dl>
+ <dt><code><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></code></dt>
+ <dd>In case of any error, in particular if the file is closed.</dd>
+</dl>
+
+<h4 id="write">write()<a name="OS.File.prototype.write"></a></h4>
+
+<p>Write bytes from a buffer to this file.</p>
+
+<p>Note that, by default, this function may perform several I/O operations to ensure that the buffer is fully written.</p>
+
+<pre>number write(
+  in <a href="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView" title="/en-US/docs/JavaScript_typed_arrays/ArrayBufferView">ArrayBufferView</a> source
+  [optional] in object options
+) throws <a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></pre>
+
+<h5 id="Arguments_19">Arguments</h5>
+
+<dl>
+ <dt><code>source</code></dt>
+ <dd>The array in which the the bytes are stored.</dd>
+ <dt><code>options <span class="inlineIndicator optional optionalInline">Optional</span></code></dt>
+ <dd>An object that may contain some of the following fields:</dd>
+ <dt style="margin-left: 40px;"><code>bytes</code></dt>
+ <dd style="margin-left: 40px;">An upper bound to the number of bytes to write to the file. If unspecified, write up to <code>source.byteLength</code> bytes. If specified, this must be less than <code>source.byteLength</code>.</dd>
+</dl>
+
+<h5 id="Returns_11">Returns</h5>
+
+<p>The number of bytes effectively written to the file.</p>
+
+<h5 id="Throws_18">Throws</h5>
+
+<dl>
+ <dt><a href="/en-US/docs/JavaScript_OS.File/OS.File.Error" title="/en-US/docs/JavaScript_OS.File/OS.File.Error">OS.File.Error</a></dt>
+ <dd>In case of any I/O error.</dd>
+ <dt>TypeError</dt>
+ <dd>If <code>options.bytes</code> is specified and is larger than <code>source.byteLength</code>.</dd>
+</dl>

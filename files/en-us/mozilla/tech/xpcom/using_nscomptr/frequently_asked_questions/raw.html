@@ -1,0 +1,129 @@
+<p>This section will help you if you're fixing a broken build, or have what you think is a quick obvious question, and you don't have time to read the <a href="/en/Using_nsCOMPtr/Reference_Manual" title="en/Using_nsCOMPtr/Reference_Manual">Reference Manual</a>. This FAQ usually just refers back directly to the appropriate answer, there. If you're looking here just to learn about <code>nsCOMPtr</code>s, you'll get a better introduction in the <a href="/en/Using_nsCOMPtr/Getting_Started_Guide" title="en/Using_nsCOMPtr/Getting_Started_Guide">Getting Started Guide</a>.</p>
+
+<p>The FAQ is divided into sections to help you find what you're looking for faster. In most cases, the answer will just refer back into the reference manual, above. No need to explain things twice <code>:-)</code>.</p>
+
+<h3 id="Buildtime_Errors" name="Buildtime_Errors">Buildtime Errors</h3>
+
+<p>The build just broke. It's not in your code, or it's not on your platform, but there's an <code>nsCOMPtr</code> on the line where the error is and you're suspicious. You're looking in the right place.</p>
+
+<h4 id="comparing_an_nsCOMPtr_to_a_raw_.5BXP.5DCOM_interface_pointer" name="comparing_an_nsCOMPtr_to_a_raw_.5BXP.5DCOM_interface_pointer">comparing an <code>nsCOMPtr</code> to a raw XPCOM interface pointer</h4>
+
+<h4 id="declaring_an_nsCOMPtr_to_a_forward-declared_class" name="declaring_an_nsCOMPtr_to_a_forward-declared_class">declaring an <code>nsCOMPtr</code> to a forward-declared class</h4>
+
+<h4 id="not_linking_to_XPCOM" name="not_linking_to_XPCOM">not linking to XPCOM</h4>
+
+<h4 id="not_including_nsCOMPtr.h" name="not_including_nsCOMPtr.h">not including nsCOMPtr.h</h4>
+
+<h4 id="different_settings_of_NSCAP_FEATURE_DEBUG_PTR_TYPES" name="different_settings_of_NSCAP_FEATURE_DEBUG_PTR_TYPES">different settings of <code>NSCAP_FEATURE_DEBUG_PTR_TYPES</code></h4>
+
+<h3 id="Runtime_Errors" name="Runtime_Errors">Runtime Errors</h3>
+
+<h4 id="NS_ASSERTION_.22QueryInterface_needed.22" name="NS_ASSERTION_.22QueryInterface_needed.22"><code>NS_ASSERTION</code> "QueryInterface needed"</h4>
+
+<p>May be caused by a class that derives from a given interface, when you forgetting to also specify the interface name in the <code><strong>NS_IMPL_ISUPPORTS</strong></code> / <code><strong>NS_IMPL_THREADSAFE_ISUPPORTS</strong></code> macro.</p>
+
+<p>For example, the assertion occurs when you convert the pointer to the object to a raw pointer to that interface, then assign the raw pointer to another <code><strong>nsCOMPtr</strong></code> for that interface.</p>
+
+<h4 id="NS_PRECONDITION_.22You_can.27t_dereference_a_NULL_nsCOMPtr_with_operator-.3E.28.29.22" name="NS_PRECONDITION_.22You_can.27t_dereference_a_NULL_nsCOMPtr_with_operator-.3E.28.29.22"><code>NS_PRECONDITION</code> "You can't dereference a NULL nsCOMPtr with operator-&gt;()"</h4>
+
+<h4 id="NS_PRECONDITION_.22You_can.27t_dereference_a_NULL_nsCOMPtr_with_operator.2A.28.29.22" name="NS_PRECONDITION_.22You_can.27t_dereference_a_NULL_nsCOMPtr_with_operator.2A.28.29.22"><code>NS_PRECONDITION</code> "You can't dereference a NULL nsCOMPtr with operator*()"</h4>
+
+<p> </p>
+
+<p>Other issues</p>
+
+<ul>
+ <li><code>printf("%x\n", mynsCOMPtr);</code> can cause the program to crash on <code>SIGILL</code> (illegal instruction), and not on the line with the <code>printf</code>, which can make it tricky to figure out. For debugging purposes you can write <code>printf("%x\n", mynsCOMPtr.get());</code></li>
+</ul>
+
+<h3 id="How_do_I..." name="How_do_I...">How do I...</h3>
+
+<h4 id="initialize_an_nsCOMPtr.3F" name="initialize_an_nsCOMPtr.3F">initialize an <code>nsCOMPtr</code>?</h4>
+
+<h4 id="Release_an_nsCOMPtr_before_it_goes_out_of_scope.3F" name="Release_an_nsCOMPtr_before_it_goes_out_of_scope.3F"><code>Release</code> an <code>nsCOMPtr</code> before it goes out of scope?</h4>
+
+<p>Assign <code>0</code> into it. Whenever an <code>nsCOMPtr</code> takes on a new value, it always <code>Release</code>s its old value, if any. Assigning in the value <code>0</code> is just like assigning in a raw pointer that happens to be <code>NULL</code>. The old referent will be <code>Release</code>d. [See <a href="/en/Using_nsCOMPtr/Reference_Manual#Initialization_and_Assignment" title="en/Using_nsCOMPtr/Reference_Manual#Initialization_and_Assignment">Initialization and Assignment</a> for more details]</p>
+
+<p>You should note, though, that there is a small performance penalty for this. The <code>nsCOMPtr</code> will still exercize logic in its destructor to attempt to <code>Release</code> the value it has at that time. The optimal solution is to arrange the lifetime of your <code>nsCOMPtr</code> to correspond to exactly how long you want to hold the reference. E.g., using blocks as in this sample</p>
+
+<table>
+ <tbody>
+  <tr>
+   <td>
+    <pre class="brush: cpp">
+// The most efficient scheme is to scope your |nsCOMPtr| to live exactly as long
+//  as you need to hold the reference
+
+nsresult
+SomeLongFunction( nsIBar* aBar )
+  {
+    nsresult rv;
+    // ...
+
+    {
+      // I only need the |nsIFoo| interface for a short time
+      //  so I control its lifetime by declaring it inside
+      //  a block statement.
+
+      nsCOMPtr&lt;nsIFoo&gt; foo( do_QueryInterface(aBar, &amp;rv) );
+      if ( foo )
+        foo-&gt;DoSomeFooThing();
+
+      // |foo| goes out of scope, and so |Release|s its referent, here
+    }
+
+    // ...tons of stuff here, during which I don't need an |nsIFoo|
+
+    return rv;
+  }
+</pre>
+   </td>
+  </tr>
+ </tbody>
+</table>
+
+<p>Editors Note: Move this discussion to the <a href="/en/Using_nsCOMPtr/Reference_Manual#Efficiency_and_Correctness" title="en/Using_nsCOMPtr/Reference_Manual#Efficiency_and_Correctness">efficiency section</a>, and link to it from here.</p>
+
+<h4 id="make_an_nsCOMPtr_leak_.28for_a_debug_test.29.3F" name="make_an_nsCOMPtr_leak_.28for_a_debug_test.29.3F">make an <code>nsCOMPtr</code> leak (for a debug test)?</h4>
+
+<h4 id="call_a_getter_that_uses_a_raw_.5BXP.5DCOM_interface_pointer_as_an_.60in.2Fout.27_parameter.3F" name="call_a_getter_that_uses_a_raw_.5BXP.5DCOM_interface_pointer_as_an_.60in.2Fout.27_parameter.3F">call a getter that uses a raw XPCOM interface pointer as an `in/out' parameter?</h4>
+
+<h4 id="call_a_getter_that_fills_in_an_nsIFoo.2A&amp;_parameter.3F" name="call_a_getter_that_fills_in_an_nsIFoo.2A&amp;_parameter.3F">call a getter that fills in an <code>nsIFoo*&amp;</code> parameter?</h4>
+
+<h4 id="call_a_getter_that_doesn.27t_AddRef_its_result.3F" name="call_a_getter_that_doesn.27t_AddRef_its_result.3F">call a getter that doesn't <code>AddRef</code> its result?</h4>
+
+<p>Any XPCOM function that returns an interface pointer, i.e., a `getter', must have already <code>AddRef</code>ed that pointer. If it didn't, you should probably report it as a bug. No matter which code pattern you use to solve this problem, you should comment it, e.g., <code>// Warning: this getter doesn't AddRef() its result</code>. If the getter returns the new pointer as its function result, no worries,</p>
+
+<h3 id="General" name="General">General</h3>
+
+<h4 id="Does_nsCOMPtr_bloat_the_code.3F" name="Does_nsCOMPtr_bloat_the_code.3F">Does <code>nsCOMPtr</code> bloat the code?</h4>
+
+<h4 id="Are_nsCOMPtrs_fast.3F_Can_I_use_them_in_tight_loops.3F" name="Are_nsCOMPtrs_fast.3F_Can_I_use_them_in_tight_loops.3F">Are <code>nsCOMPtr</code>s fast? Can I use them in tight loops?</h4>
+
+<h3 id="Bibliography" name="Bibliography">Bibliography</h3>
+
+<h4 id="Web_Resources" name="Web_Resources">Web Resources</h4>
+
+<ul>
+ <li>{{ Source("xpcom/glue/nsCOMPtr.h", "nsCOMPtr.h") }}, and {{ Source("xpcom/glue/nsCOMPtr.cpp", "nsCOMPtr.cpp") }} are the source to <code>nsCOMPtr</code>. You can examine the source to <code>nsCOMPtr</code> online using (the wonderful) <a class="external" href="http://lxr.mozilla.org/">LXR</a>. Exploring this code is not an adventure for the faint of heart.</li>
+ <li><a href="/en/XPCOM_ownership_guidelines" title="en/XPCOM_ownership_guidelines">Some COM Ownership Guidelines</a>.</li>
+ <li><a class="external" href="http://web.archive.org/web/20001213152900/http://www.develop.com/dbox/cxx/InterfacePtr.htm" title="http://web.archive.org/web/20001213152900/http://www.develop.com/dbox/cxx/InterfacePtr.htm">Interface Pointers Considered Harmful</a> by Don Box originally appeared in the September 1995 issue of "The C++ Report".</li>
+ <li><a class="external" href="http://web.archive.org/web/20001213171700/www.develop.com/dbox/cxx/SmartPtr.htm" title="http://web.archive.org/web/20001213171700/www.develop.com/dbox/cxx/SmartPtr.htm">COM Smart Pointers Even More Harmful</a> by Don Box is a follow-up article that originally appeared in the February 1996 issue of "The C++ Report".</li>
+</ul>
+
+<h4 id="Books" name="Books">Books</h4>
+
+<ul>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/0201634465">Essential COM</a> by Don Box.</li>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/0201379686">Effective COM</a> by Don Box, et al.</li>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/0201889544">The C++ Programming Language (3rd Edition)</a> by Bjarne Stroustrup.</li>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/0201924889">Effective C++ (2nd Edition): 50 Specific Ways to Improve Your Programs and Designs</a> by Scott Meyers.</li>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/020163371X">More Effective C++ : 35 New Ways to Improve Your Programs and Designs</a> by Scott Meyers.</li>
+ <li><a class="external" href="http://www.amazon.com/exec/obidos/ASIN/0201310155">Effective C++ CD: 85 Specific Ways to Improve Your Programs and Designs</a> by Scott Meyers.</li>
+</ul>
+
+<h4 id="People" name="People">People</h4>
+
+<ul>
+ <li><a class="external" href="http://www.develop.com/dbox/">Don Box</a> is a smart guy who has been writing about COM programming for a long time.</li>
+</ul>

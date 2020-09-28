@@ -1,0 +1,104 @@
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Manipulating_Lists" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/XPCOM_Interfaces">Next  »</a></p>
+</div>
+<p>This section describes the box object, which holds display and layout related information about a XUL box as well as some details about XUL layout.</p>
+<h3 id="About_Mozilla_Layout" name="About_Mozilla_Layout">About Mozilla Layout</h3>
+<p>Mozilla divides things into two sets of trees, the content tree and the layout tree. The content tree stores the nodes as they are found in the source code. The layout tree holds a different tree of nodes for each individual component that can be displayed. The layout tree holds the structure as the nodes are expected to be displayed There is not necessarily a one to one relationship between content and layout nodes. Some content nodes may have several layout objects, for example, each line of a paragraph has a separate layout object. Conversely, some content nodes have no layout objects at all. For instance, the <code><code><a href="/en-US/docs/Mozilla/Tech/XUL/key" title="key">key</a></code></code> element doesn't have any layout objects since it isn't displayed in any way. Similarly, any element that has been hidden will not have a layout object either.</p>
+<p>The <a href="/en/DOM" title="en/DOM">DOM</a> is generally used only to get and modify information pertaining to the content or structure of the document. It's relatively simple to determine what kind of content tree node will be created for a given element. A XUL element, for example, will have a XULElement type of content node.</p>
+<p>The layout objects that will be created are determined in a more complex manner. Various pieces of information are used such as the tag name, the attributes on an element, various <a href="/en/CSS" title="en/CSS">CSS</a> properties, the elements and layout objects around the element, and the XBL associated with an element (<a href="/en/XUL_Tutorial/Introduction_to_XBL" title="en/XUL_Tutorial/Introduction_to_XBL">XBL is described in a later section</a>). Unless you change the style for an element, most XUL elements will usually use the box layout object or one of its subtypes. Recall that all XUL elements are types of boxes, that is the box is the base of all displayed XUL elements. However, there are a number of subtypes, about 25 or so, for specific XUL elements. Some of these subtypes, such as the <code><a href="/en-US/docs/Mozilla/Tech/XUL/stack" title="stack">stack</a></code> or <code><a href="/en-US/docs/Mozilla/Tech/XUL/listbox" title="listbox">listbox</a></code> are needed for more complex layouts than the basic box, while others such as the button are used only to add extra mouse and key event handling.</p>
+<p>The layout object associated with an element can be removed and a completely different type of object created just by changing the CSS <code>display</code> property, among others. For example changing the display property of a button element to <code>block</code> will cause the button layout object to be deleted and a block object to be created instead. Naturally, this will change the appearance and function of the element.</p>
+<p>It isn't necessary to know the details of how the layout objects are constructed but it is quite useful to at least have at least the knowledge of what is described above of XUL layout for more advanced XUL development.</p>
+<h3 id="Box_Objects" name="Box_Objects">Box Objects</h3>
+<p>The layout objects are not accessible to the developer for manipulating. They are internal to the XUL layout components. However, XUL provides some helper objects, called box objects, which can provide some layout related information. As the name implies, they are available for all box-based elements.</p>
+<p>There are several subtypes of box object, although only a couple of them are generally used. The others have functions which are more easily accessible by methods mapped directly onto the element, since those types are generally only used with one particular element. The base box object, or the interface <code><a href="/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIBoxObject" title="">nsIBoxObject</a></code>, however, has a number of properties which are quite useful for XUL development.</p>
+<p>The base box object has two useful features. First, you can retrieve the position and size of the XUL element as displayed, and second, you can determine the order of the elements in the box as displayed, instead of their order as they are stored in the DOM.</p>
+<h4 id="Retrieving_Position_and_Size" name="Retrieving_Position_and_Size">Retrieving Position and Size</h4>
+<p>The box object provides six read only properties, x, y, screenX, screenY, width and height, for determining the currently displayed position and size of an element.  All values returned are in pixels.</p>
+<p>x, y</p>
+<p>The x and y coordinates are referenced from the top left corner of the document in the window (that portion which excludes the window border and title bar) and refer to the top left corner of the element, including CSS padding.  CSS margins<em> </em>and borders* are excluded.  The top left corner of the document is that which is obtained from screen.mozInnerScreenX, screen.mozInnerScreenY</p>
+<p>screenX, screenY</p>
+<p>The screenX and screenY coordinates are referenced from the absolute top left corner of the screen (screen.top,screen.left) and refer to the top left corner of the element, including CSS padding and borders.  CSS margins are excluded.</p>
+<p>width, height</p>
+<p>The width and height properties are also measured in pixels and return the width and height of the element, including CSS padding and borders.  CSS margins are excluded.</p>
+<div class="note">
+  <strong>*Note</strong> that x, y refers to the portion of the element that is just inside any borders, which is inconsistent with the other four boxObject position and size references, which include borders as part of the element.</div>
+<p>The values are always the position and sizes as currently displayed, so the values will be different if the element is moved or resized. For example, a flexible element will change in size and the box object dimensions will update accordingly. The following example shows this.</p>
+<p><span id="Example_1"><a id="Example_1"></a><strong>Example 1</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_1.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_1.xul">View</a></p>
+<pre>&lt;button label="Click Me"
+        oncommand="alert('The width is ' + this.boxObject.width);"/&gt;
+</pre>
+<p>You can use the <code>width</code> and <code>height</code> attributes of the <em>element</em> to specify the element's width and height, respectively.  Note that retrieving these values will return the size <em>only</em> if it was explicitly specified. These properties will return an empty string if the width or height attributes or properties were not set already. That is, you cannot get the current size with these properties; instead you must use the box object properties.</p>
+<p>This may be a bit confusing, but, the key is to remember that the width and height properties on an element return the size that was set in the XUL while the width and height properties of the box object return the current size.</p>
+<h4 id="Hidden_or_Collapsed_Element" name="Hidden_or_Collapsed_Element">Hidden or Collapsed Element</h4>
+<p>The <code><code id="a-hidden"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/hidden">hidden</a></code></code> attribute will hide an element such that it will not be displayed. Since it is not displayed, all four position and size properties of the box object will have the value 0. When an element is hidden, it is removed from the display and the layout objects are removed for it. Thus, since it isn't displayed anywhere, it will have no position or size.</p>
+<p>The <code><code id="a-collapsed"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/collapsed">collapsed</a></code></code> attribute will have the same effect to the user element visually, except that it leaves the element on screen and keeps the layout objects intact, but changes the size of the element to 0. This means that while both hidden and collapsed elements have 0 width and height, hidden elements have a x and y position of 0, while collapsed elements will retain their position in the window.</p>
+<p>To retrive or modify the hidden or collapsed state use the corresponding properties as in the following example.</p>
+<p><span id="Example_2"><a id="Example_2"></a><strong>Example 2</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_2.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_2.xul">View</a></p>
+<pre>&lt;script&gt;
+function showPositionAndSize()
+{
+  var labelbox = document.getElementById('thelabel').boxObject;
+
+  alert("Position is (" + labelbox.x + "," + labelbox.y +
+        ") and size is (" + labelbox.width + "," +
+        labelbox.height + ")");
+}
+&lt;/script&gt;
+
+&lt;button label="Hide"
+        oncommand="document.getElementById('thelabel').hidden = true;"/&gt;
+&lt;button label="Show"
+        oncommand="document.getElementById('thelabel').hidden = false;"/&gt;
+&lt;button label="Collapse"
+        oncommand="document.getElementById('thelabel').collapsed = true;"/&gt;
+&lt;button label="Uncollapse"
+        oncommand="document.getElementById('thelabel').collapsed = false;"/&gt;
+&lt;button label="Show Position/Size"
+        oncommand="showPositionAndSize();"/&gt;
+&lt;label id="thelabel" value="I am a label"/&gt;
+</pre>
+<p>Note that if you hide and collapse the label, it will be treated as hidden. You will then have to unhide and uncollapse the label for it to appear again.</p>
+<h3 id="XUL_Element_Ordering" name="XUL_Element_Ordering">XUL Element Ordering</h3>
+<p>The box object may also be used to determine the display order of elements, which may not be the same as the order in the source. Recall that DOM properties such as <code><a href="/En/DOM/Node.childNodes" title="En/DOM/Node.childNodes">childNodes</a></code>, <code><a href="/En/DOM/Node.firstChild" title="En/DOM/Node.firstChild">firstChild</a></code>, and <code><a href="/En/DOM/Node.nextSibling" title="En/DOM/Node.nextSibling">nextSibling</a></code> may be used to navigate the document tree. The box object also allows navigation in a similar means but retrieves the elements in display order.</p>
+<p>The box object provides several properties, <code>firstChild</code>, <code>lastChild</code>, <code>nextSibling</code>, <code>previousSibling</code>, and <code>parentBox</code>. Their function should be self explanatory from their names. These properties return elements, for example, the <code>firstChild</code> property returns the first displayed child element. There is no corresponding childNodes property for box navigation; instead you must navigate by sibling using the <code>nextSibling</code> or <code>previousSibling</code> properties.</p>
+<p>Unlike with navigating the DOM tree, hidden elements are not included when navigating by box objects. That means that for a box with six children where the first two are hidden, the <code>firstChild</code> property will return the third element. However, collapsed elements are included since they are still displayed but have no size. For example, the next box sibling of button 1 is this next example will be button 3, because button 2 is hidden. But the next box sibling of button 3 will be button 4 because it is only collapsed.</p>
+<p><span id="Example_3"><a id="Example_3"></a><strong>Example 3</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_3.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_3.xul">View</a></p>
+<pre>&lt;hbox&gt;
+  &lt;button label="Button 1"
+          oncommand="alert('Next is: ' + this.boxObject.nextSibling.label);"/&gt;
+  &lt;button label="Button 2" hidden="true"/&gt;
+  &lt;button label="Button 3"
+          oncommand="alert('Next is: ' + this.boxObject.nextSibling.label);"/&gt;
+  &lt;button label="Button 4" collapsed="true"/&gt;
+&lt;/hbox&gt;
+</pre>
+<h4 id="Box_Ordering_Attributes" name="Box_Ordering_Attributes">Box Ordering Attributes</h4>
+<p>When a XUL box is laid out on a window, the elements are ordered according to a number of properties, for instance the orientation, their ordinal group and their direction.</p>
+<h5 id="orient_attribute" name="orient_attribute"><code>orient</code> attribute</h5>
+<p>The orientation is commonly modified using the <code><code id="a-orient"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/orient">orient</a></code></code> attribute. There is also a corresponding CSS property <a href="/en-US/docs/Web/CSS/-moz-box-orient" title="The documentation about this has not yet been written; please consider contributing!"><code>-moz-box-orient</code></a> which may be used instead, depending on the situation. This attribute was explained earlier in the section on boxes.</p>
+<h5 id="ordinal_attribute" name="ordinal_attribute"><code>ordinal</code> attribute</h5>
+<p>The <code><code id="a-ordinal"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ordinal">ordinal</a></code></code> attribute on an element may be used to specify the ordinal group of the element, or you can use the CSS property <a href="/en-US/docs/Web/CSS/-moz-box-ordinal-group" title="Indicates the ordinal group the element belongs to. Elements with a lower ordinal group are displayed before those with a higher ordinal group."><code>-moz-box-ordinal-group</code></a>.</p>
+<p>Elements with a lower ordinal value are placed in the box before elements with a higher ordinal value. For example, if one element has an ordinal of 2, it would be placed before an element with ordinal 3 or higher but after one with ordinal 1. The default value if the ordinal is not specified is 1. This means that if you want to change the displayed order of elements, you will often need to adjust the ordinals of several elements.</p>
+<p>Adjusting the ordinal of an element is not commonly done as you would usually just place the elements in a different order in the source. It might be used to rearrange items later without adjusting the DOM. The following example demonstrates this.</p>
+<p><span id="Example_4"><a id="Example_4"></a><strong>Example 4</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_4.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_4.xul">View</a></p>
+<pre>&lt;hbox&gt;
+  &lt;button label="One" oncommand="this.ordinal++;"/&gt;
+  &lt;button label="Two" oncommand="this.ordinal++;"/&gt;
+  &lt;button label="Three" oncommand="this.ordinal++;"/&gt;
+&lt;/hbox&gt;
+</pre>
+<p>If you press the first button, its ordinal will increase by one, from 1 to 2. It will appear at the end of the row since the other buttons have an ordinal of 1. If you press the second button, its ordinal will increase by one and will be moved to the end of the row. Items with the same ordinal value appear in the same order as in the source. If you then press the button labeled One again, its ordinal will increase to 3 and will move to the end. Finally, pressing the button labeled Three will increase its ordinal to 2 and it will appear in between the other two buttons.</p>
+<h5 id="dir_attribute" name="dir_attribute"><code>dir</code> attribute</h5>
+<p>The final box ordering attribute is the <code><code id="a-dir"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/dir">dir</a></code></code> attribute, or the <a href="/en-US/docs/Web/CSS/-moz-box-direction" title="The documentation about this has not yet been written; please consider contributing!"><code>-moz-box-direction</code></a> CSS property. If this is set to <code>reverse</code>, all of the children in the box are displayed in reverse order. In a horizontal box, the elements will be displayed from right to left; in a vertical box, the elements will be displayed from bottom to top. Here is an example:</p>
+<p><span id="Example_5"><a id="Example_5"></a><strong>Example 5</strong></span> : <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_5.xul.txt">Source</a> <a href="https://developer.mozilla.org/samples/xultu/examples/ex_boxobject_5.xul">View</a></p>
+<pre>&lt;hbox dir="reverse"&gt;
+  &lt;button label="Left"/&gt;
+  &lt;button label="Center"/&gt;
+  &lt;button label="Right"/&gt;
+&lt;/hbox&gt;
+</pre>
+<p>Navigation through the nodes using the box object ordering will return the elements in the order they are displayed accounting for the ordinal adjustments made. Thus, if you change the <code><code id="a-ordinal"><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ordinal">ordinal</a></code></code> of an element, it will have a different position in the box order. Reversing the direction, however, does not change the box order.</p>
+<p>Next, we'll find out how to use <a href="/en/XUL_Tutorial/XPCOM_Interfaces" title="en/XUL_Tutorial/XPCOM_Interfaces">XPCOM objects from XUL and scripts</a>.</p>
+<div class="prevnext" style="text-align: right;">
+    <p><a href="/en-US/docs/XUL_Tutorial/Manipulating_Lists" style="float: left;">« Previous</a><a href="/en-US/docs/XUL_Tutorial/XPCOM_Interfaces">Next  »</a></p>
+</div>
