@@ -6,89 +6,89 @@ tags:
   - Extensions
 ---
 <p>Now that we have a working Mozilla extension that shows tinderbox status, we need to make it distributable to other users. The two ways of doing that are to integrate it into the Mozilla codebase (in which case it is no longer an extension but rather part of the default Mozilla distribution) and to package it into an installer that users can run from within Mozilla to add the extension to their Mozilla installation.</p>
-<p>Most extensions are distributed as installer packages, and that's how we'll distribute our extension. Integrating extensions into the Mozilla codebase is beyond the scope of this tutorial, but for more information see mozilla.org's <a href="http://www.mozilla.org/hacking/" class="external">hacking documentation</a>.</p>
-<p>Mozilla installer packages are called <a href="/en-US/docs/XPI" title="en/XPI">XPIs</a> (pronounced "zippies"), which stands for cross-platform installer. The packages are just standard ZIP archives of the files to be installed along with a JavaScript script that performs the installation and some <a href="/en-US/docs/RDF" title="en/RDF">RDF</a> files that describe the components being installed for the chrome registry.</p>
+<p>Most extensions are distributed as installer packages, and that&apos;s how we&apos;ll distribute our extension. Integrating extensions into the Mozilla codebase is beyond the scope of this tutorial, but for more information see mozilla.org&apos;s <a href="http://www.mozilla.org/hacking/" class="external">hacking documentation</a>.</p>
+<p>Mozilla installer packages are called <a href="/en-US/docs/XPI" title="en/XPI">XPIs</a> (pronounced &quot;zippies&quot;), which stands for cross-platform installer. The packages are just standard ZIP archives of the files to be installed along with a JavaScript script that performs the installation and some <a href="/en-US/docs/RDF" title="en/RDF">RDF</a> files that describe the components being installed for the chrome registry.</p>
 <p>Because our extension modifies an existing file in the Mozilla distribution, before we package it up we need to separate the modifications into a different file and add them back in at run time via a dynamic <a href="/en-US/docs/XUL_Overlays" title="en/XUL_Overlays">XUL overlay</a>.</p>
 <p>A XUL overlay is a XUL file containing elements to be inserted into another XUL file when the other XUL file is rendered into an application interface. Static overlays are added to a XUL file via a reference at the top of the file (much like stylesheets and JavaScript scripts). Dynamic overlays are added to a XUL file via a reference in the chrome registry.</p>
-<p>Overlays provide a way to break up a large XUL file into several different files (one that describes the overall structure of an application window and the others to implement specific portions of the window) to improve code readability, maintainability, and extensability. Dynamic overlays also make it possible to modify a XUL file without actually changing the code of the file itself, which is necessary when installing an extension like ours. We'll first make the file into a static overlay, then we'll make it into a dynamic overlay.</p>
+<p>Overlays provide a way to break up a large XUL file into several different files (one that describes the overall structure of an application window and the others to implement specific portions of the window) to improve code readability, maintainability, and extensability. Dynamic overlays also make it possible to modify a XUL file without actually changing the code of the file itself, which is necessary when installing an extension like ours. We&apos;ll first make the file into a static overlay, then we&apos;ll make it into a dynamic overlay.</p>
 <p>To make the file into a static overlay, we need to move all the code we added to <code>navigator.xul</code> into a new file <code>tinderstatusOverlay.xul</code> in the same directory:</p>
-<pre class="eval">&lt;?xml version="1.0"?&gt;
+<pre class="eval">&lt;?xml version=&quot;1.0&quot;?&gt;
 
 &lt;?xml-stylesheet
-      href="<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.css</a>"
-      type="text/css"?&gt;
+      href=&quot;<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.css</a>&quot;
+      type=&quot;text/css&quot;?&gt;
 
-&lt;overlay id="tinderstatusOverlay"
-      xmlns="<span class="nowiki">http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul</span>"&gt;
+&lt;overlay id=&quot;tinderstatusOverlay&quot;
+      xmlns=&quot;<span class="nowiki">http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul</span>&quot;&gt;
 
-&lt;script type="application/javascript"
-        src="<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.js</a>" /&gt;
+&lt;script type=&quot;application/javascript&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.js</a>&quot; /&gt;
 
-&lt;statusbar id="status-bar"&gt;
-  &lt;statusbarpanel class="statusbarpanel-iconic"
-          id="tinderbox-status"
-          insertbefore="offline-status"
-          status="none"/&gt;
+&lt;statusbar id=&quot;status-bar&quot;&gt;
+  &lt;statusbarpanel class=&quot;statusbarpanel-iconic&quot;
+          id=&quot;tinderbox-status&quot;
+          insertbefore=&quot;offline-status&quot;
+          status=&quot;none&quot;/&gt;
 &lt;/statusbar&gt;
 
 &lt;/overlay&gt;
 </pre>
 <p><code>tinderstatusOverlay.xul</code> starts with an XML processing instruction that identifies the file as XML (all XUL files need to include this). Its next line is the stylesheet reference we previously added to <code>navigator.xul</code>. After that is a XUL <code><a href="/en-US/docs/XUL/overlay" title="en/XUL/overlay">overlay</a></code> element. This element is the top-level element in a XUL overlay file and serves to identify the file as an overlay. Within that element is the script reference we previously added to <code>navigator.xul</code>. Then there is a <code><a href="/en-US/docs/XUL/statusbar" title="en/XUL/statusbar">statusbar</a></code> element containing a <code><a href="/en-US/docs/XUL/statusbarpanel" title="en/XUL/statusbarpanel">statusbarpanel</a></code> element.</p>
-<p>The value of the <code><a href="/en-US/docs/XUL/Attribute/id" title="en/XUL/Attribute/id">id</a></code> attribute of the <code>statusbar</code> element in our overlay matches the value of the <code>id</code> attribute of the <code>statusbar</code> element in <code>navigator.xul</code>. When <code>navigator.xul</code> is rendering into the browser's application interface, this causes any attributes or child elements of the <code>statusbar</code> element in the overlay file to be added to the interface's DOM and thus show up in the interface as if they were defined on the same element in <code>navigator.xul</code>.</p>
-<p>Note that we've added a new attribute to the <code>statusbarpanel</code> element: <code><a href="/en-US/docs/XUL/Attribute/insertbefore" title="en/XUL/Attribute/insertbefore">insertbefore</a></code>. This attribute identifies another <code>statusbarpanel</code> element within <code>statusbar</code> before which our element should appear. Thus it allows us to define the exact position of our element relative to the other <code>statusbarpanel</code> elements within <code>statusbar</code>.</p>
+<p>The value of the <code><a href="/en-US/docs/XUL/Attribute/id" title="en/XUL/Attribute/id">id</a></code> attribute of the <code>statusbar</code> element in our overlay matches the value of the <code>id</code> attribute of the <code>statusbar</code> element in <code>navigator.xul</code>. When <code>navigator.xul</code> is rendering into the browser&apos;s application interface, this causes any attributes or child elements of the <code>statusbar</code> element in the overlay file to be added to the interface&apos;s DOM and thus show up in the interface as if they were defined on the same element in <code>navigator.xul</code>.</p>
+<p>Note that we&apos;ve added a new attribute to the <code>statusbarpanel</code> element: <code><a href="/en-US/docs/XUL/Attribute/insertbefore" title="en/XUL/Attribute/insertbefore">insertbefore</a></code>. This attribute identifies another <code>statusbarpanel</code> element within <code>statusbar</code> before which our element should appear. Thus it allows us to define the exact position of our element relative to the other <code>statusbarpanel</code> elements within <code>statusbar</code>.</p>
 <p>If <code>insertbefore</code> is omitted, the element will be added as the last child of <code>statusbar</code>, usually before the resizer grippy. We could instead have used an <code><a href="/en-US/docs/XUL/Attribute/insertafter" title="en/XUL/Attribute/insertafter">insertafter</a></code> attribute to place the element after another.</p>
 <p>To use this overlay instead of our changes to <code>navigator.xul</code> we need to remove our changes, then add a reference to the overlay to the top of <code>navigator.xul</code>:</p>
 <pre class="eval">...
 
-&lt;?xml-stylesheet href="<a class="external" rel="freelink">chrome://navigator/skin/</a>" type="text/css"?&gt;
+&lt;?xml-stylesheet href=&quot;<a class="external" rel="freelink">chrome://navigator/skin/</a>&quot; type=&quot;text/css&quot;?&gt;
 <span class="highlightred">&lt;?xml-stylesheet
-      href="<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.css</a>"
-      type="text/css"?&gt;</span>
+      href=&quot;<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.css</a>&quot;
+      type=&quot;text/css&quot;?&gt;</span>
 
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://navigator/content/navigatorOverlay.xul</a>"?&gt;
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://navigator/content/navExtraOverlay.xul</a>"?&gt;
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://navigator/content/linkToolbarOverlay.xul</a>"?&gt;
-<span class="highlightgreen">&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://navigator/content/tinderstatusOverlay.xul</a>"?&gt;</span>
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://communicator/content/conten...extOverlay.xul</a>"?&gt;
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://communicator/content/sideba...barOverlay.xul</a>"?&gt;
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://communicator/content/communicatorOverlay.xul</a>"?&gt;
-&lt;?xul-overlay href="<a class="external" rel="freelink">chrome://communicator/content/bookma...rksOverlay.xul</a>"?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://navigator/content/navigatorOverlay.xul</a>&quot;?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://navigator/content/navExtraOverlay.xul</a>&quot;?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://navigator/content/linkToolbarOverlay.xul</a>&quot;?&gt;
+<span class="highlightgreen">&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://navigator/content/tinderstatusOverlay.xul</a>&quot;?&gt;</span>
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://communicator/content/conten...extOverlay.xul</a>&quot;?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://communicator/content/sideba...barOverlay.xul</a>&quot;?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://communicator/content/communicatorOverlay.xul</a>&quot;?&gt;
+&lt;?xul-overlay href=&quot;<a class="external" rel="freelink">chrome://communicator/content/bookma...rksOverlay.xul</a>&quot;?&gt;
 
 ...
 
 &lt;!-- Navigator --&gt;
-&lt;script type="application/javascript"
-        src="<a class="external" rel="freelink">chrome://navigator/content/browser.js</a>"/&gt;
-&lt;script type="application/javascript"
-        src="<a class="external" rel="freelink">chrome://navigator/content/navigator.js</a>"/&gt;
-&lt;script type="application/javascript"
-        src="<a class="external" rel="freelink">chrome://navigator/content/navigatorDD.js</a>"/&gt;
-&lt;script type="application/javascript"
-        src="<a class="external" rel="freelink">chrome://navigator/content/sessionHistoryUI.js</a>"/&gt;
+&lt;script type=&quot;application/javascript&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/browser.js</a>&quot;/&gt;
+&lt;script type=&quot;application/javascript&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/navigator.js</a>&quot;/&gt;
+&lt;script type=&quot;application/javascript&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/navigatorDD.js</a>&quot;/&gt;
+&lt;script type=&quot;application/javascript&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/sessionHistoryUI.js</a>&quot;/&gt;
 
-<span class="highlightred">&lt;script type="</span>application/javascript<span class="highlightred">"
-        src="<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.js</a>"/&gt;</span>
+<span class="highlightred">&lt;script type=&quot;</span>application/javascript<span class="highlightred">&quot;
+        src=&quot;<a class="external" rel="freelink">chrome://navigator/content/tinderstatus.js</a>&quot;/&gt;</span>
 
 &lt;!-- hook for stringbundle overlays --&gt;
 
 ...
 
-&lt;statusbar id="status-bar" class="chromeclass-status"
-          ondragdrop="nsDragAndDrop.drop(event, contentAreaDNDObserver);"&gt;
-  &lt;statusbarpanel id="component-bar"/&gt;
-  &lt;statusbarpanel id="statusbar-display" label="&amp;statusText.label;" flex="1"/&gt;
-  &lt;statusbarpanel class="statusbarpanel-progress"&gt;
-    &lt;progressmeter class="progressmeter-statusbar"
-            id="statusbar-icon" mode="normal" value="0"/&gt;
+&lt;statusbar id=&quot;status-bar&quot; class=&quot;chromeclass-status&quot;
+          ondragdrop=&quot;nsDragAndDrop.drop(event, contentAreaDNDObserver);&quot;&gt;
+  &lt;statusbarpanel id=&quot;component-bar&quot;/&gt;
+  &lt;statusbarpanel id=&quot;statusbar-display&quot; label=&quot;&amp;statusText.label;&quot; flex=&quot;1&quot;/&gt;
+  &lt;statusbarpanel class=&quot;statusbarpanel-progress&quot;&gt;
+    &lt;progressmeter class=&quot;progressmeter-statusbar&quot;
+            id=&quot;statusbar-icon&quot; mode=&quot;normal&quot; value=&quot;0&quot;/&gt;
   &lt;/statusbarpanel&gt;
-  <span class="highlightred">&lt;statusbarpanel class="statusbarpanel-iconic"
-            id="tinderbox-status" status="none"/&gt;</span>
-  &lt;statusbarpanel class="statusbarpanel-iconic" id="offline-status"/&gt;
-  &lt;statusbarpanel class="statusbarpanel-iconic" id="security-button"
-                  onclick="BrowserPageInfo(null, 'securityTab')"/&gt;
+  <span class="highlightred">&lt;statusbarpanel class=&quot;statusbarpanel-iconic&quot;
+            id=&quot;tinderbox-status&quot; status=&quot;none&quot;/&gt;</span>
+  &lt;statusbarpanel class=&quot;statusbarpanel-iconic&quot; id=&quot;offline-status&quot;/&gt;
+  &lt;statusbarpanel class=&quot;statusbarpanel-iconic&quot; id=&quot;security-button&quot;
+                  onclick=&quot;BrowserPageInfo(null, &apos;securityTab&apos;)&quot;/&gt;
 &lt;/statusbar&gt;
 ...
 </pre>
 <p></p><div style="text-align: right;" class="prevnext">
-    <p><a style="float: left;" href="/en-US/docs/Creating_a_Mozilla_Extension/Enabling_the_behavior_-_updating_the_status_periodically">« Previous</a><a href="/en-US/docs/Creating_a_Mozilla_Extension/Making_it_into_a_dynamic_overlay_and_packaging_it_up_for_distribution">Next  »</a></p>
+    <p><a style="float: left;" href="/en-US/docs/Creating_a_Mozilla_Extension/Enabling_the_behavior_-_updating_the_status_periodically" class="button">« Previous</a><a href="/en-US/docs/Creating_a_Mozilla_Extension/Making_it_into_a_dynamic_overlay_and_packaging_it_up_for_distribution" class="button">Next  »</a></p>
 </div><p></p>

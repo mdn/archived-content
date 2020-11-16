@@ -5,7 +5,7 @@ translation_of: Mozilla/Projects/SpiderMonkey/Internals/Garbage_collection
 ---
 <div class="note">
  <strong>この文書について: これはSpiderMonkeyのGC内部についての雑多な草案です。内容が古いまたは不正確な場合があります。</strong></div>
-<div class="warning">
+<div class="warning notecard">
  <p><strong>警告:</strong>SpiderMonkey ガベージコレクションTipsは悲しいことに古い内容であり、完全に無視されるべきものとなってしまいました、</p>
 </div>
 <h2 id="デザインの概要">デザインの概要</h2>
@@ -68,7 +68,7 @@ translation_of: Mozilla/Projects/SpiderMonkey/Internals/Garbage_collection
 <p>マークビットマップはGC Cellごとのビットを持ちます。故に、複数のCellによって構成されているオブジェクトは、ビットマップ中の複数のビットを使います。</p>
 <h2 id="Exact_Stack_Rooting_API">Exact Stack Rooting API</h2>
 <div class="note">
- <p><strong>注</strong>:GC rootの実装とおよびSpiderMonkey内での使用についての情報となります。SpiderMonkeyを埋め込んで使う場合の、Rooting APIの使用方法については、<a href="“/ja/docs/SpiderMonkey/GC_Rooting_Guide" title='“/ja/docs/SpiderMonkey/GC_Rooting_Guide"'> GC Rooting Guide</a>を参照してください。</p>
+ <p><strong>注</strong>:GC rootの実装とおよびSpiderMonkey内での使用についての情報となります。SpiderMonkeyを埋め込んで使う場合の、Rooting APIの使用方法については、<a href="“/ja/docs/SpiderMonkey/GC_Rooting_Guide" title="“/ja/docs/SpiderMonkey/GC_Rooting_Guide&quot;"> GC Rooting Guide</a>を参照してください。</p>
 </div>
 <p>GC rootの実装とおよびSpiderMonkey内での使用についての情報となります。 <a href="/en-US/docs/SpiderMonkey/Internals/GC/Exact_Stack_Rooting" title="/en-US/docs/SpiderMonkey/Internals/GC/Exact_Stack_Rooting">Exact Stack Rooting</a>.</p>
 <h2 id="マーキング">マーキング</h2>
@@ -90,8 +90,8 @@ translation_of: Mozilla/Projects/SpiderMonkey/Internals/Garbage_collection
 <h4 id="SpiderMonkeyのincremental_write_barrier">SpiderMonkeyのincremental write barrier</h4>
 <p>SpiderMonkeyは、（相対的に）シンプルな、s<strong>snapshot-at-the-beginning allocate-black barrier</strong>と呼ばれる一般的なincremental write barrierを用いています。</p>
 <p>このバリアの動作を理解するために、事象を単純にするために、新規にオブジェクトが割り当てられることの無いインクリメンタルGCを仮定します。生存しているオブジェクトを回収しないようにするためにはどうすればよいでしょうか？　一つの方法としては、インクリメンタルGCの最初の時点で生存していたすべてのオブジェクトをマークするという手法があります（これは、オブジェクトへの全ての参照が現在のインクリメンタルGC中に消えた場合は、次のインクリメンタルGC時にそのオブジェクトが回収されるということです）。この手法は、インクリメンタルGCの開始時に生存しているオブジェクトのスナップショットを保存し、それら全てをマークするのと<em>コンセプト上は</em>同義であるために、<strong>snapshot-at-the-beginning</strong>と呼ばれています。実際にはスナップショットを撮る訳ではありません。そのような場合は完全な非インクリメンタルなマーク作業が必要となります。</p>
-<p style="">snapshot-at-the-beginningバリアの実装は単純です。GCポインタを保持する場所がプログラムによって上書きされたタイミングで、バリアは開始します。バリアは単純にポインタによって指し示されているオブジェクトをblackにします。鍵となるのは、オブジェクトへの全てのポインタが上書きされた場合にのみ、オブジェクトはマークされず”死んだもの”となりうるという点です。そのため、オブジェクトへのポインタが上書きされたタイミングでオブジェクトをblackにすれば、オブジェクトが”死ぬ”ということは発生し得ないのです。</p>
-<p style="">FIXME（原文ママ）:指し示されたオブジェクトをblackにするだけは十分ではないと思います。マークされていない別のオブジェクトがあったら何がおこりますか？　マークスタックについても言及すべきです。「指し示されているオブジェクトをblackにする」というのは、「再帰的に指し示されたオブジェクトをblackにする」という意味で書かれていますか？</p>
+<p style>snapshot-at-the-beginningバリアの実装は単純です。GCポインタを保持する場所がプログラムによって上書きされたタイミングで、バリアは開始します。バリアは単純にポインタによって指し示されているオブジェクトをblackにします。鍵となるのは、オブジェクトへの全てのポインタが上書きされた場合にのみ、オブジェクトはマークされず”死んだもの”となりうるという点です。そのため、オブジェクトへのポインタが上書きされたタイミングでオブジェクトをblackにすれば、オブジェクトが”死ぬ”ということは発生し得ないのです。</p>
+<p style>FIXME（原文ママ）:指し示されたオブジェクトをblackにするだけは十分ではないと思います。マークされていない別のオブジェクトがあったら何がおこりますか？　マークスタックについても言及すべきです。「指し示されているオブジェクトをblackにする」というのは、「再帰的に指し示されたオブジェクトをblackにする」という意味で書かれていますか？</p>
 <p>これで、メモリの割当の正確性についても話します。新規に割り当てられたオブジェクトはGCの開始時には存在していませんでした。snapshot-at-the-beginningバリアはこれについては巧くカバーしません。ですが、もし新規に割り当てられたオブジェクトが生存している場合は、それが回収されないようにする必要があります。これは簡単で、インクリメンタルGC中に新規にオブジェクトが割り当てられたら、それをマークすれば良いのです。これを名付けて<strong>allocate-black</strong>と言います。</p>
 <h4 id="SpiderMonkeyの_incremental_read_barrier（インクリメンタル読み取りバリア）">SpiderMonkeyの incremental read barrier（インクリメンタル読み取りバリア）</h4>
 <p>インクリメンタルGCの教科書的な実装では、write barrierしかありません。SpiderMonkeyでは、weak pointer（用語集参照）のためにread barrierも用意しています。</p>
@@ -107,7 +107,7 @@ translation_of: Mozilla/Projects/SpiderMonkey/Internals/Garbage_collection
 <h2 id="世代別GC">世代別GC</h2>
 <p>TODO（原文ママ）</p>
 <h2 id="GC統計API">GC統計API</h2>
-<p>実行時に<a href="“/ja/docs/SpiderMonkey/Internals/GC/Statistics_API" title='“/ja/docs/SpiderMonkey/Internals/GC/StatisticsAPI"'>GC統計API</a>.を通じて、GCが保持する明確な統計情報にアクセスする事ができます。</p>
+<p>実行時に<a href="“/ja/docs/SpiderMonkey/Internals/GC/Statistics_API" title="“/ja/docs/SpiderMonkey/Internals/GC/StatisticsAPI&quot;">GC統計API</a>.を通じて、GCが保持する明確な統計情報にアクセスする事ができます。</p>
 <h2 id="ソースファイル">ソースファイル</h2>
 <p><strong>jsgc{.h,inlines.h,.cpp}</strong> GCを起動するためのエントリーポイントを含む内部API関数群を定義します。</p>
 <p><strong>jsgcstats.{h,cpp}</strong> 保守的なスタックスキャンに基づく情報収集のための構造体ConservativeGCStatsを定義します。TODO（原文ママ）：削除されたときに消す</p>

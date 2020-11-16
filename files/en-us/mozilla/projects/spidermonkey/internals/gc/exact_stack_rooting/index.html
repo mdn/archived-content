@@ -7,7 +7,7 @@ tags:
   - NeedsContent
   - SpiderMonkey
 ---
-<div class="warning">
+<div class="warning notecard">
 <p>This guide is intended for SpiderMonkey hackers! Users of the SpiderMonkey API will want to read the <a href="/en-US/docs/SpiderMonkey/GC_Rooting_Guide" title="/en-US/docs/SpiderMonkey/GC_Rooting_Guide">GC Rooting Guide</a> instead.</p>
 </div>
 
@@ -17,10 +17,10 @@ tags:
 
 <h2 id="Storing_a_GCPointer_in_a_GCThing">Storing a GCPointer in a GCThing</h2>
 
-<p>Storing your GCPointer inside of a GCThing that is already in the <a href="#defineLiveSet" title="#defineLiveSet">LiveSet</a> is the easiest way to keep a GCThing to the LiveSet.  GCPointers that reside in GCThings fall into one of these cases: storage in a normal property, storage in a reserved slot, or storage with JS_{Get|Set}Private. Do not use JS_SetPrivate. If you see a GCPointer stored as a private, please file a bug. The private field is frequently used to store things that are not GCPointers, so the GC cannot automatically handle this slot. This means it must be manually traced by the object's owner: this is both fragile and more expensive than using an extra reserved slot, or even just putting a new property on the object.</p>
+<p>Storing your GCPointer inside of a GCThing that is already in the <a href="#defineLiveSet" title="#defineLiveSet">LiveSet</a> is the easiest way to keep a GCThing to the LiveSet.  GCPointers that reside in GCThings fall into one of these cases: storage in a normal property, storage in a reserved slot, or storage with JS_{Get|Set}Private. Do not use JS_SetPrivate. If you see a GCPointer stored as a private, please file a bug. The private field is frequently used to store things that are not GCPointers, so the GC cannot automatically handle this slot. This means it must be manually traced by the object&apos;s owner: this is both fragile and more expensive than using an extra reserved slot, or even just putting a new property on the object.</p>
 
 <pre>Class FooClass = {
-    "FooPrototype",          /* name */
+    &quot;FooPrototype&quot;,          /* name */
     <s>JSCLASS_HAS_PRIVATE |</s> JSCLASS_HAS_RESERVED_SLOTS(1), /* flags */
     JS_PropertyStub,         /* addProperty */
     JS_PropertyStub,         /* delProperty */
@@ -37,9 +37,9 @@ JSObject::SetReservedSlot(obj, 0, v);
 
 <h2 id="Storing_a_GCPointer_on_the_CStack">Storing a GCPointer on the CStack</h2>
 
-<p>GCPointers stored on the CStack are special. Unlike other GCPointers, they are not traced as part of the GC. Instead, every pointer on the CStack should be considered part of the <a href="#defineRootSet" title="#defineRootSet">RootSet</a>. To that end, we have a special "Rooting" mechanism for stack pointers that is very efficiently able to add and remove GCPointers to the RootedSet. The downside of this efficiency is that GCPointers <em>must</em> be added to and removed from this RootedSet tracking structure in LIFO order. For this reason it is highly recommended that this rooting mechanism only be used on the CStack.</p>
+<p>GCPointers stored on the CStack are special. Unlike other GCPointers, they are not traced as part of the GC. Instead, every pointer on the CStack should be considered part of the <a href="#defineRootSet" title="#defineRootSet">RootSet</a>. To that end, we have a special &quot;Rooting&quot; mechanism for stack pointers that is very efficiently able to add and remove GCPointers to the RootedSet. The downside of this efficiency is that GCPointers <em>must</em> be added to and removed from this RootedSet tracking structure in LIFO order. For this reason it is highly recommended that this rooting mechanism only be used on the CStack.</p>
 
-<h3 id="jsRooted&lt;T>">js::Rooted&lt;T&gt;</h3>
+<h3 id="jsRooted&lt;T&gt;">js::Rooted&lt;T&gt;</h3>
 
 <pre><strong>typedef js::Rooted&lt;T&gt; RootedT;</strong> -&gt; RootedObject, RootedString, RootedScript, etc.
 </pre>
@@ -50,20 +50,20 @@ JSObject::SetReservedSlot(obj, 0, v);
 <code>RootedString str2(rt, JS_ValueToString(cx, val));</code><code>
 </code></pre>
 
-<div class="warning">
+<div class="warning notecard">
 <p><strong>Note 1:</strong> C++ insists that an initializing assignment (e.g., the default constructor followed by operator=) must have a copy constructor available, even if it is not used. Since it is never correct to implicitly copy a <code>js::RootedT</code> (more on this in a second) we have deleted the copy constructor from these classes. Therefore, we are forced to force you to initialize with constructor syntax.  Sorry.</p>
 
 <p><strong>Note 2</strong>: In C++, destructors are required to run in declaration order, nicely maintaining our LIFO property. However, this does not hold true for temporaries: they are undeclared, after all. Some compilers maintain LIFO order, some do not. Incorrect use of <code>js::RootedT</code> as a temporary will crash at run time.</p>
 </div>
 
-<p>There is also a static constructor method <code>fromMarkedLocation()</code> that creates a <code>Handle</code> from an arbitrary location. This is used to make Handles for things like scope chain objects, which aren't explicitly rooted themselves, but are always reachable from the implicit stack roots. Every use of these should be commented to explain why they are guaranteed to be rooted.</p>
+<p>There is also a static constructor method <code>fromMarkedLocation()</code> that creates a <code>Handle</code> from an arbitrary location. This is used to make Handles for things like scope chain objects, which aren&apos;t explicitly rooted themselves, but are always reachable from the implicit stack roots. Every use of these should be commented to explain why they are guaranteed to be rooted.</p>
 
-<h3 id="jsHandle&lt;T>">js::Handle&lt;T&gt;</h3>
+<h3 id="jsHandle&lt;T&gt;">js::Handle&lt;T&gt;</h3>
 
 <pre><strong>typedef JS::Handle&lt;T&gt; js::HandleT;</strong> -&gt; HandleObject, HandleString, HandleScript, etc.
 </pre>
 
-<p>Any single GCThing is likely to get passed through a fairly deep call-stack before getting used. Even though creating a new <code>js::RootedT</code> is cheap, it is silly to repeat this work for every new call frame. To solve this, we use the standard "handle" approach. A <code>js::HandleT</code> is a pointer to a <code>js::RootedT</code>. A <code>js::RootedT</code> will automatically convert to a <code>js::HandleT</code>. By using <code>js::HandleT</code> in the interface instead of direct GCPointers, we ensure that the GCThing is already rooted on some previous stack frame, freeing us from having to worry about rooting the GCThing for the duration of the call.</p>
+<p>Any single GCThing is likely to get passed through a fairly deep call-stack before getting used. Even though creating a new <code>js::RootedT</code> is cheap, it is silly to repeat this work for every new call frame. To solve this, we use the standard &quot;handle&quot; approach. A <code>js::HandleT</code> is a pointer to a <code>js::RootedT</code>. A <code>js::RootedT</code> will automatically convert to a <code>js::HandleT</code>. By using <code>js::HandleT</code> in the interface instead of direct GCPointers, we ensure that the GCThing is already rooted on some previous stack frame, freeing us from having to worry about rooting the GCThing for the duration of the call.</p>
 
 <pre>bool Hello(JSContext *cx, HandleObject foo)
 {
@@ -82,15 +82,15 @@ void OtherFunction(JSContext *cx)
 
 <p>A secondary benefit: since all JS functions take <code>js::HandleT</code>s, code that does not root CStack GCPointers correctly will be much less likely to compile.</p>
 
-<div class="warning">
+<div class="warning notecard">
 <p><strong>Warning</strong>: <code>js::HandleT</code> does not root objects itself! That is the job of <code>js::RootedT</code>.</p>
 </div>
 
-<div class="warning">
-<p><strong>Warning</strong>: Never give a function a <code>js::HandleT</code> return type: this can easily lead to a <code>js::HandleT</code> outliving its <code>js::RootedT</code>'s lifetime.</p>
+<div class="warning notecard">
+<p><strong>Warning</strong>: Never give a function a <code>js::HandleT</code> return type: this can easily lead to a <code>js::HandleT</code> outliving its <code>js::RootedT</code>&apos;s lifetime.</p>
 </div>
 
-<h3 id="jsMutableHandle&lt;T>">js::MutableHandle&lt;T&gt;</h3>
+<h3 id="jsMutableHandle&lt;T&gt;">js::MutableHandle&lt;T&gt;</h3>
 
 <pre><strong>typedef JS::MutableHandle&lt;T&gt; js::MutableHandleT;</strong> -&gt; MutableHandleObject, MutableHandleString, etc.
 </pre>
@@ -106,7 +106,7 @@ void OtherFunction(JSContext *cx)
 
 <pre>bool ReturnFoo(JSContext *cx, MutableHandleString out)
 {
-    out.set(JS_NewStringCopyZ(cx, "Foo"));
+    out.set(JS_NewStringCopyZ(cx, &quot;Foo&quot;));
     return bool(out);
 }
 
@@ -130,7 +130,7 @@ size_t GetLengthFoo(JSContext *cx)
 
 <h2 id="Common_Pitfalls">Common Pitfalls</h2>
 
-<p>The C++ type system allows us to eliminate the possibility of most common errors; however, there are still a few things that you can get wrong that the compiler cannot help you with. There is basically never a good reason to do any of these. If you think you do need to do one of these, ask on one of SpiderMonkey's support forums: maybe we've already solved your problem using a different mechanism.</p>
+<p>The C++ type system allows us to eliminate the possibility of most common errors; however, there are still a few things that you can get wrong that the compiler cannot help you with. There is basically never a good reason to do any of these. If you think you do need to do one of these, ask on one of SpiderMonkey&apos;s support forums: maybe we&apos;ve already solved your problem using a different mechanism.</p>
 
 <ol>
  <li><strong>Storing a </strong><code>js::RootedT</code><strong> on the heap.</strong> It would be very easy to violate the LIFO constraint if you did this. Use a different rooting mechanism if you store a GCPointer on the heap. There are MOZ_STACK_CLASS annotations that will cause a separate static analysis to fail if these are detected.</li>
@@ -141,17 +141,17 @@ size_t GetLengthFoo(JSContext *cx)
 <h2 id="Definitions">Definitions</h2>
 
 <ul>
- <li><a name="defineGC">GC</a> - Acronym for Garbage Collection: specifically SpiderMonkey's method of automatically managing JavaScript program memory.</li>
- <li><a name="defineGCThing">GCThing</a> - Storage allocated by SpiderMonkey's allocator.</li>
+ <li><a name="defineGC">GC</a> - Acronym for Garbage Collection: specifically SpiderMonkey&apos;s method of automatically managing JavaScript program memory.</li>
+ <li><a name="defineGCThing">GCThing</a> - Storage allocated by SpiderMonkey&apos;s allocator.</li>
  <li><a name="defineGCPointer">GCPointer</a> - A raw pointer type or tagged pointer type that may refer to a GCThing (JSObject *, JSString *, Value, jsid, etc.)</li>
- <li><a name="defineGCHeap">GCHeap</a> - The graph of GCThings allocated by SpiderMonkey's allocator. The goal of SpiderMonkey's GC is to partition this heap into regions reachable from the RootSet and not.</li>
+ <li><a name="defineGCHeap">GCHeap</a> - The graph of GCThings allocated by SpiderMonkey&apos;s allocator. The goal of SpiderMonkey&apos;s GC is to partition this heap into regions reachable from the RootSet and not.</li>
  <li><a name="defineRoot">Root</a> - A GCPointer held live because it is a member of the RootSet.</li>
- <li><a name="defineRootSet">RootSet</a> - This is a set of GCPointers that are de-facto alive, regardless of the GCThing's reachability. GCPointers must be explicitly added to and removed from the RootSet.</li>
+ <li><a name="defineRootSet">RootSet</a> - This is a set of GCPointers that are de-facto alive, regardless of the GCThing&apos;s reachability. GCPointers must be explicitly added to and removed from the RootSet.</li>
  <li><a name="defineLiveSet">LiveSet</a> - The set of all GCThings that are reachable from Roots.</li>
  <li><a name="defineDeadSet">DeadSet</a> - The set of all GCThings that are <em><strong>not</strong></em> reachable from Roots.</li>
  <li><a name="defineCHeap">CHeap</a> - The C/C++ program heap: e.g., memory allocated by malloc/calloc/realloc.</li>
  <li><a name="defineCStack">CStack</a> - The C/C++ program stack.</li>
- <li>rooted - A GCThing in the LiveSet is said to be "Rooted" even if it is not a Root as such, but is only reachable from Roots. This traditional usage is ambiguous and this guide will use live or alive instead of rooted to avoid confusion.</li>
+ <li>rooted - A GCThing in the LiveSet is said to be &quot;Rooted&quot; even if it is not a Root as such, but is only reachable from Roots. This traditional usage is ambiguous and this guide will use live or alive instead of rooted to avoid confusion.</li>
 </ul>
 
 <h2 id="Caveats">Caveats</h2>

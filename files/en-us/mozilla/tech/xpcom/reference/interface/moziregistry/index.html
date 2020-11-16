@@ -4,44 +4,44 @@ slug: Mozilla/Tech/XPCOM/Reference/Interface/mozIRegistry
 tags:
   - Outdated_articles
 ---
-<p></p><div class="blockIndicator warning">
+<p></p><div class="warning notecard">
     <p><strong>Warning:</strong> <strong>The content of this article may be out of date.</strong> It appears to be a design document for something that never got implemented.</p>
 </div>
 <p></p>
 <h3 id="Introduction"> Introduction </h3>
-<p>The title of this document is completely misleading. It's not really about any "registry interface" so much as it's about how Mozilla supports a more dynamic binding between interface clients and the code that actually provides the implementation of those interfaces.
-</p><p>It happens that this objective requires storing information about which implementation to use in a place distinct from your source code. And it happens that we've chosen, up till now, to store that information in the "Netscape registry" file. Which explains how this information came to be associated with the notion of a "registry."
+<p>The title of this document is completely misleading. It&apos;s not really about any &quot;registry interface&quot; so much as it&apos;s about how Mozilla supports a more dynamic binding between interface clients and the code that actually provides the implementation of those interfaces.
+</p><p>It happens that this objective requires storing information about which implementation to use in a place distinct from your source code. And it happens that we&apos;ve chosen, up till now, to store that information in the &quot;Netscape registry&quot; file. Which explains how this information came to be associated with the notion of a &quot;registry.&quot;
 </p><p>Someday (I hope) this page will be properly titled so that everybody knows it is the place to come to in order to find out how they are supposed to link together the various XPCOM components that together form the Mozilla browser. The information below is intended to tell you everything you need to know about how to do that.
 </p>
 <h3 id="Summary"> Summary </h3>
-<p>Clients will rely on nsRepository to create instances of a given class. Clients requiring dynamic "binding" of CLSIDs will be required to use some higher-level services (TBD) to figure out the CLSIDs they should use. The intent is that such services themselves be built on top of the new mozIRegistry interface.
-</p><p>We are proposing a new "mozIRegistry" XPCOM interface that provides the same level of function as is currently provided by the "netscape registry" implemented in libreg. nsRepository will be modified to use this interface, thereby enabling alternative registry implementations to be substituted at run/link time. There will be two registry interface implementations: one based solely on libreg (for "compatibility") and a fancier RDF-based one.
+<p>Clients will rely on nsRepository to create instances of a given class. Clients requiring dynamic &quot;binding&quot; of CLSIDs will be required to use some higher-level services (TBD) to figure out the CLSIDs they should use. The intent is that such services themselves be built on top of the new mozIRegistry interface.
+</p><p>We are proposing a new &quot;mozIRegistry&quot; XPCOM interface that provides the same level of function as is currently provided by the &quot;netscape registry&quot; implemented in libreg. nsRepository will be modified to use this interface, thereby enabling alternative registry implementations to be substituted at run/link time. There will be two registry interface implementations: one based solely on libreg (for &quot;compatibility&quot;) and a fancier RDF-based one.
 </p>
 <h3 id="Open_Issues"> Open Issues </h3>
-<p>We have identified two open issues, neither of which appear to be so hard that it we won't be able to solve them in a timely fashion:
+<p>We have identified two open issues, neither of which appear to be so hard that it we won&apos;t be able to solve them in a timely fashion:
 </p>
-<ol><li> If and when we remove what is currently a static binding of CLSIDs, there will be the risk that required CLSIDs won't be present. A corollary is that the build/install process will require updates to user "registry" to enable new class implementations to be accessible. Our current build/install process doesn't quite step up to these problems as of yet.
-</li><li> There are some bootstrapping issues related to using the Service Manager to access the mozIRegistry interface. Currently, nsIServiceManager requires a CLSID to access a service which hardcodes the implementation of that service. This issue needs to be resolved in order to enable alternative mozIRegistry implementations or to permit other service implementations to be bound at runtime. I think a simple CLSID "alias" mechanism (equivalent to COM's "component categories" in some respects), along with the ability to "set" services (versus the Service Manager insisting on creating the services itself) would suffice. Worst case, clients would obtain the mozIRegistry singleton via some other means (i.e., a "NSGetRegistry" function).
+<ol><li> If and when we remove what is currently a static binding of CLSIDs, there will be the risk that required CLSIDs won&apos;t be present. A corollary is that the build/install process will require updates to user &quot;registry&quot; to enable new class implementations to be accessible. Our current build/install process doesn&apos;t quite step up to these problems as of yet.
+</li><li> There are some bootstrapping issues related to using the Service Manager to access the mozIRegistry interface. Currently, nsIServiceManager requires a CLSID to access a service which hardcodes the implementation of that service. This issue needs to be resolved in order to enable alternative mozIRegistry implementations or to permit other service implementations to be bound at runtime. I think a simple CLSID &quot;alias&quot; mechanism (equivalent to COM&apos;s &quot;component categories&quot; in some respects), along with the ability to &quot;set&quot; services (versus the Service Manager insisting on creating the services itself) would suffice. Worst case, clients would obtain the mozIRegistry singleton via some other means (i.e., a &quot;NSGetRegistry&quot; function).
 </li></ol>
 <h3 id="Architecture"> Architecture </h3>
 <p><img alt="Image:mozIRegistry.jpg">
 </p><p>This diagram illustrates the various components that you will be using to interoperate with other Mozilla components.
-</p><p>Some are for illustrative purposes (the lighter-colored boxes near the top of the picture). These are placeholders for the types of components you're designing and implementing. I'll talk about them to provide examples of how you should use the other boxes.
-</p><p>These components (indicated by the darker-colored boxes) are the services you'll be using. I'll be explaining the rationale for the design and implementation of these components in this document.
-</p><p>Lastly, there's one component (labelled "mozRDFRegistry/nsIRDFDatabase") that potentially will emerge as an improved implementation of one of the mozIRegistry interfaces. I'll be discussing that implementation only briefly (mainly because I'm hoping I can pawn off the chore of implementing it to somebody else).
+</p><p>Some are for illustrative purposes (the lighter-colored boxes near the top of the picture). These are placeholders for the types of components you&apos;re designing and implementing. I&apos;ll talk about them to provide examples of how you should use the other boxes.
+</p><p>These components (indicated by the darker-colored boxes) are the services you&apos;ll be using. I&apos;ll be explaining the rationale for the design and implementation of these components in this document.
+</p><p>Lastly, there&apos;s one component (labelled &quot;mozRDFRegistry/nsIRDFDatabase&quot;) that potentially will emerge as an improved implementation of one of the mozIRegistry interfaces. I&apos;ll be discussing that implementation only briefly (mainly because I&apos;m hoping I can pawn off the chore of implementing it to somebody else).
 </p>
 <div class="note" id="ServiceManagerNote">
-<p>There's another component that turns out to also be real important when you go to hook up your code with other Mozilla components. That's the <i>Service Manager</i>. I'm just starting to understand the role it plays in this and it isn't really under my jurisdiction, so there's nothing about it here right now. In the future, I'll either add the information about it or at least put in a link to it's documentation.
+<p>There&apos;s another component that turns out to also be real important when you go to hook up your code with other Mozilla components. That&apos;s the <i>Service Manager</i>. I&apos;m just starting to understand the role it plays in this and it isn&apos;t really under my jurisdiction, so there&apos;s nothing about it here right now. In the future, I&apos;ll either add the information about it or at least put in a link to it&apos;s documentation.
 </p>
 </div>
 <h3 id="Higher-Level_Application_Components"> Higher-Level Application Components </h3>
-<p>This box represents all the potential user's of the core registry/repository interfaces.
+<p>This box represents all the potential user&apos;s of the core registry/repository interfaces.
 </p><p>Your code (most likely) falls in this box.
 </p><p>These components will, to various degrees, need to use other components to do their thing. Those other components presumably implement particular XPCOM interfaces. So how do you go about creating an object that can provide the interface your component requires?
 </p><p>One way is to create instances by using <i>nsRepository.</i> nsRepository is essentially a mapping from <code>XPCOM CLSIDs</code> to class factories, plus code to manage that mapping, including functions that create instances of a given <code>CLSID</code>.
 </p><p>The nsRepository functions are declared in nsRepository.h. Much more information about nsRepository can be found <a href="#nsRepository">below</a>.
-</p><p>The second way you access other components is via the Service Manager. That thing isn't yet covered in this document. See the note <a href="#ServiceManagerNote">above</a>.
-</p><p>In this section, I'll discuss a number of different components, their requirements for dynamically binding to other components, and how they might utilize the core XPCOM components to satisfy those requirements.
+</p><p>The second way you access other components is via the Service Manager. That thing isn&apos;t yet covered in this document. See the note <a href="#ServiceManagerNote">above</a>.
+</p><p>In this section, I&apos;ll discuss a number of different components, their requirements for dynamically binding to other components, and how they might utilize the core XPCOM components to satisfy those requirements.
 </p>
 <ul><li> <b>i18n</b>
 </li><li> <b>XUL/xpToolkit</b>
@@ -71,11 +71,11 @@ tags:
 </p>
 </div>
 <dl><dt> mozIRegistry
-</dt><dd> This is the new interface that will surface essentially the same function as is currently provided by libreg (aka "netscape registry") as declared in mozilla/modules/libreg/include/NSReg.h. Clients will obtain this interface via the service manager (see mozilla/xpcom/public/nsIServiceManager.h).
+</dt><dd> This is the new interface that will surface essentially the same function as is currently provided by libreg (aka &quot;netscape registry&quot;) as declared in mozilla/modules/libreg/include/NSReg.h. Clients will obtain this interface via the service manager (see mozilla/xpcom/public/nsIServiceManager.h).
 </dd><dt> mozRegistry
 </dt><dd> This is the simplistic implementation of the mozIRegistry interface. It is built as a simple C wrapper for the functions in NSReg.h. It is intended to provide a (slightly) lighter-weight implementation that is entirely compatible with current libreg usage.
 </dd><dt> mozRDFRegistry
-</dt><dd> This is an RDF-based mozIRegistry implementation that will provide additional capabilities. Note that these additional capabilities will not be utilized by nsRepository. It is envisioned that there will be multiple flavors of underlying RDF data sources corresponding to the libreg .reg file(s), the shared libraries installed, additional components accessible via the 'net, etc.
+</dt><dd> This is an RDF-based mozIRegistry implementation that will provide additional capabilities. Note that these additional capabilities will not be utilized by nsRepository. It is envisioned that there will be multiple flavors of underlying RDF data sources corresponding to the libreg .reg file(s), the shared libraries installed, additional components accessible via the &apos;net, etc.
 </dd></dl>
 <p>The contents of this RDF data base will be stored in a plain-text rdf/xml file so that it can easily be viewed edited. It will also facilitate building a browser-based application that will allow people to display and edit its contents.
 </p><p><br>
