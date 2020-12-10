@@ -17,18 +17,18 @@ slug: Mozilla/Projects/SpiderMonkey/Comparision_of_JS_engines
  </thead>
  <tbody>
   <tr>
-   <td><a href="http://hg.mozilla.org/mozilla-central/file/73eefb421e2a/js/public/Value.h#l872" title="public/Value.h:JS::Value"><code>Value</code></a></td>
-   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#930" title="src/objects.h:v8::internal::MaybeObject *"><code style="white-space: nowrap;">MaybeObject *</code></a></td>
+   <td><a href="http://hg.mozilla.org/mozilla-central/file/73eefb421e2a/js/public/Value.h#l872"><code>Value</code></a></td>
+   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#930"><code style="white-space: nowrap;">MaybeObject *</code></a></td>
    <td>代表一个 JS 值（数值、字符串、对象……）的类。SpiderMonkey 是用 <a href="http://wingolog.org/archives/2011/05/18/value-representation-in-javascript-implementations">nun-boxing</a>，总是一个 <code>double</code> 的大小（因此在 32 位的系统下，传值需要<a href="http://hg.mozilla.org/mozilla-central/file/73eefb421e2a/js/src/jit/RegisterSets.h#l88">两个 cycle</a>）。V8 是用 <a href="https://github.com/oupengsoftware/v8/wiki/Memory-Layout#wiki-tagged-pointer">tagged pointer</a>，总是一个指针的大小，浮点数存在堆上。<code>MaybeObject</code> 还是很多非 JS 语言对象（代码块等等）的<a href="http://sphinx.oupeng.com/wp-content/uploads/2013/07/v8-class-hierarchy.html">父类</a>。</td>
   </tr>
   <tr>
-   <td> <a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/vm/ObjectImpl.h#l685" title="src/vm/ObjectImpl.h:js::ObjectImpl"><code>ObjectImpl</code></a></td>
-   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#2089" title="src/objects.h:v8::internal::JSObject"><code>JSObject</code></a></td>
+   <td> <a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/vm/ObjectImpl.h#l685"><code>ObjectImpl</code></a></td>
+   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#2089"><code>JSObject</code></a></td>
    <td>JS 对象（<code>obj instanceof Object</code>）的实现类。SpiderMonkey 与 V8 皆是把部分属性存放在对象行内，部分用外链的一个数组储存的模式。SpiderMonkey 也将小数组的数据存在行内（但是<a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/jsgc.h#l258">不会分两半</a>），而 V8 的 JS 数组对象（貌似）都是将数据存在外链的数组上。在 SpiderMonkey 中，只有在 new space 的 JS 对象的外链数组的空间由虚拟机分配，其他情况的外链数组的空间<a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/gc/Nursery.cpp#l582">由 <code>malloc</code> 分配</a>（因此内存会比较分裂？）。<code>ObjectImpl</code> 除了有连接到 <code>Shape</code> 的指针之外，还有一个链到 <code>TypeObject</code> 的指针：16 B（<code>ObjectImpl</code>）vs. 12 B（<code>JSObject</code>）。在 SpiderMonkey 中，数据用 <code>Value</code> 存，也就是说，对于一个有 <em>k</em> 个行内属性的 JS 对象来说，内存占用是：16 B + <em>k</em> * 8 B（<code>ObjectImpl</code>）vs. 12 B + <em>k</em> * 4 B（<code>JSObject</code>），行外的情形 V8 则会再多用 8 B（<code>FixedArray</code> 的标头）。</td>
   </tr>
   <tr>
-   <td><span style="white-space: nowrap;"><a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/vm/Shape.h#l37" title="src/vm/Shape.h:js::Shape"><code>Shape</code></a>、<code><a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/jsinfer.h#l868" title="src/jsinfer.h:js::types::TypeObject">TypeObject</a>、</code><a href="http://hg.mozilla.org/mozilla-central/file/73eefb421e2a/js/public/Class.h#l590" title="public/Class.h::js::Class"><code>Class</code></a></span></td>
-   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#5769" title="src/objects.h:v8::internal::Map"><code>Map</code></a></td>
+   <td><span style="white-space: nowrap;"><a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/vm/Shape.h#l37"><code>Shape</code></a>、<code><a href="http://hg.mozilla.org/mozilla-central/file/f550b112a19b/js/src/jsinfer.h#l868">TypeObject</a>、</code><a href="http://hg.mozilla.org/mozilla-central/file/73eefb421e2a/js/public/Class.h#l590"><code>Class</code></a></span></td>
+   <td><a href="http://code.google.com/p/v8/source/browse/branches/bleeding_edge/src/objects.h?r=19048#5769"><code>Map</code></a></td>
    <td>隐藏类的实现类。在 SpiderMonkey 中，属性名存在 <code>Shape</code> 上（因此带有 V8 的 <code>DescriptorArray</code> 的作用），JS 对象的原型存在 <code>TypeObject</code> 上，特殊属性的处理方法存在 <code>Class</code> 上（<code>Class</code> 对象不是 JS 堆里的对象，大部分都共用：<code>JSObject::class_</code>、<code>JSFunction::class_……</code>）。由于 V8 的 <code>Map</code> 有 SM 三个类的作用，因此占用内存也比较多：24 B（<code>Shape</code>）vs. 40 B（<code>Map</code>）。</td>
   </tr>
  </tbody>
