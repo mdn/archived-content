@@ -59,13 +59,13 @@ translation_of: Mozilla/Firefox/Multiprocess_Firefox/Technical_overview
         </details>
     </li>
   </ol>
-</section></div><div class="note">
-<p>This page is an edited extract from Bill McCloskey's blog post on multiprocess Firefox: <a href="http://billmccloskey.wordpress.com/2013/12/05/multiprocess-firefox/" class="external external-icon">http://billmccloskey.wordpress.com/2013/12/05/multiprocess-firefox/</a></p>
+</section></div><div class="note notecard">
+<p>This page is an edited extract from Bill McCloskey&apos;s blog post on multiprocess Firefox: <a href="http://billmccloskey.wordpress.com/2013/12/05/multiprocess-firefox/" class="external external-icon">http://billmccloskey.wordpress.com/2013/12/05/multiprocess-firefox/</a></p>
 </div>
 
 <p>At a very high level, multiprocess Firefox works as follows. The process that starts up when Firefox launches is called the <em>parent process</em>. Initially, this process works similarly to single-process Firefox: it opens a window displaying <a href="http://mxr.mozilla.org/mozilla-central/source/browser/base/content/browser.xul"><code>browser.xul</code></a>, which contains all the principal UI elements for Firefox. Firefox has a flexible GUI toolkit called XUL that allows GUI elements to be declared and laid out declaratively, similar to web content. Just like web content, the Firefox UI has a <code>window</code> object, which has a <code>document</code> property, and this document contains all the XML elements from <code>browser.xul</code>. All the Firefox menus, toolbars, sidebars, and tabs are XML elements in this document. Each tab element contains a <code>&lt;browser&gt;</code> element to display web content.</p>
 
-<p>The first place where multiprocess Firefox diverges from single-process Firefox is that each <code>&lt;browser&gt;</code> element has a <code>remote="true"</code> attribute. When such a browser element is added to the document, a new content process is started. This process is called a <em>child process</em>. An IPC channel is created that links the parent and child processes. Initially, the child displays <code>about:blank</code>, but the parent can send the child a command to navigate elsewhere.</p>
+<p>The first place where multiprocess Firefox diverges from single-process Firefox is that each <code>&lt;browser&gt;</code> element has a <code>remote=&quot;true&quot;</code> attribute. When such a browser element is added to the document, a new content process is started. This process is called a <em>child process</em>. An IPC channel is created that links the parent and child processes. Initially, the child displays <code>about:blank</code>, but the parent can send the child a command to navigate elsewhere.</p>
 
 <h2 id="Drawing"><strong id="drawing">Drawing</strong></h2>
 
@@ -93,7 +93,7 @@ translation_of: Mozilla/Firefox/Multiprocess_Firefox/Technical_overview
 
 <pre class="brush: cpp">void AddHistoryEntry(param) {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    // If we're in the child, ask the parent to do this for us.
+    // If we&apos;re in the child, ask the parent to do this for us.
     SendAddHistoryEntry(param);
     return;
   }
@@ -121,25 +121,25 @@ bool RecvAddHistoryEntry(param) {
 <p>As a simple example, imagine that we want to be informed every time a <code>load</code> event triggers in web content. We’re not interested in any particular browser or window, so we use the global message manager. The basic process is as follows:</p>
 
 <pre class="brush: js">// Get the global message manager.
-let mm = Cc["@<span class="skimlinks-unlinked">mozilla.org/globalmessagemanager;1</span>"].
+let mm = Cc[&quot;@<span class="skimlinks-unlinked">mozilla.org/globalmessagemanager;1</span>&quot;].
          getService(Ci.nsIMessageListenerManager);
 
 // Wait for load event.
-mm.addMessageListener("GotLoadEvent", function (msg) {
-  dump("Received load event: " + <span class="skimlinks-unlinked">msg.data.url</span> + "\n");
+mm.addMessageListener(&quot;GotLoadEvent&quot;, function (msg) {
+  dump(&quot;Received load event: &quot; + <span class="skimlinks-unlinked">msg.data.url</span> + &quot;\n&quot;);
 });
 
 // Load code into the child process to listen for the event.
-mm.loadFrameScript("chrome://content/<span class="skimlinks-unlinked">content-script.js</span>", true);
+mm.loadFrameScript(&quot;chrome://content/<span class="skimlinks-unlinked">content-script.js</span>&quot;, true);
 </pre>
 
 <p>For this to work, we also need to have a file <code>content-script.js</code>:</p>
 
 <pre class="brush: js">// Listen for the load event.
-addEventListener("load", function (e) {
+addEventListener(&quot;load&quot;, function (e) {
   // Inform the parent process.
   let docURL = content.document.documentURI;
-  sendAsyncMessage("GotLoadEvent", {url: docURL});
+  sendAsyncMessage(&quot;GotLoadEvent&quot;, {url: docURL});
 }, false);
 </pre>
 
@@ -153,9 +153,9 @@ addEventListener("load", function (e) {
 
 <p>The <code>webNavigation</code> property is defined using the XML Binding Language (XBL). XBL is a declarative language for customizing how XML elements work. Its syntax is a combination of XML and JavaScript. Firefox uses XBL extensively to customize XUL elements like <code>&lt;browser&gt;</code> and <code>&lt;tabbrowser&gt;</code>. The <code>&lt;browser&gt;</code> customizations reside in <code><a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/content/widgets/browser.xml?rev=754cf7fc84cd">browser.xml</a></code>. <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/content/widgets/browser.xml?rev=754cf7fc84cd#262">Here</a> is how <code>browser.webNavigation</code> is defined:</p>
 
-<pre class="brush: xml">&lt;field name="_webNavigation"&gt;null&lt;/field&gt;
+<pre class="brush: xml">&lt;field name=&quot;_webNavigation&quot;&gt;null&lt;/field&gt;
 
-&lt;property name="webNavigation" readonly="true"&gt;
+&lt;property name=&quot;webNavigation&quot; readonly=&quot;true&quot;&gt;
    &lt;getter&gt;
    &lt;![CDATA[
      if (!this._webNavigation)
@@ -170,7 +170,7 @@ addEventListener("load", function (e) {
 
 <p>One way to fix this problem would be to create a fake docshell in C++ that could be returned. It would operate by sending IPDL messages to the real docshell in the child to get work done. We may eventually take this route in the future. We decided to do the message passing in JavaScript instead, since it’s easier and faster to prototype things there. Rather than change every docshell-using accessor to test if we’re using multiprocess browsing, we decided to create a new XBL binding that applies only to remote <code>&lt;browser&gt;</code> elements. It is called <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/content/widgets/remote-browser.xml?rev=9583bd3099ae"><code>remote-browser.xml</code></a>, and it extends the existing <code>browser.xml</code> binding.</p>
 
-<p>The <code>remote-browser.xml</code> binding returns a JavaScript <em>shim object</em> whenever anyone uses <code>browser.webNavigation</code> or other similar objects. The shim object is implemented <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/RemoteWebNavigation.jsm">in its own JavaScript module</a>. It uses the message manager to send messages like <code>"WebNavigation:LoadURI"</code> to <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/content/browser-child.js?rev=9583bd3099ae#107">a content script loaded by <code>remote-browser.xml</code></a>. The content script performs the actual action.</p>
+<p>The <code>remote-browser.xml</code> binding returns a JavaScript <em>shim object</em> whenever anyone uses <code>browser.webNavigation</code> or other similar objects. The shim object is implemented <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/modules/RemoteWebNavigation.jsm">in its own JavaScript module</a>. It uses the message manager to send messages like <code>&quot;WebNavigation:LoadURI&quot;</code> to <a href="http://mxr.mozilla.org/mozilla-central/source/toolkit/content/browser-child.js?rev=9583bd3099ae#107">a content script loaded by <code>remote-browser.xml</code></a>. The content script performs the actual action.</p>
 
 <p>The shims we provide emulate their real counterparts imperfectly. They offer enough functionality to make Firefox work, but add-ons that use them may find them insufficient. I’ll discuss strategies for making add-ons work in more detail later.</p>
 
@@ -180,22 +180,22 @@ addEventListener("load", function (e) {
 
 <p>These objects are called cross-process object wrappers, frequently abbreviated to CPOWs. They’re created using the message manager. Consider this example content script:</p>
 
-<pre class="brush: js">addEventListener("load", function (e) {
+<pre class="brush: js">addEventListener(&quot;load&quot;, function (e) {
   let doc = content.document;
-  sendAsyncMessage("GotLoadEvent", <strong>{}, {document: doc}</strong>);
+  sendAsyncMessage(&quot;GotLoadEvent&quot;, <strong>{}, {document: doc}</strong>);
 }, false);
 </pre>
 
 <p>In this code, we want to be able to send a reference to the document to the parent process. We can’t use the second parameter to <code>sendAsyncMessage</code> to do this: that argument is converted to JSON before it is sent up. The optional third parameter allows us to send object references. Each property of this argument becomes accessible in the parent process as a CPOW. Here’s what the parent code might look like:</p>
 
-<pre class="brush: js">let mm = Cc["@<span class="skimlinks-unlinked">mozilla.org/globalmessagemanager;1</span>"].
+<pre class="brush: js">let mm = Cc[&quot;@<span class="skimlinks-unlinked">mozilla.org/globalmessagemanager;1</span>&quot;].
          getService(Ci.nsIMessageListenerManager);
 
-mm.addMessageListener("GotLoadEvent", function (msg) {
+mm.addMessageListener(&quot;GotLoadEvent&quot;, function (msg) {
   let uri = <strong>msg.objects.document.documentURI</strong>;
-  dump("Received load event: " + uri + "\n");
+  dump(&quot;Received load event: &quot; + uri + &quot;\n&quot;);
 });
-mm.loadFrameScript("chrome://content/<span class="skimlinks-unlinked">content-script.js</span>", true);
+mm.loadFrameScript(&quot;chrome://content/<span class="skimlinks-unlinked">content-script.js</span>&quot;, true);
 </pre>
 
 <p>It’s important to realize that we’re send object <em>references</em>. The <code>msg.objects.document</code> object is only a wrapper. The access to its <code>documentURI</code> property sends a synchronous message down to the child asking for the value. The dump statement only happens after a reply has come back from the child.</p>
@@ -204,14 +204,14 @@ mm.loadFrameScript("chrome://content/<span class="skimlinks-unlinked">content-sc
 
 <p>Another problem with CPOWs is that they violate some assumptions people might have about message ordering. Consider this code:</p>
 
-<pre class="brush: js">mm.addMessageListener("GotLoadEvent", function (msg) {
-  mm.sendAsyncMessage("ChangeDocumentURI", {newURI: "<span class="skimlinks-unlinked">hello.com</span>"});
+<pre class="brush: js">mm.addMessageListener(&quot;GotLoadEvent&quot;, function (msg) {
+  mm.sendAsyncMessage(&quot;ChangeDocumentURI&quot;, {newURI: &quot;<span class="skimlinks-unlinked">hello.com</span>&quot;});
   let uri = <strong>msg.objects.document.documentURI</strong>;
-  dump("Received load event: " + uri + "\n");
+  dump(&quot;Received load event: &quot; + uri + &quot;\n&quot;);
 });
 </pre>
 
-<p>This code sends a message asking the child to change the current document URI. Then it accesses the current document URI via a CPOW. You might expect the value of <code>uri</code> to come back as <code>"hello.com"</code>. But it might not. In order to avoid deadlocks, CPOW messages can bypass normal messages and be processed first. It’s possible that the request for the <code>documentURI</code> property will be processed before the <code>"ChangeDocumentURI"</code> message, in which case <code>uri</code> will have some other value.</p>
+<p>This code sends a message asking the child to change the current document URI. Then it accesses the current document URI via a CPOW. You might expect the value of <code>uri</code> to come back as <code>&quot;hello.com&quot;</code>. But it might not. In order to avoid deadlocks, CPOW messages can bypass normal messages and be processed first. It’s possible that the request for the <code>documentURI</code> property will be processed before the <code>&quot;ChangeDocumentURI&quot;</code> message, in which case <code>uri</code> will have some other value.</p>
 
 <p>For this reason, it’s best not to mix CPOWs with normal message manager messages. It’s also a bad idea to use CPOWs for anything security-related, since you may not get results that are consistent with surrounding code that might use the message manager.</p>
 

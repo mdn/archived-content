@@ -15,23 +15,23 @@ slug: Mozilla/Accessibility/Multiprocess_on_Windows
  <li><a href="https://web.archive.org/web/20170113130230/http://www.codeguru.com/cpp/com-tech/activex/apts/article.php/c5533/Understanding-COM-Apartments-Part-II.htm">Understanding COM Apartments, Part II</a></li>
 </ul>
 
-<p>For the purposes of this document, "COM" will refer to Microsoft COM (as opposed to XPCOM).</p>
+<p>For the purposes of this document, &quot;COM&quot; will refer to Microsoft COM (as opposed to XPCOM).</p>
 
 <h2 id="Gecko_and_apartments">Gecko and apartments</h2>
 
-<p>Most code that runs on Gecko's main thread is not thread safe. Since Gecko's main thread uses COM, and COM requires threads to declare their threading model, the main thread must initialize itself to live inside its own single threaded apartment (STA). This is true for both chrome and content processes.</p>
+<p>Most code that runs on Gecko&apos;s main thread is not thread safe. Since Gecko&apos;s main thread uses COM, and COM requires threads to declare their threading model, the main thread must initialize itself to live inside its own single threaded apartment (STA). This is true for both chrome and content processes.</p>
 
-<p>As you should already know from the prerequisite reading, single threaded apartments receive remote procedure calls (RPCs) from COM, via the Windows message queue. From a performance standpoint, this is less than ideal. The Windows message queue carries a lot of baggage for the purposes of maintaining backward compatibility. On the other hand, COM's multithreaded apartment (MTA) uses a much faster IPC mechanism that does not suffer from the same problems as the message queue. Ideally, we would like to receive RPCs via threads in the MTA, and then forward them in a thread-safe way to Gecko's main thread. Unfortunately, crossing apartment boundaries using COM incurs the exact same problem as crossing process boundaries: if we directly use COM's built in marshaling capabilities to forward an RPC from the MTA to the main thread STA, COM will still use the STA's message queue, thus defeating the purpose of using the MTA in the first place!</p>
+<p>As you should already know from the prerequisite reading, single threaded apartments receive remote procedure calls (RPCs) from COM, via the Windows message queue. From a performance standpoint, this is less than ideal. The Windows message queue carries a lot of baggage for the purposes of maintaining backward compatibility. On the other hand, COM&apos;s multithreaded apartment (MTA) uses a much faster IPC mechanism that does not suffer from the same problems as the message queue. Ideally, we would like to receive RPCs via threads in the MTA, and then forward them in a thread-safe way to Gecko&apos;s main thread. Unfortunately, crossing apartment boundaries using COM incurs the exact same problem as crossing process boundaries: if we directly use COM&apos;s built in marshaling capabilities to forward an RPC from the MTA to the main thread STA, COM will still use the STA&apos;s message queue, thus defeating the purpose of using the MTA in the first place!</p>
 
 <h2 id="Enter_the_interceptor">Enter the interceptor</h2>
 
-<p>To achieve the best of both worlds, we wrote our own code to facilitate the safe handing off of an inbound RPC from the content process's MTA to the content main thread's STA. This uses a COM technology called the <em>interceptor</em>. Interceptors are, essentially, wrapper objects which implement the same interfaces as the object that they are wrapping. When an incoming RPC invokes a method on an interceptor, the interceptor dispatches a callback that allows us to do whatever we want with that request. Our callback implementation forwards the method call to the main thread in order to invoke the method on the wrapped object. The interceptor is also aware that any outparams, which contain interfaces, must also be wrapped with interceptors of their own.</p>
+<p>To achieve the best of both worlds, we wrote our own code to facilitate the safe handing off of an inbound RPC from the content process&apos;s MTA to the content main thread&apos;s STA. This uses a COM technology called the <em>interceptor</em>. Interceptors are, essentially, wrapper objects which implement the same interfaces as the object that they are wrapping. When an incoming RPC invokes a method on an interceptor, the interceptor dispatches a callback that allows us to do whatever we want with that request. Our callback implementation forwards the method call to the main thread in order to invoke the method on the wrapped object. The interceptor is also aware that any outparams, which contain interfaces, must also be wrapped with interceptors of their own.</p>
 
 <p>This code lives in the <code>mscom</code> library, located in the tree at <code>/ipc/mscom</code>. Its headers are exported to <code>mozilla/mscom</code>.</p>
 
 <h3 id="Ensuring_that_the_interceptor_supports_your_interfaces">Ensuring that the interceptor supports your interfaces</h3>
 
-<div class="note">
+<div class="note notecard">
 <p>This information is current, but is likely to change when <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1346957">bug 1346957</a> is landed.</p>
 </div>
 
@@ -39,9 +39,9 @@ slug: Mozilla/Accessibility/Multiprocess_on_Windows
 
 <h4 id="COM_metadata">COM metadata</h4>
 
-<p><code>midl</code> outputs two different types of metadata: "fast format strings" (also known as OICF) and (optionally, if a <code>library</code> statement is included in the IDL) type libraries (also known as typelib). OICF metadata is much richer than typelib metadata, however COM requires typelibs whenever it is being used with interpreted languages. In particular, typelibs were originally designed to work with 1990s-era Visual Basic. Typelib metadata is limited to supporting the same language features which were supported by VB at that time.</p>
+<p><code>midl</code> outputs two different types of metadata: &quot;fast format strings&quot; (also known as OICF) and (optionally, if a <code>library</code> statement is included in the IDL) type libraries (also known as typelib). OICF metadata is much richer than typelib metadata, however COM requires typelibs whenever it is being used with interpreted languages. In particular, typelibs were originally designed to work with 1990s-era Visual Basic. Typelib metadata is limited to supporting the same language features which were supported by VB at that time.</p>
 
-<p>Given those two options, it may seem that OICF is the preferred format. However, for various reasons, our COM interceptor currently only supports typelib metadata. In order for the interceptor to be able to work with our interfaces, we must do some additional work to compensate for typelib's weaknesses. The required steps are as follows:</p>
+<p>Given those two options, it may seem that OICF is the preferred format. However, for various reasons, our COM interceptor currently only supports typelib metadata. In order for the interceptor to be able to work with our interfaces, we must do some additional work to compensate for typelib&apos;s weaknesses. The required steps are as follows:</p>
 
 <ol>
  <li><a href="#gentypelib">Ensure that you generate typelibs for all of your COM interfaces;</a></li>
@@ -53,7 +53,7 @@ slug: Mozilla/Accessibility/Multiprocess_on_Windows
 
 <h4 id="Generating_typelibs_for_all_COM_interfaces">Generating typelibs for all COM interfaces</h4>
 
-<p>You first need to include a <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/aa367069(v=vs.85).aspx">library</a> statement in your IDL. When <code>midl</code> processes your IDL, it generates C code for building a proxy DLL, containing the OICF metadata. It also will output a file with the <code>.tlb</code> extension. This file contains the typelib metadata. Both metadata types must be shipped with Firefox. The OICF metadata is shipped via the proxy DLL. To include the typelib metadata, embed it in the proxy DLL's resources. Both types of metadata are then made available from within the same DLL. This is achieved by specifying <code>RCINCLUDE</code> in the DLL's <code>moz.build</code>, and then specifying the resources in an <code>.rc</code> file. You should always embed your typelib with its resource ID set to 1.</p>
+<p>You first need to include a <a href="https://msdn.microsoft.com/en-us/library/windows/desktop/aa367069(v=vs.85).aspx">library</a> statement in your IDL. When <code>midl</code> processes your IDL, it generates C code for building a proxy DLL, containing the OICF metadata. It also will output a file with the <code>.tlb</code> extension. This file contains the typelib metadata. Both metadata types must be shipped with Firefox. The OICF metadata is shipped via the proxy DLL. To include the typelib metadata, embed it in the proxy DLL&apos;s resources. Both types of metadata are then made available from within the same DLL. This is achieved by specifying <code>RCINCLUDE</code> in the DLL&apos;s <code>moz.build</code>, and then specifying the resources in an <code>.rc</code> file. You should always embed your typelib with its resource ID set to 1.</p>
 
 <p>We embed typelib metadata in <code>AccessibleMarshal.dll</code> and <code>IA2Marshal.dll</code>. Use their <code>moz.build</code> and <code>.rc</code> files as examples.</p>
 
@@ -61,17 +61,17 @@ slug: Mozilla/Accessibility/Multiprocess_on_Windows
 
 <p>For interceptors to be able to use the typelibs, they must be registered. Any typelibs that are already registered in the system registry will automatically be available for use by the interceptor. This is great for system interfaces, but for interfaces that are specific to Gecko, it is better to register them at runtime. The <code>mscom</code> library provides an API for doing this: the <code>RegisterProxy</code> and <code>RegisterTypelib</code> functions in <code>mozilla/mscom/Registration.h</code>. Both of these functions return unique pointers and should be treated as opaque by the caller. Save them to a location where they will be able to exist for the lifetime of the process.</p>
 
-<p>If your typelib is embedded in a proxy's resources, then use <code>RegisterProxy()</code>. This is the preferred mechanism, as it will register both your OICF and typelib metadata. If you have a standalone <code>.tlb</code> file that you need to register, then use <code>RegisterTypelib()</code>.</p>
+<p>If your typelib is embedded in a proxy&apos;s resources, then use <code>RegisterProxy()</code>. This is the preferred mechanism, as it will register both your OICF and typelib metadata. If you have a standalone <code>.tlb</code> file that you need to register, then use <code>RegisterTypelib()</code>.</p>
 
-<div class="note">
-<p><strong>Note:</strong> you should register your typelibs and proxies in both the chrome and content processes. If you only register your interfaces in one process, COM won't be able to understand the interface in the other process.</p>
+<div class="note notecard">
+<p><strong>Note:</strong> you should register your typelibs and proxies in both the chrome and content processes. If you only register your interfaces in one process, COM won&apos;t be able to understand the interface in the other process.</p>
 </div>
 
 <h4 id="Registering_outparams_that_consist_of_arrays_of_interfaces">Registering outparams that consist of arrays of interfaces</h4>
 
-<p>Recall that one of the limitations of typelibs is that their metadata isn't as rich as OICF metadata. Something typelibs do not include in their metadata, is IDL annotations, such as <code>length_is</code> and <code>size_is</code>. Remember, for interceptors to work correctly, they must be able to wrap any outparams that are interfaces with their own interceptors. Without the support for <code>length_is</code> and <code>size_is</code> annotations, the interceptor cannot tell the difference between a scalar outparam and an array outparam. If your interface outputs an array of interfaces, the interceptor would only wrap the first element in the array, because it cannot distinguish between scalars and arrays.</p>
+<p>Recall that one of the limitations of typelibs is that their metadata isn&apos;t as rich as OICF metadata. Something typelibs do not include in their metadata, is IDL annotations, such as <code>length_is</code> and <code>size_is</code>. Remember, for interceptors to work correctly, they must be able to wrap any outparams that are interfaces with their own interceptors. Without the support for <code>length_is</code> and <code>size_is</code> annotations, the interceptor cannot tell the difference between a scalar outparam and an array outparam. If your interface outputs an array of interfaces, the interceptor would only wrap the first element in the array, because it cannot distinguish between scalars and arrays.</p>
 
-<div class="note">
+<div class="note notecard">
 <p><strong>Note: </strong>If your new interface does not contain either of these annotations, then you do not need to worry about this step.</p>
 </div>
 
@@ -106,7 +106,7 @@ Flag    mFlag;
  <li><code>mArrayParamType</code> is the expected <code>VARIANT</code> type of the outparam. This should usually be set to <code>VT_UNKNOWN | VT_BYREF</code>, which is telling the interceptor that the outparam is an <code>IUnknown**</code>.</li>
  <li><code>mArrayParamIid</code> is the UUID of the interface that the outparam array uses. This should be the IID that we want the interceptor to actually use when wrapping the array element.</li>
  <li><code>mLengthParamIndex</code> is the index of the out parameter that contains the length of the array (excluding the <code>this</code> pointer). The interceptor needs to be able to read this parameter to know how many interface pointers exist in the array.</li>
- <li>mFlag may currently be set to one of two values: <code>ArrayData::Flag::eNone</code> or <code>ArrayData::Flag::eAllocatedByServer</code>. Setting <code>eAllocatedByServer</code> signals to the interceptor that the array is allocated within the method's implementation by calling <code>CoTaskMemAlloc()</code>.</li>
+ <li>mFlag may currently be set to one of two values: <code>ArrayData::Flag::eNone</code> or <code>ArrayData::Flag::eAllocatedByServer</code>. Setting <code>eAllocatedByServer</code> signals to the interceptor that the array is allocated within the method&apos;s implementation by calling <code>CoTaskMemAlloc()</code>.</li>
 </ul>
 
 <h3 id="Using_the_interceptor_in_a11y_code">Using the interceptor in a11y code</h3>
@@ -115,7 +115,7 @@ Flag    mFlag;
 
 <h4 id="A_word_about_smart_pointers">A word about smart pointers</h4>
 
-<p>As long as you're manipulating an object in its home apartment, it is okay to just use <code>RefPtr</code>. On the other hand, some APIs in the mscom library require you to use smart pointers that are able to cross apartment boundaries. As you should already know, you can't directly touch a COM object's reference count unless you're already inside the apartment which contains that object. This is a problem for smart pointers that are not apartment aware; they will try to <code>AddRef()</code> and <code>Release()</code> on whichever thread they happen to be running. The <code>mscom</code> library provides a set of smart pointers that <em>are</em> aware of COM apartments:</p>
+<p>As long as you&apos;re manipulating an object in its home apartment, it is okay to just use <code>RefPtr</code>. On the other hand, some APIs in the mscom library require you to use smart pointers that are able to cross apartment boundaries. As you should already know, you can&apos;t directly touch a COM object&apos;s reference count unless you&apos;re already inside the apartment which contains that object. This is a problem for smart pointers that are not apartment aware; they will try to <code>AddRef()</code> and <code>Release()</code> on whichever thread they happen to be running. The <code>mscom</code> library provides a set of smart pointers that <em>are</em> aware of COM apartments:</p>
 
 <table class="standard-table">
  <caption>mscom smart pointer types</caption>
@@ -153,7 +153,7 @@ Flag    mFlag;
 
 <h4 id="Simple_Example">Simple Example</h4>
 
-<p>Now you know about <code>MainThreadHandoff::WrapInterface</code> and about the smart pointers, you're ready to wrap an interface:</p>
+<p>Now you know about <code>MainThreadHandoff::WrapInterface</code> and about the smart pointers, you&apos;re ready to wrap an interface:</p>
 
 <pre>Accessible* myAccessible = ....;
 

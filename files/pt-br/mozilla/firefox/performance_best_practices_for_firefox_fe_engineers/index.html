@@ -63,13 +63,13 @@ translation_of: Mozilla/Firefox/Performance_best_practices_for_Firefox_fe_engine
 
 <h2 id="Avoid_the_main_thread_where_possible">Avoid the main thread where possible</h2>
 
-<p>The main thread is where we process user events and do painting. It's also important to note that most of our JavaScript runs on the main thread, so it's easy for script to cause delays in event processing or painting. That means that the more code we can get off of the main thread, the more that thread can respond to user events, paint, and generally be responsive to the user.</p>
+<p>The main thread is where we process user events and do painting. It&apos;s also important to note that most of our JavaScript runs on the main thread, so it&apos;s easy for script to cause delays in event processing or painting. That means that the more code we can get off of the main thread, the more that thread can respond to user events, paint, and generally be responsive to the user.</p>
 
 <p>You might want to consider using a <a href="/pt-BR/docs/Web/API/Worker"><code>Worker</code></a> if you need to do some computation that can be done off of the main thread. If you need more elevated privileges than a standard worker allows, consider using a <a href="/pt-BR/docs/Web/API/ChromeWorker"><code>ChromeWorker</code></a>, which is a Firefox-only API which lets you create workers with more elevated privileges.</p>
 
 <h2 id="Use_requestIdleCallback">Use requestIdleCallback()</h2>
 
-<p>If you simply cannot avoid doing some kind of long job on the main thread, try to break it up into smaller pieces that you can run when the browser has a free moment to spare, and the user isn't doing anything. You can do that using <a href="/pt-BR/docs/Web/API/Window/requestIdleCallback"><code>requestIdleCallback()</code></a> and the <a href="/en-US/docs/Web/API/Background_Tasks_API">Cooperative Scheduling of Background Tasks API</a>, and doing it only when we have a free second where presumably the user isn’t doing something.</p>
+<p>If you simply cannot avoid doing some kind of long job on the main thread, try to break it up into smaller pieces that you can run when the browser has a free moment to spare, and the user isn&apos;t doing anything. You can do that using <a href="/pt-BR/docs/Web/API/Window/requestIdleCallback"><code>requestIdleCallback()</code></a> and the <a href="/en-US/docs/Web/API/Background_Tasks_API">Cooperative Scheduling of Background Tasks API</a>, and doing it only when we have a free second where presumably the user isn’t doing something.</p>
 
 <p>See also the blog post <a href="https://hacks.mozilla.org/2016/11/cooperative-scheduling-with-requestidlecallback/">Collective scheduling with requestIdleCallback</a>.</p>
 
@@ -85,11 +85,11 @@ translation_of: Mozilla/Firefox/Performance_best_practices_for_Firefox_fe_engine
 
 <p>The rendering process goes through the following steps:<img alt="This is the pipeline that a browser uses to get pixels to the screen." src="https://mdn.mozillademos.org/files/14995/pasted%20image%200.png" style="height: 167px; width: 1093px;"></p>
 
-<div class="note">
+<div class="note notecard">
 <p>The above image is used under <a href="https://creativecommons.org/licenses/by/3.0/">Creative Commons Attribution 3.0</a>, courtesy of <a href="https://developers.google.com/web/fundamentals/performance/rendering/avoid-large-complex-layouts-and-layout-thrashing">this page</a> from our friends at Google, which itself is well worth the read.</p>
 </div>
 
-<div class="note">
+<div class="note notecard">
 <p>For a very down-to-earth explanation of the Style, Layout, Paint and Composite steps of the pipeline, <a href="https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/">this Hacks blog post</a> does a great job of explaining it.</p>
 </div>
 
@@ -107,19 +107,19 @@ translation_of: Mozilla/Firefox/Performance_best_practices_for_Firefox_fe_engine
 
 <p>JavaScript code might, for example, change DOM node attributes (either directly or by adding or removing classes from elements), and can also add, remove, or delete DOM nodes. Because styles are normally scoped to the entire document, the cost of doing these style calculations is proportional to the number of DOM nodes in the document (and the number of styles being applied).</p>
 
-<p>It is expected that over time, script will update the DOM, requiring us to recalculate styles. Normally, the changes to the DOM just result in the standard style calculation occurring immediately after the JavaScript has finished running during the 16ms window, inside the "Style" step. That's the ideal scenario.</p>
+<p>It is expected that over time, script will update the DOM, requiring us to recalculate styles. Normally, the changes to the DOM just result in the standard style calculation occurring immediately after the JavaScript has finished running during the 16ms window, inside the &quot;Style&quot; step. That&apos;s the ideal scenario.</p>
 
-<p>However, it's possible for script to do things that force multiple style calculations (or <strong>style flushes</strong>) to occur synchronously during the JavaScript part of the 16 ms window. The more of them there are, the more likely they'll exceed the 16ms frame budget. If that happens, some of them will be postponed until the next frame (or possibly multiple frames, if necessary), this skipping of frames is called <strong>jank</strong>.</p>
+<p>However, it&apos;s possible for script to do things that force multiple style calculations (or <strong>style flushes</strong>) to occur synchronously during the JavaScript part of the 16 ms window. The more of them there are, the more likely they&apos;ll exceed the 16ms frame budget. If that happens, some of them will be postponed until the next frame (or possibly multiple frames, if necessary), this skipping of frames is called <strong>jank</strong>.</p>
 
 <p>Generally speaking, you force a synchronous style flush any time you query for style information after the DOM has changed within the same frame tick. Depending on whether or not <a href="https://gist.github.com/paulirish/5d52fb081b3570c81e3a">the style information you’re asking for has something to do with size or position</a>, you may also cause a layout recalculation (also referred to as <strong>layout flush</strong> or <strong>reflow</strong>), which is also an expensive step (see <a href="#Detecting_and_avoiding_synchronous_reflow">Detecting and avoiding synchronous reflow</a> below).</p>
 
 <p>To avoid this: avoid reading style information if you can. If you <em>must</em> read style information, do so at the very beginning of the frame, before any changes have been made to the DOM since the last time a style flush occurred.</p>
 
-<p>Historically, there hasn't been an easy way of doing this - however, <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1434376">bug 1434376</a> has recently landed some ChromeOnly helpers to the window binding to make this simpler.</p>
+<p>Historically, there hasn&apos;t been an easy way of doing this - however, <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1434376">bug 1434376</a> has recently landed some ChromeOnly helpers to the window binding to make this simpler.</p>
 
-<p>If you want to queue up some JavaScript to run after the next "natural" style and layout flush, try:</p>
+<p>If you want to queue up some JavaScript to run after the next &quot;natural&quot; style and layout flush, try:</p>
 
-<pre class="brush: js">// Suppose we want to get the computed "display" style of some node without
+<pre class="brush: js">// Suppose we want to get the computed &quot;display&quot; style of some node without
 // causing a style flush. We could do it this way:
 async function nodeIsDisplayNone(node) {
   let display = await window.promiseDocumentFlushed(() =&gt; {
@@ -128,11 +128,11 @@ async function nodeIsDisplayNone(node) {
     return window.getComputedStyle(node).display;
   });
 
-  return display == "none";
+  return display == &quot;none&quot;;
 }
 </pre>
 
-<div class="note">
+<div class="note notecard">
 <p>See <a href="#Detecting_and_avoiding_synchronous_reflow">Detecting and avoiding synchronous reflow</a> for a more advanced example of getting layout information, and then setting it safely, without causing flushes.</p>
 </div>
 
@@ -150,11 +150,11 @@ async function nodeIsDisplayNone(node) {
 
 <h2 id="Detecting_and_avoiding_synchronous_reflow">Detecting and avoiding synchronous reflow</h2>
 
-<div class="note">
-<p>This is also sometimes called “sync layout”, "sync layout flushes" or “sync layout calculations”</p>
+<div class="note notecard">
+<p>This is also sometimes called “sync layout”, &quot;sync layout flushes&quot; or “sync layout calculations”</p>
 </div>
 
-<p><strong>Sync reflow</strong> is a term bandied about a lot, and has negative connotations. It's not unusual for an engineer to have only the vaguest sense of what it is—and to only know to avoid it. This section will attempt to demystify things.</p>
+<p><strong>Sync reflow</strong> is a term bandied about a lot, and has negative connotations. It&apos;s not unusual for an engineer to have only the vaguest sense of what it is—and to only know to avoid it. This section will attempt to demystify things.</p>
 
 <p>The first time a document (XUL or HTML) loads, we parse the markup, and then apply styles. Once the styles have been calculated, we then need to calculate where things are going to be placed on the page. This layout step can be seen in the “16ms” pipeline graphic above, and occurs just before we paint things to be composited for the user to see.</p>
 
@@ -172,19 +172,19 @@ async function nodeIsDisplayNone(node) {
 
 <p>The worst-case scenario is that none of the layout can be skipped despite being interrupted, and the entire layout calculation occurs.</p>
 
-<p>Reflows that are triggered "naturally" by the 16ms tick are all considered interruptible. Despite not actually being interuptible when laying out chrome UI, striving for interruptible layout is always good practice because uninterruptible layout has the potential to be much worse (see next section).</p>
+<p>Reflows that are triggered &quot;naturally&quot; by the 16ms tick are all considered interruptible. Despite not actually being interuptible when laying out chrome UI, striving for interruptible layout is always good practice because uninterruptible layout has the potential to be much worse (see next section).</p>
 
 <p><strong>To repeat, only interruptible reflows in web content can be interrupted.</strong></p>
 
 <h3 id="Uninterruptible_reflow">Uninterruptible reflow</h3>
 
-<p>Uninterruptible reflow is what we want to <strong>avoid at all costs</strong>. Uninterruptible reflow occurs when some DOM node’s styles have changed such that the size or position of one or more nodes in the document will need to be updated, and then <strong>JavaScript asks for the size or position of anything</strong>. Since everything is pending a reflow, the answer isn't available, so everything stalls until the reflow is complete and the script can be given an answer. Flushing layout also means that styles must be flushed to calculate the most up-to-date state of things, so it's a double-whammy.</p>
+<p>Uninterruptible reflow is what we want to <strong>avoid at all costs</strong>. Uninterruptible reflow occurs when some DOM node’s styles have changed such that the size or position of one or more nodes in the document will need to be updated, and then <strong>JavaScript asks for the size or position of anything</strong>. Since everything is pending a reflow, the answer isn&apos;t available, so everything stalls until the reflow is complete and the script can be given an answer. Flushing layout also means that styles must be flushed to calculate the most up-to-date state of things, so it&apos;s a double-whammy.</p>
 
 <p>Here’s a simple example, cribbed from <a href="http://paulrouget.com/e/fxoshud">this blog post by Paul Rouget</a>:</p>
 
-<pre class="brush: js">div1.style.margin = "200px";        // Line 1
+<pre class="brush: js">div1.style.margin = &quot;200px&quot;;        // Line 1
 var height1 = div1.clientHeight;    // Line 2
-div2.classList.add("foobar");       // Line 3
+div2.classList.add(&quot;foobar&quot;);       // Line 3
 var height2 = div2.clientHeight;    // Line 4
 doSomething(height1, height2);      // Line 5</pre>
 
@@ -200,7 +200,7 @@ doSomething(height1, height2);      // Line 5</pre>
 
 <h3 id="How_do_I_avoid_triggering_uninterruptible_reflow">How do I avoid triggering uninterruptible reflow?</h3>
 
-<p>Here's a <a href="https://gist.github.com/paulirish/5d52fb081b3570c81e3a">list of things that JavaScript can ask for that can cause uninterruptible reflow</a>, to help you think about the problem. Note that some items in the list may be browser-specific or subject to change, and that an item not occurring explicitly in the list doesn't mean it doesn't cause reflow. For instance, at time of writing accessing <code>event.rangeOffset</code> <a href="https://searchfox.org/mozilla-central/rev/6bfadf95b4a6aaa8bb3b2a166d6c3545983e179a/dom/events/UIEvent.cpp#215-226">triggers reflow</a> in Gecko, and does not occur in the earlier link. If you're unsure whether something causes reflow, check!</p>
+<p>Here&apos;s a <a href="https://gist.github.com/paulirish/5d52fb081b3570c81e3a">list of things that JavaScript can ask for that can cause uninterruptible reflow</a>, to help you think about the problem. Note that some items in the list may be browser-specific or subject to change, and that an item not occurring explicitly in the list doesn&apos;t mean it doesn&apos;t cause reflow. For instance, at time of writing accessing <code>event.rangeOffset</code> <a href="https://searchfox.org/mozilla-central/rev/6bfadf95b4a6aaa8bb3b2a166d6c3545983e179a/dom/events/UIEvent.cpp#215-226">triggers reflow</a> in Gecko, and does not occur in the earlier link. If you&apos;re unsure whether something causes reflow, check!</p>
 
 <p>Note how abundant the properties in that first list are. This means that when enumerating properties on DOM objects (e.g. elements/nodes, events, windows, etc.) <strong>accessing the value of each enumerated property will almost certainly (accidentally) cause uninterruptible reflow</strong>, because a lot of DOM objects have one or even several properties that do so.</p>
 
@@ -208,7 +208,7 @@ doSomething(height1, height2);      // Line 5</pre>
 
 <p><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1434376">bug 1434376</a> has recently landed a helper in the window binding to make it easier for priviledged code to queue up JavaScript to run when we know that the DOM is not dirty, and size, position, and style information is cheap to query for.</p>
 
-<p>Here's an example:</p>
+<p>Here&apos;s an example:</p>
 
 <pre class="brush: js">async function matchWidth(elem, otherElem) {
   let width = await window.promiseDocumentFlushed(() =&gt; {
@@ -224,9 +224,9 @@ doSomething(height1, height2);      // Line 5</pre>
 
 <p>Please see the section on <code>promiseDocumentFlushed</code> in <a href="#Detecting_and_avoiding_synchronous_style_flushes">Detecting and avoiding synchronous style flushes</a> for more information on how to use the API.</p>
 
-<p>Note that queries for size and position information are only expensive if the DOM has been written to. Otherwise, we're doing a cheap look-up of cached information. If we work hard to move all DOM writes into <code>requestAnimationFrame()</code>, then we can be sure that all size and position queries are cheap.</p>
+<p>Note that queries for size and position information are only expensive if the DOM has been written to. Otherwise, we&apos;re doing a cheap look-up of cached information. If we work hard to move all DOM writes into <code>requestAnimationFrame()</code>, then we can be sure that all size and position queries are cheap.</p>
 
-<p>It's also possible (though less infallible than <code>promiseDocumentFlushed</code>) to queue JavaScript to run very soon after the frame has been painted, where the likelihood is highest that the DOM has not been written to, and layout and style information queries are still cheap. This can be done by using a <code>setTimeout</code> or dispatching a runnable inside a <code>requestAnimationFrame</code> callback, for example:</p>
+<p>It&apos;s also possible (though less infallible than <code>promiseDocumentFlushed</code>) to queue JavaScript to run very soon after the frame has been painted, where the likelihood is highest that the DOM has not been written to, and layout and style information queries are still cheap. This can be done by using a <code>setTimeout</code> or dispatching a runnable inside a <code>requestAnimationFrame</code> callback, for example:</p>
 
 <pre class="brush: js">requestAnimationFrame(() =&gt; {
   setTimeout(() =&gt; {
@@ -246,13 +246,13 @@ requestAnimationFrame(() =&gt; {
   });
 });</pre>
 
-<div class="note">
+<div class="note notecard">
 <p>This also implies that<strong> </strong><em>querying for size and position information</em> in <code>requestAnimationFrame()</code> has a high probability of causing a synchronous reflow.</p>
 </div>
 
 <h3 id="Other_useful_methods">Other useful methods</h3>
 
-<p>Below you'll find some suggestions for other methods which may come in handy when you need to do things without incurring synchronous reflow. These methods generally return the most-recently-calculated value for the requested value, which means the value may no longer be current, but may still be "close enough" for your needs. Unless you need precisely accurate information, they can be valuable tools in your performance toolbox.</p>
+<p>Below you&apos;ll find some suggestions for other methods which may come in handy when you need to do things without incurring synchronous reflow. These methods generally return the most-recently-calculated value for the requested value, which means the value may no longer be current, but may still be &quot;close enough&quot; for your needs. Unless you need precisely accurate information, they can be valuable tools in your performance toolbox.</p>
 
 <h4 id="nsIDOMWindowUtils.getBoundsWithoutFlushing">nsIDOMWindowUtils.getBoundsWithoutFlushing()</h4>
 
@@ -264,7 +264,7 @@ requestAnimationFrame(() =&gt; {
 
 <h4 id="nsIDOMWindowUtils.getScrollXY">nsIDOMWindowUtils.getScrollXY()</h4>
 
-<p>Returns the window's scroll offsets without taking the chance of causing a sync reflow.</p>
+<p>Returns the window&apos;s scroll offsets without taking the chance of causing a sync reflow.</p>
 
 <h3 id="Writing_tests_to_ensure_you_don’t_add_more_unintentional_reflow">Writing tests to ensure you don’t add more unintentional reflow</h3>
 
@@ -295,9 +295,9 @@ requestAnimationFrame(() =&gt; {
 
 <h2 id="Adding_nodes_using_DocumentFragments">Adding nodes using DocumentFragments</h2>
 
-<p>Sometimes you need to add several DOM nodes as part of an existing DOM tree. For example, when using XUL <code><a href="/pt-BR/docs/Mozilla/Tech/XUL/menupopup">&lt;xul:menupopup&gt;</a></code>s, you often have script which dynamically inserts <code><a href="/pt-BR/docs/Mozilla/Tech/XUL/menuitem">&lt;xul:menuitem&gt;</a></code>s. Inserting items into the DOM has a cost. If you're adding a number of children to a DOM node in a loop, it's often more efficient to batch them into a single insertion by creating a <a href="/pt-BR/docs/Web/API/DocumentFragment"><code>DocumentFragment</code></a>, adding the new nodes to that, then inserting the <code>DocumentFragment</code> as a child of the desired node.</p>
+<p>Sometimes you need to add several DOM nodes as part of an existing DOM tree. For example, when using XUL <code><a href="/pt-BR/docs/Mozilla/Tech/XUL/menupopup">&lt;xul:menupopup&gt;</a></code>s, you often have script which dynamically inserts <code><a href="/pt-BR/docs/Mozilla/Tech/XUL/menuitem">&lt;xul:menuitem&gt;</a></code>s. Inserting items into the DOM has a cost. If you&apos;re adding a number of children to a DOM node in a loop, it&apos;s often more efficient to batch them into a single insertion by creating a <a href="/pt-BR/docs/Web/API/DocumentFragment"><code>DocumentFragment</code></a>, adding the new nodes to that, then inserting the <code>DocumentFragment</code> as a child of the desired node.</p>
 
-<p>A <code>DocumentFragment</code> is maintained in memory outside the DOM itself, so changes don't cause reflow. The API is straightforward:</p>
+<p>A <code>DocumentFragment</code> is maintained in memory outside the DOM itself, so changes don&apos;t cause reflow. The API is straightforward:</p>
 
 <ol>
  <li>Create the <code>DocumentFragment</code> by calling <a href="/pt-BR/docs/Web/API/Document/createDocumentFragment"><code>Document.createDocumentFragment()</code></a>.</li>
@@ -314,8 +314,8 @@ var frag = document.createDocumentFragment();
 // Create numerous list items, add to fragment
 
 for(var x = 0; x &lt; 10; x++) {
-    var li = document.createElement("li");
-    li.innerHTML = "List item " + x;
+    var li = document.createElement(&quot;li&quot;);
+    li.innerHTML = &quot;List item &quot; + x;
     frag.appendChild(li);
 }
 
@@ -351,7 +351,7 @@ listNode.appendChild(frag);
 
 <h2 id="Use_the_compositor_for_animations">Use the compositor for animations</h2>
 
-<p>Performing animations on the main thread should be treated as <strong>deprecated</strong>. Avoid doing it. Instead, animate using <a href="/pt-BR/docs/Web/API/Element/animate"><code>Element.animate()</code></a>. See the article <a href="https://hacks.mozilla.org/2016/08/animating-like-you-just-dont-care-with-element-animate/">Animating like you just don't care</a> for more information on how to do this.</p>
+<p>Performing animations on the main thread should be treated as <strong>deprecated</strong>. Avoid doing it. Instead, animate using <a href="/pt-BR/docs/Web/API/Element/animate"><code>Element.animate()</code></a>. See the article <a href="https://hacks.mozilla.org/2016/08/animating-like-you-just-dont-care-with-element-animate/">Animating like you just don&apos;t care</a> for more information on how to do this.</p>
 
 <h2 id="Explicitly_define_start_and_end_animation_values">Explicitly define start and end animation values</h2>
 
@@ -375,8 +375,8 @@ listNode.appendChild(frag);
 
 <h2 id="Consider_loading_scripts_with_the_subscript_loader_asynchronously">Consider loading scripts with the subscript loader asynchronously</h2>
 
-<p>If you've ever used the subscript loader, you might not know that it can load scripts asynchronously, and return a Promise once they're loaded. For example:</p>
+<p>If you&apos;ve ever used the subscript loader, you might not know that it can load scripts asynchronously, and return a Promise once they&apos;re loaded. For example:</p>
 
 <pre class="brush: js">Services.scriptloader.loadSubScriptWithOptions(myScriptURL, { async: true }).then(() =&gt; {
-  console.log("Script at " + myScriptURL + " loaded asynchronously!");
+  console.log(&quot;Script at &quot; + myScriptURL + &quot; loaded asynchronously!&quot;);
 });</pre>

@@ -66,7 +66,7 @@ translation_of: Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/Performance
  <li>框架脚本还可以在未恢复的标签页上被执行。所有开销不止发生在已激活的标签页，而是取决于会话中的标签页总数。</li>
 </ul>
 
-<div class="note">
+<div class="note notecard">
 <p>下面的例子为了简洁，省略了一些样板代码</p>
 
 <p>“更好”的例子还省略了一些最佳实践。只是为了演示如何解决各子主题中描述的问题。</p>
@@ -79,7 +79,7 @@ translation_of: Mozilla/Firefox/Multiprocess_Firefox/Message_Manager/Performance
 <p>不良：</p>
 
 <pre class="brush: js">// addon.js
-<code>Services.mm.loadFrameScript</code>("framescript.js", true)
+<code>Services.mm.loadFrameScript</code>(&quot;framescript.js&quot;, true)
 </pre>
 
 <pre class="brush: js">// framescript.js
@@ -92,10 +92,10 @@ function helper(window, action) {
 
 function doSomething(message) {
   result = helper(content, message.data)
-  sendAsyncMessage("my-addon:response-from-child", {something: result})
+  sendAsyncMessage(&quot;my-addon:response-from-child&quot;, {something: result})
 }
 
-addMessageListener("my-addon:request-from-parent", doSomething)
+addMessageListener(&quot;my-addon:request-from-parent&quot;, doSomething)
 </pre>
 
 <p> </p>
@@ -109,12 +109,12 @@ addMessageListener("my-addon:request-from-parent", doSomething)
 <p><em>addon.js 如上</em></p>
 
 <pre class="brush: js">// framescript.js
-Components.utils.import("resource://my-addon/processModule.jsm", {}).addFrame(this)
+Components.utils.import(&quot;resource://my-addon/processModule.jsm&quot;, {}).addFrame(this)
 </pre>
 
 <pre class="brush: js">// processModule.jsm
 
-const EXPORTED_SYMBOLS = ['addFrame'];
+const EXPORTED_SYMBOLS = [&apos;addFrame&apos;];
 
 const precomputedConstants = // ...
 
@@ -125,17 +125,17 @@ function helper(window, action) {
 function doSomething(message) {
   frameGlobal = message.target
   result = helper(frameGlobal.content, message.data)
-  frameGlobal.sendAsyncMessage("my-addon:response-from-child", {something: result})
+  frameGlobal.sendAsyncMessage(&quot;my-addon:response-from-child&quot;, {something: result})
 }
 
 function addFrame(frameGlobal) {
-  frameGlobal.addMessageListener("my-addon:request-from-parent", doSomething)
+  frameGlobal.addMessageListener(&quot;my-addon:request-from-parent&quot;, doSomething)
 }
 </pre>
 
 <p><a href="/en-US/docs/Mozilla/JavaScript_code_modules/Using">Javascript modules</a> are per-process singletons and thus all their objects are only initialized once, which makes them suitable for stateless callbacks.<br>
  <br>
- But care must be taken to not leak references to the frame script global when it is passed into a JSM. Alternatively the frame's <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Frame_script_environment">unload event</a> or <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap">weak maps</a> can be used to ensure that frames can be cleaned up when their respective tab is closed.</p>
+ But care must be taken to not leak references to the frame script global when it is passed into a JSM. Alternatively the frame&apos;s <a href="/en-US/Firefox/Multiprocess_Firefox/Message_Manager/Frame_script_environment">unload event</a> or <a href="/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap">weak maps</a> can be used to ensure that frames can be cleaned up when their respective tab is closed.</p>
 
 <h3 id="每个进程中存放重量级的状态"><a name="per-process-state">每个进程中存放重量级的状态</a></h3>
 
@@ -147,7 +147,7 @@ var main = new MyAddonService();
 main.onChange(stateChange);
 
 function stateChange() {
-  Services.mm.<code>broadcastAsyncMessage("my-addon:update-configuration", {newConfig: </code>main<code>.serialize()})</code>
+  Services.mm.<code>broadcastAsyncMessage(&quot;my-addon:update-configuration&quot;, {newConfig: </code>main<code>.serialize()})</code>
 }
 </pre>
 
@@ -158,7 +158,7 @@ function onUpdate(message) {
    mainCopy = MyAddonService.deserialize(message.data.newConfig);
 }
 
-addMessageListener("my-addon:update-configuration", onUpdate)
+addMessageListener(&quot;my-addon:update-configuration&quot;, onUpdate)
 
 
 // mainCopy used by other functions
@@ -174,15 +174,15 @@ var main = new MyAddonService();
 main.onChange(stateChange);
 
 function stateChange() {
-  Services.ppmm.<code>broadcastAsyncMessage("my-addon:update-configuration", {newConfig: </code>main<code>.serialize()})</code>
+  Services.ppmm.<code>broadcastAsyncMessage(&quot;my-addon:update-configuration&quot;, {newConfig: </code>main<code>.serialize()})</code>
 }</pre>
 
 <pre class="brush: js">// processModule.jsm
-const EXPORTED_SYMBOLS = ['getMainCopy'];
+const EXPORTED_SYMBOLS = [&apos;getMainCopy&apos;];
 
 var mainCopy;
 
-Services.cpmm.addMessageListener(<code>"my-addon:update-configuration"</code>, function(message) {
+Services.cpmm.addMessageListener(<code>&quot;my-addon:update-configuration&quot;</code>, function(message) {
   mainCopy = message.data.newConfig;
 })
 
@@ -193,7 +193,7 @@ funtion getMainCopy() {
 </pre>
 
 <pre class="brush: js">// framescript.js
-Components.utils.import("resource://my-addon/processModule.jsm")
+Components.utils.import(&quot;resource://my-addon/processModule.jsm&quot;)
 
 // getMainCopy() used by other functions
 </pre>
@@ -205,7 +205,7 @@ Components.utils.import("resource://my-addon/processModule.jsm")
 <p>不良：</p>
 
 <pre class="brush: js">//framescript.js
-Services.obs.addObserver("document-element-inserted", {
+Services.obs.addObserver(&quot;document-element-inserted&quot;, {
   observe: function(doc, topic, data) {
      if(doc.ownerGlobal.top != content)
         return; // bail out if  this is for another tab
@@ -235,7 +235,7 @@ Services.obs.addObserver("document-element-inserted", {
 <p>不良：</p>
 
 <pre class="brush: js">// addon.js
-<code>Services.mm.loadFrameScript</code>("framescript.js", /*delayed:*/ true)
+<code>Services.mm.loadFrameScript</code>(&quot;framescript.js&quot;, /*delayed:*/ true)
 
 // stuff communicating with the framescript
 </pre>
@@ -243,9 +243,9 @@ Services.obs.addObserver("document-element-inserted", {
 <pre class="brush: js">// framescript.js
 function onlyOnceInABlueMoon() {
    // we only need this during a total solar eclipse while goat blood rains from the sky
-   sendAsyncMessage('my-addon:paragraph-count', {num: content.document.querySelectorAll('p').length})
+   sendAsyncMessage(&apos;my-addon:paragraph-count&apos;, {num: content.document.querySelectorAll(&apos;p&apos;).length})
 }
-addMessageListener("my-addon:request-from-parent", onlyOnceInABlueMoon)
+addMessageListener(&quot;my-addon:request-from-parent&quot;, onlyOnceInABlueMoon)
 </pre>
 
 <p>更好：</p>
@@ -255,11 +255,11 @@ function onToolbarButton(event) {
   let tabMM = gBrowser.mCurrentBrowser.frameLoader.messageManager;
   let button = event.target;
   let callback = (message) =&gt; {
-    tabMM.removeMessageListener("my-addon:paragraph-count", callback)
+    tabMM.removeMessageListener(&quot;my-addon:paragraph-count&quot;, callback)
     decorateButton(button, message.data.num)
   }
-  tabMM.addMessageListener("my-addon:paragraph-count", callback);
-  tabMM.loadFrameScript("data:,sendAsyncMessage('my-addon:paragraph-count', {num: content.document.querySelectorAll('p').length})", false)
+  tabMM.addMessageListener(&quot;my-addon:paragraph-count&quot;, callback);
+  tabMM.loadFrameScript(&quot;data:,sendAsyncMessage(&apos;my-addon:paragraph-count&apos;, {num: content.document.querySelectorAll(&apos;p&apos;).length})&quot;, false)
 }
 
 function decorateButton(button, count) {
@@ -289,7 +289,7 @@ Object.assign(ContentyPolicy.prototype, {
 
     shouldLoad: function(type, location, origin, context) {
 
-       let resultList = Services.cpmm.sendSyncMessage("my-addon:check-load", {destination: location, source: origin}) // &lt;=== SYNC MESSAGE!
+       let resultList = Services.cpmm.sendSyncMessage(&quot;my-addon:check-load&quot;, {destination: location, source: origin}) // &lt;=== SYNC MESSAGE!
 
        if(resultList.every((r) =&gt; r == true))
            return Ci.nsIContentPolicy.<code>ACCEPT;
@@ -327,10 +327,10 @@ Object.assign(ContentyPolicy.prototype, {
 
 <pre class="brush: js">// addon.js
 function onUnload() {
-  Services.mm.removeDelayedFrameScript("resources://my-addon/framescript.js");
-  Services.ppmm.removeDelayedProcessScript("resources://my-addon/processcript.js");
-  Services.mm.broadcastAsyncMessage("my-addon:unload");
-  Services.ppmm.broadcastAsyncMessage("my-addon:unload");
+  Services.mm.removeDelayedFrameScript(&quot;resources://my-addon/framescript.js&quot;);
+  Services.ppmm.removeDelayedProcessScript(&quot;resources://my-addon/processcript.js&quot;);
+  Services.mm.broadcastAsyncMessage(&quot;my-addon:unload&quot;);
+  Services.ppmm.broadcastAsyncMessage(&quot;my-addon:unload&quot;);
 }
 </pre>
 
