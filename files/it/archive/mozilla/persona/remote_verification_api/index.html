@@ -1,0 +1,171 @@
+---
+title: API di verifica remota
+slug: Archive/Mozilla/Persona/Remote_Verification_API
+translation_of: Archive/Mozilla/Persona/Remote_Verification_API
+---
+<h2 id="Summary" name="Summary">Summary</h2>
+<p>When a user tries to log into a website, their browser generates a data structure called an <em>assertion</em>, which is essentially a cryptographically signed email address. The browser sends this assertion to the web site, which must verify that the assertion is valid before logging the user in.</p>
+<p>Assertions can be verified locally, or with an API hosted at <span class="link-https"><code>https://verifier.login.persona.org/verify</code></span>. This page describes how to use the API.</p>
+<h2 id="Methods" name="Methods">Method</h2>
+<p>HTTP POST request to <code>https://verifier.login.persona.org/verify</code>.</p>
+<h3 id="Parameters" name="Parameters">Parameters</h3>
+<dl>
+ <dt>
+  <code>assertion</code></dt>
+ <dd>
+  The assertion supplied by the user. Available as the first parameter passed to the <code>onlogin</code> function in <a href="/it/docs/Web/API/Navigator/id/watch" title="The documentation about this has not yet been written; please consider contributing!"><code>navigator.id.watch()</code></a>.</dd>
+ <dt>
+  <code>audience</code></dt>
+ <dd>
+  The protocol, domain name, and port of your site. For example, &quot;<code>https://example.com:443</code>&quot;.</dd>
+</dl>
+<h3 id="Return_values" name="Return_values">Return values</h3>
+<p>The call returns a JSON structure containing a <code>status</code> element, which may be either &quot;okay&quot; or &quot;failure&quot;. Depending on the value of <code>status</code>, the structure contains additional elements listed below.</p>
+<h4 id="okay" name="okay">&quot;okay&quot;</h4>
+<p>The assertion is valid.</p>
+<p>In this case the JSON structure contains the following additional elements:</p>
+<table style="width: 80%;" class="standard-table">
+ <tbody>
+  <tr>
+   <td>&quot;<code>email</code>&quot;</td>
+   <td>The address contained in the assertion, for the intended person being logged in.</td>
+  </tr>
+  <tr>
+   <td>&quot;<code>audience</code>&quot;</td>
+   <td>The audience value contained in the assertion. Expected to be your own website URL.</td>
+  </tr>
+  <tr>
+   <td>&quot;<code>expires</code>&quot;</td>
+   <td>The date the assertion expires, expressed as the <a href="/en/JavaScript/Reference/Global_Objects/Date/valueOf">primitive value of a Date object</a>: that is, the number of milliseconds since midnight 01 January, 1970 UTC.</td>
+  </tr>
+  <tr>
+   <td>&quot;<code>issuer</code>&quot;</td>
+   <td>The hostname of the identity provider that issued the assertion.</td>
+  </tr>
+ </tbody>
+</table>
+<h4 id="failure" name="failure">&quot;failure&quot;</h4>
+<p>The assertion is invalid. In this case the JSON structure contains one additional element:</p>
+<table class="compact-table">
+ <tbody>
+  <tr>
+   <td><code>&quot;reason&quot;</code></td>
+   <td>A string explaining why verification failed.</td>
+  </tr>
+ </tbody>
+</table>
+<h2 id="Examples" name="Examples">Examples</h2>
+<h3 id="node.js" name="node.js">node.js</h3>
+<p>This example uses a node.js server using express.js</p>
+<pre class="brush: js">var express = require(&quot;express&quot;),
+    app = express.createServer(),
+    https = require(&quot;https&quot;),
+    querystring = require(&quot;querystring&quot;);
+/* ... */
+
+// The audience must match what your browser&apos;s address bar shows,
+// including protocol, hostname, and port
+var audience = &quot;http://localhost:8888&quot;;
+
+app.post(&quot;/authenticate&quot;, function(req, res) {
+  var vreq = https.request({
+    host: &quot;verifier.login.persona.org&quot;,
+    path: &quot;/verify&quot;,
+    method: &quot;POST&quot;
+  }, function(vres) {
+    var body = &quot;&quot;;
+    vres.on(&apos;data&apos;, function(chunk) { body+=chunk; } )
+        .on(&apos;end&apos;, function() {
+          try {
+            var verifierResp = JSON.parse(body);
+            var valid = verifierResp &amp;&amp; verifierResp.status === &quot;okay&quot;;
+            var email = valid ? verifierResp.email : null;
+            req.session.email = email;
+            if (valid) {
+              console.log(&quot;assertion verified successfully for email:&quot;, email);
+              res.json(email);
+            } else {
+              console.log(&quot;failed to verify assertion:&quot;, verifierResp.reason);
+              res.send(verifierResp.reason, 403);
+            }
+          } catch(e) {
+            console.log(&quot;non-JSON response from verifier&quot;);
+            // bogus response from verifier!
+            res.send(&quot;bogus response from verifier!&quot;, 403);
+
+          }
+        });
+  });
+
+  vreq.setHeader(&apos;Content-Type&apos;, &apos;application/x-www-form-urlencoded&apos;);
+
+  var data = querystring.stringify({
+    assertion: req.body.assertion,
+    audience: audience
+  });
+
+  vreq.setHeader(&apos;Content-Length&apos;, data.length);
+  vreq.write(data);
+  vreq.end();
+
+  console.log(&quot;verifying assertion!&quot;);
+});
+
+</pre>
+<p>via <a href="https://github.com/lloyd/myfavoritebeer.org/blob/06255b960e1f9078bc935c1c7af0662f33c88818/server/main.js#L112" class="link-https">Lloyd Hilaiel</a></p>
+<h3 id="PHP" name="PHP">PHP</h3>
+<pre class="brush: php">$url = &apos;https://verifier.login.persona.org/verify&apos;;
+$assert = filter_input(
+    INPUT_POST,
+    &apos;assertion&apos;,
+    FILTER_UNSAFE_RAW,
+    FILTER_FLAG_STRIP_LOW|FILTER_FLAG_STRIP_HIGH
+);
+//Use the $_POST superglobal array for PHP &lt; 5.2 and write your own filter
+$params = &apos;assertion=&apos; . urlencode($assert) . &apos;&amp;audience=&apos; .
+           urlencode(&apos;http://example.com:80&apos;);
+$ch = curl_init();
+$options = array(
+    CURLOPT_URL =&gt; $url,
+    CURLOPT_RETURNTRANSFER =&gt; TRUE,
+    CURLOPT_POST =&gt; 2,
+    //CURLOPT_SSL_VERIFYPEER =&gt; true,   //This currently blocks connection to &apos;https://verifier.login.persona.org/verify&apos;
+    CURLOPT_SSL_VERIFYPEER =&gt; 0,
+
+    CURLOPT_SSL_VERIFYHOST =&gt; 2,
+    CURLOPT_POSTFIELDS =&gt; $params
+);
+curl_setopt_array($ch, $options);
+$result = curl_exec($ch);
+curl_close($ch);
+echo $result;</pre>
+<p>Via <a href="https://github.com/codepo8/BrowserID-login-with-PHP/blob/184fdb74c8a554461c262875859968154d09288e/verify.php" class="link-https">Christian Heilmann</a></p>
+<h3 style="line-height: 20px;" id="Java" name="Java">Java</h3>
+<pre class="brush: java">@Override
+protected void doPost(final HttpServletRequest req,
+   final HttpServletResponse resp) throws ServletException,
+   IOException {
+
+   final String audience = req.getServerName();
+   final String assertion = req.getParameter(&quot;assertion&quot;);
+   final Verifier verifier = new Verifier();
+   final BrowserIDResponse personaResponse = verifier.verify(assertion,audience);
+   final Status status = personaResponse.getStatus();
+
+   if (status == Status.OK) {
+     /* Authentication with Persona was successful */
+     String email = personaResponse.getEmail();
+     log.info(&quot;{} has sucessfully signed in&quot;, email);
+     HttpSession session = req.getSession(true);
+     session.setAttribute(&quot;email&quot;, email);
+
+   } else {
+     /* Authentication with Persona failed */
+     log.info(&quot;Sign in failed...&quot;);
+
+   }
+}
+</pre>
+<p>Via <a href="https://github.com/user454322/browserid-verifier" class="link-https">Javier</a></p>
+<p> </p>
+<p>Note: If you send the assertion and audience parameters as a JSON-object, they <strong>must not</strong> be URL-encoded. If they are sent as regular HTTP POST parameters, as in the example above, they <strong>must</strong> be URL-encoded.</p>
